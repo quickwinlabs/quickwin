@@ -66,5 +66,8 @@
 
   (global (export "const_i32") i32 (i32.const 42))
   (global (export "const_f64") f64 (f64.const 3.14))
-  (global (export "mutable_i32") (mut i32) (i32.const 99))
+  (global $mutable_i32 (export "mutable_i32") (mut i32) (i32.const 99))
+  (func (export "read_mut_global") (result i32)
+    global.get $mutable_i32
+  )
 )

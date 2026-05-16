@@ -609,7 +609,6 @@ static JSValue js_wasm_global_ctor(JSContext *ctx, JSValueConst new_target,
     wg->kind = kind;
     wg->is_mutable = is_mutable;
     wg->exported_by = JS_UNDEFINED;
-    wg->global_data = NULL;
 
     if (argc >= 2)
     {
@@ -650,7 +649,10 @@ static JSValue js_wasm_global_ctor(JSContext *ctx, JSValueConst new_target,
         }
     }
 
+    wg->global_data = (void *)&wg->standalone_value;
+
     JSValue obj = JS_NewObjectClass(ctx, js_webassembly_global_class_id);
+
     if (JS_IsException(obj))
     {
         js_free(ctx, wg);
@@ -678,10 +680,7 @@ static JSValue js_wasm_global_get_value(JSContext *ctx, JSValueConst this_val,
     if (!wg)
         return JS_EXCEPTION;
 
-    if (!JS_IsUndefined(wg->exported_by))
-        return ptr_to_js(ctx, wg->kind, wg->global_data);
-
-    return ptr_to_js(ctx, wg->kind, &wg->standalone_value);
+    return ptr_to_js(ctx, wg->kind, wg->global_data);
 }
 
 static JSValue js_wasm_global_set_value(JSContext *ctx, JSValueConst this_val,
@@ -700,10 +699,7 @@ static JSValue js_wasm_global_set_value(JSContext *ctx, JSValueConst this_val,
     wasm_val_t tmp;
     js_js_to_wasm_val(ctx, argv[0], &tmp, wg->kind);
 
-    if (!JS_IsUndefined(wg->exported_by))
-        val_to_ptr(wg->kind, wg->global_data, &tmp);
-    else
-        val_to_ptr(wg->kind, &wg->standalone_value, &tmp);
+    val_to_ptr(wg->kind, wg->global_data, &tmp);
 
     return JS_UNDEFINED;
 }
@@ -1231,7 +1227,7 @@ static JSValue js_wasm_instance_ctor(JSContext *ctx, JSValueConst new_target,
                 continue;
             }
 
-            void *src = !JS_IsUndefined(wg->exported_by) ? wg->global_data : &wg->standalone_value;
+            void *src = wg->global_data;
             switch (gi->type.val_type)
             {
             case VALUE_TYPE_I32:

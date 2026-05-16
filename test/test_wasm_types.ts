@@ -44,6 +44,9 @@ export const suite = {
         t.check('const_f64.value', 3.14, i.exports.const_f64.value)
         t.check('mutable_i32 is Global', true, i.exports.mutable_i32 instanceof WebAssembly.Global)
         t.check('mutable_i32.value', 99, i.exports.mutable_i32.value)
+        i.exports.mutable_i32.value = 500
+        t.check('mutable_i32 after set from JS', 500, i.exports.mutable_i32.value)
+        t.check('mutable_i32 after set from WASM', 500, i.exports.read_mut_global())
 
         t.section('Global constructor')
         var g: WebAssembly.Global
