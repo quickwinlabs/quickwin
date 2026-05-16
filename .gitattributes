@@ -1,0 +1,2 @@
+mupdf-wasm/mupdf-wasm.wasm filter=lfs diff=lfs merge=lfs -text
+vendor/mupdf-wasm/mupdf-wasm.wasm filter=lfs diff=lfs merge=lfs -text

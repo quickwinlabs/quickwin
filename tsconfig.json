@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "incremental": true,
+    "target": "es2022",
+    "module": "esnext",
+    "strict": true,
+    "noImplicitAny": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "lib": ["ES2020"],
+    "types": ["./quickwin.d.ts"],
+    "outDir": "_build"
+  },
+  "include": ["test/**/*.ts", "main.ts"],
+  "exclude": []
+}

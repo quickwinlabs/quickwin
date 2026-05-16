@@ -1,0 +1,41 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "C:/msys64/ucrt64/include",
+                "${workspaceFolder}/wamr/core/iwasm/include",
+                "${workspaceFolder}/wamr/core/shared/platform/windows",
+                "${workspaceFolder}/wamr/core/iwasm/interpreter",
+                "${workspaceFolder}/wamr/core/iwasm/common",
+                "${workspaceFolder}/wamr/core/shared/utils",
+                "${workspaceFolder}/wamr/core/shared/platform/include"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE",
+                "WASM_ENABLE_FAST_INTERP=1",
+                "WASM_ENABLE_BULK_MEMORY=1",
+                "WASM_ENABLE_BULK_MEMORY_OPT=1",
+                "WASM_ENABLE_SHRUNK_MEMORY=1",
+                "WASM_ENABLE_SHARED_MEMORY=0",
+                "WASM_ENABLE_MULTI_MODULE=0",
+                "WASM_ENABLE_MINI_LOADER=0",
+                "WASM_ENABLE_EXTENDED_CONST_EXPR=0",
+                "WASM_ENABLE_CALL_INDIRECT_OVERLONG=0",
+                "WASM_DISABLE_HW_BOUND_CHECK=1",
+                "WASM_DISABLE_STACK_HW_BOUND_CHECK=1",
+                "WASM_ENABLE_QUICK_AOT_ENTRY=0",
+                "WASM_ENABLE_AOT_INTRINSICS=0"
+            ],
+            "windowsSdkVersion": "10.0.26100.0",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "windows-gcc-x64",
+            "compilerPath": "C:/msys64/ucrt64/bin/gcc.exe"
+        }
+    ],
+    "version": 4
+}
