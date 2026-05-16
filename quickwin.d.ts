@@ -478,3 +478,13 @@ declare module "wamr" {
     function validate(buffer: ArrayBuffer): boolean;
     function compile(buffer: ArrayBuffer): WAMRModule;
 }
+
+interface HttpCache {
+    readMeta(url: string): string | null;
+    readBody(url: string): ArrayBuffer | null;
+    writeCache(url: string, maxAge: number, body: string | ArrayBuffer): void;
+    writeMeta(url: string, json: string): void;
+    cacheKey(url: string): string;
+}
+
+declare var __httpCache__: HttpCache;

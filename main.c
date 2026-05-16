@@ -46,6 +46,7 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
     js_init_module_sock(ctx);
     js_init_module_wolfssl(ctx);
     js_init_module_wamr(ctx);
+    js_init_http_cache_api(ctx);
     return ctx;
 }
 

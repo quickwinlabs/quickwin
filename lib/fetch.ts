@@ -141,8 +141,60 @@ class _QuickReadableStream {
     }
 }
 
+class _PreloadedStream {
+    _buffer: Uint8Array
+    _offset: number = 0
+    _state: 'readable' | 'closed' = 'readable'
+    _pendingRead: PendingRead | null = null
+    _locked: boolean = false
+
+    constructor(buffer: ArrayBuffer) {
+        this._buffer = new Uint8Array(buffer)
+    }
+
+    get locked(): boolean { return this._locked }
+
+    getReader() {
+        if (this._locked) throw new TypeError('ReadableStream is locked')
+        this._locked = true
+        const stream = this
+        return {
+            read(): Promise<ReadResult> {
+                if (stream._offset < stream._buffer.length) {
+                    const chunk = stream._buffer.slice(stream._offset, stream._offset + 8192)
+                    stream._offset += chunk.length
+                    return Promise.resolve({ done: false, value: chunk })
+                }
+                return Promise.resolve({ done: true })
+            },
+            cancel(reason?: any): void {
+                stream._state = 'closed'
+                stream._locked = false
+            },
+            releaseLock(): void {
+                // no-op
+            }
+        }
+    }
+
+    cancel(reason?: any): void {
+        this._state = 'closed'
+        this._locked = false
+    }
+
+    _tryRead(): Promise<ReadResult> | null {
+        if (this._offset < this._buffer.length) {
+            const chunk = this._buffer.slice(this._offset, this._offset + 8192)
+            this._offset += chunk.length
+            return Promise.resolve({ done: false, value: chunk })
+        }
+        if (this._state === 'closed') return Promise.resolve({ done: true })
+        return null
+    }
+}
+
 class _QuickReader {
-    private _stream: _QuickReadableStream | null
+    _stream: _QuickReadableStream | null
 
     constructor(stream: _QuickReadableStream) {
         this._stream = stream
@@ -255,6 +307,7 @@ class FetchResponse {
     url: string
     body: _QuickReadableStream
     private _bodyConsumed: boolean = false
+    _preloadedBody: ArrayBuffer | null = null
 
     get bodyUsed(): boolean {
         return this._bodyConsumed || this.body.locked
@@ -272,6 +325,11 @@ class FetchResponse {
     }
 
     async text(): Promise<string> {
+        if (this._preloadedBody) {
+            if (this._bodyConsumed) throw new TypeError('Body already used')
+            this._bodyConsumed = true
+            return ab2str(this._preloadedBody)
+        }
         if (this.bodyUsed) throw new TypeError('Body already used')
         this._bodyConsumed = true
         const reader = this.body.getReader()
@@ -290,6 +348,11 @@ class FetchResponse {
     }
 
     async arrayBuffer(): Promise<ArrayBuffer> {
+        if (this._preloadedBody) {
+            if (this._bodyConsumed) throw new TypeError('Body already used')
+            this._bodyConsumed = true
+            return this._preloadedBody
+        }
         if (this.bodyUsed) throw new TypeError('Body already used')
         this._bodyConsumed = true
         const reader = this.body.getReader()
@@ -539,20 +602,115 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
     })
 }
 
-// ── Public fetch (with redirect handling) ──
+// ── Public fetch (with redirect handling and caching) ──
+
+function headersToObj(headers: FetchHeaders): { [key: string]: string } {
+    const obj: { [key: string]: string } = {}
+    headers.forEach((value: string, name: string) => { obj[name] = value })
+    return obj
+}
+
+function parseMaxAge(cc: string): number {
+    const m = cc.match(/max-age=(\d+)/)
+    return m ? parseInt(m[1], 10) : 0
+}
 
 async function fetch(url: string, options: RequestOptions = {}): Promise<FetchResponse> {
     const redirectMode = options.redirect || 'follow'
     const maxRedirects = redirectMode === 'follow' ? (options.maxRedirects || 5) : 0
     let currentUrl = url
     let redirectCount = 0
+    const method = options.method || 'GET'
+    const cache = typeof __httpCache__ !== 'undefined' ? __httpCache__ : null
+
+    // ── Cache lookup (GET only) ──
+    let cachedMeta: any = null
+    let conditionalHeaders: { [key: string]: string } = {}
+
+    if (cache && method === 'GET') {
+        const metaStr = cache.readMeta(currentUrl)
+        if (metaStr) {
+            cachedMeta = JSON.parse(metaStr)
+            const age = Math.floor(Date.now() / 1000) - cachedMeta.storedAt
+            if (cachedMeta.maxAge > 0 && age < cachedMeta.maxAge) {
+                const body = cache.readBody(currentUrl)
+                if (body) {
+                    const resp = new FetchResponse(
+                        cachedMeta.status, cachedMeta.statusText,
+                        new FetchHeaders(cachedMeta.headers || {}),
+                        new _PreloadedStream(body) as any
+                    )
+                    resp.url = currentUrl
+                    resp._preloadedBody = body
+                    return resp
+                }
+            }
+            if (cachedMeta.etag) conditionalHeaders['If-None-Match'] = cachedMeta.etag
+            if (cachedMeta.lastModified) conditionalHeaders['If-Modified-Since'] = cachedMeta.lastModified
+        }
+    }
 
     while (true) {
+        const mergedOptions: RequestOptions = { ...options }
+        const mergedHeaders = { ...(options.headers || {}) }
+        for (const key in conditionalHeaders) {
+            mergedHeaders[key] = conditionalHeaders[key]
+        }
+        if (Object.keys(mergedHeaders).length > 0) mergedOptions.headers = mergedHeaders
+
         const parsedUrl = new URL(currentUrl)
-        const response = await fetchRequest(parsedUrl, options)
+        const response = await fetchRequest(parsedUrl, mergedOptions)
 
         response.url = currentUrl
 
+        // ── Handle 304 Not Modified ──
+        if (response.status === 304 && cachedMeta && cache) {
+            const body = cache.readBody(currentUrl)
+            if (body) {
+                cachedMeta.storedAt = Math.floor(Date.now() / 1000)
+                response.headers.forEach((value: string, name: string) => {
+                    cachedMeta.headers[name] = value
+                })
+                cache.writeMeta(currentUrl, JSON.stringify(cachedMeta))
+                const resp = new FetchResponse(
+                    cachedMeta.status, cachedMeta.statusText,
+                    new FetchHeaders(cachedMeta.headers),
+                    new _PreloadedStream(body) as any
+                )
+                resp.url = currentUrl
+                resp._preloadedBody = body
+                return resp
+            }
+        }
+
+        // ── Cache 200 GET responses ──
+        if (cache && method === 'GET' && response.status === 200 && !cachedMeta) {
+            const body = await response.arrayBuffer()
+            const cc = response.headers.get('cache-control') || ''
+            const maxAge = parseMaxAge(cc)
+            if (maxAge > 0) {
+                cache.writeCache(currentUrl, maxAge, body)
+                const meta = JSON.stringify({
+                    storedAt: Math.floor(Date.now() / 1000),
+                    maxAge,
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: headersToObj(response.headers),
+                    etag: response.headers.get('etag') || undefined,
+                    lastModified: response.headers.get('last-modified') || undefined,
+                })
+                cache.writeMeta(currentUrl, meta)
+            }
+            const resp = new FetchResponse(
+                response.status, response.statusText,
+                response.headers, new _PreloadedStream(body) as any
+            )
+            resp.url = currentUrl
+            resp._preloadedBody = body
+            return resp
+        }
+
+        // ── Redirect handling ──
         const isRedirect = response.status === 301 || response.status === 302 ||
                           response.status === 303 || response.status === 307 || response.status === 308
 
