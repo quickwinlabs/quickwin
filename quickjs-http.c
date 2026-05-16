@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "quickjs-http.h"
 #include "quickjs.h"
@@ -75,6 +76,138 @@ static int parse_url(const char* url, char* scheme, size_t scheme_size,
     return 1;
 }
 
+// ── HTTP Cache ──
+
+static unsigned long long fnv1a_64(const char* str) {
+    unsigned long long hash = 14695981039346656037ULL;
+    int c;
+    while ((c = (unsigned char)*str++)) {
+        hash ^= c;
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
+static void get_cache_dir(wchar_t* buf, int buf_size) {
+    GetModuleFileNameW(NULL, buf, buf_size);
+    wchar_t* p = wcsrchr(buf, L'\\');
+    if (p) p[1] = L'\0';
+    wcscat(buf, L"_cache");
+}
+
+static void cache_file_path(const wchar_t* cache_dir, const char* url,
+                            wchar_t* path, int path_size, const wchar_t* ext) {
+    unsigned long long h = fnv1a_64(url);
+    swprintf(path, path_size, L"%s\\%016llx%s", cache_dir, h, ext);
+}
+
+// Returns max_age (>=0), -1 if no max-age, -2 if no-store
+static int parse_max_age(const char* response) {
+    const char* cc = strstr(response, "Cache-Control:");
+    if (!cc) {
+        cc = strstr(response, "cache-control:");
+        if (!cc) return -1;
+    }
+    cc += 14;
+    while (*cc == ' ') cc++;
+    if (strncmp(cc, "no-store", 8) == 0) return -2;
+    const char* ma = strstr(cc, "max-age=");
+    if (!ma) return -1;
+    ma += 8;
+    return atoi(ma);
+}
+
+static char* read_cache(const char* url) {
+    wchar_t cache_dir[MAX_PATH];
+    get_cache_dir(cache_dir, MAX_PATH);
+
+    wchar_t meta_path[MAX_PATH];
+    cache_file_path(cache_dir, url, meta_path, MAX_PATH, L".meta");
+    FILE* f = _wfopen(meta_path, L"rb");
+    if (!f) return NULL;
+
+    fseek(f, 0, SEEK_END);
+    long meta_len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char* meta = malloc(meta_len + 1);
+    if (!meta) { fclose(f); return NULL; }
+    fread(meta, 1, meta_len, f);
+    meta[meta_len] = '\0';
+    fclose(f);
+
+    long long storedAt = 0;
+    int maxAge = 0;
+    const char* p = strstr(meta, "\"storedAt\"");
+    if (p) { p = strchr(p, ':'); if (p) storedAt = atoll(p + 1); }
+    p = strstr(meta, "\"maxAge\"");
+    if (p) { p = strchr(p, ':'); if (p) maxAge = atoi(p + 1); }
+    free(meta);
+
+    if (maxAge <= 0 || time(NULL) - storedAt >= maxAge) {
+        wchar_t body_path[MAX_PATH];
+        cache_file_path(cache_dir, url, body_path, MAX_PATH, L".body");
+        _wremove(meta_path);
+        _wremove(body_path);
+        return NULL;
+    }
+
+    wchar_t body_path[MAX_PATH];
+    cache_file_path(cache_dir, url, body_path, MAX_PATH, L".body");
+    f = _wfopen(body_path, L"rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long body_len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char* body = malloc(body_len + 1);
+    if (!body) { fclose(f); return NULL; }
+    fread(body, 1, body_len, f);
+    body[body_len] = '\0';
+    fclose(f);
+
+    return body;
+}
+
+static void write_cache(const char* url, int max_age,
+                        const char* body, size_t body_len) {
+    wchar_t cache_dir[MAX_PATH];
+    get_cache_dir(cache_dir, MAX_PATH);
+    CreateDirectoryW(cache_dir, NULL);
+
+    wchar_t meta_path[MAX_PATH];
+    cache_file_path(cache_dir, url, meta_path, MAX_PATH, L".meta");
+    FILE* f = _wfopen(meta_path, L"wb");
+    if (!f) return;
+    char meta_buf[128];
+    snprintf(meta_buf, sizeof(meta_buf), "{\"storedAt\":%lld,\"maxAge\":%d}", (long long)time(NULL), max_age);
+    fwrite(meta_buf, 1, strlen(meta_buf), f);
+    fclose(f);
+
+    wchar_t body_path[MAX_PATH];
+    cache_file_path(cache_dir, url, body_path, MAX_PATH, L".body");
+    f = _wfopen(body_path, L"wb");
+    if (!f) { _wremove(meta_path); return; }
+    fwrite(body, 1, body_len, f);
+    fclose(f);
+}
+
+// Attempt to cache response. Must be called before extract_body (while headers are intact).
+static void try_cache_response(const char* url, const char* response, size_t total) {
+    // Only cache 200 OK
+    if (strncmp(response, "HTTP/1.1 200", 12) != 0 &&
+        strncmp(response, "HTTP/1.0 200", 12) != 0) return;
+
+    int max_age = parse_max_age(response);
+    if (max_age < 0) return;
+
+    const char* body_start = strstr(response, "\r\n\r\n");
+    if (!body_start) return;
+    body_start += 4;
+    size_t body_len = total - (body_start - response);
+    if (body_len == 0) return;
+
+    write_cache(url, max_age, body_start, body_len);
+}
+
 char* http_get_sync(const char* url) {
     char scheme[16] = {0};
     char host[256] = {0};
@@ -84,6 +217,9 @@ char* http_get_sync(const char* url) {
     if (!parse_url(url, scheme, sizeof(scheme), host, sizeof(host), &port, path, sizeof(path))) {
         return NULL;
     }
+
+    char* cached = read_cache(url);
+    if (cached) return cached;
 
     int is_https = is_https_url(url);
 
@@ -177,6 +313,8 @@ char* http_get_sync(const char* url) {
 
         response[total] = '\0';
 
+        try_cache_response(url, response, total);
+
         wolfSSL_shutdown(ssl);
         wolfSSL_free(ssl);
         wolfSSL_CTX_free(ctx);
@@ -217,6 +355,9 @@ char* http_get_sync(const char* url) {
         }
 
         response[total] = '\0';
+
+        try_cache_response(url, response, total);
+
         closesocket(sock);
 
         if (response) {

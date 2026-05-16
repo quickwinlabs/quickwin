@@ -20,6 +20,7 @@ const suiteDefs = [
     { name: 'net-websocket',     file: './test_net_websocket.js' },
     { name: 'net-event',         file: './test_net_event.js' },
     { name: 'mupdf-render',      file: './test_mupdf_render.js' },
+    { name: 'http-import',       file: './test_http_import.js' },
 ]
 
 async function main(): Promise<void> {
