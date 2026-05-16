@@ -235,9 +235,8 @@ class WebSocket {
     }
 
     private _connect(): void {
-        const isWSS = this.url.startsWith('wss://')
-        const isWS = this.url.startsWith('ws://')
-        if (!isWS && !isWSS) {
+        let url: URL
+        try { url = new URL(this.url) } catch {
             const self = this
             os.setTimeout(() => {
                 self._fireError(new Error('Invalid WebSocket URL: ' + self.url))
@@ -245,21 +244,10 @@ class WebSocket {
             }, 0)
             return
         }
-
-        const rest = this.url.slice(isWSS ? 6 : 5)
-        const slashIdx = rest.indexOf('/')
-        const hostPort = slashIdx >= 0 ? rest.slice(0, slashIdx) : rest
-        const path = slashIdx >= 0 ? rest.slice(slashIdx) : '/'
-
-        const colonIdx = hostPort.lastIndexOf(':')
-        let host: string, port: number
-        if (colonIdx >= 0) {
-            host = hostPort.slice(0, colonIdx)
-            port = parseInt(hostPort.slice(colonIdx + 1), 10)
-        } else {
-            host = hostPort
-            port = isWSS ? 443 : 80
-        }
+        const host = url.hostname
+        const isWSS = url.protocol === 'wss:'
+        const port = url.port ? parseInt(url.port, 10) : (isWSS ? 443 : 80)
+        const path = url.pathname
 
         const requestKey = generateKey()
         this._requestKey = requestKey

@@ -1,16 +1,10 @@
+import '../lib/polyfill.js'
 import * as sock from 'sock'
 import * as wolfssl from 'wolfssl'
 import * as os from 'os'
 
 const setTimeout = os.setTimeout
 const clearTimeout = os.clearTimeout
-
-interface ParsedURL {
-    scheme: string
-    host: string
-    port: number
-    path: string
-}
 
 interface RequestOptions {
     method?: string
@@ -19,33 +13,6 @@ interface RequestOptions {
     timeout?: number
     redirect?: 'follow' | 'manual' | 'error'
     maxRedirects?: number
-}
-
-function parseURL(url: string): ParsedURL {
-    const parsed: ParsedURL = { scheme: 'http', host: '', port: 80, path: '/' }
-    let rest = url
-    if (url.startsWith('https://')) {
-        parsed.scheme = 'https'
-        parsed.port = 443
-        rest = url.slice(8)
-    } else if (url.startsWith('http://')) {
-        rest = url.slice(7)
-    } else {
-        throw new Error('Invalid URL: ' + url)
-    }
-    const slashIndex = rest.indexOf('/')
-    if (slashIndex >= 0) {
-        parsed.path = rest.slice(slashIndex)
-        rest = rest.slice(0, slashIndex)
-    }
-    const colonIndex = rest.lastIndexOf(':')
-    if (colonIndex >= 0) {
-        parsed.host = rest.slice(0, colonIndex)
-        parsed.port = parseInt(rest.slice(colonIndex + 1), 10)
-    } else {
-        parsed.host = rest
-    }
-    return parsed
 }
 
 function str2ab(str: string): ArrayBuffer {
@@ -389,20 +356,20 @@ const ST_DONE = 5
 
 // ── Main fetch request ──
 
-function fetchRequest(parsedUrl: ParsedURL, options: RequestOptions): Promise<FetchResponse> {
+function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: string; pathname: string }, options: RequestOptions): Promise<FetchResponse> {
     return new Promise((resolve, reject) => {
         const method = options.method || 'GET'
         const headers = new FetchHeaders(options.headers)
         const body = options.body || null
         const timeout = options.timeout || 30000
-        const isHTTPS = parsedUrl.scheme === 'https'
+        const isHTTPS = parsedUrl.protocol === 'https:'
 
-        if (!headers.has('host')) headers.set('Host', parsedUrl.host)
+        if (!headers.has('host')) headers.set('Host', parsedUrl.hostname)
         if (!headers.has('user-agent')) headers.set('User-Agent', 'QuickJS/1.0')
         if (!headers.has('connection')) headers.set('Connection', 'close')
         if (body && !headers.has('content-length')) headers.set('Content-Length', String(body.length))
 
-        let request = method + ' ' + parsedUrl.path + ' HTTP/1.1\r\n'
+        let request = method + ' ' + parsedUrl.pathname + ' HTTP/1.1\r\n'
         headers.forEach((value: string, name: string) => {
             request += name + ': ' + value + '\r\n'
         })
@@ -464,7 +431,7 @@ function fetchRequest(parsedUrl: ParsedURL, options: RequestOptions): Promise<Fe
                     ssl = wolfssl.wolfSSL_new(ctx)
                     if (!ssl) { doReject(new Error('SSL_new failed')); return }
                     wolfssl.wolfSSL_set_fd(ssl, sock.get_fd(fd))
-                    const sniHost = headers.get('host') || parsedUrl.host
+                    const sniHost = headers.get('host') || parsedUrl.hostname
                     if (sniHost) wolfssl.wolfSSL_UseSNI(ssl, wolfssl.WOLFSSL_SNI_HOST_NAME, sniHost)
                     state = ST_HANDSHAKE
                 } else {
@@ -563,12 +530,12 @@ function fetchRequest(parsedUrl: ParsedURL, options: RequestOptions): Promise<Fe
             }
         })
 
-        const ip = sock.resolve(parsedUrl.host)
+        const ip = sock.resolve(parsedUrl.hostname)
         if (!ip) {
-            doReject(new Error('DNS resolution failed for: ' + parsedUrl.host))
+            doReject(new Error('DNS resolution failed for: ' + parsedUrl.hostname))
             return
         }
-        sock.connect(s, ip, parsedUrl.port)
+        sock.connect(s, ip, parseInt(parsedUrl.port, 10) || (isHTTPS ? 443 : 80))
     })
 }
 
@@ -581,7 +548,7 @@ async function fetch(url: string, options: RequestOptions = {}): Promise<FetchRe
     let redirectCount = 0
 
     while (true) {
-        const parsedUrl = parseURL(currentUrl)
+        const parsedUrl = new URL(currentUrl)
         const response = await fetchRequest(parsedUrl, options)
 
         response.url = currentUrl
@@ -603,18 +570,7 @@ async function fetch(url: string, options: RequestOptions = {}): Promise<FetchRe
                 if (!location) throw new Error('Redirect response missing Location header')
 
                 response.body.cancel('redirect')
-
-                if (location.startsWith('http://') || location.startsWith('https://')) {
-                    currentUrl = location
-                } else if (location.startsWith('/')) {
-                    const parsed = parseURL(currentUrl)
-                    currentUrl = parsed.scheme + '://' + parsed.host + location
-                } else {
-                    const parsed = parseURL(currentUrl)
-                    const lastSlash = parsed.path.lastIndexOf('/')
-                    const basePath = lastSlash > 0 ? parsed.path.slice(0, lastSlash + 1) : '/'
-                    currentUrl = parsed.scheme + '://' + parsed.host + basePath + location
-                }
+                currentUrl = new URL(location, currentUrl).href
 
                 redirectCount++
                 response.redirected = true
