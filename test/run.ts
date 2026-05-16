@@ -10,6 +10,7 @@ const RESET = '\x1b[0m'
 
 const suiteDefs = [
     { name: 'basic',             file: './test_basic.js' },
+    { name: 'url',               file: './test_url.js' },
     { name: 'wasm-basic',        file: './test_wasm_basic.js' },
     { name: 'wasm-types',        file: './test_wasm_types.js' },
     { name: 'wasm-import-global', file: './test_wasm_import_global.js' },
