@@ -445,6 +445,8 @@ declare module "ffi" {
     type FfiType = typeof FFI_TYPE_VOID | typeof FFI_TYPE_UINT8 | typeof FFI_TYPE_SINT8 | typeof FFI_TYPE_UINT16 | typeof FFI_TYPE_SINT16 | typeof FFI_TYPE_UINT32 | typeof FFI_TYPE_SINT32 | typeof FFI_TYPE_UINT64 | typeof FFI_TYPE_SINT64 | typeof FFI_TYPE_POINTER;
 
     function ffiCall(func: number, argTypes: FfiType[], args: (number | ArrayBuffer | null)[], retType: FfiType): number | void;
+    function bufferPtr(buf: ArrayBuffer): number;
+    function readByte(ptr: number): number;
 }
 
 declare module "../lib/fetch.js" {

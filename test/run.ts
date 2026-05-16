@@ -22,6 +22,7 @@ const suiteDefs = [
     { name: 'mupdf-render',      file: './test_mupdf_render.js' },
     { name: 'http-import',       file: './test_http_import.js' },
     { name: 'fetch-cache',       file: './test_fetch_cache.js' },
+    { name: 'ffi',               file: './test_ffi.js' },
 ]
 
 async function main(): Promise<void> {
