@@ -1,9 +1,9 @@
 import '../lib/polyfill.js'
 import * as std from 'std'
-import * as os from 'os'
 import * as gui from 'gui'
 import * as win from 'win'
 import * as ffi from 'ffi'
+import type { Document, Page, Pixmap } from '../vendor/mupdf-wasm/mupdf.js'
 
 const FFI_PTR = ffi.FFI_TYPE_POINTER
 const FFI_U32 = ffi.FFI_TYPE_UINT32
@@ -15,20 +15,24 @@ const _comdlg32 = win.LoadLibrary('comdlg32.dll')
 
 type MuPdf = typeof import('../vendor/mupdf-wasm/mupdf.js')
 
-if (
-    !(_user32 && _gdi32 && _comdlg32)
-) {
+if (!(_user32 && _gdi32 && _comdlg32)) {
     std.exit(0)
 }
 
-const GetDC = win.GetProcAddress(_user32, 'GetDC')
-const ReleaseDC = win.GetProcAddress(_user32, 'ReleaseDC')
-const GetOpenFileNameW = win.GetProcAddress(_comdlg32, 'GetOpenFileNameW')
-const SetDIBitsToDevice = win.GetProcAddress(_gdi32, 'SetDIBitsToDevice')
-const InvalidateRect = win.GetProcAddress(_user32, 'InvalidateRect')
-const ValidateRect = win.GetProcAddress(_user32, 'ValidateRect')
-const BeginPaint = win.GetProcAddress(_user32, 'BeginPaint')
-const EndPaint = win.GetProcAddress(_user32, 'EndPaint')
+function loadProc(lib: win.HMODULE, name: string): number {
+    const ptr = win.GetProcAddress(lib, name)
+    if (!ptr) {
+        std.printf('Error: cannot load %s\n', name)
+        std.exit(1)
+    }
+    return ptr
+}
+
+const GetDC = loadProc(_user32, 'GetDC')
+const ReleaseDC = loadProc(_user32, 'ReleaseDC')
+const GetOpenFileNameW = loadProc(_comdlg32, 'GetOpenFileNameW')
+const SetDIBitsToDevice = loadProc(_gdi32, 'SetDIBitsToDevice')
+const InvalidateRect = loadProc(_user32, 'InvalidateRect')
 
 const WM_SIZE = 0x0003
 
@@ -79,7 +83,7 @@ async function loadMupdf(): Promise<MuPdf | null> {
     fp.close()
     console.log(buf.byteLength)
 
-        ; (globalThis as any)['$libmupdf_wasm_Module'] = {
+        ; (globalThis).$libmupdf_wasm_Module = {
             wasmBinary: buf,
             locateFile: (p: string) => p
         }
@@ -109,8 +113,6 @@ function openPdfFileDialog(): string | null {
 
     sv.setUint32(96, 0x1000 | 0x0800 | 0x0004, true)
 
-    if (!GetOpenFileNameW) return null
-
     const ret = ffi.ffiCall(GetOpenFileNameW, [FFI_PTR], [structBuf], FFI_U32)
     if (!ret) return null
 
@@ -135,9 +137,9 @@ function renderPdfPage(mupdf: MuPdf, filePath: string): PixmapInfo | null {
 
     if (!mupdf) { std.printf('Error: mupdf not loaded\n'); return null }
 
-    let doc: any = null
-    let page: any = null
-    let pixmap: any = null
+    let doc: Document | null = null
+    let page: Page | null = null
+    let pixmap: Pixmap | null = null
 
     try {
         doc = mupdf.Document.openDocument(new Uint8Array(buf), 'application/pdf')
@@ -214,12 +216,16 @@ async function main(): Promise<void> {
                 return 0
 
             case gui.WM_COMMAND: {
+                const edit = hwndEdit
+                if (!edit) return 0
                 const hCtrl = lParam
-                if (hCtrl === (hwndBtnOpen)) {
+                const btnOpen = hwndBtnOpen as number | null
+                const btnRender = hwndBtnRender as number | null
+                if (hCtrl === btnOpen) {
                     const path = openPdfFileDialog()
-                    if (path) gui.SetWindowText(hwndEdit!, path)
-                } else if (hCtrl === (hwndBtnRender)) {
-                    const pdfPath = gui.GetWindowText(hwndEdit!)
+                    if (path) gui.SetWindowText(edit, path)
+                } else if (hCtrl === btnRender) {
+                    const pdfPath = gui.GetWindowText(edit)
                     if (!pdfPath) {
                         gui.MessageBox('Please select a PDF file first')
                         return 0
@@ -228,7 +234,7 @@ async function main(): Promise<void> {
                     console.log(pix)
                     if (pix) {
                         currentPixmap = pix
-                       InvalidateRect && ffi.ffiCall(InvalidateRect, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT32], [h, 0, 1], FFI_U32)
+                       ffi.ffiCall(InvalidateRect, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT32], [h, 0, 1], FFI_U32)
                     } else {
                         gui.MessageBox('Failed to render PDF')
                     }
@@ -237,7 +243,7 @@ async function main(): Promise<void> {
             }
 
             case gui.WM_PAINT: {
-                const hdc = ffi.ffiCall(GetDC!, [ffi.FFI_TYPE_UINT64], [h], ffi.FFI_TYPE_UINT64)
+                const hdc = ffi.ffiCall(GetDC, [ffi.FFI_TYPE_UINT64], [h], ffi.FFI_TYPE_UINT64)
                 if (hdc) {
                     if (currentPixmap) {
                         const bmi = new ArrayBuffer(40)
@@ -254,7 +260,7 @@ async function main(): Promise<void> {
                         bv.setUint32(32, 0, true)
                         bv.setUint32(36, 0, true)
 
-                        ffi.ffiCall(SetDIBitsToDevice!, [
+                        ffi.ffiCall(SetDIBitsToDevice, [
                             ffi.FFI_TYPE_UINT64, FFI_S32, FFI_S32, FFI_U32, FFI_U32,
                             FFI_S32, FFI_S32, FFI_U32, FFI_U32,
                             FFI_PTR, FFI_PTR, FFI_U32
@@ -265,13 +271,13 @@ async function main(): Promise<void> {
                             currentPixmap.data, bmi, 0
                         ], FFI_S32)
                     }
-                    ffi.ffiCall(ReleaseDC!, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64], [h, hdc], FFI_S32)
+                    ffi.ffiCall(ReleaseDC, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64], [h, hdc], FFI_S32)
                 }
                 return gui.DefWindowProc(hwnd, msg, wParam, lParam)
             }
 
             case WM_SIZE: {
-                ffi.ffiCall(InvalidateRect!, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64, FFI_U32], [h, 0, 1], FFI_U32)
+                ffi.ffiCall(InvalidateRect, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64, FFI_U32], [h, 0, 1], FFI_U32)
                 return 0
             }
 
