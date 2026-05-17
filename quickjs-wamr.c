@@ -63,6 +63,7 @@ typedef struct QJWasmTable
     wasm_table_inst_t table_inst;
     wasm_module_inst_t module_inst;
     JSValue exported_by;
+    JSValue *entry_cache;
 } QJWasmTable;
 
 
@@ -912,25 +913,21 @@ static void js_wasm_memory_mark(JSRuntime *rt, JSValueConst val, JS_MarkFunc *ma
     }
 }
 
-// ─── Table entry cache for non-export table functions ──────────
-#define MAX_TABLE_ENTRIES 16384
-static struct {
-    wasm_function_inst_t func;
-    wasm_module_inst_t module_inst;
-} table_entry_cache[MAX_TABLE_ENTRIES];
-static int table_entry_count = 0;
-
 static JSValue js_wasm_table_entry_bridge(JSContext *ctx, JSValueConst this_val,
                                            int argc, JSValueConst *argv,
                                            int magic, JSValue *func_data)
 {
     (void)this_val;
-    (void)func_data;
-    if (magic < 0 || magic >= table_entry_count) {
+    if (!func_data || JS_IsException(func_data[0]))
         return JS_UNDEFINED;
-    }
-    wasm_function_inst_t func = table_entry_cache[magic].func;
-    wasm_module_inst_t module_inst = table_entry_cache[magic].module_inst;
+    QJWasmTable *wt = JS_GetOpaque(func_data[0], js_webassembly_table_class_id);
+    if (!wt)
+        return JS_UNDEFINED;
+    uint32_t index = (uint32_t)magic;
+    if (index >= wt->table_inst.cur_size)
+        return JS_UNDEFINED;
+    wasm_function_inst_t func = wasm_table_get_func_inst(wt->module_inst, &wt->table_inst, index);
+    wasm_module_inst_t module_inst = wt->module_inst;
     if (!func || !module_inst)
         return JS_UNDEFINED;
 
@@ -1016,14 +1013,12 @@ static JSValue js_wasm_table_get(JSContext *ctx, JSValueConst this_val,
     if (!func)
         return JS_NULL;
 
-    // For non-export table entries, cache and return a callable bridge
-    if (table_entry_count >= MAX_TABLE_ENTRIES)
-        return JS_ThrowTypeError(ctx, "WebAssembly.Table.get: too many table entries");
+    if (!JS_IsUndefined(wt->entry_cache[index])) {
+        return JS_DupValue(ctx, wt->entry_cache[index]);
+    }
 
-    int entry_idx = table_entry_count++;
-    table_entry_cache[entry_idx].func = func;
-    table_entry_cache[entry_idx].module_inst = wt->module_inst;
-    return JS_NewCFunctionData(ctx, js_wasm_table_entry_bridge, 0, entry_idx, 0, NULL);
+    wt->entry_cache[index] = JS_NewCFunctionData(ctx, js_wasm_table_entry_bridge, 0, index, 1, (JSValueConst *)&this_val);
+    return JS_DupValue(ctx, wt->entry_cache[index]);
 }
 
 static JSValue js_wasm_table_get_length(JSContext *ctx, JSValueConst this_val,
@@ -1044,6 +1039,13 @@ static void js_wasm_table_finalizer(JSRuntime *rt, JSValue val)
     {
         if (!JS_IsUndefined(wt->exported_by))
             JS_FreeValueRT(rt, wt->exported_by);
+        if (wt->entry_cache) {
+            for (uint32_t i = 0; i < wt->table_inst.cur_size; i++) {
+                if (!JS_IsUndefined(wt->entry_cache[i]))
+                    JS_FreeValueRT(rt, wt->entry_cache[i]);
+            }
+            js_free_rt(rt, wt->entry_cache);
+        }
         js_free_rt(rt, wt);
     }
 }
@@ -1051,8 +1053,16 @@ static void js_wasm_table_finalizer(JSRuntime *rt, JSValue val)
 static void js_wasm_table_mark(JSRuntime *rt, JSValueConst val, JS_MarkFunc *mark_func)
 {
     QJWasmTable *wt = JS_GetOpaque(val, js_webassembly_table_class_id);
-    if (wt && !JS_IsUndefined(wt->exported_by))
+    if (!wt)
+        return;
+    if (!JS_IsUndefined(wt->exported_by))
         JS_MarkValue(rt, wt->exported_by, mark_func);
+    if (wt->entry_cache) {
+        for (uint32_t i = 0; i < wt->table_inst.cur_size; i++) {
+            if (!JS_IsUndefined(wt->entry_cache[i]))
+                JS_MarkValue(rt, wt->entry_cache[i], mark_func);
+        }
+    }
 }
 
 static JSClassDef js_webassembly_table_class_def = {
@@ -1360,6 +1370,11 @@ static JSValue js_wasm_instance_ctor(JSContext *ctx, JSValueConst new_target,
                     wt->table_inst = ti;
                     wt->module_inst = inst;
                     wt->exported_by = JS_DupValue(ctx, inst_obj);
+                    wt->entry_cache = js_mallocz(ctx, ti.cur_size * sizeof(JSValue));
+                    if (wt->entry_cache) {
+                        for (uint32_t j = 0; j < ti.cur_size; j++)
+                            wt->entry_cache[j] = JS_UNDEFINED;
+                    }
 
                     JSValue t_obj = JS_NewObjectClass(ctx, js_webassembly_table_class_id);
                     if (!JS_IsException(t_obj))
@@ -1369,6 +1384,8 @@ static JSValue js_wasm_instance_ctor(JSContext *ctx, JSValueConst new_target,
                     }
                     else
                     {
+                        if (wt->entry_cache)
+                            js_free(ctx, wt->entry_cache);
                         JS_FreeValue(ctx, wt->exported_by);
                         js_free(ctx, wt);
                     }
