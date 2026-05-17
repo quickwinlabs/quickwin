@@ -431,20 +431,33 @@ declare module "gui" {
 }
 
 declare module "ffi" {
-    const FFI_TYPE_VOID: number;
-    const FFI_TYPE_UINT8: number;
-    const FFI_TYPE_SINT8: number;
-    const FFI_TYPE_UINT16: number;
-    const FFI_TYPE_SINT16: number;
-    const FFI_TYPE_UINT32: number;
-    const FFI_TYPE_SINT32: number;
-    const FFI_TYPE_UINT64: number;
-    const FFI_TYPE_SINT64: number;
-    const FFI_TYPE_POINTER: number;
+    type TYPE_OF_FFI_TYPE_VOID = number & { readonly __label: unique symbol }
+    type TYPE_OF_FFI_TYPE_UINT8 = number & { readonly __label: unique symbol }
+    type TYPE_OF_FFI_TYPE_SINT8 = number & { readonly __label: unique symbol }
+    type TYPE_OF_FFI_TYPE_UINT16 = number & { readonly __label: unique symbol }
+    type TYPE_OF_FFI_TYPE_SINT16 = number & { readonly __label: unique symbol }
+    type TYPE_OF_FFI_TYPE_UINT32 = number & { readonly __label: unique symbol }
+    type TYPE_OF_FFI_TYPE_SINT32 = number & { readonly __label: unique symbol }
+    type TYPE_OF_FFI_TYPE_UINT64 = number & { readonly __label: unique symbol }
+    type TYPE_OF_FFI_TYPE_SINT64 = number & { readonly __label: unique symbol }
+    type TYPE_OF_FFI_TYPE_POINTER = number & { readonly __label: unique symbol }
+    
+    const FFI_TYPE_VOID: TYPE_OF_FFI_TYPE_VOID;
+    const FFI_TYPE_UINT8: TYPE_OF_FFI_TYPE_UINT8;
+    const FFI_TYPE_SINT8: TYPE_OF_FFI_TYPE_SINT8;
+    const FFI_TYPE_UINT16: TYPE_OF_FFI_TYPE_UINT16;
+    const FFI_TYPE_SINT16: TYPE_OF_FFI_TYPE_SINT16;
+    const FFI_TYPE_UINT32: TYPE_OF_FFI_TYPE_UINT32;
+    const FFI_TYPE_SINT32: TYPE_OF_FFI_TYPE_SINT32;
+    const FFI_TYPE_UINT64: TYPE_OF_FFI_TYPE_UINT64;
+    const FFI_TYPE_SINT64: TYPE_OF_FFI_TYPE_SINT64;
+    const FFI_TYPE_POINTER: TYPE_OF_FFI_TYPE_POINTER;
 
-    type FfiType = typeof FFI_TYPE_VOID | typeof FFI_TYPE_UINT8 | typeof FFI_TYPE_SINT8 | typeof FFI_TYPE_UINT16 | typeof FFI_TYPE_SINT16 | typeof FFI_TYPE_UINT32 | typeof FFI_TYPE_SINT32 | typeof FFI_TYPE_UINT64 | typeof FFI_TYPE_SINT64 | typeof FFI_TYPE_POINTER;
+    type FfiType = TYPE_OF_FFI_TYPE_VOID | TYPE_OF_FFI_TYPE_UINT8 | TYPE_OF_FFI_TYPE_SINT8 | TYPE_OF_FFI_TYPE_UINT16 | TYPE_OF_FFI_TYPE_SINT16 | TYPE_OF_FFI_TYPE_UINT32 | TYPE_OF_FFI_TYPE_SINT32 | TYPE_OF_FFI_TYPE_UINT64 | TYPE_OF_FFI_TYPE_SINT64 | TYPE_OF_FFI_TYPE_POINTER;
+    type TypeArg<T extends FfiType> = T extends Exclude<FfiType, TYPE_OF_FFI_TYPE_VOID | TYPE_OF_FFI_TYPE_POINTER> ? number : T extends TYPE_OF_FFI_TYPE_POINTER ? (ArrayBuffer | null) : never;
+    type TypeArgs<T extends FfiType[], Args = []> = T extends [infer T1, ...infer RES] ? TypeArgs<RES, [...Args, TypeArg<T1>]> : Args;
 
-    function ffiCall(func: number, argTypes: FfiType[], args: (number | ArrayBuffer | null)[], retType: FfiType): number | void;
+    function ffiCall<const T extends Exclude<FfiType, TYPE_OF_FFI_TYPE_VOID>[], const R extends FfiType>(func: number, argTypes: T, args: TypeArgs<T>, retType: R): R extends TYPE_OF_FFI_TYPE_VOID ? undefined : TypeArg<R>;
     function bufferPtr(buf: ArrayBuffer): number;
     function readByte(ptr: number): number;
 }
