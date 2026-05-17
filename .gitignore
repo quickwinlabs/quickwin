@@ -12,5 +12,5 @@ output.png
 node_modules/
 wamr/build/
 ./quickjs
-!mupdf-wasm/**
-mupdf-wasm/mupdf-wasm.wat
+!vendor/mupdf-wasm/**
+vendor/mupdf-wasm/mupdf-wasm.wat

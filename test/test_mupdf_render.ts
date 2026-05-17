@@ -26,9 +26,9 @@ export const suite = {
     name: 'mupdf-render',
     run: async (t: Tester): Promise<void> => {
         try {
-            setupMupdfModule('./mupdf-wasm/mupdf-wasm.wasm')
+            setupMupdfModule('./vendor/mupdf-wasm/mupdf-wasm.wasm')
 
-            const mupdf: typeof import('../mupdf-wasm/mupdf.js') = await import('../mupdf-wasm/mupdf.js')
+            const mupdf: typeof import('../vendor/mupdf-wasm/mupdf.js') = await import('../vendor/mupdf-wasm/mupdf.js')
 
             const fp = std.open('./example.pdf', 'rb')
             if (!fp) { console.log('SKIP: no example.pdf'); return }

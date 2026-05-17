@@ -1,10 +1,10 @@
 import { Tester, readWasmFile } from './test_helper.js'
 
 export const suite = {
-    name: 'mupdf-wasm',
+    name: 'vendor/mupdf-wasm',
     run: (t: Tester) => {
         t.section('validate binary')
-        const buf = readWasmFile('../mupdf-wasm/mupdf-wasm.wasm')
+        const buf = readWasmFile('../vendor/mupdf-wasm/mupdf-wasm.wasm')
         if (!buf) { t.fail++; return }
         t.check('file size > 0', true, buf.byteLength > 0)
         const header = new Uint8Array(buf)

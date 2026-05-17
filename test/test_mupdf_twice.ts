@@ -19,7 +19,7 @@ export const suite = {
     run: async (t: Tester): Promise<void> => {
         try {
             console.log('  Loading WASM binary...')
-            const wasmBinary = loadWasmBytes('./mupdf-wasm/mupdf-wasm.wasm')
+            const wasmBinary = loadWasmBytes('./vendor/mupdf-wasm/mupdf-wasm.wasm')
             console.log('  WASM binary loaded, size:', wasmBinary.byteLength)
 
             ;(globalThis as any)["$libmupdf_wasm_Module"] = {
@@ -28,7 +28,7 @@ export const suite = {
             }
 
             console.log('  Importing mupdf module...')
-            const mupdf: typeof import('../mupdf-wasm/mupdf.js') = await import('../mupdf-wasm/mupdf.js')
+            const mupdf: typeof import('../vendor/mupdf-wasm/mupdf.js') = await import('../vendor/mupdf-wasm/mupdf.js')
             console.log('  mupdf module imported ok')
 
             const fp = std.open('./example.pdf', 'rb')

@@ -13,7 +13,7 @@ const _user32 = win.LoadLibrary('user32.dll')
 const _gdi32 = win.LoadLibrary('gdi32.dll')
 const _comdlg32 = win.LoadLibrary('comdlg32.dll')
 
-type MuPdf = typeof import('../mupdf-wasm/mupdf.js')
+type MuPdf = typeof import('../vendor/mupdf-wasm/mupdf.js')
 
 if (
     !(_user32 && _gdi32 && _comdlg32)
@@ -68,7 +68,7 @@ let hwndBtnRender: gui.HWND | null = null
 let currentPixmap: PixmapInfo | null = null
 
 async function loadMupdf(): Promise<MuPdf | null> {
-    const wasmPath = './mupdf-wasm/mupdf-wasm.wasm'
+    const wasmPath = './vendor/mupdf-wasm/mupdf-wasm.wasm'
     const fp = std.open(wasmPath, 'rb')
     if (!fp) { std.printf('Error: cannot open %s\n', wasmPath); return null }
     fp.seek(0, 2)
@@ -84,7 +84,7 @@ async function loadMupdf(): Promise<MuPdf | null> {
             locateFile: (p: string) => p
         }
     try {
-        return await import('../mupdf-wasm/mupdf.js')
+        return await import('../vendor/mupdf-wasm/mupdf.js')
     } catch (e) {
         std.printf('Error: mupdf load failed: %s\n', String(e))
         return null
@@ -202,7 +202,7 @@ function renderPdfPage(mupdf: MuPdf, filePath: string): PixmapInfo | null {
 async function main(): Promise<void> {
     const mupdf = await loadMupdf()
     if (!mupdf) {
-        gui.MessageBox('Failed to load mupdf WASM.\nMake sure mupdf-wasm/ is in the build directory.')
+        gui.MessageBox('Failed to load mupdf WASM.\nMake sure vendor/mupdf-wasm/ is in the build directory.')
         return
     }
     gui.RegisterClass('PdfPreview', (hwnd, msg, wParam, lParam) => {

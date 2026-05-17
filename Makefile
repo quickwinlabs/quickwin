@@ -201,8 +201,8 @@ info:
 js:
 	@echo "Compiling TypeScript files to JavaScript using tsgo..."
 	@npx tsgo --project tsconfig.json
-	@echo "Copying mupdf-wasm to $(BUILD_DIR)/mupdf-wasm..."
-	@cp -r mupdf-wasm $(BUILD_DIR)/mupdf-wasm
+	@echo "Copying vendor/mupdf-wasm to $(BUILD_DIR)/vendor/mupdf-wasm..."
+	@mkdir -p $(BUILD_DIR)/vendor && cp -r vendor/mupdf-wasm $(BUILD_DIR)/vendor/mupdf-wasm
 	@echo "TypeScript compilation complete"
 
 test: nodebug js wasm

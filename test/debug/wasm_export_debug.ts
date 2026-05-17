@@ -1,7 +1,7 @@
 import * as std from 'std'
 
-const fp = std.open('./mupdf-wasm/mupdf-wasm.wasm', 'rb')
-if (!fp) { console.log('cannot open mupdf-wasm.wasm'); std.exit(1) }
+const fp = std.open('./vendor/mupdf-wasm/mupdf-wasm.wasm', 'rb')
+if (!fp) { console.log('cannot open vendor/mupdf-wasm/mupdf-wasm.wasm'); std.exit(1) }
 fp.seek(0, 2)
 const size = fp.tell()
 fp.seek(0, 0)

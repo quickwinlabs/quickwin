@@ -1,8 +1,8 @@
 import * as std from 'std'
 
-// Load the mupdf-wasm binary using our pre-load mechanism
-const fp = std.open('./mupdf-wasm/mupdf-wasm.wasm', 'rb')
-if (!fp) { console.log('cannot open mupdf-wasm.wasm'); std.exit(1) }
+// Load the vendor/mupdf-wasm binary using our pre-load mechanism
+const fp = std.open('./vendor/mupdf-wasm/mupdf-wasm.wasm', 'rb')
+if (!fp) { console.log('cannot open vendor/mupdf-wasm/mupdf-wasm.wasm'); std.exit(1) }
 fp.seek(0, 2)
 const size = fp.tell()
 fp.seek(0, 0)
