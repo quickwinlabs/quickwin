@@ -503,3 +503,8 @@ interface HttpCache {
 }
 
 declare var __httpCache__: HttpCache;
+
+declare module "zstd" {
+    function compress(data: ArrayBufferLike | string, level?: number): ArrayBuffer;
+    function decompress(data: ArrayBufferLike): ArrayBuffer;
+}

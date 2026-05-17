@@ -25,6 +25,7 @@ const suiteDefs = [
     { name: 'net-event',         file: './test_net_event.js' },
     { name: 'http-import',       file: './test_http_import.js' },
     { name: 'fetch-cache',       file: './test_fetch_cache.js' },
+    { name: 'zstd',              file: './test_zstd.js' },
 ]
 
 async function main(): Promise<void> {
