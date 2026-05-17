@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
 #include <time.h>
 
 #include "quickjs-http.h"
@@ -78,8 +79,8 @@ static int parse_url(const char* url, char* scheme, size_t scheme_size,
 
 // ── File I/O helpers ──
 
-static void* read_entire_file(const char* path, size_t* out_len) {
-    FILE* f = fopen(path, "rb");
+static void* read_entire_fileW(const wchar_t* path, size_t* out_len) {
+    FILE* f = _wfopen(path, L"rb");
     if (!f) return NULL;
     fseek(f, 0, SEEK_END);
     long len = ftell(f);
@@ -93,8 +94,8 @@ static void* read_entire_file(const char* path, size_t* out_len) {
     return buf;
 }
 
-static int write_entire_file(const char* path, const void* data, size_t len) {
-    FILE* f = fopen(path, "wb");
+static int write_entire_fileW(const wchar_t* path, const void* data, size_t len) {
+    FILE* f = _wfopen(path, L"wb");
     if (!f) return 0;
     size_t written = fwrite(data, 1, len, f);
     fclose(f);
@@ -103,16 +104,16 @@ static int write_entire_file(const char* path, const void* data, size_t len) {
 
 // ── HTTP Cache ──
 //
-// Cache 路径早期用宽字符 (wchar_t) 实现：
-//   GetModuleFileNameW → swprintf(L"%016llx") → _wfopen
+// 宽窄字符方案：
+//   hex 格式化用窄 snprintf(%llx) —— 避开 swprintf 的 %llx 兼容性 bug
+//   文件路径用 wchar_t —— GetModuleFileNameW / _wfopen / CreateDirectoryW / DeleteFileW
+//   路径拼接用 wcscpy 逐段拷贝（预先检查缓冲区边界），不用 swprintf 拼接
 //
-// MINGW64 的 __USE_MINGW_ANSI_STDIO 包装器只覆盖窄字符函数 (snprintf 等)，
-// 不覆盖 swprintf 等宽字符函数。窄版 snprintf 把 %llx 正确转为 Windows 的 %I64x，
-// 而宽版 swprintf 透传到系统 CRT (msvcrt.dll)，Win7 的 msvcrt 不认识 %llx，
-// 导致文件名乱码 → 所有文件操作静默失败。
-//
-// 修复：全部改为窄字符路径 (ANSI)，统一使用 snprintf + fopen。
-//   GetModuleFileNameA → snprintf → fopen
+// 路径流：
+//   GetModuleFileNameW → wchar_t 缓存目录
+//   fnv1a_64(url) → snprintf(%016llx) → MultiByteToWideChar → wchar_t hex
+//   wcscpy(cache_dir) + '\\' + wcscpy(hex) + wcscpy(ext) → 完整路径
+//   _wfopen / CreateDirectoryW / DeleteFileW
 
 static unsigned long long fnv1a_64(const char* str) {
     unsigned long long hash = 14695981039346656037ULL;
@@ -124,17 +125,39 @@ static unsigned long long fnv1a_64(const char* str) {
     return hash;
 }
 
-static void get_cache_dir(char* buf, int buf_size) {
-    GetModuleFileNameA(NULL, buf, buf_size);
-    char* p = strrchr(buf, '\\');
-    if (p) p[1] = '\0';
-    strcat(buf, "_cache");
+static void get_cache_dirW(wchar_t* buf, int buf_size) {
+    DWORD len = GetModuleFileNameW(NULL, buf, buf_size);
+    if (len == 0 || len >= (DWORD)buf_size || buf_size <= 0) {
+        buf[0] = L'\0';
+        return;
+    }
+    wchar_t* p = wcsrchr(buf, L'\\');
+    if (p) {
+        size_t base_len = p - buf + 1;
+        if (base_len + 6 + 1 <= (size_t)buf_size) {
+            wcscpy(p + 1, L"_cache");
+            return;
+        }
+    }
+    buf[0] = L'\0';
 }
 
-static void cache_path(const char* cache_dir, const char* url,
-                       char* path, int path_size, const char* ext) {
+static void cache_pathW(const wchar_t* cache_dir, const char* url,
+                        wchar_t* path, int path_size, const wchar_t* ext) {
     unsigned long long h = fnv1a_64(url);
-    snprintf(path, path_size, "%s\\%016llx%s", cache_dir, h, ext);
+    char hex[17];
+    snprintf(hex, sizeof(hex), "%016llx", h);
+    wchar_t whex[17];
+    MultiByteToWideChar(CP_ACP, 0, hex, -1, whex, 17);
+    path[0] = L'\0';
+    size_t dir_len = wcslen(cache_dir);
+    size_t hex_len = wcslen(whex);
+    size_t ext_len = wcslen(ext);
+    if (dir_len + 1 + hex_len + ext_len + 1 > (size_t)path_size) return;
+    wcscpy(path, cache_dir);
+    path[dir_len] = L'\\';
+    wcscpy(path + dir_len + 1, whex);
+    wcscpy(path + dir_len + 1 + hex_len, ext);
 }
 
 // Returns max_age (>=0), -1 if no max-age, -2 if no-store
@@ -156,45 +179,45 @@ static int parse_max_age(const char* response) {
 // ── Cache file helpers (shared by C import caching and JS fetch() API) ──
 
 static char* read_meta_file(const char* url) {
-    char cache_dir[MAX_PATH];
-    get_cache_dir(cache_dir, MAX_PATH);
-    char path[MAX_PATH];
-    cache_path(cache_dir, url, path, MAX_PATH, ".meta");
-    return read_entire_file(path, NULL);
+    wchar_t cache_dir[MAX_PATH];
+    get_cache_dirW(cache_dir, MAX_PATH);
+    wchar_t path[MAX_PATH];
+    cache_pathW(cache_dir, url, path, MAX_PATH, L".meta");
+    return read_entire_fileW(path, NULL);
 }
 
 static void* read_body_file(const char* url, size_t* out_len) {
-    char cache_dir[MAX_PATH];
-    get_cache_dir(cache_dir, MAX_PATH);
-    char path[MAX_PATH];
-    cache_path(cache_dir, url, path, MAX_PATH, ".body");
-    return read_entire_file(path, out_len);
+    wchar_t cache_dir[MAX_PATH];
+    get_cache_dirW(cache_dir, MAX_PATH);
+    wchar_t path[MAX_PATH];
+    cache_pathW(cache_dir, url, path, MAX_PATH, L".body");
+    return read_entire_fileW(path, out_len);
 }
 
 static void write_meta_file(const char* url, const char* json_str) {
-    char cache_dir[MAX_PATH];
-    get_cache_dir(cache_dir, MAX_PATH);
-    char path[MAX_PATH];
-    cache_path(cache_dir, url, path, MAX_PATH, ".meta");
-    write_entire_file(path, json_str, strlen(json_str));
+    wchar_t cache_dir[MAX_PATH];
+    get_cache_dirW(cache_dir, MAX_PATH);
+    wchar_t path[MAX_PATH];
+    cache_pathW(cache_dir, url, path, MAX_PATH, L".meta");
+    write_entire_fileW(path, json_str, strlen(json_str));
 }
 
 static void write_cache_file(const char* url, int max_age,
                              const void* body, size_t body_len) {
-    char cache_dir[MAX_PATH];
-    get_cache_dir(cache_dir, MAX_PATH);
-    CreateDirectoryA(cache_dir, NULL);
+    wchar_t cache_dir[MAX_PATH];
+    get_cache_dirW(cache_dir, MAX_PATH);
+    CreateDirectoryW(cache_dir, NULL);
 
     char meta_buf[128];
     snprintf(meta_buf, sizeof(meta_buf), "{\"storedAt\":%lld,\"maxAge\":%d}",
              (long long)time(NULL), max_age);
 
-    char meta_path[MAX_PATH], body_path[MAX_PATH];
-    cache_path(cache_dir, url, meta_path, MAX_PATH, ".meta");
-    cache_path(cache_dir, url, body_path, MAX_PATH, ".body");
+    wchar_t meta_path[MAX_PATH], body_path[MAX_PATH];
+    cache_pathW(cache_dir, url, meta_path, MAX_PATH, L".meta");
+    cache_pathW(cache_dir, url, body_path, MAX_PATH, L".body");
 
-    if (!write_entire_file(meta_path, meta_buf, strlen(meta_buf))) return;
-    if (!write_entire_file(body_path, body, body_len)) remove(meta_path);
+    if (!write_entire_fileW(meta_path, meta_buf, strlen(meta_buf))) return;
+    if (!write_entire_fileW(body_path, body, body_len)) DeleteFileW(meta_path);
 }
 
 static char* read_cache(const char* url) {
@@ -210,13 +233,13 @@ static char* read_cache(const char* url) {
     free(meta);
 
     if (maxAge <= 0 || time(NULL) - storedAt >= maxAge) {
-        char cache_dir[MAX_PATH];
-        get_cache_dir(cache_dir, MAX_PATH);
-        char meta_path[MAX_PATH], body_path[MAX_PATH];
-        cache_path(cache_dir, url, meta_path, MAX_PATH, ".meta");
-        cache_path(cache_dir, url, body_path, MAX_PATH, ".body");
-        remove(meta_path);
-        remove(body_path);
+        wchar_t cache_dir[MAX_PATH];
+        get_cache_dirW(cache_dir, MAX_PATH);
+        wchar_t meta_path[MAX_PATH], body_path[MAX_PATH];
+        cache_pathW(cache_dir, url, meta_path, MAX_PATH, L".meta");
+        cache_pathW(cache_dir, url, body_path, MAX_PATH, L".body");
+        DeleteFileW(meta_path);
+        DeleteFileW(body_path);
         return NULL;
     }
 
