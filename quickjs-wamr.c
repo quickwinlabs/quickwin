@@ -142,7 +142,16 @@ static void wasm_call_js_bridge(wasm_exec_env_t exec_env, uint64_t *args)
     js_free(ctx, js_argv);
     if (JS_IsException(ret))
     {
-        JS_FreeValue(ctx, ret);
+        JSValue exc = JS_GetException(ctx);
+        JSValue eh_ctor = JS_GetPropertyStr(ctx, JS_GetGlobalObject(ctx), "EmscriptenEH");
+        int is_eh = JS_IsInstanceOf(ctx, exc, eh_ctor);
+        JS_FreeValue(ctx, eh_ctor);
+        if (is_eh) {
+            wasm_runtime_set_exception(inst, "EmscriptenSjLj");
+        } else {
+            wasm_runtime_set_exception(inst, "JS exception");
+        }
+        JS_FreeValue(ctx, exc);
         JS_FreeValue(ctx, fn);
         JS_FreeValue(ctx, mod);
         return;
@@ -948,6 +957,9 @@ static JSValue js_wasm_table_entry_bridge(JSContext *ctx, JSValueConst this_val,
     }
 
     wasm_exec_env_t exec_env = wasm_runtime_create_exec_env(module_inst, 65536);
+    if (!exec_env) {
+        return JS_ThrowTypeError(ctx, "failed to create exec_env for table call");
+    }
 
     wasm_valkind_t result_type;
     wasm_val_t results[1];
@@ -958,14 +970,28 @@ static JSValue js_wasm_table_entry_bridge(JSContext *ctx, JSValueConst this_val,
     bool call_result = wasm_runtime_call_wasm_a(exec_env, func, result_count,
                              result_count > 0 ? results : NULL,
                              param_count, wasm_args);
-    wasm_runtime_destroy_exec_env(exec_env);
-
     if (!call_result) {
         const char *err = wasm_runtime_get_exception(module_inst);
-        printf("[table_entry] call FAILED (magic=%d): %s\n", magic, err ? err : "unknown"); fflush(stdout);
+        bool is_sjlj = err && strstr(err, "EmscriptenSjLj");
         wasm_runtime_clear_exception(module_inst);
-        return JS_UNDEFINED;
+        wasm_runtime_destroy_exec_env(exec_env);
+        if (is_sjlj) {
+            JSValue ctor = JS_GetPropertyStr(ctx, JS_GetGlobalObject(ctx), "EmscriptenSjLj");
+            JSValue exc;
+            if (JS_IsFunction(ctx, ctor)) {
+                exc = JS_CallConstructor(ctx, ctor, 0, NULL);
+                JS_FreeValue(ctx, ctor);
+            } else {
+                JS_FreeValue(ctx, ctor);
+                exc = JS_NewError(ctx);
+            }
+            JS_Throw(ctx, exc);
+        } else {
+            JS_ThrowTypeError(ctx, "WebAssembly table call failed: %s", err ? err : "unknown error");
+        }
+        return JS_EXCEPTION;
     }
+    wasm_runtime_destroy_exec_env(exec_env);
 
     if (result_count > 0) {
         switch (result_type) {
@@ -1123,7 +1149,7 @@ JSValue js_call_wasm_bridge(JSContext *ctx, JSValueConst this_val,
         }
     }
 
-    wasm_exec_env_t exec_env = wasm_runtime_create_exec_env(wasm_inst->inst, 4096);
+    wasm_exec_env_t exec_env = wasm_runtime_create_exec_env(wasm_inst->inst, 65536);
 
     wasm_valkind_t result_type;
     wasm_val_t results[1];
@@ -1134,15 +1160,15 @@ JSValue js_call_wasm_bridge(JSContext *ctx, JSValueConst this_val,
     bool call_result = wasm_runtime_call_wasm_a(exec_env, func, result_count,
                              result_count > 0 ? results : NULL,
                              param_count, wasm_args);
-    wasm_runtime_destroy_exec_env(exec_env);
-
     if (!call_result) {
         const char *err = wasm_runtime_get_exception(wasm_inst->inst);
-        printf("[bridge] call FAILED for '%s' (magic=%d): %s\n",
-               func_name, magic, err ? err : "unknown error"); fflush(stdout);
+        char err_buf[256] = {0};
+        if (err) snprintf(err_buf, sizeof(err_buf), "%s", err);
         wasm_runtime_clear_exception(wasm_inst->inst);
-        return JS_UNDEFINED;
+        wasm_runtime_destroy_exec_env(exec_env);
+        return JS_ThrowTypeError(ctx, "WebAssembly call failed: %s", err_buf[0] ? err_buf : "unknown error");
     }
+    wasm_runtime_destroy_exec_env(exec_env);
 
     if (result_count > 0) {
         DEBUG_PRINTF("[bridge] RESULT '%s' = ", func_name);

@@ -14,6 +14,7 @@ const suiteDefs = [
     { name: 'wasm-basic',        file: './test_wasm_basic.js' },
     { name: 'wasm-types',        file: './test_wasm_types.js' },
     { name: 'wasm-import-global', file: './test_wasm_import_global.js' },
+    { name: 'wasm-sjlj',          file: './test_wasm_sjlj.js' },
     { name: 'wasm-frame-encoding', file: './test_frame_encoding.js' },
     { name: 'mupdf-wasm',        file: './test_mupdf_wasm.js' },
     { name: 'net-fetch',         file: './test_net_fetch.js' },
