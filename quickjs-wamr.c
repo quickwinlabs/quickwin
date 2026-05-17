@@ -142,16 +142,9 @@ static void wasm_call_js_bridge(wasm_exec_env_t exec_env, uint64_t *args)
     js_free(ctx, js_argv);
     if (JS_IsException(ret))
     {
-        JSValue exc = JS_GetException(ctx);
-        JSValue eh_ctor = JS_GetPropertyStr(ctx, JS_GetGlobalObject(ctx), "EmscriptenEH");
-        int is_eh = JS_IsInstanceOf(ctx, exc, eh_ctor);
-        JS_FreeValue(ctx, eh_ctor);
-        if (is_eh) {
-            wasm_runtime_set_exception(inst, "EmscriptenSjLj");
-        } else {
-            wasm_runtime_set_exception(inst, "JS exception");
-        }
-        JS_FreeValue(ctx, exc);
+        char err_msg[512] = {0};
+        sprintf(err_msg,  "JS exception: in wasm_call_js_bridge %s.%s", module_name, name);
+        wasm_runtime_set_exception(inst, err_msg);
         JS_FreeValue(ctx, fn);
         JS_FreeValue(ctx, mod);
         return;
@@ -317,6 +310,7 @@ static JSValue js_webassembly_instantiate(JSContext *ctx, JSValueConst this_val,
     size_t buf_size;
     uint8_t *_buf = JS_GetArrayBuffer(ctx, &buf_size, argv[0]);
     if (!_buf || buf_size == 0) {
+        JS_GetException(ctx);
         JSValue buffer_val = JS_GetPropertyStr(ctx, argv[0], "buffer");
         if (!JS_IsException(buffer_val)) {
             _buf = JS_GetArrayBuffer(ctx, &buf_size, buffer_val);
@@ -971,25 +965,17 @@ static JSValue js_wasm_table_entry_bridge(JSContext *ctx, JSValueConst this_val,
                              result_count > 0 ? results : NULL,
                              param_count, wasm_args);
     if (!call_result) {
-        const char *err = wasm_runtime_get_exception(module_inst);
-        bool is_sjlj = err && strstr(err, "EmscriptenSjLj");
-        wasm_runtime_clear_exception(module_inst);
-        wasm_runtime_destroy_exec_env(exec_env);
-        if (is_sjlj) {
-            JSValue ctor = JS_GetPropertyStr(ctx, JS_GetGlobalObject(ctx), "EmscriptenSjLj");
-            JSValue exc;
-            if (JS_IsFunction(ctx, ctor)) {
-                exc = JS_CallConstructor(ctx, ctor, 0, NULL);
-                JS_FreeValue(ctx, ctor);
-            } else {
-                JS_FreeValue(ctx, ctor);
-                exc = JS_NewError(ctx);
-            }
-            JS_Throw(ctx, exc);
+        if (JS_HasException(ctx)) {
+            wasm_runtime_clear_exception(module_inst);
+            wasm_runtime_destroy_exec_env(exec_env);
+            return JS_EXCEPTION;
         } else {
-            JS_ThrowTypeError(ctx, "WebAssembly table call failed: %s", err ? err : "unknown error");
+            const char *err = wasm_runtime_get_exception(module_inst);
+            JSValue exception = JS_ThrowTypeError(ctx, "WebAssembly table call failed: %s", err ? err : "unknown error");
+            wasm_runtime_clear_exception(module_inst);
+            wasm_runtime_destroy_exec_env(exec_env);
+            return exception;
         }
-        return JS_EXCEPTION;
     }
     wasm_runtime_destroy_exec_env(exec_env);
 
