@@ -1,5 +1,6 @@
 import * as std from 'std'
 import { Tester } from './test_helper.js'
+import '../lib/polyfill.js'
 
 function loadWasmBytes(path: string): ArrayBuffer {
     const fp = std.open(path, 'rb')

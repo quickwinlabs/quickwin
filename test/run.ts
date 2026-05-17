@@ -17,13 +17,14 @@ const suiteDefs = [
     { name: 'wasm-sjlj',          file: './test_wasm_sjlj.js' },
     { name: 'wasm-frame-encoding', file: './test_frame_encoding.js' },
     { name: 'mupdf-wasm',        file: './test_mupdf_wasm.js' },
+    { name: 'mupdf-twice',       file: './test_mupdf_twice.js' },
+    { name: 'mupdf-render',      file: './test_mupdf_render.js' },
+    { name: 'ffi',               file: './test_ffi.js' },
     { name: 'net-fetch',         file: './test_net_fetch.js' },
     { name: 'net-websocket',     file: './test_net_websocket.js' },
     { name: 'net-event',         file: './test_net_event.js' },
-    { name: 'mupdf-render',      file: './test_mupdf_render.js' },
     { name: 'http-import',       file: './test_http_import.js' },
     { name: 'fetch-cache',       file: './test_fetch_cache.js' },
-    { name: 'ffi',               file: './test_ffi.js' },
 ]
 
 async function main(): Promise<void> {

@@ -11,6 +11,6 @@
     "types": ["./quickwin.d.ts"],
     "outDir": "_build"
   },
-  "include": ["test/**/*.ts", "main.ts"],
+  "include": ["test/**/*.ts", "examples/**/*.ts", "main.ts"],
   "exclude": []
 }
