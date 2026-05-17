@@ -33,6 +33,10 @@ const ReleaseDC = loadProc(_user32, 'ReleaseDC')
 const GetOpenFileNameW = loadProc(_comdlg32, 'GetOpenFileNameW')
 const SetDIBitsToDevice = loadProc(_gdi32, 'SetDIBitsToDevice')
 const InvalidateRect = loadProc(_user32, 'InvalidateRect')
+const GetSystemMetrics = loadProc(_user32, 'GetSystemMetrics')
+
+const SM_CXSCREEN = 0
+const SM_CYSCREEN = 1
 
 const WM_SIZE = 0x0003
 
@@ -204,7 +208,7 @@ function renderPdfPage(mupdf: MuPdf, filePath: string): PixmapInfo | null {
 async function main(): Promise<void> {
     const mupdf = await loadMupdf()
     if (!mupdf) {
-        gui.MessageBox('Failed to load mupdf WASM.\nMake sure vendor/mupdf-wasm/ is in the build directory.')
+        gui.MessageBox('加载 mupdf WASM 失败。\n请确保 vendor/mupdf-wasm/ 在构建目录中。')
         return
     }
     gui.RegisterClass('PdfPreview', (hwnd, msg, wParam, lParam) => {
@@ -227,7 +231,7 @@ async function main(): Promise<void> {
                 } else if (hCtrl === btnRender) {
                     const pdfPath = gui.GetWindowText(edit)
                     if (!pdfPath) {
-                        gui.MessageBox('Please select a PDF file first')
+                        gui.MessageBox('请先选择 PDF 文件')
                         return 0
                     }
                     const pix = renderPdfPage(mupdf, pdfPath)
@@ -236,7 +240,7 @@ async function main(): Promise<void> {
                         currentPixmap = pix
                        ffi.ffiCall(InvalidateRect, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT32], [h, 0, 1], FFI_U32)
                     } else {
-                        gui.MessageBox('Failed to render PDF')
+                        gui.MessageBox('渲染 PDF 失败')
                     }
                 }
                 return 0
@@ -286,6 +290,12 @@ async function main(): Promise<void> {
         }
     })
 
+    const winW = 960, winH = 720
+    const screenW = ffi.ffiCall(GetSystemMetrics, [FFI_S32], [SM_CXSCREEN], FFI_S32) as number
+    const screenH = ffi.ffiCall(GetSystemMetrics, [FFI_S32], [SM_CYSCREEN], FFI_S32) as number
+    const winX = Math.max(0, (screenW - winW) >> 1)
+    const winY = Math.max(0, (screenH - winH) >> 1)
+
     const ctrlY = 12
     const ctrlH = 26
     const gap = 4
@@ -293,25 +303,25 @@ async function main(): Promise<void> {
     const btnRenderW = 80
 
     hwndMain = gui.CreateWindow(
-        'PdfPreview', 'PDF Preview',
+        'PdfPreview', 'PDF 预览',
         gui.WS_OVERLAPPEDWINDOW,
-        100, 100, 960, 720,
+        winX, winY, winW, winH,
         null, null
     )
     if (!hwndMain) {
-        gui.MessageBox('Failed to create main window')
+        gui.MessageBox('创建主窗口失败')
         return
     }
 
-    hwndBtnRender = gui.CreateWindow(
-        'BUTTON', 'Render',
-        gui.WS_CHILD | gui.WS_VISIBLE | gui.WM_COMMAND,
-        ctrlY, ctrlY, btnRenderW, ctrlH, hwndMain, null
-    )
     hwndBtnOpen = gui.CreateWindow(
-        'BUTTON', 'Open PDF',
+        'BUTTON', '打开 PDF',
         gui.WS_CHILD | gui.WS_VISIBLE | gui.WM_COMMAND,
-        ctrlY + btnRenderW + gap, ctrlY, btnOpenW, ctrlH, hwndMain, null
+        ctrlY, ctrlY, btnOpenW, ctrlH, hwndMain, null
+    )
+    hwndBtnRender = gui.CreateWindow(
+        'BUTTON', '渲染',
+        gui.WS_CHILD | gui.WS_VISIBLE | gui.WM_COMMAND,
+        ctrlY + btnOpenW + gap, ctrlY, btnRenderW, ctrlH, hwndMain, null
     )
     hwndEdit = gui.CreateWindow(
         'EDIT', '',
