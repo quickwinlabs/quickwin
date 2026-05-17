@@ -6,11 +6,12 @@ GC_DEBUG = 0
 MINIMAL = 0
 OPT = -Os
 BUILD_DIR = _build
+MSYS2_PREFIX ?= C:/msys64/ucrt64
 
 ifeq ($(DEBUG), 1)
-    CFLAGS = -I./quickjs -IC:/msys64/ucrt64/include -g -O0 -DDEBUG
+    CFLAGS = -I./quickjs -I$(MSYS2_PREFIX)/include -g -O0 -DDEBUG
 else
-    CFLAGS = -I./quickjs -IC:/msys64/ucrt64/include -DNDEBUG
+    CFLAGS = -I./quickjs -I$(MSYS2_PREFIX)/include -DNDEBUG
 endif
 
 ifeq ($(GC_DEBUG), 1)
@@ -58,7 +59,7 @@ WASM_OBJS = $(WAT_SRCS:test/%.wat=$(BUILD_DIR)/test/%.wasm)
 CFLAGS += $(WAMR_INC)
 CFLAGS += $(WAMR_DEFS)
 
-LDFLAGS = -LC:/msys64/ucrt64/lib -static
+LDFLAGS = -L$(MSYS2_PREFIX)/lib -static
 LIBS = -lzstd -lwolfssl -lws2_32 -lbcrypt -lcrypt32 -lm -luser32 -lgdi32 -lcomctl32 -lffi -lntdll -lshell32
 
 TARGET = $(BUILD_DIR)/win.exe
