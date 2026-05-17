@@ -33,7 +33,7 @@ export const suite = {
         t.checkTrue('long text compresses', compLong.byteLength < longText.length)
 
         const deLong = zstd.decompress(compLong)
-        t.check('long roundtrip', longText, abToString(deLong))
+        t.checkTrue('long roundtrip match', abToString(deLong) === longText)
 
         t.section('empty string')
         const empty = zstd.compress('')
