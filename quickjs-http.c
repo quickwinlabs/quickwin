@@ -13,6 +13,8 @@
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
 
+#include <brotli/decode.h>
+
 static int is_http_url(const char* name) {
     return strncmp(name, "http://", 7) == 0;
 }
@@ -392,6 +394,65 @@ void js_init_http_cache_api(JSContext *ctx) {
     JS_FreeValue(ctx, global);
 }
 
+static int is_brotli(const char *response) {
+    const char *ce = strstr(response, "Content-Encoding:");
+    if (!ce) ce = strstr(response, "content-encoding:");
+    if (!ce) return 0;
+    ce += 17;
+    while (*ce == ' ') ce++;
+    return strncmp(ce, "br", 2) == 0 && (ce[2] == '\r' || ce[2] == '\n' || ce[2] == ' ' || ce[2] == '\0');
+}
+
+static int decompress_brotli_body(char **response, size_t *total) {
+    char *body = strstr(*response, "\r\n\r\n");
+    if (!body) return 0;
+    body += 4;
+
+    size_t header_len = body - *response;
+    size_t body_len = *total - header_len;
+    if (body_len == 0) return 0;
+
+    BrotliDecoderState *state = BrotliDecoderCreateInstance(NULL, NULL, NULL);
+    if (!state) return 0;
+
+    size_t available_in = body_len;
+    const uint8_t *next_in = (uint8_t *)body;
+    size_t buf_cap = body_len * 2 + 1024;
+    uint8_t *buf = malloc(buf_cap);
+    if (!buf) { BrotliDecoderDestroyInstance(state); return 0; }
+    size_t total_out = 0;
+
+    BrotliDecoderResult result;
+    do {
+        size_t available_out = buf_cap - total_out;
+        uint8_t *next_out = buf + total_out;
+        result = BrotliDecoderDecompressStream(state, &available_in, &next_in,
+                                               &available_out, &next_out, &total_out);
+        if (result == BROTLI_DECODER_RESULT_NEEDS_MORE_OUTPUT) {
+            buf_cap *= 2;
+            uint8_t *new_buf = realloc(buf, buf_cap);
+            if (!new_buf) { free(buf); BrotliDecoderDestroyInstance(state); return 0; }
+            buf = new_buf;
+        }
+    } while (result == BROTLI_DECODER_RESULT_NEEDS_MORE_OUTPUT);
+
+    BrotliDecoderDestroyInstance(state);
+
+    if (result != BROTLI_DECODER_RESULT_SUCCESS) { free(buf); return 0; }
+
+    size_t new_total = header_len + total_out;
+    char *new_response = realloc(*response, new_total + 1);
+    if (!new_response) { free(buf); return 0; }
+    *response = new_response;
+
+    memcpy(*response + header_len, buf, total_out);
+    (*response)[new_total] = '\0';
+    *total = new_total;
+
+    free(buf);
+    return 1;
+}
+
 char* http_get_sync(const char* url) {
     char scheme[16] = {0};
     char host[256] = {0};
@@ -462,6 +523,7 @@ char* http_get_sync(const char* url) {
                  "GET %s HTTP/1.1\r\n"
                  "Host: %s\r\n"
                  "User-Agent: QuickJS/1.0\r\n"
+                 "Accept-Encoding: br\r\n"
                  "Connection: close\r\n"
                  "\r\n",
                  path, host);
@@ -474,7 +536,8 @@ char* http_get_sync(const char* url) {
             return NULL;
         }
 
-        char* response = malloc(1024 * 1024);
+        size_t cap = 65536;
+        char* response = malloc(cap);
         if (!response) {
             wolfSSL_shutdown(ssl);
             wolfSSL_free(ssl);
@@ -488,8 +551,18 @@ char* http_get_sync(const char* url) {
         int received;
 
         while ((received = wolfSSL_read(ssl, buffer, sizeof(buffer))) > 0) {
-            if (total + received >= 1024 * 1024) {
-                break;
+            if (total + received > cap) {
+                do { cap *= 2; } while (total + received > cap);
+                char* new_resp = realloc(response, cap);
+                if (!new_resp) {
+                    free(response);
+                    wolfSSL_shutdown(ssl);
+                    wolfSSL_free(ssl);
+                    wolfSSL_CTX_free(ctx);
+                    closesocket(sock);
+                    return NULL;
+                }
+                response = new_resp;
             }
             memcpy(response + total, buffer, received);
             total += received;
@@ -499,6 +572,17 @@ char* http_get_sync(const char* url) {
 
         if (is_chunked(response))
             decode_chunked(response, &total);
+
+        if (is_brotli(response)) {
+            if (!decompress_brotli_body(&response, &total)) {
+                free(response);
+                wolfSSL_shutdown(ssl);
+                wolfSSL_free(ssl);
+                wolfSSL_CTX_free(ctx);
+                closesocket(sock);
+                return NULL;
+            }
+        }
 
         try_cache_response(url, response, total);
 
@@ -517,13 +601,15 @@ char* http_get_sync(const char* url) {
                  "GET %s HTTP/1.1\r\n"
                  "Host: %s\r\n"
                  "User-Agent: QuickJS/1.0\r\n"
+                 "Accept-Encoding: br\r\n"
                  "Connection: close\r\n"
                  "\r\n",
                  path, host);
 
         send(sock, request, strlen(request), 0);
 
-        char* response = malloc(1024 * 1024);
+        size_t cap = 65536;
+        char* response = malloc(cap);
         if (!response) {
             closesocket(sock);
             return NULL;
@@ -534,8 +620,15 @@ char* http_get_sync(const char* url) {
         int received;
 
         while ((received = recv(sock, buffer, sizeof(buffer), 0)) > 0) {
-            if (total + received >= 1024 * 1024) {
-                break;
+            if (total + received > cap) {
+                do { cap *= 2; } while (total + received > cap);
+                char* new_resp = realloc(response, cap);
+                if (!new_resp) {
+                    free(response);
+                    closesocket(sock);
+                    return NULL;
+                }
+                response = new_resp;
             }
             memcpy(response + total, buffer, received);
             total += received;
@@ -545,6 +638,14 @@ char* http_get_sync(const char* url) {
 
         if (is_chunked(response))
             decode_chunked(response, &total);
+
+        if (is_brotli(response)) {
+            if (!decompress_brotli_body(&response, &total)) {
+                free(response);
+                closesocket(sock);
+                return NULL;
+            }
+        }
 
         try_cache_response(url, response, total);
 
