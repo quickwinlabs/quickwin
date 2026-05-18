@@ -2,6 +2,7 @@ import '../lib/polyfill.js'
 import * as sock from 'sock'
 import * as wolfssl from 'wolfssl'
 import * as os from 'os'
+import * as brotli from 'brotli'
 
 const setTimeout = os.setTimeout
 const clearTimeout = os.clearTimeout
@@ -430,6 +431,7 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
         if (!headers.has('host')) headers.set('Host', parsedUrl.hostname)
         if (!headers.has('user-agent')) headers.set('User-Agent', 'QuickJS/1.0')
         if (!headers.has('connection')) headers.set('Connection', 'close')
+        if (!headers.has('accept-encoding')) headers.set('Accept-Encoding', 'br')
         if (body && !headers.has('content-length')) headers.set('Content-Length', String(body.length))
 
         let request = method + ' ' + parsedUrl.pathname + ' HTTP/1.1\r\n'
@@ -662,6 +664,23 @@ async function fetch(url: string, options: RequestOptions = {}): Promise<FetchRe
         const response = await fetchRequest(parsedUrl, mergedOptions)
 
         response.url = currentUrl
+
+        // ── Handle brotli Content-Encoding ──
+        const contentEncoding = response.headers.get('content-encoding') || ''
+        if (contentEncoding.includes('br')) {
+            const compressedBody = await response.arrayBuffer()
+            const decompressedBody = brotli.decompress(compressedBody)
+            const newHeaders = new FetchHeaders()
+            response.headers.forEach((v: string, k: string) => {
+                if (k !== 'content-encoding') newHeaders.set(k, v)
+            })
+            newHeaders.set('content-length', String(decompressedBody.byteLength))
+            const stream = new _PreloadedStream(decompressedBody) as any
+            ;(response as any)._preloadedBody = decompressedBody
+            ;(response as any)._bodyConsumed = false
+            ;(response as any).body = stream
+            ;(response as any).headers = newHeaders
+        }
 
         // ── Handle 304 Not Modified ──
         if (response.status === 304 && cachedMeta && cache) {
