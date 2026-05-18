@@ -3,6 +3,8 @@
 
 #include "quickjs.h"
 
+extern int http_debug;
+
 char* http_get_sync(const char* url);
 
 void js_init_http_cache_api(JSContext *ctx);

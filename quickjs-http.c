@@ -15,6 +15,8 @@
 
 #include <brotli/decode.h>
 
+int http_debug = 0;
+
 static int is_http_url(const char* name) {
     return strncmp(name, "http://", 7) == 0;
 }
@@ -528,6 +530,10 @@ char* http_get_sync(const char* url) {
                  "\r\n",
                  path, host);
 
+        if (http_debug) {
+            fprintf(stderr, "---[ HTTP request ]---\n%s\n", request);
+        }
+
         if (wolfSSL_write(ssl, request, strlen(request)) <= 0) {
             wolfSSL_shutdown(ssl);
             wolfSSL_free(ssl);
@@ -570,6 +576,15 @@ char* http_get_sync(const char* url) {
 
         response[total] = '\0';
 
+        if (http_debug) {
+            char *hdr_end = strstr(response, "\r\n\r\n");
+            if (hdr_end) {
+                fprintf(stderr, "---[ HTTP response ]---\n%.*s\n", (int)(hdr_end - response), response);
+            } else {
+                fprintf(stderr, "---[ HTTP response ]---\n%s\n", response);
+            }
+        }
+
         if (is_chunked(response))
             decode_chunked(response, &total);
 
@@ -606,6 +621,10 @@ char* http_get_sync(const char* url) {
                  "\r\n",
                  path, host);
 
+        if (http_debug) {
+            fprintf(stderr, "---[ HTTP request ]---\n%s\n", request);
+        }
+
         send(sock, request, strlen(request), 0);
 
         size_t cap = 65536;
@@ -635,6 +654,15 @@ char* http_get_sync(const char* url) {
         }
 
         response[total] = '\0';
+
+        if (http_debug) {
+            char *hdr_end = strstr(response, "\r\n\r\n");
+            if (hdr_end) {
+                fprintf(stderr, "---[ HTTP response ]---\n%.*s\n", (int)(hdr_end - response), response);
+            } else {
+                fprintf(stderr, "---[ HTTP response ]---\n%s\n", response);
+            }
+        }
 
         if (is_chunked(response))
             decode_chunked(response, &total);

@@ -91,6 +91,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             expr = cmd_argv[optind++];
             continue;
         }
+        if (strcmp(arg, "-d") == 0) {
+            http_debug = 1;
+            optind++;
+            continue;
+        }
         fprintf(stderr, "Unknown option: %s\n", arg);
         return 2;
     }
