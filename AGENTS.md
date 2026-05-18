@@ -235,3 +235,36 @@ cp wamr/build/libiwasm.a wamr/lib/libiwasm.a
 **文件位置：** `.agents/MUPDF_PROGRESS.md`
 
 **功能：** 记录 mupdf npm 包移植到 QuickWin 的可行性分析和逐步支持计划，包括 Emscripten WASM 胶水层分析、21 个导入函数清单、Node.js/浏览器 API 依赖、以及分阶段实施步骤。处理涉及 `mupdf.js`、`mupdf-wasm.js`、`mupdf-wasm.wasm` 时参考该文件。
+
+## 9. HTTP Import (esm.sh 动态导入)
+
+**核心能力：** 需要什么 JS 库，直接 `import('https://esm.sh/...')`，无需 `npm install`、无需打包配置、无需 node_modules。`win.exe` 本身就是 runtime + package manager。
+
+例：
+```js
+// 不用装，直接 `win.exe -e "..."` 就能跑
+import('https://esm.sh/marked').then(md => md.marked('# hello'))
+```
+
+### 关键实现
+
+**HTTP Chunked Transfer Encoding 解码** (`quickjs-http.c:36-68`)
+
+Cloudflare 等 CDN 对大响应使用 chunked encoding，即使 `Connection: close` 也不例外。原始响应体被 chunk 框架污染（如 `2db8\r\n...`），导致 QuickJS 解析为 `SyntaxError: invalid number literal`。
+
+`http_get_sync` 中的解码流程：
+1. 读取完整 HTTP 响应
+2. 检测 `Transfer-Encoding: chunked` 头
+3. 原地解码：`strtol(..., 16)` 解析块大小 → `memmove` 整理 → 跳过 `\r\n`
+4. 解码后的干净数据传给 `try_cache_response`（缓存也存解码后内容）和 `extract_body`
+
+```c
+response[total] = '\0';
+if (is_chunked(response))
+    decode_chunked(response, &total);
+try_cache_response(url, response, total);
+return extract_body(response);
+```
+
+### 相关文件
+- `quickjs-http.c` — `http_get_sync`、`decode_chunked`、`is_chunked`、`skip_crlf`
