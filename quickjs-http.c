@@ -31,6 +31,39 @@ static char* extract_body(char* response) {
     return response;
 }
 
+static void skip_crlf(char **p) {
+    *p += strcspn(*p, "\r\n");
+    *p += strspn(*p, "\r\n");
+}
+
+static int is_chunked(const char *response) {
+    const char *te = strstr(response, "Transfer-Encoding:");
+    if (!te) te = strstr(response, "transfer-encoding:");
+    if (!te) return 0;
+    return strstr(te + 18, "chunked") != NULL;
+}
+
+static int decode_chunked(char *response, size_t *total) {
+    char *body = strstr(response, "\r\n\r\n");
+    if (!body) return 0;
+    body += 4;
+
+    char *r = body, *w = body;
+    while (*r) {
+        long size = strtol(r, &r, 16);
+        if (size <= 0) break;
+        skip_crlf(&r);
+        memmove(w, r, size);
+        w += size;
+        r += size;
+        skip_crlf(&r);
+    }
+    *w = '\0';
+    if (total)
+        *total = (size_t)(w - response);
+    return 1;
+}
+
 static int parse_url(const char* url, char* scheme, size_t scheme_size,
                       char* host, size_t host_size, int* port, char* path, size_t path_size) {
     memset(scheme, 0, scheme_size);
@@ -464,6 +497,9 @@ char* http_get_sync(const char* url) {
 
         response[total] = '\0';
 
+        if (is_chunked(response))
+            decode_chunked(response, &total);
+
         try_cache_response(url, response, total);
 
         wolfSSL_shutdown(ssl);
@@ -506,6 +542,9 @@ char* http_get_sync(const char* url) {
         }
 
         response[total] = '\0';
+
+        if (is_chunked(response))
+            decode_chunked(response, &total);
 
         try_cache_response(url, response, total);
 
