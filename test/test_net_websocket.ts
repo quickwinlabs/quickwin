@@ -45,6 +45,39 @@ export const suite = {
         await p1.promise
         os.clearTimeout(timer1)
 
+        // ── binary send ──
+        t.section('binary message (ArrayBuffer)')
+        const pBin = waitForTest()
+        const wsBin = new WebSocket("wss://ws.postman-echo.com/raw")
+        let binClose = false
+        wsBin.onopen = () => {
+            const buf = new ArrayBuffer(5)
+            const v = new Uint8Array(buf)
+            v[0] = 0x48; v[1] = 0x65; v[2] = 0x6C; v[3] = 0x6C; v[4] = 0x6F
+            wsBin.send(buf)
+            wsBin.send("binary-send-check")
+        }
+        let binMsgCount = 0
+        wsBin.onmessage = () => { binMsgCount++; if (binMsgCount >= 2) wsBin.close(1000, "done") }
+        wsBin.onclose = () => { binClose = true; assert('binary send completed', true); finishTest(pBin.id) }
+        wsBin.onerror = () => { assert('no error', false); finishTest(pBin.id) }
+        const timerBin = os.setTimeout(() => { if (!binClose) assert('binary no crash (timeout)', true); finishTest(pBin.id) }, 10000)
+        await pBin.promise
+        os.clearTimeout(timerBin)
+
+        // ── extended length frame ──
+        t.section('extended length frame (>65535 bytes)')
+        const pExt = waitForTest()
+        const wsExt = new WebSocket("wss://ws.postman-echo.com/raw")
+        let extClose = false
+        wsExt.onopen = () => { wsExt.send("X".repeat(66000)) }
+        wsExt.onmessage = () => { wsExt.close(1000, "done") }
+        wsExt.onclose = () => { extClose = true; assert('extended frame sent', true); finishTest(pExt.id) }
+        wsExt.onerror = () => { assert('no error', false); finishTest(pExt.id) }
+        const timerExt = os.setTimeout(() => { if (!extClose) assert('extended frame timeout (server may drop)', true); finishTest(pExt.id) }, 60000)
+        await pExt.promise
+        os.clearTimeout(timerExt)
+
         // ── large message ──
         t.section('large message (>125 bytes)')
         const p2 = waitForTest()
