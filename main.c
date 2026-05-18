@@ -77,11 +77,29 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         cmd_argv[cmd_argc] = NULL;
         LocalFree(wargv);
     }
-    if (cmd_argc > 1 && cmd_argv[1]) {
-        for (char *p = cmd_argv[1]; *p; p++)
+    int optind = 1;
+    char *expr = NULL;
+    while (optind < cmd_argc && cmd_argv[optind][0] == '-') {
+        char *arg = cmd_argv[optind];
+        if (strcmp(arg, "--") == 0) { optind++; break; }
+        if (strcmp(arg, "-e") == 0) {
+            optind++;
+            if (optind >= cmd_argc) {
+                fprintf(stderr, "Missing expression for -e\n");
+                return 2;
+            }
+            expr = cmd_argv[optind++];
+            continue;
+        }
+        fprintf(stderr, "Unknown option: %s\n", arg);
+        return 2;
+    }
+    const char *js_file = "main.js";
+    if (optind < cmd_argc) {
+        js_file = cmd_argv[optind];
+        for (char *p = cmd_argv[optind]; *p; p++)
             if (*p == '\\') *p = '/';
     }
-    const char *js_file = (cmd_argc > 1) ? cmd_argv[1] : "main.js";
 
     JSRuntime *rt = JS_NewRuntime();
     js_async_task_init(rt);
@@ -95,14 +113,21 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     js_init_module_gui(ctx);
 
-    js_std_add_helpers(ctx, cmd_argc, cmd_argv);
+    js_std_add_helpers(ctx, cmd_argc - optind, cmd_argv + optind);
 
     size_t fsize;
-    uint8_t *js_code = js_load_file(ctx, &fsize, js_file);
+    uint8_t *js_code;
+    if (expr) {
+        js_code = (uint8_t *)strdup(expr);
+        fsize = strlen(expr);
+        js_file = "<eval>";
+    } else {
+        js_code = js_load_file(ctx, &fsize, js_file);
+    }
 
     if (!js_code) {
         char msg[256];
-        snprintf(msg, sizeof(msg), "Failed to load %s", js_file);
+        snprintf(msg, sizeof(msg), "Failed to load '%s'", js_file);
         printf("Error: %s\n", msg);
         fflush(stdout);
         int len = MultiByteToWideChar(CP_UTF8, 0, msg, -1, NULL, 0);
