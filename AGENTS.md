@@ -20,6 +20,10 @@
 
 > 每次 commit 前，先把变更内容展示给用户，获得明确确认后才执行 git commit 操作。不可在用户未确认的情况下直接提交。用户说 "commit" 时仍照常执行。
 
+> **commit message 风格：** 保持简洁，与 `git log --oneline` 历史风格一致。
+
+> **使用中文思考和回答**
+
 ## 1. Build Assistant (构建助手)
 
 **功能：** 编译 TypeScript、执行构建、处理错误
@@ -31,7 +35,10 @@
 make                   # 构建发布版本（默认，推荐）
 make debug             # 构建调试版本（含 bridge 调试日志，仅在排错时使用）
 make js                # 编译 TypeScript
-make test              # 运行测试
+make test              # 运行测试（默认跑所有，网络测试较慢）
+make test TEST=net     # 只跑网络测试（国外 URL，可能慢/不可达）
+make test TEST=-net    # 跳过网络测试（日常快速验证推荐）
+make test TEST=wasm    # 只跑 wasm 测试
 make clean             # 清理构建产物
 make distclean         # 清理所有生成文件
 make info              # 查看构建配置
@@ -69,7 +76,7 @@ powershell -ExecutionPolicy Bypass -File ./run.ps1 -Command "make js && ./win.ex
 
 ## 4. TypeScript 类型定义 (quickwin.d.ts)
 
-**文件位置：** `quickwin.d.ts
+**文件位置：** `quickwin.d.ts`
 
 **功能：** 提供完整的 TypeScript 类型声明文件，包含所有可用模块和 API 的类型定义
 
@@ -84,6 +91,7 @@ powershell -ExecutionPolicy Bypass -File ./run.ps1 -Command "make js && ./win.ex
 - `gui` - Windows 图形界面
 - `ffi` - 外部函数接口
 - `wamr` - WebAssembly 模块验证
+- `brotli` - Brotli 解压缩
 
 **使用注意：**
 - 使用 `std.loadFile()` 只适合读取 UTF-8 文本文件
@@ -224,15 +232,13 @@ cp wamr/build/libiwasm.a wamr/lib/libiwasm.a
 
 ## 7. WASM 实现进度
 
-**文件位置：** `.agents/WASM_PROGRESS.md`
+**文件位置（待创建）：** `.agents/WASM_PROGRESS.md`
 
 **功能：** 记录 WebAssembly JS API 实现进度，包括已完成/待完成功能、测试覆盖、已知 WAMR 限制和关键文件说明。每次迭代前查看该文件了解当前状态。
 
-> **使用中文思考和回答**
-
 ## 8. mupdf 移植进度
 
-**文件位置：** `.agents/MUPDF_PROGRESS.md`
+**文件位置：** `.agents/MUPDF_WASM_MEMORY.md`
 
 **功能：** 记录 mupdf npm 包移植到 QuickWin 的可行性分析和逐步支持计划，包括 Emscripten WASM 胶水层分析、21 个导入函数清单、Node.js/浏览器 API 依赖、以及分阶段实施步骤。处理涉及 `mupdf.js`、`mupdf-wasm.js`、`mupdf-wasm.wasm` 时参考该文件。
 
@@ -266,5 +272,22 @@ try_cache_response(url, response, total);
 return extract_body(response);
 ```
 
+**Brotli 解压缩** (`quickjs-brotli.c:1-`)
+
+esm.sh 等 CDN 会返回 `Content-Encoding: br`（Brotli 压缩）的响应体。`http_get_sync` 在收到完整响应后，如果检测到 `Content-Encoding: br`，调用 brotli 模块解压：
+
+1. 读取完整 HTTP 响应
+2. 检测 `Content-Encoding: br` 头
+3. 提取 body 后调用 `JS_BrotliDecompress` 解压
+4. 解压后的数据传给 `try_cache_response`（缓存存解码后内容）
+
+```c
+if (is_brotli_encoded(response))
+    decode_brotli(response, &total);
+try_cache_response(url, response, total);
+return extract_body(response);
+```
+
 ### 相关文件
 - `quickjs-http.c` — `http_get_sync`、`decode_chunked`、`is_chunked`、`skip_crlf`
+- `quickjs-brotli.c` / `quickjs-brotli.h` — Brotli 解压 JS API (`brotli.decompress`)、`JS_BrotliDecompress`
