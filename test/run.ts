@@ -34,7 +34,7 @@ const suiteDefs = [
 ]
 
 async function main(): Promise<void> {
-    const filter = scriptArgs.length > 2 ? scriptArgs[2] : ''
+    const filter = scriptArgs.length > 1 ? scriptArgs[1] : ''
 
     std.printf('%s====== QuickWin Test Runner ======%s\n', BOLD, RESET)
     if (filter) std.printf('Filter: %s\n', filter)
