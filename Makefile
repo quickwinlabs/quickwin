@@ -60,7 +60,7 @@ CFLAGS += $(WAMR_INC)
 CFLAGS += $(WAMR_DEFS)
 
 LDFLAGS = -L$(MSYS2_PREFIX)/lib -static
-LIBS = -lwolfssl -lws2_32 -lbcrypt -lcrypt32 -lm -luser32 -lgdi32 -lcomctl32 -lffi -lntdll -lshell32
+LIBS = -lbrotlidec -lbrotlicommon -lwolfssl -lws2_32 -lbcrypt -lcrypt32 -lm -luser32 -lgdi32 -lcomctl32 -lffi -lntdll -lshell32
 
 TARGET = $(BUILD_DIR)/win.exe
 QUICKJS_LIB = $(BUILD_DIR)/libquickjs.a
@@ -69,7 +69,8 @@ SRCS = main.c \
        quickjs-win.c \
        quickjs-gui.c \
        quickjs-ffi.c \
-        quickjs-sock.c \
+       quickjs-brotli.c \
+       quickjs-sock.c \
        quickjs-wolfssl.c \
        quickjs-http.c \
        quickjs-libc.c \

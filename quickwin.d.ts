@@ -504,3 +504,7 @@ interface HttpCache {
 
 declare var __httpCache__: HttpCache;
 
+declare module "brotli" {
+    function decompress(data: ArrayBufferLike): ArrayBuffer;
+}
+

@@ -9,6 +9,7 @@
 #include "quickjs-libc.h"
 #include "quickjs-win.h"
 #include "quickjs-ffi.h"
+#include "quickjs-brotli.h"
 #include "quickjs-sock.h"
 #include "quickjs-http.h"
 #include "quickjs-wolfssl.h"
@@ -43,6 +44,7 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
 
     js_init_module_win(ctx);
     js_init_module_ffi(ctx);
+    js_init_module_brotli(ctx);
     js_init_module_sock(ctx);
     js_init_module_wolfssl(ctx);
     js_init_module_wamr(ctx);

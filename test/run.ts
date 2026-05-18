@@ -30,6 +30,7 @@ const suiteDefs = [
     { name: 'net-event',         file: './test_net_event.js',        tags: ['net'] },
     { name: 'http-import',       file: './test_http_import.js',      tags: ['net'] },
     { name: 'fetch-cache',       file: './test_fetch_cache.js',      tags: ['net'] },
+    { name: 'brotli',            file: './test_brotli.js',           tags: [] },
 ]
 
 async function main(): Promise<void> {
