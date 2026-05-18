@@ -215,43 +215,43 @@ static int parse_max_age(const char* response) {
 
 // ── Cache file helpers (shared by C import caching and JS fetch() API) ──
 
+static inline void cache_path_for(const char* url, const wchar_t* ext, wchar_t* path, int path_size) {
+    wchar_t dir[MAX_PATH];
+    get_cache_dirW(dir, MAX_PATH);
+    cache_pathW(dir, url, path, path_size, ext);
+}
+
 static char* read_meta_file(const char* url) {
-    wchar_t cache_dir[MAX_PATH];
-    get_cache_dirW(cache_dir, MAX_PATH);
     wchar_t path[MAX_PATH];
-    cache_pathW(cache_dir, url, path, MAX_PATH, L".meta");
+    cache_path_for(url, L".meta", path, MAX_PATH);
     return read_entire_fileW(path, NULL);
 }
 
 static void* read_body_file(const char* url, size_t* out_len) {
-    wchar_t cache_dir[MAX_PATH];
-    get_cache_dirW(cache_dir, MAX_PATH);
     wchar_t path[MAX_PATH];
-    cache_pathW(cache_dir, url, path, MAX_PATH, L".body");
+    cache_path_for(url, L".body", path, MAX_PATH);
     return read_entire_fileW(path, out_len);
 }
 
 static void write_meta_file(const char* url, const char* json_str) {
-    wchar_t cache_dir[MAX_PATH];
-    get_cache_dirW(cache_dir, MAX_PATH);
     wchar_t path[MAX_PATH];
-    cache_pathW(cache_dir, url, path, MAX_PATH, L".meta");
+    cache_path_for(url, L".meta", path, MAX_PATH);
     write_entire_fileW(path, json_str, strlen(json_str));
 }
 
 static void write_cache_file(const char* url, int max_age,
                              const void* body, size_t body_len) {
-    wchar_t cache_dir[MAX_PATH];
-    get_cache_dirW(cache_dir, MAX_PATH);
-    CreateDirectoryW(cache_dir, NULL);
+    wchar_t meta_path[MAX_PATH], body_path[MAX_PATH];
+    cache_path_for(url, L".meta", meta_path, MAX_PATH);
+    cache_path_for(url, L".body", body_path, MAX_PATH);
+
+    wchar_t dir[MAX_PATH];
+    get_cache_dirW(dir, MAX_PATH);
+    CreateDirectoryW(dir, NULL);
 
     char meta_buf[128];
     snprintf(meta_buf, sizeof(meta_buf), "{\"storedAt\":%lld,\"maxAge\":%d}",
              (long long)time(NULL), max_age);
-
-    wchar_t meta_path[MAX_PATH], body_path[MAX_PATH];
-    cache_pathW(cache_dir, url, meta_path, MAX_PATH, L".meta");
-    cache_pathW(cache_dir, url, body_path, MAX_PATH, L".body");
 
     if (!write_entire_fileW(meta_path, meta_buf, strlen(meta_buf))) return;
     if (!write_entire_fileW(body_path, body, body_len)) DeleteFileW(meta_path);
@@ -270,11 +270,9 @@ static char* read_cache(const char* url) {
     free(meta);
 
     if (maxAge <= 0 || time(NULL) - storedAt >= maxAge) {
-        wchar_t cache_dir[MAX_PATH];
-        get_cache_dirW(cache_dir, MAX_PATH);
         wchar_t meta_path[MAX_PATH], body_path[MAX_PATH];
-        cache_pathW(cache_dir, url, meta_path, MAX_PATH, L".meta");
-        cache_pathW(cache_dir, url, body_path, MAX_PATH, L".body");
+        cache_path_for(url, L".meta", meta_path, MAX_PATH);
+        cache_path_for(url, L".body", body_path, MAX_PATH);
         DeleteFileW(meta_path);
         DeleteFileW(body_path);
         return NULL;
@@ -455,15 +453,51 @@ static int decompress_brotli_body(char **response, size_t *total) {
     return 1;
 }
 
+// ── Unified I/O helpers for HTTP and HTTPS ──
+
+static inline int http_send(SOCKET sock, WOLFSSL* ssl, const char* data, int len) {
+    return ssl ? wolfSSL_write(ssl, data, len) : send(sock, data, len, 0);
+}
+
+static inline int http_recv(SOCKET sock, WOLFSSL* ssl, char* buf, int len) {
+    return ssl ? wolfSSL_read(ssl, buf, len) : recv(sock, buf, len, 0);
+}
+
+static char* read_http_response(SOCKET sock, WOLFSSL* ssl, size_t* out_total) {
+    size_t cap = 65536;
+    char* response = malloc(cap);
+    if (!response) return NULL;
+
+    size_t total = 0;
+    char buffer[4096];
+    int received;
+
+    while ((received = http_recv(sock, ssl, buffer, sizeof(buffer))) > 0) {
+        if (total + received > cap) {
+            do { cap *= 2; } while (total + received > cap);
+            char* new_resp = realloc(response, cap);
+            if (!new_resp) { free(response); return NULL; }
+            response = new_resp;
+        }
+        memcpy(response + total, buffer, received);
+        total += received;
+    }
+
+    response[total] = '\0';
+    *out_total = total;
+    return response;
+}
+
+// ── HTTP(S) client ──
+
 char* http_get_sync(const char* url) {
     char scheme[16] = {0};
     char host[256] = {0};
     char path[1024] = {0};
     int port = 80;
 
-    if (!parse_url(url, scheme, sizeof(scheme), host, sizeof(host), &port, path, sizeof(path))) {
+    if (!parse_url(url, scheme, sizeof(scheme), host, sizeof(host), &port, path, sizeof(path)))
         return NULL;
-    }
 
     char* cached = read_cache(url);
     if (cached) return cached;
@@ -471,15 +505,10 @@ char* http_get_sync(const char* url) {
     int is_https = is_https_url(url);
 
     SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (sock == INVALID_SOCKET) {
-        return NULL;
-    }
+    if (sock == INVALID_SOCKET) return NULL;
 
     struct hostent* he = gethostbyname(host);
-    if (!he) {
-        closesocket(sock);
-        return NULL;
-    }
+    if (!he) { closesocket(sock); return NULL; }
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
@@ -488,202 +517,74 @@ char* http_get_sync(const char* url) {
     memcpy(&addr.sin_addr, he->h_addr_list[0], he->h_length);
 
     if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR) {
-        closesocket(sock);
-        return NULL;
+        closesocket(sock); return NULL;
     }
 
+    WOLFSSL* ssl = NULL;
+    WOLFSSL_CTX* ctx = NULL;
     if (is_https) {
         WOLFSSL_METHOD* method = wolfTLSv1_2_client_method();
-        WOLFSSL_CTX* ctx = wolfSSL_CTX_new(method);
-        if (!ctx) {
-            closesocket(sock);
-            return NULL;
-        }
-
+        ctx = wolfSSL_CTX_new(method);
+        if (!ctx) { closesocket(sock); return NULL; }
         wolfSSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
-
-        WOLFSSL* ssl = wolfSSL_new(ctx);
-        if (!ssl) {
-            wolfSSL_CTX_free(ctx);
-            closesocket(sock);
-            return NULL;
-        }
-
+        ssl = wolfSSL_new(ctx);
+        if (!ssl) { wolfSSL_CTX_free(ctx); closesocket(sock); return NULL; }
         wolfSSL_set_fd(ssl, sock);
-
         wolfSSL_UseSNI(ssl, WOLFSSL_SNI_HOST_NAME, host, strlen(host));
-
         if (wolfSSL_connect(ssl) != SSL_SUCCESS) {
-            wolfSSL_free(ssl);
-            wolfSSL_CTX_free(ctx);
-            closesocket(sock);
+            wolfSSL_free(ssl); wolfSSL_CTX_free(ctx); closesocket(sock);
             return NULL;
         }
-
-        char request[2048];
-        snprintf(request, sizeof(request),
-                 "GET %s HTTP/1.1\r\n"
-                 "Host: %s\r\n"
-                 "User-Agent: QuickJS/1.0\r\n"
-                 "Accept-Encoding: br\r\n"
-                 "Connection: close\r\n"
-                 "\r\n",
-                 path, host);
-
-        if (http_debug) {
-            fprintf(stderr, "---[ HTTP request ]---\n%s\n", request);
-        }
-
-        if (wolfSSL_write(ssl, request, strlen(request)) <= 0) {
-            wolfSSL_shutdown(ssl);
-            wolfSSL_free(ssl);
-            wolfSSL_CTX_free(ctx);
-            closesocket(sock);
-            return NULL;
-        }
-
-        size_t cap = 65536;
-        char* response = malloc(cap);
-        if (!response) {
-            wolfSSL_shutdown(ssl);
-            wolfSSL_free(ssl);
-            wolfSSL_CTX_free(ctx);
-            closesocket(sock);
-            return NULL;
-        }
-
-        size_t total = 0;
-        char buffer[4096];
-        int received;
-
-        while ((received = wolfSSL_read(ssl, buffer, sizeof(buffer))) > 0) {
-            if (total + received > cap) {
-                do { cap *= 2; } while (total + received > cap);
-                char* new_resp = realloc(response, cap);
-                if (!new_resp) {
-                    free(response);
-                    wolfSSL_shutdown(ssl);
-                    wolfSSL_free(ssl);
-                    wolfSSL_CTX_free(ctx);
-                    closesocket(sock);
-                    return NULL;
-                }
-                response = new_resp;
-            }
-            memcpy(response + total, buffer, received);
-            total += received;
-        }
-
-        response[total] = '\0';
-
-        if (http_debug) {
-            char *hdr_end = strstr(response, "\r\n\r\n");
-            if (hdr_end) {
-                fprintf(stderr, "---[ HTTP response ]---\n%.*s\n", (int)(hdr_end - response), response);
-            } else {
-                fprintf(stderr, "---[ HTTP response ]---\n%s\n", response);
-            }
-        }
-
-        if (is_chunked(response))
-            decode_chunked(response, &total);
-
-        if (is_brotli(response)) {
-            if (!decompress_brotli_body(&response, &total)) {
-                free(response);
-                wolfSSL_shutdown(ssl);
-                wolfSSL_free(ssl);
-                wolfSSL_CTX_free(ctx);
-                closesocket(sock);
-                return NULL;
-            }
-        }
-
-        try_cache_response(url, response, total);
-
-        wolfSSL_shutdown(ssl);
-        wolfSSL_free(ssl);
-        wolfSSL_CTX_free(ctx);
-        closesocket(sock);
-
-        if (response) {
-            return extract_body(response);
-        }
-        return NULL;
-    } else {
-        char request[2048];
-        snprintf(request, sizeof(request),
-                 "GET %s HTTP/1.1\r\n"
-                 "Host: %s\r\n"
-                 "User-Agent: QuickJS/1.0\r\n"
-                 "Accept-Encoding: br\r\n"
-                 "Connection: close\r\n"
-                 "\r\n",
-                 path, host);
-
-        if (http_debug) {
-            fprintf(stderr, "---[ HTTP request ]---\n%s\n", request);
-        }
-
-        send(sock, request, strlen(request), 0);
-
-        size_t cap = 65536;
-        char* response = malloc(cap);
-        if (!response) {
-            closesocket(sock);
-            return NULL;
-        }
-
-        size_t total = 0;
-        char buffer[4096];
-        int received;
-
-        while ((received = recv(sock, buffer, sizeof(buffer), 0)) > 0) {
-            if (total + received > cap) {
-                do { cap *= 2; } while (total + received > cap);
-                char* new_resp = realloc(response, cap);
-                if (!new_resp) {
-                    free(response);
-                    closesocket(sock);
-                    return NULL;
-                }
-                response = new_resp;
-            }
-            memcpy(response + total, buffer, received);
-            total += received;
-        }
-
-        response[total] = '\0';
-
-        if (http_debug) {
-            char *hdr_end = strstr(response, "\r\n\r\n");
-            if (hdr_end) {
-                fprintf(stderr, "---[ HTTP response ]---\n%.*s\n", (int)(hdr_end - response), response);
-            } else {
-                fprintf(stderr, "---[ HTTP response ]---\n%s\n", response);
-            }
-        }
-
-        if (is_chunked(response))
-            decode_chunked(response, &total);
-
-        if (is_brotli(response)) {
-            if (!decompress_brotli_body(&response, &total)) {
-                free(response);
-                closesocket(sock);
-                return NULL;
-            }
-        }
-
-        try_cache_response(url, response, total);
-
-        closesocket(sock);
-
-        if (response) {
-            return extract_body(response);
-        }
-        return NULL;
     }
+
+    char request[2048];
+    snprintf(request, sizeof(request),
+             "GET %s HTTP/1.1\r\n"
+             "Host: %s\r\n"
+             "User-Agent: QuickJS/1.0\r\n"
+             "Accept-Encoding: br\r\n"
+             "Connection: close\r\n"
+             "\r\n",
+             path, host);
+
+    if (http_debug)
+        fprintf(stderr, "---[ HTTP request ]---\n%s\n", request);
+
+    char* result = NULL;
+    char* response = NULL;
+    size_t total = 0;
+
+    if (http_send(sock, ssl, request, strlen(request)) <= 0)
+        goto done;
+
+    response = read_http_response(sock, ssl, &total);
+    if (!response) goto done;
+
+    if (http_debug) {
+        char* hdr_end = strstr(response, "\r\n\r\n");
+        if (hdr_end)
+            fprintf(stderr, "---[ HTTP response ]---\n%.*s\n", (int)(hdr_end - response), response);
+        else
+            fprintf(stderr, "---[ HTTP response ]---\n%s\n", response);
+    }
+
+    if (is_chunked(response))
+        decode_chunked(response, &total);
+
+    if (is_brotli(response)) {
+        if (!decompress_brotli_body(&response, &total))
+            goto done;
+    }
+
+    try_cache_response(url, response, total);
+    result = extract_body(response);
+
+done:
+    if (!result) free(response);
+    if (ssl) { wolfSSL_shutdown(ssl); wolfSSL_free(ssl); }
+    if (ctx) wolfSSL_CTX_free(ctx);
+    closesocket(sock);
+    return result;
 }
 
 char* js_module_normalize_name(JSContext *ctx,
