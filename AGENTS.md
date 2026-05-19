@@ -229,6 +229,7 @@ cp wamr/build/libiwasm.a wamr/lib/libiwasm.a
 - **`WASMModule` 结构体偏移错位：** 如果直接 `(WASMModule *)wasm_module_t` 后读取字段得到垃圾值（如 `import_global_count=624`），说明 `WASM_ENABLE_TAGS`/`WASM_ENABLE_BULK_MEMORY` 等条件编译宏在 WAMR 库和项目代码中不一致。用 `make wamr` 重建 WAMR 库（需先 `rm -rf wamr/build` 清除 CMake cache），确保 `-DWAMR_BUILD_EXCE_HANDLING=1` 等选项生效
 - **`make clean` 会删除所有 `lib/*.js`、`test/*.js` 和根目录 `*.js`：** 运行 `make clean` 后必须执行 `make js` 从 `.ts` 重新生成 JS 文件，否则测试或运行时找不到 `.js` 文件
 - **控制台中文乱码：** 运行 `chcp 65001` 设置 UTF-8 编码后再执行程序
+- **`make js` Segmentation fault：** tsgo 本身偶尔会 segfault，不是代码问题。直接重新运行 `make js` 即可，通常第二次就能成功
 
 ## 7. WASM 实现进度
 
