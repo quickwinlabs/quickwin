@@ -100,7 +100,8 @@ release:
 minimal:
 	rm -f $(OBJS) $(DEPS) $(TARGET) $(QUICKJS_LIB)
 	@$(MAKE) OPT=-Os MINIMAL=1 nodebug
-	@echo "Build complete: $(TARGET) (-Os, LTO, stripped)"
+	@if command -v upx >/dev/null 2>&1; then upx --best $(TARGET); fi
+	@echo "Build complete: $(TARGET) (-Os, LTO, stripped, UPXed)"
 
 QJ_DEFINES = -D_GNU_SOURCE -DCONFIG_WIN32 -DCONFIG_VERSION=\"2025-09-13\"
 
@@ -215,7 +216,7 @@ help:
 	@echo "  all       - Build nodebug version (default)"
 	@echo "  nodebug   - Build without optimization (fast compile)"
 	@echo "  release   - Build with -O2 + LTO + stripped (~2.5MB)"
-	@echo "  minimal   - Build with -Os + LTO + stripped (~2.1MB)"
+	@echo "  minimal   - Build with -Os + LTO + stripped + UPX (~1MB)"
 	@echo "  debug     - Build debug version (-g -O0)"
 	@echo "  clean     - Remove built files and JS files"
 	@echo "  distclean - Remove all generated files"
