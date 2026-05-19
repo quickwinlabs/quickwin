@@ -17,10 +17,16 @@
 > - 确保使用正确的 API 和方法签名
 
 > **禁止自动 commit：提交前必须先让用户 review**
-
+>
 > 每次 commit 前，先把变更内容展示给用户，获得明确确认后才执行 git commit 操作。不可在用户未确认的情况下直接提交。用户说 "commit" 时仍照常执行。
 
-> **commit message 风格：** 保持简洁，与 `git log --oneline` 历史风格一致。
+> **commit message 必须基于 `git diff --cached 或 git diff` 内容生成**
+>
+> 生成 commit message 的流程：
+> 1. 先运行 `git diff --cached 或 git diff` 查看具体变更内容
+> 2. 根据 diff 内容（改了什么、为什么改）生成 commit message
+> 3. 不得仅凭文件名列表猜测 commit message
+> 4. commit message 风格与 `git log` 历史风格一致。
 
 > **使用中文思考和回答**
 
