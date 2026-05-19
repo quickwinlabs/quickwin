@@ -703,7 +703,8 @@ JSModuleDef *js_module_loader(JSContext *ctx,
         uint8_t *buf;
         // printf("module_name:'%s'", module_name); fflush(stdout);
 
-        if (strstart(module_name, "http", NULL)) {
+        int is_http = strstart(module_name, "http", NULL);
+        if (is_http) {
             buf = (uint8_t*)http_get_sync(module_name);
             buf_len = buf ? strlen((char*)buf) : 0;
         } else {
@@ -724,7 +725,7 @@ JSModuleDef *js_module_loader(JSContext *ctx,
             else
                 flags = 0;
             val = JS_ParseJSON2(ctx, (char *)buf, buf_len, module_name, flags);
-            js_free(ctx, buf);
+            if (is_http) free(buf); else js_free(ctx, buf);
             if (JS_IsException(val))
                 return NULL;
             m = create_json_module(ctx, module_name, val);
@@ -735,7 +736,7 @@ JSModuleDef *js_module_loader(JSContext *ctx,
             /* compile the module */
             func_val = JS_Eval(ctx, (char *)buf, buf_len, module_name,
                                JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
-            js_free(ctx, buf);
+            if (is_http) free(buf); else js_free(ctx, buf);
             if (JS_IsException(func_val))
                 return NULL;
             /* XXX: could propagate the exception */
