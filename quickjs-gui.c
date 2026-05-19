@@ -430,43 +430,10 @@ static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("CallWindowProc", 5, js_CallWindowProc),
 };
 
-#define DEF(x) JS_PROP_INT32_DEF(#x, x, JS_PROP_CONFIGURABLE)
-static const JSCFunctionListEntry gui_consts[] = {
-    DEF(WS_OVERLAPPEDWINDOW),
-    DEF(WS_CHILD),
-    DEF(WS_VISIBLE),
-    DEF(WS_BORDER),
-    DEF(BS_PUSHBUTTON),
-    DEF(BS_GROUPBOX),
-    DEF(BS_CHECKBOX),
-    DEF(BS_AUTOCHECKBOX),
-    DEF(LB_ADDSTRING),
-    DEF(WM_CREATE),
-    DEF(WM_DESTROY),
-    DEF(WM_CLOSE),
-    DEF(WM_QUIT),
-    DEF(WM_PAINT),
-    DEF(WM_COMMAND),
-    DEF(WM_CHAR),
-    DEF(WM_KEYDOWN),
-    DEF(WM_KEYUP),
-    DEF(WM_MOUSEMOVE),
-    DEF(WM_LBUTTONDOWN),
-    DEF(WM_LBUTTONUP),
-    DEF(WM_RBUTTONDOWN),
-    DEF(WM_RBUTTONUP),
-    DEF(WM_SETFONT),
-    DEF(GWLP_WNDPROC),
-    DEF(GWLP_HINSTANCE),
-    DEF(GWLP_HWNDPARENT),
-    DEF(GWLP_USERDATA),
-    DEF(GWLP_ID),
-#undef DEF
-};
+
 
 static int js_gui_init(JSContext *ctx, JSModuleDef *m)
 {
-    JS_SetModuleExportList(ctx, m, gui_consts, sizeof(gui_consts) / sizeof(gui_consts[0]));
     JS_SetModuleExportList(ctx, m, gui_funcs, sizeof(gui_funcs) / sizeof(gui_funcs[0]));
     return 0;
 }
@@ -477,7 +444,6 @@ JSModuleDef *js_init_module_gui(JSContext *ctx)
     m = JS_NewCModule(ctx, "gui", js_gui_init);
     if (!m)
         return NULL;
-    JS_AddModuleExportList(ctx, m, gui_consts, sizeof(gui_consts) / sizeof(gui_consts[0]));
     JS_AddModuleExportList(ctx, m, gui_funcs, sizeof(gui_funcs) / sizeof(gui_funcs[0]));
     return m;
 }

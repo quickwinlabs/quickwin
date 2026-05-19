@@ -399,35 +399,90 @@ declare module "gui" {
     function RemoveWindow(hwnd: HWND): boolean;
     function CallWindowProc(wndProc: WNDPROC, hwnd: HWND, msg: number, wParam: number, lParam: number): number;
 
-    const WS_OVERLAPPEDWINDOW: number;
-    const WS_CHILD: number;
-    const WS_VISIBLE: number;
-    const WS_BORDER: number;
-    const BS_PUSHBUTTON: number;
-    const BS_GROUPBOX: number;
-    const BS_CHECKBOX: number;
-    const BS_AUTOCHECKBOX: number;
-    const LB_ADDSTRING: number;
-    const WM_CREATE: number;
-    const WM_DESTROY: number;
-    const WM_CLOSE: number;
-    const WM_QUIT: number;
-    const WM_PAINT: number;
-    const WM_COMMAND: number;
-    const WM_CHAR: number;
-    const WM_KEYDOWN: number;
-    const WM_KEYUP: number;
-    const WM_MOUSEMOVE: number;
-    const WM_LBUTTONDOWN: number;
-    const WM_LBUTTONUP: number;
-    const WM_RBUTTONDOWN: number;
-    const WM_RBUTTONUP: number;
-    const WM_SETFONT: number;
-    const GWLP_WNDPROC: number;
-    const GWLP_HINSTANCE: number;
-    const GWLP_HWNDPARENT: number;
-    const GWLP_USERDATA: number;
-    const GWLP_ID: number;
+    // 窗口样式 (Window Styles)
+    export const enum WindowStyle {
+        OVERLAPPEDWINDOW = 0x00CF0000,
+        CHILD = 0x40000000,
+        VISIBLE = 0x10000000,
+        BORDER = 0x00800000,
+        HSCROLL = 0x00100000,
+        VSCROLL = 0x00200000,
+        CLIPCHILDREN = 0x02000000,
+    }
+
+    // 窗口消息 (Window Messages)
+    export const enum WmMsg {
+        CREATE = 0x0001,
+        DESTROY = 0x0002,
+        CLOSE = 0x0010,
+        QUIT = 0x0012,
+        PAINT = 0x000F,
+        COMMAND = 0x0111,
+        SIZE = 0x0003,
+        CHAR = 0x0102,
+        KEYDOWN = 0x0100,
+        KEYUP = 0x0101,
+        MOUSEMOVE = 0x0200,
+        LBUTTONDOWN = 0x0201,
+        LBUTTONUP = 0x0202,
+        RBUTTONDOWN = 0x0204,
+        RBUTTONUP = 0x0205,
+        SETFONT = 0x0030,
+        HSCROLL = 0x0114,
+        VSCROLL = 0x0115,
+        MOUSEWHEEL = 0x020A,
+    }
+
+    // 滚动条常量 (Scroll Bar)
+    export const enum ScrollBar {
+        HORZ = 0,
+        VERT = 1,
+    }
+
+    // 滚动命令 (Scroll Commands)
+    export const enum ScrollCmd {
+        LINEUP = 0,
+        LINEDOWN = 1,
+        PAGEUP = 2,
+        PAGEDOWN = 3,
+        THUMBTRACK = 5,
+    }
+
+    // 滚动信息标志 (Scroll Info Flags)
+    export const enum ScrollInfoFlag {
+        RANGE = 0x0001,
+        PAGE = 0x0002,
+        POS = 0x0004,
+        ALL = 0x0017,
+    }
+
+    // 系统度量 (System Metrics)
+    export const enum SysMetrics {
+        CXSCREEN = 0,
+        CYSCREEN = 1,
+    }
+
+    // 按钮样式 (Button Styles)
+    export const enum ButtonStyle {
+        PUSHBUTTON = 0x00000000,
+        GROUPBOX = 0x00000007,
+        CHECKBOX = 0x00000002,
+        AUTOCHECKBOX = 0x00000003,
+    }
+
+    // ListBox 消息
+    export const enum LbMsg {
+        ADDSTRING = 0x0180,
+    }
+
+    // 窗口额外数据偏移 (GetWindowLongPtr 索引)
+    export const enum Gwlp {
+        WNDPROC = -4,
+        HINSTANCE = -6,
+        HWNDPARENT = -8,
+        USERDATA = -21,
+        ID = -12,
+    }
 }
 
 declare module "ffi" {

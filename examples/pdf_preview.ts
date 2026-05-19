@@ -38,27 +38,6 @@ const GetSystemMetrics = loadProc(_user32, 'GetSystemMetrics')
 const SetScrollInfo = loadProc(_user32, 'SetScrollInfo')
 const GetClientRect = loadProc(_user32, 'GetClientRect')
 
-const SM_CXSCREEN = 0
-const SM_CYSCREEN = 1
-
-const WM_SIZE = 0x0003
-const WM_HSCROLL = 0x0114
-const WM_VSCROLL = 0x0115
-const WM_MOUSEWHEEL = 0x020A
-const SB_HORZ = 0
-const SB_VERT = 1
-const SB_THUMBTRACK = 5
-const SB_LINEUP = 0
-const SB_LINEDOWN = 1
-const SB_PAGEUP = 2
-const SB_PAGEDOWN = 3
-const SIF_RANGE = 0x0001
-const SIF_PAGE = 0x0002
-const SIF_POS = 0x0004
-const SIF_ALL = 0x0017
-const WS_HSCROLL = 0x00100000
-const WS_VSCROLL = 0x00200000
-const WS_CLIPCHILDREN = 0x02000000
 const TOP_OFFSET = 50
 
 // FFI 类型签名快捷常量
@@ -271,7 +250,7 @@ function setScrollPos(h: number, bar: number, pos: number): void {
     const si = new ArrayBuffer(28)
     const dv = new DataView(si)
     dv.setUint32(0, 28, true)
-    dv.setUint32(4, SIF_POS, true)
+    dv.setUint32(4, gui.ScrollInfoFlag.POS, true)
     dv.setInt32(20, pos, true)
     ffi.ffiCall(SetScrollInfo, T_U64_S32_PTR_U32, [h, bar, si, 1], FFI_U32)
 }
@@ -289,27 +268,27 @@ function updateScrollRange(h: number): void {
     const dv = new DataView(si)
     dv.setUint32(0, 28, true)
 
-    dv.setUint32(4, SIF_RANGE | SIF_PAGE, true)
+    dv.setUint32(4, gui.ScrollInfoFlag.RANGE | gui.ScrollInfoFlag.PAGE, true)
     dv.setInt32(8, 0, true)
     dv.setInt32(12, currentPixmap.w - 1, true)
     dv.setUint32(16, client.w, true)
-    ffi.ffiCall(SetScrollInfo, T_U64_S32_PTR_U32, [h, SB_HORZ, si, 1], FFI_U32)
+    ffi.ffiCall(SetScrollInfo, T_U64_S32_PTR_U32, [h, gui.ScrollBar.HORZ, si, 1], FFI_U32)
 
     dv.setInt32(8, 0, true)
     dv.setInt32(12, currentPixmap.h - 1, true)
     dv.setUint32(16, viewH, true)
-    ffi.ffiCall(SetScrollInfo, T_U64_S32_PTR_U32, [h, SB_VERT, si, 1], FFI_U32)
+    ffi.ffiCall(SetScrollInfo, T_U64_S32_PTR_U32, [h, gui.ScrollBar.VERT, si, 1], FFI_U32)
 
-    setScrollPos(h, SB_HORZ, scrollX)
-    setScrollPos(h, SB_VERT, scrollY)
+    setScrollPos(h, gui.ScrollBar.HORZ, scrollX)
+    setScrollPos(h, gui.ScrollBar.VERT, scrollY)
 }
 
 function doScroll(h: number, dx: number, dy: number): void {
     const client = getClientSize(h)
     scrollX = clamp(scrollX + dx, currentPixmap ? Math.max(0, currentPixmap.w - client.w) : 0)
     scrollY = clamp(scrollY + dy, currentPixmap ? Math.max(0, currentPixmap.h - (client.h - TOP_OFFSET)) : 0)
-    setScrollPos(h, SB_HORZ, scrollX)
-    setScrollPos(h, SB_VERT, scrollY)
+    setScrollPos(h, gui.ScrollBar.HORZ, scrollX)
+    setScrollPos(h, gui.ScrollBar.VERT, scrollY)
     ffi.ffiCall(InvalidateRect, T_U64_U64_U32, [h, 0, 1], FFI_U32)
 }
 
@@ -343,11 +322,11 @@ async function main(): Promise<void> {
         if (!hwnd) return gui.DefWindowProc(hwnd, msg, wParam, lParam)
         const h = hwnd as number
         switch (msg) {
-            case gui.WM_DESTROY:
+            case gui.WmMsg.DESTROY:
                 gui.PostQuitMessage(0)
                 return 0
 
-            case gui.WM_COMMAND: {
+            case gui.WmMsg.COMMAND: {
                 const hCtrl = lParam
                 const btnOpen = hwndBtnOpen as number | null
                 const btnPrev = hwndBtnPrev as number | null
@@ -365,7 +344,7 @@ async function main(): Promise<void> {
                 return 0
             }
 
-            case gui.WM_PAINT: {
+            case gui.WmMsg.PAINT: {
                 const hdc = ffi.ffiCall(GetDC, [ffi.FFI_TYPE_UINT64], [h], ffi.FFI_TYPE_UINT64)
                 if (hdc) {
                     ffi.ffiCall(PatBlt, [ffi.FFI_TYPE_UINT64, FFI_S32, FFI_S32, FFI_S32, FFI_S32, FFI_U32], [hdc, 0, 0, 32767, TOP_OFFSET, 0x00FF0062], FFI_U32)
@@ -387,32 +366,32 @@ async function main(): Promise<void> {
                 return gui.DefWindowProc(hwnd, msg, wParam, lParam)
             }
 
-            case WM_HSCROLL: {
+            case gui.WmMsg.HSCROLL: {
                 if (wParam === 0) return 0
                 const code = wParam & 0xFFFF
                 const thumb = (wParam >> 16) & 0xFFFF
                 let dx = 0
-                if (code === SB_LINEUP) dx = -20
-                else if (code === SB_LINEDOWN) dx = 20
-                else if (code === SB_PAGEUP) dx = -60
-                else if (code === SB_PAGEDOWN) dx = 60
-                else if (code === SB_THUMBTRACK) dx = thumb - scrollX
+                if (code === gui.ScrollCmd.LINEUP) dx = -20
+                else if (code === gui.ScrollCmd.LINEDOWN) dx = 20
+                else if (code === gui.ScrollCmd.PAGEUP) dx = -60
+                else if (code === gui.ScrollCmd.PAGEDOWN) dx = 60
+                else if (code === gui.ScrollCmd.THUMBTRACK) dx = thumb - scrollX
                 if (dx) doScroll(h, dx, 0)
                 return 0
             }
 
-            case WM_VSCROLL:
-            case WM_MOUSEWHEEL: {
+            case gui.WmMsg.VSCROLL:
+            case gui.WmMsg.MOUSEWHEEL: {
                 let dy = 0
-                if (msg === WM_VSCROLL) {
+                if (msg === gui.WmMsg.VSCROLL) {
                     if (wParam === 0) return 0
                     const code = wParam & 0xFFFF
                     const thumb = (wParam >> 16) & 0xFFFF
-                    if (code === SB_LINEUP) dy = -20
-                    else if (code === SB_LINEDOWN) dy = 20
-                    else if (code === SB_PAGEUP) dy = -60
-                    else if (code === SB_PAGEDOWN) dy = 60
-                    else if (code === SB_THUMBTRACK) dy = thumb - scrollY
+                    if (code === gui.ScrollCmd.LINEUP) dy = -20
+                    else if (code === gui.ScrollCmd.LINEDOWN) dy = 20
+                    else if (code === gui.ScrollCmd.PAGEUP) dy = -60
+                    else if (code === gui.ScrollCmd.PAGEDOWN) dy = 60
+                    else if (code === gui.ScrollCmd.THUMBTRACK) dy = thumb - scrollY
                 } else {
                     const raw = (wParam >>> 16) & 0xFFFF
                     const wheel = raw >= 0x8000 ? raw - 0x10000 : raw
@@ -422,7 +401,7 @@ async function main(): Promise<void> {
                 return 0
             }
 
-            case WM_SIZE: {
+            case gui.WmMsg.SIZE: {
                 if (currentPixmap) updateScrollRange(h)
                 ffi.ffiCall(InvalidateRect, T_U64_U64_U32, [h, 0, 1], FFI_U32)
                 return 0
@@ -434,8 +413,8 @@ async function main(): Promise<void> {
     })
 
     const winW = 960, winH = 720
-    const screenW = ffi.ffiCall(GetSystemMetrics, [FFI_S32], [SM_CXSCREEN], FFI_S32) as number
-    const screenH = ffi.ffiCall(GetSystemMetrics, [FFI_S32], [SM_CYSCREEN], FFI_S32) as number
+    const screenW = ffi.ffiCall(GetSystemMetrics, [FFI_S32], [gui.SysMetrics.CXSCREEN], FFI_S32) as number
+    const screenH = ffi.ffiCall(GetSystemMetrics, [FFI_S32], [gui.SysMetrics.CYSCREEN], FFI_S32) as number
     const winX = Math.max(0, (screenW - winW) >> 1)
     const winY = Math.max(0, (screenH - winH) >> 1)
 
@@ -446,7 +425,7 @@ async function main(): Promise<void> {
 
     hwndMain = gui.CreateWindow(
         'PdfPreview', 'PDF 预览',
-        gui.WS_OVERLAPPEDWINDOW | WS_HSCROLL | WS_VSCROLL | WS_CLIPCHILDREN,
+        gui.WindowStyle.OVERLAPPEDWINDOW | gui.WindowStyle.HSCROLL | gui.WindowStyle.VSCROLL | gui.WindowStyle.CLIPCHILDREN,
         winX, winY, winW, winH,
         null, null
     )
@@ -457,7 +436,7 @@ async function main(): Promise<void> {
 
     hwndBtnOpen = gui.CreateWindow(
         'BUTTON', '打开 PDF',
-        gui.WS_CHILD | gui.WS_VISIBLE | gui.WM_COMMAND,
+        gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE | gui.WmMsg.COMMAND,
         ctrlY, ctrlY, btnOpenW, ctrlH, hwndMain, null
     )
     const editW = 480
@@ -465,17 +444,17 @@ async function main(): Promise<void> {
     const editX = ctrlY + btnOpenW + gap
     hwndEdit = gui.CreateWindow(
         'EDIT', '',
-        gui.WS_CHILD | gui.WS_VISIBLE | gui.WS_BORDER,
+        gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE | gui.WindowStyle.BORDER,
         editX, ctrlY, editW, ctrlH, hwndMain, null
     )
     hwndBtnPrev = gui.CreateWindow(
         'BUTTON', '上一页',
-        gui.WS_CHILD | gui.WS_VISIBLE | gui.WM_COMMAND,
+        gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE | gui.WmMsg.COMMAND,
         editX + editW + gap, ctrlY, btnPageW, ctrlH, hwndMain, null
     )
     hwndBtnNext = gui.CreateWindow(
         'BUTTON', '下一页',
-        gui.WS_CHILD | gui.WS_VISIBLE | gui.WM_COMMAND,
+        gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE | gui.WmMsg.COMMAND,
         editX + editW + gap + btnPageW + gap, ctrlY, btnPageW, ctrlH, hwndMain, null
     )
 
