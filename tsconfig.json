@@ -9,8 +9,10 @@
     "skipLibCheck": true,
     "lib": ["ES2020"],
     "types": ["./quickwin.d.ts"],
-    "outDir": "_build"
+    "outDir": "_build",
+    "jsx": "react-jsx",
+    "jsxImportSource": "../lib/preact",
   },
-  "include": ["test/**/*.ts", "examples/**/*.ts", "main.ts"],
+  "include": ["test/**/*.ts", "examples/**/*.ts", "examples/**/*.tsx", "main.ts"],
   "exclude": []
 }
