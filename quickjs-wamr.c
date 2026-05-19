@@ -875,11 +875,10 @@ static JSValue js_wasm_memory_grow(JSContext *ctx, JSValueConst this_val,
 
         size_t old_size = (size_t)old * WASM_PAGE_SIZE;
         size_t new_size = (size_t)new_pages * WASM_PAGE_SIZE;
-        uint8_t *new_data = realloc(wm->local_data, new_size);
-        if (!new_data)
+        wm->local_data = js_realloc_rt(JS_GetRuntime(ctx), wm->local_data, new_size);
+        if (!wm->local_data)
             return JS_ThrowTypeError(ctx, "WebAssembly.Memory.grow: failed to allocate memory");
-        memset(new_data + old_size, 0, new_size - old_size);
-        wm->local_data = new_data;
+        memset(wm->local_data + old_size, 0, new_size - old_size);
         wm->local_pages = (uint32_t)new_pages;
         return JS_NewInt32(ctx, (int32_t)old);
     }
