@@ -72,7 +72,11 @@ JSValue js_ffi_call(JSContext *ctx, JSValueConst this_val, int argc, JSValueCons
             {
                 size_t size;
                 args[i] = (int64_t)JS_GetArrayBuffer(ctx, &size, js_arg);
-                // check exception
+                if (JS_HasException(ctx))
+                {
+                    JS_FreeValue(ctx, js_arg);
+                    return JS_EXCEPTION;
+                }
             }
         }
         else
@@ -89,7 +93,7 @@ JSValue js_ffi_call(JSContext *ctx, JSValueConst this_val, int argc, JSValueCons
 
     ffi_cif cif;
     ffi_status status;
-    uint64_t ret;
+    uint64_t ret = 0;
     status = ffi_prep_cif(&cif, FFI_DEFAULT_ABI, length, ffi_types[ret_type], arg_types);
     ffi_call(&cif, func, &ret, ffi_args);
 

@@ -156,5 +156,19 @@ export const suite = {
         } else {
             std.printf('  no printers installed (skip)\n')
         }
+
+        t.section('pointer arg type check')
+        let threw = false
+        try {
+            ffi.ffiCall(
+                enumPrinters,
+                [ffi.FFI_TYPE_POINTER] as any,
+                [123] as any,
+                ffi.FFI_TYPE_VOID
+            )
+        } catch (e) {
+            threw = true
+        }
+        t.checkTrue('non-ArrayBuffer pointer arg throws TypeError', threw)
     }
 }
