@@ -66,7 +66,7 @@ JSValue js_ffi_call(JSContext *ctx, JSValueConst this_val, int argc, JSValueCons
         {
             if (JS_IsNull(js_arg))
             {
-                args[i] = 0;
+                args[i] = (int64_t)NULL;
             }
             else
             {
@@ -98,13 +98,10 @@ JSValue js_ffi_call(JSContext *ctx, JSValueConst this_val, int argc, JSValueCons
     ffi_call(&cif, func, &ret, ffi_args);
 
     if (ret_type == FFI_TYPE_VOID)
-    {
         return JS_UNDEFINED;
-    }
-    else
-    {
-        return JS_NewInt64(ctx, ret);
-    }
+    if (ret_type == FFI_TYPE_POINTER && ret == (uint64_t)NULL)
+        return JS_NULL;
+    return JS_NewInt64(ctx, ret);
 }
 
 static JSValue js_ffi_buffer_ptr(JSContext *ctx, JSValueConst this_val,
