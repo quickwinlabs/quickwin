@@ -2,7 +2,6 @@ CC = gcc
 WINDRES = windres
 
 DEBUG = 0
-GC_DEBUG = 0
 MINIMAL = 0
 OPT = -Os
 BUILD_DIR = _build
@@ -14,10 +13,7 @@ else
     CFLAGS = -I./quickjs -I$(MSYS2_PREFIX)/include -DNDEBUG
 endif
 
-ifeq ($(GC_DEBUG), 1)
-    CFLAGS += -DDUMP_GC -DDUMP_GC_FREE -DDUMP_LEAKS
-endif
-
+CFLAGS += -DDUMP_GC -DDUMP_LEAKS
 CFLAGS += -Wall -Wextra
 
 ifeq ($(MINIMAL), 1)
@@ -80,15 +76,12 @@ SRCS = main.c \
 OBJS = $(SRCS:%.c=$(BUILD_DIR)/%.o) $(BUILD_DIR)/app.o
 DEPS = $(SRCS:%.c=$(BUILD_DIR)/%.d)
 
-.PHONY: all clean debug nodebug release minimal test wamr wasm gc-debug js info help
+.PHONY: all clean debug nodebug release minimal test wamr wasm js info help
 
 all: nodebug
 
 debug:
 	@$(MAKE) DEBUG=1
-
-gc-debug:
-	@$(MAKE) DEBUG=1 GC_DEBUG=1
 
 nodebug: $(QUICKJS_LIB) $(TARGET)
 
@@ -217,7 +210,7 @@ help:
 	@echo "  nodebug   - Build without optimization (fast compile)"
 	@echo "  release   - Build with -O2 + LTO + stripped (~2.5MB)"
 	@echo "  minimal   - Build with -Os + LTO + stripped + UPX (~1MB)"
-	@echo "  debug     - Build debug version (-g -O0)"
+	@echo "  debug     - Build debug version (-g -O0, always has DUMP_GC/DUMP_LEAKS)"
 	@echo "  clean     - Remove built files and JS files"
 	@echo "  distclean - Remove all generated files"
 	@echo "  info      - Show build configuration"
