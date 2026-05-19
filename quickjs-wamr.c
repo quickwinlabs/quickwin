@@ -143,7 +143,7 @@ static void wasm_call_js_bridge(wasm_exec_env_t exec_env, uint64_t *args)
     if (JS_IsException(ret))
     {
         char err_msg[512] = {0};
-        sprintf(err_msg,  "JS exception: in wasm_call_js_bridge %s.%s", module_name, name);
+        snprintf(err_msg, sizeof(err_msg), "JS exception: in wasm_call_js_bridge %s.%s", module_name, name);
         wasm_runtime_set_exception(inst, err_msg);
         JS_FreeValue(ctx, fn);
         JS_FreeValue(ctx, mod);
@@ -272,15 +272,15 @@ static JSValue js_webassembly_compile(JSContext *ctx, JSValueConst this_val, int
     }
 
     uint8_t *buf = js_malloc(ctx, buf_size);
-    memcpy(buf, _buf, buf_size);
     if (!buf)
     {
-        JS_ThrowTypeError(ctx, "Invalid ArrayBuffer");
+        JS_ThrowTypeError(ctx, "out of memory");
         JSValue error = JS_GetException(ctx);
         JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, (JSValueConst *)&error);
         JS_FreeValue(ctx, error);
         goto done;
     }
+    memcpy(buf, _buf, buf_size);
     LoadArgs args = {.no_resolve = true};
     wasm_module_t module = wasm_runtime_load_ex(buf, buf_size, &args, NULL, 0);
     if (!module)
@@ -310,7 +310,8 @@ static JSValue js_webassembly_instantiate(JSContext *ctx, JSValueConst this_val,
     size_t buf_size;
     uint8_t *_buf = JS_GetArrayBuffer(ctx, &buf_size, argv[0]);
     if (!_buf || buf_size == 0) {
-        JS_GetException(ctx);
+        JSValue ex = JS_GetException(ctx);
+        JS_FreeValue(ctx, ex);
         JSValue buffer_val = JS_GetPropertyStr(ctx, argv[0], "buffer");
         if (!JS_IsException(buffer_val)) {
             _buf = JS_GetArrayBuffer(ctx, &buf_size, buffer_val);
