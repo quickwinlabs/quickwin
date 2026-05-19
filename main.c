@@ -123,7 +123,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     size_t fsize;
     uint8_t *js_code;
     if (expr) {
-        js_code = (uint8_t *)strdup(expr);
+        js_code = (uint8_t *)js_malloc(ctx, strlen(expr) + 1);
+        memcpy(js_code, expr, strlen(expr) + 1);
         fsize = strlen(expr);
         js_file = "<eval>";
     } else {
@@ -158,7 +159,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         JS_FreeCString(ctx, err_str);
         JS_FreeValue(ctx, err);
         JS_FreeValue(ctx, result);
-        free(js_code);
+        js_free(ctx, js_code);
         if (cmd_argv) {
             for (int i = 0; i < cmd_argc; i++) free(cmd_argv[i]);
             free(cmd_argv);
@@ -168,7 +169,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         return 1;
     }
     JS_FreeValue(ctx, result);
-    free(js_code);
+    js_free(ctx, js_code);
     
     js_std_loop(ctx);
 
