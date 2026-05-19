@@ -285,6 +285,7 @@ static JSValue js_webassembly_compile(JSContext *ctx, JSValueConst this_val, int
     wasm_module_t module = wasm_runtime_load_ex(buf, buf_size, &args, NULL, 0);
     if (!module)
     {
+        js_free(ctx, buf);
         JS_ThrowTypeError(ctx, "WASM compilation failed");
         JSValue error = JS_GetException(ctx);
         JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, (JSValueConst *)&error);
@@ -394,6 +395,7 @@ JSValue js_webassembly_module_ctor(JSContext *ctx, JSValueConst new_target, int 
 
     if (!module)
     {
+        js_free(ctx, buf);
         return JS_ThrowTypeError(ctx, "WASM compilation failed");
     }
 
