@@ -475,6 +475,62 @@ declare module "gui" {
         ADDSTRING = 0x0180,
     }
 
+    // 静态控件样式 (Static Control Styles)
+    export const enum StaticStyle {
+        LEFT = 0x00000000,
+    }
+
+    // 编辑框样式 (Edit Control Styles)
+    export const enum EditStyle {
+        LEFT = 0x0000,
+        AUTOHSCROLL = 0x0080,
+    }
+
+    // 组合框样式 (Combo Box Styles)
+    export const enum ComboBoxStyle {
+        DROPDOWNLIST = 0x0003,
+    }
+
+    // 列表框样式 (List Box Styles)
+    export const enum ListBoxStyle {
+        NOTIFY = 0x0001,
+    }
+
+    // ShowWindow 命令 (ShowWindow nCmdShow)
+    export const enum ShowWindowCmd {
+        HIDE = 0,
+        SHOW = 5,
+    }
+
+    // 按钮消息 (Button Control Messages)
+    export const enum ButtonMsg {
+        GETCHECK = 0x00F0,
+        SETCHECK = 0x00F1,
+    }
+
+    // 按钮选中状态 (Button Check State)
+    export const enum ButtonCheckState {
+        UNCHECKED = 0,
+        CHECKED = 1,
+    }
+
+    // 编辑框消息 (Edit Control Messages)
+    export const enum EditMsg {
+        SETCUEBANNER = 0x1501,
+        SETPASSWORDCHAR = 0x00CC,
+    }
+
+    // 组合框消息 (Combo Box Messages)
+    export const enum ComboBoxMsg {
+        ADDSTRING = 0x0143,
+    }
+
+    // 进度条消息 (Progress Bar Messages)
+    export const enum ProgressMsg {
+        SETRANGE32 = 0x0406,
+        SETPOS = 0x0402,
+    }
+
     // 窗口额外数据偏移 (GetWindowLongPtr 索引)
     export const enum Gwlp {
         WNDPROC = -4,
