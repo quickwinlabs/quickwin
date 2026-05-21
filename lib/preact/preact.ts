@@ -19,13 +19,7 @@ export type FunctionComponent<P = {}> = {
     displayName?: string
 }
 
-export type ComponentClass<P = {}> = {
-    new (props: P, context?: any): Component<P, any>
-    defaultProps?: Partial<P>
-    displayName?: string
-}
-
-export type ComponentType<P = {}> = FunctionComponent<P> | ComponentClass<P>
+export type ComponentType<P = {}> = FunctionComponent<P>
 
 export interface VNode<P = any> {
     type: string | ComponentType<P>
@@ -47,22 +41,11 @@ export interface VNode<P = any> {
 export interface Component<P = {}, S = {}> {
     props: P
     context: Record<string, unknown>
-    state: Readonly<S>
     _vnode: VNode | null
-    _nextState: S | null
-    _bits: number
     _renderCallbacks: Array<() => void>
-    _stateCallbacks: Array<() => void>
     _parentDom: unknown
-    _globalContext: Record<string, unknown>
     __hooks: { _list: any[]; _pendingEffects: any[] } | null
-    _hasScuFromHooks: boolean
-    shouldComponentUpdate?(nextProps: Readonly<P>, nextState: Readonly<S>, nextContext: any): boolean
-    componentWillUpdate?(nextProps: Readonly<P>, nextState: Readonly<S>, nextContext: any): void
-    componentDidCatch?(error: unknown, info: { componentStack: string }): void
-    setState(update: Partial<S> | ((prevState: S, props: P) => Partial<S> | null), callback?: () => void): void
-    forceUpdate(callback?: () => void): void
-    render(props: P, state: S, context: any): ComponentChild
+    _forceUpdate(): void
 }
 
 export interface Options {

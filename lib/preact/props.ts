@@ -15,19 +15,19 @@ const ShowWindow_proc = _user32 ? win.GetProcAddress(_user32, 'ShowWindow') : 0
 const SendMessageW_proc = _user32 ? win.GetProcAddress(_user32, 'SendMessageW') : 0
 const DestroyWindow_proc = _user32 ? win.GetProcAddress(_user32, 'DestroyWindow') : 0
 
-const SW_HIDE = 0
-const SW_SHOW = 5
+const SW_HIDE = gui.ShowWindowCmd.HIDE
+const SW_SHOW = gui.ShowWindowCmd.SHOW
 
-const BM_GETCHECK = 0x00F0
-const BM_SETCHECK = 0x00F1
-const BST_CHECKED = 1
-const BST_UNCHECKED = 0
-const EM_SETCUEBANNER = 0x1501
-const EM_SETPASSWORDCHAR = 0x00CC
-const CB_ADDSTRING = 0x0143
-const LB_ADDSTRING = 0x0180
-const PBM_SETRANGE32 = 0x0406
-const PBM_SETPOS = 0x0402
+const BM_GETCHECK = gui.ButtonMsg.GETCHECK
+const BM_SETCHECK = gui.ButtonMsg.SETCHECK
+const BST_CHECKED = gui.ButtonCheckState.CHECKED
+const BST_UNCHECKED = gui.ButtonCheckState.UNCHECKED
+const EM_SETCUEBANNER = gui.EditMsg.SETCUEBANNER
+const EM_SETPASSWORDCHAR = gui.EditMsg.SETPASSWORDCHAR
+const CB_ADDSTRING = gui.ComboBoxMsg.ADDSTRING
+const LB_ADDSTRING = gui.LbMsg.ADDSTRING
+const PBM_SETRANGE32 = gui.ProgressMsg.SETRANGE32
+const PBM_SETPOS = gui.ProgressMsg.SETPOS
 
 export interface QWEvent {
     type: string
@@ -139,10 +139,20 @@ export function applyProps(hwnd: number, props: WProps): void {
     }
 }
 
+const wideCache = new Map<string, ArrayBuffer>()
+const MAX_WIDE_CACHE = 50
+
 function strToWide(str: string): ArrayBuffer {
+    const cached = wideCache.get(str)
+    if (cached) return cached
     const buf = new ArrayBuffer((str.length + 1) * 2)
     const dv = new DataView(buf)
     for (let i = 0; i < str.length; i++) dv.setUint16(i * 2, str.charCodeAt(i), true)
+    if (wideCache.size >= MAX_WIDE_CACHE) {
+        const key = wideCache.keys().next().value
+        if (key !== undefined) wideCache.delete(key)
+    }
+    wideCache.set(str, buf)
     return buf
 }
 

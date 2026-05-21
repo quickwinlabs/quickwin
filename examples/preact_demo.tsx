@@ -1,9 +1,32 @@
 import '../lib/polyfill.js'
-import { options as preactOptions } from '../lib/preact/preact.js'
+import * as gui from 'gui'
 import { useState } from '../lib/preact/hooks.js'
-import { render, setPreactOptions } from '../lib/preact/render.js'
+import { render, notifyResize } from '../lib/preact/render.js'
+import { dispatchEvent, commandCodeToEventType } from '../lib/preact/props.js'
 
-setPreactOptions(preactOptions)
+gui.RegisterClass('DemoApp', (hwnd, msg, wParam, lParam) => {
+    switch (msg) {
+        case gui.WmMsg.DESTROY:
+            gui.PostQuitMessage(0)
+            return 0
+        case gui.WmMsg.COMMAND: {
+            const ctrlHwnd = lParam
+            if (ctrlHwnd) {
+                const code = (wParam >> 16) & 0xFFFF
+                dispatchEvent(ctrlHwnd, commandCodeToEventType(code, ctrlHwnd))
+            }
+            return 0
+        }
+        case gui.WmMsg.SIZE:
+            notifyResize(hwnd)
+            return 0
+    }
+    return gui.DefWindowProc(hwnd, msg, wParam, lParam)
+})
+
+const mainWnd = gui.CreateWindow('DemoApp', 'Preact Demo',
+    gui.WindowStyle.OVERLAPPEDWINDOW,
+    100, 100, 600, 400, null, null)
 
 function App() {
     const [count, setCount] = useState(0)
@@ -20,4 +43,5 @@ function App() {
     )
 }
 
-render(<App />)
+gui.ShowWindow(mainWnd)
+render(<App />, mainWnd)

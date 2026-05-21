@@ -2,16 +2,30 @@
 // Based on https://github.com/preactjs/preact (hooks/src/index.js)
 // DOM dependencies removed - for custom renderers only
 
-import { options, type VNode } from './preact.js'
+import { options, type VNode, type Component } from './preact.js'
 
-const COMPONENT_FORCE = 1 << 2
+const enum HookType {
+    None = 0,
+    useState = 1,
+    useReducer = 2,
+    useEffect = 3,
+    useLayoutEffect = 4,
+    useRef = 5,
+    useImperativeHandle = 6,
+    useMemo = 7,
+    useCallback = 8,
+    useContext = 9,
+    useErrorBoundary = 10,
+    useId = 11,
+}
+
 const ObjectIs = Object.is
 
 let currentIndex: number
-let currentComponent: any
-let previousComponent: any
-let currentHook = 0
-let afterPaintEffects: any[] = []
+let currentComponent: Component | null = null
+let previousComponent: Component | null = null
+let currentHook = HookType.None
+let afterPaintEffects: Component[] = []
 
 let oldBeforeDiff = options._diff
 let oldBeforeRender = options._render
@@ -39,23 +53,19 @@ options._render = (vnode: VNode) => {
     if (oldBeforeRender) oldBeforeRender(vnode)
     currentComponent = vnode._component
     currentIndex = 0
-    const hooks = currentComponent.__hooks
+    const hooks = currentComponent!.__hooks
     if (hooks) {
-        if (previousComponent === currentComponent) {
-            hooks._pendingEffects = []
-            currentComponent._renderCallbacks = []
-            hooks._list.some((hookItem: any) => {
-                if (hookItem._nextValue) {
-                    hookItem._value = hookItem._nextValue
-                }
-                hookItem._pendingArgs = hookItem._nextValue = undefined
-            })
-        } else {
-            hooks._pendingEffects.some(invokeCleanup)
-            hooks._pendingEffects.some(invokeEffect)
-            hooks._pendingEffects = []
-            currentIndex = 0
-        }
+        hooks._list.some((hookItem: any) => {
+            if (hookItem._nextValue) {
+                hookItem._value = hookItem._nextValue
+                hookItem._nextValue = undefined
+            }
+            hookItem._pendingArgs = undefined
+        })
+        hooks._pendingEffects.some(invokeCleanup)
+        hooks._pendingEffects.some(invokeEffect)
+        hooks._pendingEffects = []
+        currentIndex = 0
     }
     previousComponent = currentComponent
 }
@@ -87,7 +97,7 @@ options._commit = (vnode: VNode, commitQueue: any[]) => {
                 if (c._renderCallbacks) c._renderCallbacks = []
             })
             commitQueue = []
-            if (options._catchError) options._catchError(e, component._vnode)
+            if (options._catchError) options._catchError(e, component._vnode!)
         }
     })
     if (oldCommit) oldCommit(vnode, commitQueue)
@@ -112,12 +122,13 @@ options.unmount = (vnode: VNode) => {
 
 function getHookState(index: number, type: number): any {
     if (options._hook) {
-        options._hook(currentComponent, index, currentHook || type)
+        options._hook(currentComponent!, index, currentHook || type)
     }
-    currentHook = 0
+    currentHook = HookType.None
+    const comp = currentComponent!
     const hooks =
-        currentComponent.__hooks ||
-        (currentComponent.__hooks = {
+        comp.__hooks ||
+        (comp.__hooks = {
             _list: [],
             _pendingEffects: []
         })
@@ -128,7 +139,7 @@ function getHookState(index: number, type: number): any {
 }
 
 export function useState<S>(initialState?: S | (() => S)): [S, (state: S | ((prevState: S) => S)) => void] {
-    currentHook = 1
+    currentHook = HookType.useState
     return useReducer(invokeOrReturn, initialState as S)
 }
 
@@ -137,7 +148,7 @@ export function useReducer<S, A>(
     initialState: S | (() => S),
     init?: (initialState: any) => S
 ): [S, (action: A) => void] {
-    const hookState = getHookState(currentIndex++, 2)
+    const hookState = getHookState(currentIndex++, HookType.useReducer)
     hookState._reducer = reducer
     if (!hookState._component) {
         hookState._value = [
@@ -149,69 +160,35 @@ export function useReducer<S, A>(
                 const nextValue = hookState._reducer(currentValue, action)
                 if (!ObjectIs(currentValue, nextValue)) {
                     hookState._nextValue = [nextValue, hookState._value[1]]
-                    hookState._component.setState({})
+                    hookState._component._forceUpdate()
                 }
             }
         ]
         hookState._component = currentComponent
-        if (!currentComponent._hasScuFromHooks) {
-            currentComponent._hasScuFromHooks = true
-            let prevScu = currentComponent.shouldComponentUpdate
-            const prevCWU = currentComponent.componentWillUpdate
-            currentComponent.componentWillUpdate = function (p: any, s: any, c: any) {
-                if (this._bits & COMPONENT_FORCE) {
-                    let tmp = prevScu
-                    prevScu = undefined
-                    updateHookState.call(this, p, s, c)
-                    prevScu = tmp
-                }
-                if (prevCWU) prevCWU.call(this, p, s, c)
-            }
-            function updateHookState(this: any, p: any, s: any, c: any): boolean {
-                if (!hookState._component.__hooks) return true
-                const hooksList = hookState._component.__hooks._list
-                let shouldUpdate =
-                    hookState._component.props !== p ||
-                    hooksList.every((x: any) => !x._nextValue)
-                hooksList.some((hookItem: any) => {
-                    if (hookItem._nextValue) {
-                        const currentValue = hookItem._value[0]
-                        hookItem._value = hookItem._nextValue
-                        hookItem._nextValue = undefined
-                        if (!ObjectIs(currentValue, hookItem._value[0]))
-                            shouldUpdate = true
-                    }
-                })
-                return prevScu
-                    ? prevScu.call(this, p, s, c) || shouldUpdate
-                    : shouldUpdate
-            }
-            currentComponent.shouldComponentUpdate = updateHookState
-        }
     }
     return hookState._value
 }
 
 export function useEffect(callback: () => void | (() => void), args?: any[]): void {
-    const state = getHookState(currentIndex++, 3)
+    const state = getHookState(currentIndex++, HookType.useEffect)
     if (!options._skipEffects && argsChanged(state._args, args)) {
         state._value = callback
         state._pendingArgs = args
-        currentComponent.__hooks._pendingEffects.push(state)
+        currentComponent!.__hooks!._pendingEffects.push(state)
     }
 }
 
 export function useLayoutEffect(callback: () => void | (() => void), args?: any[]): void {
-    const state = getHookState(currentIndex++, 4)
+    const state = getHookState(currentIndex++, HookType.useLayoutEffect)
     if (!options._skipEffects && argsChanged(state._args, args)) {
         state._value = callback
         state._pendingArgs = args
-        currentComponent._renderCallbacks.push(state)
+        currentComponent!._renderCallbacks.push(state)
     }
 }
 
 export function useRef<T>(initialValue: T): { current: T } {
-    currentHook = 5
+    currentHook = HookType.useRef
     return useMemo(() => ({ current: initialValue }), [])
 }
 
@@ -220,7 +197,7 @@ export function useImperativeHandle<T>(
     createHandle: () => T,
     args?: any[]
 ): void {
-    currentHook = 6
+    currentHook = HookType.useImperativeHandle
     useLayoutEffect(
         () => {
             if (typeof ref === 'function') {
@@ -239,7 +216,7 @@ export function useImperativeHandle<T>(
 }
 
 export function useMemo<T>(factory: () => T, args: any[]): T {
-    const state = getHookState(currentIndex++, 7)
+    const state = getHookState(currentIndex++, HookType.useMemo)
     if (argsChanged(state._args, args)) {
         state._value = factory()
         state._args = args
@@ -249,18 +226,18 @@ export function useMemo<T>(factory: () => T, args: any[]): T {
 }
 
 export function useCallback<T extends (...args: any[]) => any>(callback: T, args: any[]): T {
-    currentHook = 8
+    currentHook = HookType.useCallback
     return useMemo(() => callback, args)
 }
 
 export function useContext<T>(context: any): T {
-    const provider = currentComponent.context[context._id]
-    const state = getHookState(currentIndex++, 9)
+    const provider: any = currentComponent!.context[context._id]
+    const state = getHookState(currentIndex++, HookType.useContext)
     state._context = context
     if (!provider) return context._defaultValue
     if (state._value == null) {
         state._value = true
-        provider.sub(currentComponent)
+        provider.sub(currentComponent!)
     }
     return provider.props.value
 }
@@ -272,12 +249,12 @@ export function useDebugValue<T>(value: T, formatter?: (value: T) => any): void 
 }
 
 export function useErrorBoundary(cb?: (error: any) => void): [any, () => void] {
-    const state = getHookState(currentIndex++, 10)
+    const state = getHookState(currentIndex++, HookType.useErrorBoundary)
     const errState = useState<any>()
     state._value = cb
-    if (!(currentComponent as any).componentDidCatch) {
-        (currentComponent as any).componentDidCatch = (err: any, errorInfo: any) => {
-            if (state._value) state._value(err, errorInfo)
+    if (!(currentComponent! as any)._errorHandler) {
+        (currentComponent! as any)._errorHandler = (err: any) => {
+            if (state._value) state._value(err)
             errState[1](err)
         }
     }
@@ -285,9 +262,9 @@ export function useErrorBoundary(cb?: (error: any) => void): [any, () => void] {
 }
 
 export function useId(): string {
-    const state = getHookState(currentIndex++, 11)
+    const state = getHookState(currentIndex++, HookType.useId)
     if (!state._value) {
-        let root: any = currentComponent._vnode
+        let root: any = currentComponent!._vnode
         while (root !== null && !root._mask && root._parent !== null) {
             root = root._parent
         }
@@ -298,7 +275,7 @@ export function useId(): string {
 }
 
 function flushAfterPaintEffects() {
-    let component
+    let component: Component | undefined
     while ((component = afterPaintEffects.shift())) {
         const hooks = component.__hooks
         if (!component._parentDom || !hooks) continue
@@ -308,7 +285,7 @@ function flushAfterPaintEffects() {
             hooks._pendingEffects = []
         } catch (e) {
             hooks._pendingEffects = []
-            if (options._catchError) options._catchError(e, component._vnode)
+            if (options._catchError) options._catchError(e, component._vnode!)
         }
     }
 }
