@@ -1,7 +1,10 @@
 import * as ffi from 'ffi'
 import * as win from 'win'
+import * as gui from 'gui'
 import { HWND_PROP, STYLE_PROP, CHILDREN_HWNDS_PROP, RENDERED_VNODE_PROP, isVNode, getChildren, type VNode } from './render.js'
 import { moveWindow } from './props.js'
+
+const scaleFactor = gui.GetScaleFactor()
 
 const FFI_PTR = ffi.FFI_TYPE_POINTER
 const FFI_S32 = ffi.FFI_TYPE_SINT32
@@ -41,7 +44,7 @@ function getClientSize(hwnd: number): { w: number; h: number } {
 
 function resolveSize(val: number | string | undefined, available: number): number {
     if (val === undefined) return -1
-    if (typeof val === 'number') return val
+    if (typeof val === 'number') return Math.floor(val * scaleFactor)
     if (typeof val === 'string' && val.endsWith('%')) {
         const pct = parseFloat(val)
         if (!isNaN(pct)) return Math.floor(available * pct / 100)
@@ -50,13 +53,15 @@ function resolveSize(val: number | string | undefined, available: number): numbe
 }
 
 const DEFAULT_SIZES: Record<string, number> = {
-    button: 24, edit: 24, static: 20, checkbox: 24, groupbox: 48,
-    combobox: 200, listbox: 100, progressbar: 24,
+    button: Math.floor(24 * scaleFactor), edit: Math.floor(24 * scaleFactor),
+    static: Math.floor(20 * scaleFactor), checkbox: Math.floor(24 * scaleFactor),
+    groupbox: Math.floor(48 * scaleFactor), combobox: Math.floor(200 * scaleFactor),
+    listbox: Math.floor(100 * scaleFactor), progressbar: Math.floor(24 * scaleFactor),
 }
 
 function getDefaultChildSize(vnode: VNode): number {
     const ctrlType = typeof vnode.props === 'object' ? vnode.props?.type : undefined
-    return DEFAULT_SIZES[ctrlType as string] ?? 30
+    return DEFAULT_SIZES[ctrlType as string] ?? Math.floor(30 * scaleFactor)
 }
 
 function getLayoutChildren(vnode: VNode): { hwnd: number; style: LayoutStyle; vnode: VNode }[] {
@@ -78,9 +83,9 @@ function layoutNode(hwnd: number, vnode: VNode, availableRect: LayoutRect): void
 
     const style = (vnode[STYLE_PROP] as LayoutStyle) || {}
     const dir = style.flexDirection || 'column'
-    const gap = style.gap || 0
-    const padding = style.padding || 0
-    const margin = style.margin || 0
+    const gap = Math.floor((style.gap || 0) * scaleFactor)
+    const padding = Math.floor((style.padding || 0) * scaleFactor)
+    const margin = Math.floor((style.margin || 0) * scaleFactor)
 
     const fixedW = resolveSize(style.width, availableRect.w)
     const fixedH = resolveSize(style.height, availableRect.h)
@@ -135,7 +140,7 @@ function layoutNode(hwnd: number, vnode: VNode, availableRect: LayoutRect): void
             : resolveSize(child.style.width, crossSize)
         const actualCross = childCross >= 0 ? childCross : crossSize
 
-        const childMargin = child.style.margin || 0
+        const childMargin = Math.floor((child.style.margin || 0) * scaleFactor)
         const relX = isRow ? padding + offset : padding + childMargin
         const relY = isRow ? padding + childMargin : padding + offset
         const cw = isRow ? childMain : actualCross - childMargin * 2

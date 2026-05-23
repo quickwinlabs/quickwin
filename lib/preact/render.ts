@@ -5,6 +5,9 @@ import { applyProps, destroyWindow } from './props.js'
 import { layout as doLayout } from './layout.js'
 import { options, type VNode as PreactVNode, type ComponentChild } from './preact.js'
 
+const scaleFactor = gui.GetScaleFactor()
+const dpiFont = gui.CreateSystemDpiFont()
+
 const HWND_PROP = '__qw_hwnd'
 const STYLE_PROP = '__qw_style'
 const CHILDREN_HWNDS_PROP = '__qw_children'
@@ -53,6 +56,7 @@ function createControl(type: string, parentHwnd: gui.HWND, vnode: QWVNode): gui.
     const text = (vnode.props?.text || vnode.props?.value || '') as string
     const hwnd = gui.CreateWindow(winClass, text, style, 0, 0, 0, 0, parentHwnd, null)
     if (!hwnd) return 0 as gui.HWND
+    gui.SendMessage(hwnd, gui.WmMsg.SETFONT, dpiFont as unknown as number, 1)
     applyProps(hwnd, vnode.props || {}, vnode)
     return hwnd
 }
@@ -73,7 +77,9 @@ function renderToWin32(vnode: unknown, parentHwnd: gui.HWND, context: any): gui.
     if (vnode == null || vnode === false || vnode === true) return 0 as gui.HWND
 
     if (typeof vnode === 'string' || typeof vnode === 'number') {
-        return gui.CreateWindow('STATIC', String(vnode), gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE | gui.StaticStyle.LEFT, 0, 0, 0, 0, parentHwnd, null)
+        const hwnd = gui.CreateWindow('STATIC', String(vnode), gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE | gui.StaticStyle.LEFT, 0, 0, 0, 0, parentHwnd, null)
+        if (hwnd) gui.SendMessage(hwnd, gui.WmMsg.SETFONT, dpiFont as unknown as number, 1)
+        return hwnd
     }
 
     if (Array.isArray(vnode)) {
@@ -94,7 +100,10 @@ function renderToWin32(vnode: unknown, parentHwnd: gui.HWND, context: any): gui.
             hwnd = createControl(ctrlType, parentHwnd, vnode)
         } else {
             hwnd = gui.CreateWindow('STATIC', '', gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE, 0, 0, 0, 0, parentHwnd, null)
-            if (hwnd) applyProps(hwnd, vnode.props || {}, vnode)
+            if (hwnd) {
+                gui.SendMessage(hwnd, gui.WmMsg.SETFONT, dpiFont as unknown as number, 1)
+                applyProps(hwnd, vnode.props || {}, vnode)
+            }
         }
         if (!hwnd) return 0 as gui.HWND
 
@@ -341,3 +350,4 @@ export function render(vnode: any, containerHwnd: gui.HWND): gui.HWND {
 export { HWND_PROP, STYLE_PROP, CHILDREN_HWNDS_PROP, RENDERED_VNODE_PROP, isVNode, getChildren, type QWVNode, type QWComponent }
 // re-export as VNode for layout.ts compat
 export type VNode = QWVNode
+export { scaleFactor }

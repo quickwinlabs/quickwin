@@ -1,7 +1,18 @@
 import '../lib/polyfill.js'
 import * as gui from 'gui'
+import * as ffi from 'ffi'
+import * as win from 'win'
 import { useState } from '../lib/preact/hooks.js'
-import { render, notifyResize } from '../lib/preact/render.js'
+import { render, notifyResize, scaleFactor } from '../lib/preact/render.js'
+
+const _user32 = win.LoadLibrary('user32.dll')
+const GetSystemMetrics = _user32 ? win.GetProcAddress(_user32, 'GetSystemMetrics') : 0
+const winW = 600 * scaleFactor
+const winH = 400 * scaleFactor
+const cxScreen = GetSystemMetrics ? (ffi.ffiCall(GetSystemMetrics, [ffi.FFI_TYPE_SINT32], [gui.SysMetrics.CXSCREEN], ffi.FFI_TYPE_SINT32) as number) : 1920
+const cyScreen = GetSystemMetrics ? (ffi.ffiCall(GetSystemMetrics, [ffi.FFI_TYPE_SINT32], [gui.SysMetrics.CYSCREEN], ffi.FFI_TYPE_SINT32) as number) : 1080
+const winX = Math.max(0, (cxScreen - winW) / 2)
+const winY = Math.max(0, (cyScreen - winH) / 2)
 
 gui.RegisterClass('DemoApp', (hwnd, msg, wParam, lParam) => {
     switch (msg) {
@@ -17,7 +28,7 @@ gui.RegisterClass('DemoApp', (hwnd, msg, wParam, lParam) => {
 
 const mainWnd = gui.CreateWindow('DemoApp', 'Preact Demo',
     gui.WindowStyle.OVERLAPPEDWINDOW,
-    100, 100, 600, 400, null, null)
+    winX, winY, winW, winH, null, null)
 
 function App() {
     const [count, setCount] = useState(0)
