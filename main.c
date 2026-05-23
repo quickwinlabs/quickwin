@@ -178,6 +178,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     js_std_free_handlers(rt);
     js_sock_free_handles(rt);
     js_async_task_destroy(rt);
+    js_async_task_cleanup();
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
     if (cmd_argv) {
