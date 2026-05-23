@@ -84,3 +84,61 @@ jobs:
         with:
           name: quickwin-${{ matrix.msystem }}-${{ github.sha }}
           path: _build/win-${{ matrix.msystem }}.exe
+
+  publish:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            make
+            mingw-w64-x86_64-wabt
+            mingw-w64-x86_64-nodejs
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: quickwin-*
+          merge-multiple: true
+
+      - name: Cache npm dependencies
+        id: cache-npm
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: npm-${{ hashFiles('package-lock.json') }}
+
+      - name: Install npm dependencies
+        if: steps.cache-npm.outputs.cache-hit != 'true'
+        run: npm install
+
+      - name: Package npm
+        run: make npm-pkg
+
+      - name: Place exe in build dir
+        run: |
+          mv win-MINGW64.exe dist/quickwin/win-mingw64.exe
+
+      - name: Set version from date (UTC+8)
+        run: npm version $(TZ=Asia/Shanghai date +%Y.%-m.%-d-%H%M%S) --no-git-tag-version
+        working-directory: dist/quickwin
+
+      - uses: actions/setup-node@v4
+        with:
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish to npm
+        run: npm publish --tag latest
+        working-directory: dist/quickwin
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

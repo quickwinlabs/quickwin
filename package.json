@@ -1,4 +1,27 @@
 {
+  "name": "quickwin",
+  "version": "0.0.0",
+  "description": "QuickJS Win32 runtime — GUI, networking, WASM, FFI, and more",
+  "bin": {
+    "quickwin": "win-mingw64.exe"
+  },
+  "files": [
+    "win-mingw64.exe",
+    "lib/",
+    "test/",
+    "examples/",
+    "vendor/",
+    "quickwin.d.ts",
+    "tsconfig.json",
+    "README.md"
+  ],
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anomalyco/quickwin.git"
+  },
   "devDependencies": {
     "@typescript/native-preview": "^7.0.0-dev.20260426.1"
   }

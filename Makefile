@@ -59,6 +59,7 @@ LDFLAGS = -L$(MSYS2_PREFIX)/lib -static
 LIBS = -lbrotlidec -lbrotlicommon -lwolfssl -lws2_32 -lbcrypt -lcrypt32 -lm -luser32 -lgdi32 -lcomctl32 -lffi -lntdll -lshell32
 
 TARGET = $(BUILD_DIR)/win.exe
+NPM_PKG_DIR = dist/quickwin
 QUICKJS_LIB = $(BUILD_DIR)/libquickjs.a
 
 SRCS = main.c \
@@ -76,7 +77,7 @@ SRCS = main.c \
 OBJS = $(SRCS:%.c=$(BUILD_DIR)/%.o) $(BUILD_DIR)/app.o
 DEPS = $(SRCS:%.c=$(BUILD_DIR)/%.d)
 
-.PHONY: all clean debug nodebug release minimal test wamr wasm js info help
+.PHONY: all clean debug nodebug release minimal test wamr wasm js npm-pkg info help
 
 all: nodebug
 
@@ -205,6 +206,32 @@ js:
 test: nodebug js wasm
 	$(TARGET) $(BUILD_DIR)/test/run.js $(TEST)
 
+npm-pkg: js wasm
+	rm -rf $(NPM_PKG_DIR)
+	mkdir -p $(NPM_PKG_DIR)/lib/preact
+	mkdir -p $(NPM_PKG_DIR)/test
+	mkdir -p $(NPM_PKG_DIR)/examples
+	mkdir -p $(NPM_PKG_DIR)/vendor/mupdf-wasm
+	# compiled JS
+	cp $(BUILD_DIR)/lib/*.js $(NPM_PKG_DIR)/lib/
+	cp $(BUILD_DIR)/lib/preact/*.js $(NPM_PKG_DIR)/lib/preact/
+	cp $(BUILD_DIR)/test/*.js $(NPM_PKG_DIR)/test/
+	cp $(BUILD_DIR)/examples/*.js $(NPM_PKG_DIR)/examples/
+	# TS sources
+	cp lib/*.ts $(NPM_PKG_DIR)/lib/
+	cp lib/preact/*.ts $(NPM_PKG_DIR)/lib/preact/
+	cp lib/preact/*.d.ts $(NPM_PKG_DIR)/lib/preact/
+	cp test/*.ts $(NPM_PKG_DIR)/test/
+	cp examples/*.ts $(NPM_PKG_DIR)/examples/
+	cp examples/*.tsx $(NPM_PKG_DIR)/examples/
+	# WASM fixtures
+	cp $(BUILD_DIR)/test/*.wasm $(NPM_PKG_DIR)/test/
+	# vendor
+	cp -r $(BUILD_DIR)/vendor/mupdf-wasm/* $(NPM_PKG_DIR)/vendor/mupdf-wasm/
+	# root files
+	cp quickwin.d.ts tsconfig.json package.json README.md $(NPM_PKG_DIR)/
+	@echo "npm package created at $(NPM_PKG_DIR)"
+
 help:
 	@echo "Available targets:"
 	@echo "  all       - Build nodebug version (default)"
@@ -220,4 +247,5 @@ help:
 	@echo "  test      - Filter by name: make test TEST=wasm"
 	@echo "  test      - Exclude by tag: make test TEST=-net"
 	@echo "  wasm      - Convert WAT files to WASM (requires wabt)"
+	@echo "  npm-pkg   - Package distributable into $(NPM_PKG_DIR)"
 	@echo "  help      - Show this help message"
