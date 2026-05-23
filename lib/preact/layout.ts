@@ -51,7 +51,7 @@ function resolveSize(val: number | string | undefined, available: number): numbe
 
 const DEFAULT_SIZES: Record<string, number> = {
     button: 24, edit: 24, static: 20, checkbox: 24, groupbox: 48,
-    combobox: 200, listbox: 100, progressbar: 24, div: 30,
+    combobox: 200, listbox: 100, progressbar: 24,
 }
 
 function getDefaultChildSize(vnode: VNode): number {

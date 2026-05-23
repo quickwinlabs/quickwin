@@ -29,61 +29,6 @@ const LB_ADDSTRING = gui.LbMsg.ADDSTRING
 const PBM_SETRANGE32 = gui.ProgressMsg.SETRANGE32
 const PBM_SETPOS = gui.ProgressMsg.SETPOS
 
-export interface QWEvent {
-    type: string
-    target: number
-    value?: string
-    checked?: boolean
-    key?: string
-    defaultPrevented: boolean
-    propagationStopped: boolean
-    preventDefault(): void
-    stopPropagation(): void
-}
-
-const eventMap = new Map<number, (e: QWEvent) => void>()
-
-export function registerEventHandler(hwnd: number, handler: ((e: QWEvent) => void) | undefined): void {
-    if (handler) {
-        eventMap.set(hwnd, handler)
-    } else {
-        eventMap.delete(hwnd)
-    }
-}
-
-export function unregisterEventHandler(hwnd: number): void {
-    eventMap.delete(hwnd)
-}
-
-export function dispatchEvent(hwnd: number, eventType: string): void {
-    const handler = eventMap.get(hwnd)
-    if (!handler) return
-    const e: QWEvent = {
-        type: eventType,
-        target: hwnd,
-        value: gui.GetWindowText(hwnd as gui.HWND),
-        checked: eventType === 'click' ? isButtonChecked(hwnd) : false,
-        defaultPrevented: false,
-        propagationStopped: false,
-        preventDefault() { this.defaultPrevented = true },
-        stopPropagation() { this.propagationStopped = true },
-    }
-    handler(e)
-}
-
-export function commandCodeToEventType(code: number, _ctrlHwnd: number): string {
-    if (code === 0) return 'click'
-    if (code === 0x0300) return 'input'
-    if (code === 1) return 'change'
-    return 'command'
-}
-
-function isButtonChecked(hwnd: number): boolean {
-    if (!SendMessageW_proc) return false
-    const ret = ffi.ffiCall(SendMessageW_proc, [FFI_U64, FFI_U64, FFI_U64, FFI_U64] as const, [hwnd, BM_GETCHECK, 0, 0], FFI_U64) as number
-    return ret === BST_CHECKED
-}
-
 export interface WProps {
     type?: string
     text?: string
@@ -91,7 +36,7 @@ export interface WProps {
     disabled?: boolean
     visible?: boolean
     style?: Record<string, any>
-    onEvent?: (e: QWEvent) => void
+    onEvent?: (e: Record<string, any>) => void
     placeholder?: string
     password?: boolean
     checked?: boolean
@@ -100,7 +45,7 @@ export interface WProps {
     children?: any
 }
 
-export function applyProps(hwnd: number, props: WProps): void {
+export function applyProps(hwnd: number, props: WProps, vnode?: Record<string, any>): void {
     if (props.text !== undefined) {
         gui.SetWindowText(hwnd as gui.HWND, props.text)
     }
@@ -113,8 +58,15 @@ export function applyProps(hwnd: number, props: WProps): void {
     if (props.visible !== undefined && ShowWindow_proc) {
         ffi.ffiCall(ShowWindow_proc, [FFI_U64, FFI_S32] as const, [hwnd, props.visible ? SW_SHOW : SW_HIDE], FFI_U32)
     }
-    if (props.onEvent !== undefined) {
-        registerEventHandler(hwnd, props.onEvent)
+    if (props.onEvent !== undefined && vnode) {
+        const h = hwnd as unknown as gui.HWND
+        const oldProc = vnode._oldProc || gui.GetWindowLongPtr(h, gui.Gwlp.WNDPROC)
+        vnode._oldProc = oldProc
+        gui.SetWindowProc(h, (hw, msg, wParam, lParam) => {
+            const cb = vnode!.props?.onEvent
+            if (cb) cb({ hwnd: hw as unknown as number, msg, wParam, lParam })
+            return gui.CallWindowProc(oldProc as unknown as gui.WNDPROC, hw, msg, wParam, lParam)
+        })
     }
     if (props.placeholder !== undefined && SendMessageW_proc) {
         ffi.ffiCall(SendMessageW_proc, [FFI_U64, FFI_S32, FFI_U32, FFI_PTR] as const, [hwnd, EM_SETCUEBANNER, 0, strToWide(props.placeholder)], FFI_U64)

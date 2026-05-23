@@ -1,7 +1,7 @@
 import '../polyfill.js'
 import * as gui from 'gui'
 import * as os from 'os'
-import { applyProps, unregisterEventHandler, destroyWindow } from './props.js'
+import { applyProps, destroyWindow } from './props.js'
 import { layout as doLayout } from './layout.js'
 import { options, type VNode as PreactVNode, type ComponentChild } from './preact.js'
 
@@ -46,14 +46,14 @@ const WIN32_STYLE: Record<string, number> = {
     progressbar: 0,
 }
 
-function createControl(type: string, parentHwnd: gui.HWND, props: Record<string, unknown>): gui.HWND {
+function createControl(type: string, parentHwnd: gui.HWND, vnode: QWVNode): gui.HWND {
     const base = gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE
     const winClass = WIN32_CLASS[type] || 'STATIC'
     const style = base | (WIN32_STYLE[type] ?? gui.StaticStyle.LEFT)
-    const text = (props.text || props.value || '') as string
+    const text = (vnode.props?.text || vnode.props?.value || '') as string
     const hwnd = gui.CreateWindow(winClass, text, style, 0, 0, 0, 0, parentHwnd, null)
     if (!hwnd) return 0 as gui.HWND
-    applyProps(hwnd, props)
+    applyProps(hwnd, vnode.props || {}, vnode)
     return hwnd
 }
 
@@ -89,19 +89,14 @@ function renderToWin32(vnode: unknown, parentHwnd: gui.HWND, context: any): gui.
 
     if (vnode.type === 'w') {
         const ctrlType = (vnode.props?.type as string) || ''
-        if (!ctrlType) return 0 as gui.HWND
-        const hwnd = createControl(ctrlType, parentHwnd, vnode.props || {})
-        if (!hwnd) return 0 as gui.HWND
-
-        if (ctrlType === 'div' && rootHwnd) {
-            gui.SetWindowProc(hwnd, (h, msg, wParam, lParam) => {
-                if (msg === gui.WmMsg.COMMAND && rootHwnd) {
-                    gui.SendMessage(rootHwnd, msg, wParam, lParam)
-                    return 0
-                }
-                return gui.DefWindowProc(h, msg, wParam, lParam)
-            })
+        let hwnd: gui.HWND
+        if (ctrlType) {
+            hwnd = createControl(ctrlType, parentHwnd, vnode)
+        } else {
+            hwnd = gui.CreateWindow('STATIC', '', gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE, 0, 0, 0, 0, parentHwnd, null)
+            if (hwnd) applyProps(hwnd, vnode.props || {}, vnode)
         }
+        if (!hwnd) return 0 as gui.HWND
 
         vnode[HWND_PROP] = hwnd
         vnode[STYLE_PROP] = vnode.props?.style ?? {}
@@ -168,7 +163,6 @@ function newComponent(vnode: QWVNode, parentHwnd: gui.HWND, context: any): QWCom
 
 function destroyHwnd(hwnd: number): void {
     if (!hwnd) return
-    unregisterEventHandler(hwnd)
     gui.RemoveWindow(hwnd as gui.HWND)
     destroyWindow(hwnd)
 }
@@ -253,7 +247,8 @@ function reconcile(
             if (hwnd) {
                 n[HWND_PROP] = hwnd
                 n[STYLE_PROP] = n.props?.style ?? {}
-                applyProps(hwnd, n.props || {})
+                n._oldProc = o._oldProc
+                applyProps(hwnd, n.props || {}, n)
 
                 const oldChildren = getChildren(o)
                 const newChildren = getChildren(n)
