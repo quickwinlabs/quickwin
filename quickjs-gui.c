@@ -8,35 +8,37 @@
 
 JSContext *g_ctx = NULL;
 
-#define MAX_WINDOWS 64
 typedef struct {
     HWND hWnd;
     JSValue proc;
 } WindowEntry;
-static WindowEntry g_windows[MAX_WINDOWS];
+static WindowEntry *g_windows = NULL;
 static int g_windowCount = 0;
+static int g_windowCapacity = 0;
 
-#define MAX_CLASSES 128
 typedef struct {
     char className[32];
     JSValue proc;
 } ClassEntry;
-static ClassEntry g_classes[MAX_CLASSES];
+static ClassEntry *g_classes = NULL;
 static int g_classCount = 0;
+static int g_classCapacity = 0;
 
 void gui_cleanup(void)
 {
     for (int i = 0; i < g_windowCount; i++)
-    {
         JS_FreeValue(g_ctx, g_windows[i].proc);
-    }
+    js_free(g_ctx, g_windows);
+    g_windows = NULL;
     g_windowCount = 0;
+    g_windowCapacity = 0;
     
     for (int i = 0; i < g_classCount; i++)
-    {
         JS_FreeValue(g_ctx, g_classes[i].proc);
-    }
+    js_free(g_ctx, g_classes);
+    g_classes = NULL;
     g_classCount = 0;
+    g_classCapacity = 0;
 }
 
 static int findWindowIndex(HWND hwnd)
@@ -158,18 +160,23 @@ static JSValue js_registerClass(JSContext *ctx, JSValueConst this_val, int argc,
     if (argc >= 2 && !JS_IsUndefined(argv[1]) && !JS_IsNull(argv[1]))
     {
         wndProc = JS_DupValue(ctx, argv[1]);
-        if (g_classCount < MAX_CLASSES)
+        if (g_classCount >= g_classCapacity)
+        {
+            int newCap = g_classCapacity ? g_classCapacity * 2 : 16;
+            ClassEntry *p = js_realloc(ctx, g_classes, newCap * sizeof(ClassEntry));
+            if (!p) { JS_FreeValue(ctx, wndProc); wndProc = JS_UNDEFINED; goto done; }
+            g_classes = p;
+            g_classCapacity = newCap;
+        }
+        if (!JS_IsUndefined(wndProc))
         {
             strcpy(g_classes[g_classCount].className, className);
             g_classes[g_classCount].proc = wndProc;
             g_classCount++;
         }
-        else
-        {
-            JS_FreeValue(ctx, wndProc);
-        }
     }
 
+done:
     WNDCLASSEXW wc = {0};
     wc.cbSize = sizeof(WNDCLASSEXW);
     wc.style = CS_HREDRAW | CS_VREDRAW;
@@ -242,8 +249,16 @@ static JSValue js_setWndProc(JSContext *ctx, JSValueConst this_val, int argc, JS
         JS_FreeValue(ctx, g_windows[idx].proc);
         g_windows[idx].proc = JS_DupValue(ctx, argv[1]);
     }
-    else if (g_windowCount < MAX_WINDOWS)
+    else
     {
+        if (g_windowCount >= g_windowCapacity)
+        {
+            int newCap = g_windowCapacity ? g_windowCapacity * 2 : 16;
+            WindowEntry *p = js_realloc(ctx, g_windows, newCap * sizeof(WindowEntry));
+            if (!p) return JS_UNDEFINED;
+            g_windows = p;
+            g_windowCapacity = newCap;
+        }
         SetWindowLongPtrW(hwnd, GWLP_WNDPROC, (LONG_PTR)ProxyWndProc);
         g_windows[g_windowCount].hWnd = hwnd;
         g_windows[g_windowCount].proc = JS_DupValue(g_ctx, argv[1]);
