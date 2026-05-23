@@ -2590,9 +2590,21 @@ static int js_os_poll(JSContext *ctx)
             }
         }
     } else if (ret == WAIT_OBJECT_0 + count) {
-        /* GUI message */
+        /*
+         * 一次性处理完所有积压的 GUI 消息。
+         *
+         * 没有这个循环时，IME 确认（如按空格提交"床前明月光"）会同时
+         * 发送多条 WM_CHAR/WM_IME_* 消息，但 js_os_poll 每轮只处理
+         * 一条就返回 JS runtime。每条消息之间的 JS 轮询开销累积，导致
+         * 汉字逐个出现的卡顿感。
+         *
+         * 这种写法安全的原因：
+         *  - DispatchMessageW 是微秒级操作，不会导致其他事件饥饿
+         *  - 它不会向同一队列递归投递新消息
+         *  - WM_QUIT 已在内联 return 保护
+         */
         MSG msg;
-        if (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
+        while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
             if (msg.message == WM_QUIT)
