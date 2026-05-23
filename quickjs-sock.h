@@ -2,23 +2,15 @@
 #define QUICKJS_SOCK_H
 
 #include "quickjs.h"
-#include "list.h"
-#include <winsock2.h>
-
-typedef struct SockHandle {
-    struct list_head link;
-    int fd;
-    WSAEVENT event;
-    
-    JSValue on_event;
-    JSContext *js_ctx;
-} SockHandle;
+#include <windows.h>
 
 JSModuleDef *js_init_module_sock(JSContext *ctx);
 
-struct list_head *js_get_sock_handles(JSContext *ctx);
-void sock_free_handles(JSRuntime *rt, struct list_head *handles);
-
-void sock_handle_events(SockHandle *sock, WSANETWORKEVENTS *events);
+/* event-loop integration (async-task pattern) */
+void js_sock_init(JSRuntime *rt);
+int  js_sock_slot_count(JSRuntime *rt);
+void js_sock_collect_handles(JSRuntime *rt, HANDLE *handles, int max, int *count);
+int  js_sock_handle_event(JSRuntime *rt, HANDLE triggered);
+void js_sock_free_handles(JSRuntime *rt);
 
 #endif

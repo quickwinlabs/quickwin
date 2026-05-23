@@ -108,6 +108,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     JSRuntime *rt = JS_NewRuntime();
     js_async_task_init(rt);
+    js_sock_init(rt);
     
     js_std_set_worker_new_context_func(JS_NewCustomContext);
     js_std_init_handlers(rt);
@@ -175,6 +176,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     gui_cleanup();
     js_std_free_handlers(rt);
+    js_sock_free_handles(rt);
     js_async_task_destroy(rt);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);

@@ -146,15 +146,12 @@ typedef struct {
     JSValue reason;
 } JSRejectedPromiseEntry;
 
-typedef struct JSSocketHandler JSSocketHandler;
-
 typedef struct JSThreadState {
     struct list_head os_rw_handlers; /* list of JSOSRWHandler.link */
     struct list_head os_signal_handlers; /* list JSOSSignalHandler.link */
     struct list_head os_timers; /* list of JSOSTimer.link */
     struct list_head port_list; /* list of JSWorkerMessageHandler.link */
     struct list_head rejected_promise_list; /* list of JSRejectedPromiseEntry.link */
-    struct list_head socket_handlers; /* list of JSSocketHandler.link */
     int eval_script_recurse; /* only used in the main thread */
     int next_timer_id; /* for setTimeout() */
     /* not used in the main thread */
@@ -163,13 +160,6 @@ typedef struct JSThreadState {
 
 static uint64_t os_pending_signals;
 static int (*os_poll_func)(JSContext *ctx);
-
-struct list_head *js_get_socket_handlers(JSContext *ctx)
-{
-    JSRuntime *rt = JS_GetRuntime(ctx);
-    JSThreadState *ts = JS_GetRuntimeOpaque(rt);
-    return &ts->socket_handlers;
-}
 
 static void js_std_dbuf_init(JSContext *ctx, DynBuf *s)
 {
@@ -2450,7 +2440,7 @@ static int js_os_poll(JSContext *ctx)
 
     /* check if there are any events to wait for */
     if (list_empty(&ts->os_rw_handlers) && list_empty(&ts->os_timers) &&
-        list_empty(&ts->port_list) && list_empty(&ts->socket_handlers) &&
+        list_empty(&ts->port_list) && js_sock_slot_count(rt) == 0 &&
         js_async_task_slot_count(rt) == 0) {
         if (!main_thread) {
             return -1; /* worker thread: no more events */
@@ -2496,12 +2486,7 @@ static int js_os_poll(JSContext *ctx)
     count = 0;
     
     /* collect socket event handles */
-    list_for_each(el, &ts->socket_handlers) {
-        SockHandle *sock = list_entry(el, SockHandle, link);
-        if (sock->event != WSA_INVALID_EVENT && count < (int)countof(handles)) {
-            handles[count++] = (HANDLE)sock->event;
-        }
-    }
+    js_sock_collect_handles(rt, handles, countof(handles), &count);
     
     list_for_each(el, &ts->os_rw_handlers) {
         rh = list_entry(el, JSOSRWHandler, link);
@@ -2552,17 +2537,8 @@ static int js_os_poll(JSContext *ctx)
         HANDLE triggered_handle = handles[ret];
         
         /* check if it's a socket event */
-        list_for_each(el, &ts->socket_handlers) {
-            SockHandle *sock = list_entry(el, SockHandle, link);
-            if ((HANDLE)sock->event == triggered_handle) {
-                WSANETWORKEVENTS events;
-                memset(&events, 0, sizeof(events));
-                if (WSAEnumNetworkEvents(sock->fd, sock->event, &events) != SOCKET_ERROR) {
-                    sock_handle_events(sock, &events);
-                }
-                return 0;
-            }
-        }
+        if (js_sock_handle_event(rt, triggered_handle))
+            return 0;
         
         list_for_each(el, &ts->os_rw_handlers) {
             rh = list_entry(el, JSOSRWHandler, link);
@@ -4221,7 +4197,6 @@ void js_std_init_handlers(JSRuntime *rt)
     init_list_head(&ts->os_timers);
     init_list_head(&ts->port_list);
     init_list_head(&ts->rejected_promise_list);
-    init_list_head(&ts->socket_handlers);
     ts->next_timer_id = 1;
 
     JS_SetRuntimeOpaque(rt, ts);
@@ -4265,8 +4240,6 @@ void js_std_free_handlers(JSRuntime *rt)
         JS_FreeValueRT(rt, rp->reason);
         free(rp);
     }
-
-    sock_free_handles(rt, &ts->socket_handlers);
 
 #ifdef USE_WORKER
     js_free_message_pipe(ts->recv_pipe);

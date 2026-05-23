@@ -59,8 +59,6 @@ void js_std_promise_rejection_tracker(JSContext *ctx, JSValueConst promise,
                                       JS_BOOL is_handled, void *opaque);
 void js_std_set_worker_new_context_func(JSContext *(*func)(JSRuntime *rt));
 
-struct list_head *js_get_socket_handlers(JSContext *ctx);
-
 #ifdef __cplusplus
 } /* extern "C" { */
 #endif
