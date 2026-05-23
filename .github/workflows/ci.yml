@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    name: build-${{ matrix.msystem }}
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - msystem: UCRT64
+            arch: mingw-w64-ucrt-x86_64
+            msys2_prefix: C:/msys64/ucrt64
+          - msystem: MINGW64
+            arch: mingw-w64-x86_64
+            msys2_prefix: C:/msys64/mingw64
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            git
+            make
+            ${{ matrix.arch }}-gcc
+            ${{ matrix.arch }}-cmake
+            ${{ matrix.arch }}-wabt
+            ${{ matrix.arch }}-brotli
+            ${{ matrix.arch }}-wolfssl
+            ${{ matrix.arch }}-libffi
+            ${{ matrix.arch }}-nodejs
+            upx
+
+      - name: Cache WAMR build
+        id: cache-wamr
+        uses: actions/cache@v4
+        with:
+          path: |
+            wamr/build
+            wamr/lib/libiwasm.a
+          key: wamr-${{ matrix.msystem }}-${{
+            hashFiles('wamr/**/*.c', 'wamr/**/*.h', 'wamr/**/CMakeLists.txt') }}
+
+      - name: Cache npm dependencies
+        id: cache-npm
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: npm-${{ hashFiles('package-lock.json') }}
+
+      - name: Install npm dependencies
+        if: steps.cache-npm.outputs.cache-hit != 'true'
+        run: npm install
+
+      - name: Build WAMR
+        if: steps.cache-wamr.outputs.cache-hit != 'true'
+        run: make wamr
+
+      - name: Build quickwin (minimal)
+        run: make minimal
+        env:
+          MSYS2_PREFIX: ${{ matrix.msys2_prefix }}
+
+      - name: Run tests
+        run: make test
+        env:
+          MSYS2_PREFIX: ${{ matrix.msys2_prefix }}
+
+      - name: Rename binary with msystem suffix
+        run: mv _build/win.exe _build/win-${{ matrix.msystem }}.exe
+
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/main'
+        with:
+          name: quickwin-${{ matrix.msystem }}-${{ github.sha }}
+          path: _build/win-${{ matrix.msystem }}.exe
