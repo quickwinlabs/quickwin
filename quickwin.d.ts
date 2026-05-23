@@ -384,7 +384,7 @@ declare module "gui" {
 
     function RegisterClass(className: string, wndProc?: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): number;
     function CreateWindow(className: string, title: string, style: number, x: number, y: number, width: number, height: number, parent: HWND | null, menu: HMENU | null): HWND;
-    function ShowWindow(hwnd: HWND): void;
+    function ShowWindow(hwnd: HWND, nCmdShow?: number): void;
     function SetWindowProc(hwnd: HWND, wndProc: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): void;
     function DefWindowProc(hwnd: HWND, msg: number, wParam: number, lParam: number): number;
     function PostQuitMessage(exitCode: number): void;
@@ -398,6 +398,42 @@ declare module "gui" {
     function SetWindowLongPtr(hwnd: HWND, nIndex: number, newLong: number): number;
     function RemoveWindow(hwnd: HWND): boolean;
     function CallWindowProc(wndProc: WNDPROC, hwnd: HWND, msg: number, wParam: number, lParam: number): number;
+
+    // Tray icon
+    const enum NotifyIconCmd { ADD = 0, MODIFY = 1, DELETE = 2 }
+    const enum NotifyIconFlag { MESSAGE = 1, ICON = 2, TIP = 4 }
+
+    interface NotifyIconData {
+        hwnd: number
+        uID?: number
+        flags?: number
+        callbackMessage?: number
+        hIcon?: number
+        tip?: string
+    }
+
+    function ShellNotifyIcon(cmd: number, nid: NotifyIconData): boolean;
+    function LoadIcon(name: string): number | null;
+
+    // Popup menu
+    const enum MenuFlag {
+        STRING = 0,
+        SEPARATOR = 0x0800,
+        CHECKED = 0x0008,
+        GRAYED = 0x0001,
+        DISABLED = 0x0002,
+        POPUP = 0x0010,
+    }
+
+    function CreatePopupMenu(): number | null;
+    function AppendMenu(menu: number, flags: number, id: number, text: string): boolean;
+    function TrackPopupMenu(menu: number, x: number, y: number, flags?: number, hwnd?: number): number;
+    function DestroyMenu(menu: number): boolean;
+    function SetForegroundWindow(hwnd: number): boolean;
+    /** Returns [x, y] or null */
+    function GetCursorPos(): [number, number] | null;
+    /** Returns [width, height] of the primary monitor */
+    function GetScreenSize(): [number, number];
 
     // 窗口样式 (Window Styles)
     export const enum WindowStyle {

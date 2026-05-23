@@ -218,7 +218,14 @@ static JSValue js_showWindow(JSContext *ctx, JSValueConst this_val, int argc, JS
     int64_t hwnd_val;
     JS_ToInt64(ctx, &hwnd_val, argv[0]);
     HWND hwnd = (HWND)hwnd_val;
-    ShowWindow(hwnd, SW_SHOWNORMAL);
+    int nCmdShow = SW_SHOWNORMAL;
+    if (argc > 1)
+    {
+        int64_t cmd;
+        JS_ToInt64(ctx, &cmd, argv[1]);
+        nCmdShow = (int)cmd;
+    }
+    ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
     return JS_UNDEFINED;
 }
@@ -410,6 +417,155 @@ static JSValue js_SetWindowLongPtr(JSContext *ctx, JSValueConst this_val, int ar
     return JS_NewInt64(ctx, result);
 }
 
+/* ─── Tray icon ─────────────────────────────────────────────── */
+
+static JSValue js_shellNotifyIcon(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int32_t cmd;
+    JS_ToInt32(ctx, &cmd, argv[0]);
+
+    NOTIFYICONDATAW nid = {0};
+    nid.cbSize = sizeof(NOTIFYICONDATAW);
+
+    JSValue obj = argv[1];
+    JSValue prop;
+    int32_t n;
+    int64_t v;
+    const char *s;
+
+    prop = JS_GetPropertyStr(ctx, obj, "hwnd");
+    if (JS_IsNumber(prop)) { JS_ToInt64(ctx, &v, prop); nid.hWnd = (HWND)v; }
+    JS_FreeValue(ctx, prop);
+
+    prop = JS_GetPropertyStr(ctx, obj, "uID");
+    if (JS_IsNumber(prop)) { JS_ToInt32(ctx, &n, prop); nid.uID = n; }
+    JS_FreeValue(ctx, prop);
+
+    prop = JS_GetPropertyStr(ctx, obj, "flags");
+    if (JS_IsNumber(prop)) { JS_ToInt32(ctx, &n, prop); nid.uFlags = n; }
+    JS_FreeValue(ctx, prop);
+
+    prop = JS_GetPropertyStr(ctx, obj, "callbackMessage");
+    if (JS_IsNumber(prop)) { JS_ToInt32(ctx, &n, prop); nid.uCallbackMessage = n; }
+    JS_FreeValue(ctx, prop);
+
+    prop = JS_GetPropertyStr(ctx, obj, "hIcon");
+    if (JS_IsNumber(prop)) { JS_ToInt64(ctx, &v, prop); nid.hIcon = (HICON)v; }
+    JS_FreeValue(ctx, prop);
+
+    prop = JS_GetPropertyStr(ctx, obj, "tip");
+    if (JS_IsString(prop)) {
+        s = JS_ToCString(ctx, prop);
+        MultiByteToWideChar(CP_UTF8, 0, s, -1, nid.szTip, sizeof(nid.szTip)/sizeof(wchar_t));
+        JS_FreeCString(ctx, s);
+    }
+    JS_FreeValue(ctx, prop);
+
+    return JS_NewBool(ctx, Shell_NotifyIconW(cmd, &nid));
+}
+
+/* ─── Icons ─────────────────────────────────────────────────── */
+
+static JSValue js_loadIcon(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    const char *name = JS_ToCString(ctx, argv[0]);
+    HICON hIcon = NULL;
+
+    if (strcmp(name, "APPLICATION") == 0)      hIcon = LoadIconW(NULL, (LPCWSTR)IDI_APPLICATION);
+    else if (strcmp(name, "ERROR") == 0)         hIcon = LoadIconW(NULL, (LPCWSTR)IDI_ERROR);
+    else if (strcmp(name, "INFORMATION") == 0)   hIcon = LoadIconW(NULL, (LPCWSTR)IDI_INFORMATION);
+    else if (strcmp(name, "QUESTION") == 0)      hIcon = LoadIconW(NULL, (LPCWSTR)IDI_QUESTION);
+    else if (strcmp(name, "WARNING") == 0)       hIcon = LoadIconW(NULL, (LPCWSTR)IDI_WARNING);
+    else if (strcmp(name, "WINLOGO") == 0)       hIcon = LoadIconW(NULL, (LPCWSTR)IDI_WINLOGO);
+    else if (strcmp(name, "SHIELD") == 0)        hIcon = LoadIconW(NULL, (LPCWSTR)IDI_SHIELD);
+    else {
+        wchar_t *wpath = utf8ToWide(name);
+        hIcon = (HICON)LoadImageW(NULL, wpath, IMAGE_ICON, 0, 0, LR_LOADFROMFILE);
+        free(wpath);
+    }
+
+    JS_FreeCString(ctx, name);
+    if (hIcon) return JS_NewInt64(ctx, (int64_t)hIcon);
+    return JS_NULL;
+}
+
+/* ─── Popup menu ────────────────────────────────────────────── */
+
+static JSValue js_createPopupMenu(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    HMENU hMenu = CreatePopupMenu();
+    if (hMenu) return JS_NewInt64(ctx, (int64_t)hMenu);
+    return JS_NULL;
+}
+
+static JSValue js_appendMenu(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int64_t menu_val; JS_ToInt64(ctx, &menu_val, argv[0]);
+    uint32_t flags; JS_ToUint32(ctx, &flags, argv[1]);
+    int64_t id;    JS_ToInt64(ctx, &id, argv[2]);
+    const char *text = JS_ToCString(ctx, argv[3]);
+    wchar_t *wtext = utf8ToWide(text);
+    BOOL result = AppendMenuW((HMENU)menu_val, flags, (UINT_PTR)id, wtext);
+    free(wtext);
+    JS_FreeCString(ctx, text);
+    return JS_NewBool(ctx, result);
+}
+
+static JSValue js_trackPopupMenu(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int64_t menu_val; JS_ToInt64(ctx, &menu_val, argv[0]);
+    int32_t x, y;     JS_ToInt32(ctx, &x, argv[1]); JS_ToInt32(ctx, &y, argv[2]);
+
+    UINT flags = TPM_RETURNCMD | TPM_RIGHTBUTTON;
+
+    if (argc >= 4) {
+        int32_t f;
+        JS_ToInt32(ctx, &f, argv[3]);
+        if (f) flags = (UINT)f;
+    }
+
+    HWND hwnd = NULL;
+    if (argc >= 5 && !JS_IsNull(argv[4]) && !JS_IsUndefined(argv[4])) {
+        hwnd = toHWND(ctx, argv[4]);
+    }
+
+    UINT cmd = TrackPopupMenu((HMENU)menu_val, flags, x, y, 0, hwnd, NULL);
+    return JS_NewInt64(ctx, cmd);
+}
+
+static JSValue js_destroyMenu(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int64_t menu_val; JS_ToInt64(ctx, &menu_val, argv[0]);
+    return JS_NewBool(ctx, DestroyMenu((HMENU)menu_val));
+}
+
+static JSValue js_setForegroundWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int64_t hwnd_val; JS_ToInt64(ctx, &hwnd_val, argv[0]);
+    return JS_NewBool(ctx, SetForegroundWindow((HWND)hwnd_val));
+}
+
+static JSValue js_getCursorPos(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    POINT pt;
+    if (!GetCursorPos(&pt))
+        return JS_NULL;
+    JSValue arr = JS_NewArray(ctx);
+    JS_SetPropertyUint32(ctx, arr, 0, JS_NewInt32(ctx, pt.x));
+    JS_SetPropertyUint32(ctx, arr, 1, JS_NewInt32(ctx, pt.y));
+    return arr;
+}
+
+static JSValue js_getScreenSize(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int w = GetSystemMetrics(SM_CXSCREEN);
+    int h = GetSystemMetrics(SM_CYSCREEN);
+    JSValue arr = JS_NewArray(ctx);
+    JS_SetPropertyUint32(ctx, arr, 0, JS_NewInt32(ctx, w));
+    JS_SetPropertyUint32(ctx, arr, 1, JS_NewInt32(ctx, h));
+    return arr;
+}
+
 static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("RegisterClass", 2, js_registerClass),
     JS_CFUNC_DEF("CreateWindow", 9, js_createWindow),
@@ -428,6 +584,15 @@ static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("SetWindowLongPtr", 3, js_SetWindowLongPtr),
     JS_CFUNC_DEF("RemoveWindow", 1, js_removeWindow),
     JS_CFUNC_DEF("CallWindowProc", 5, js_CallWindowProc),
+    JS_CFUNC_DEF("ShellNotifyIcon", 2, js_shellNotifyIcon),
+    JS_CFUNC_DEF("LoadIcon", 1, js_loadIcon),
+    JS_CFUNC_DEF("CreatePopupMenu", 0, js_createPopupMenu),
+    JS_CFUNC_DEF("AppendMenu", 4, js_appendMenu),
+    JS_CFUNC_DEF("TrackPopupMenu", 3, js_trackPopupMenu),
+    JS_CFUNC_DEF("DestroyMenu", 1, js_destroyMenu),
+    JS_CFUNC_DEF("SetForegroundWindow", 1, js_setForegroundWindow),
+    JS_CFUNC_DEF("GetCursorPos", 0, js_getCursorPos),
+    JS_CFUNC_DEF("GetScreenSize", 0, js_getScreenSize),
 };
 
 
