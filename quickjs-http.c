@@ -1,6 +1,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
+#include <wininet.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -78,39 +79,30 @@ static int parse_url(const char* url, char* scheme, size_t scheme_size,
     path[1] = '\0';
     *port = 80;
 
-    const char* p = url;
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, url, -1, NULL, 0);
+    wchar_t *wurl = malloc(wlen * sizeof(wchar_t));
+    if (!wurl) return 0;
+    MultiByteToWideChar(CP_UTF8, 0, url, -1, wurl, wlen);
 
-    if (strncmp(p, "http://", 7) == 0) {
-        strncpy(scheme, "http", scheme_size - 1);
-        p += 7;
-    } else if (strncmp(p, "https://", 8) == 0) {
-        strncpy(scheme, "https", scheme_size - 1);
-        p += 8;
-        *port = 443;
-    } else {
-        return 0;
-    }
+    URL_COMPONENTSW uc;
+    memset(&uc, 0, sizeof(uc));
+    uc.dwStructSize = sizeof(uc);
+    wchar_t wscheme[16] = {0}, whost[256] = {0}, wpath[1024] = {0};
+    uc.lpszScheme = wscheme;     uc.dwSchemeLength = 16;
+    uc.lpszHostName = whost;     uc.dwHostNameLength = 256;
+    uc.lpszUrlPath = wpath;      uc.dwUrlPathLength = 1024;
+    /* omit lpszExtraInfo → query/fragment included in lpszUrlPath */
 
-    const char* slash = strchr(p, '/');
-    const char* colon = strchr(p, ':');
+    BOOL ok = InternetCrackUrlW(wurl, 0, ICU_ESCAPE, &uc);
+    free(wurl);
+    if (!ok) return 0;
 
-    if (slash && colon && colon > slash) {
-        colon = NULL;
-    }
+    WideCharToMultiByte(CP_UTF8, 0, wscheme, -1, scheme, (int)scheme_size, NULL, NULL);
+    WideCharToMultiByte(CP_UTF8, 0, whost, -1, host, (int)host_size, NULL, NULL);
+    *port = uc.nPort;
 
-    if (colon) {
-        size_t host_len = colon - p;
-        if (host_len >= host_size) host_len = host_size - 1;
-        strncpy(host, p, host_len);
-        sscanf(colon + 1, "%d%s", port, path);
-    } else if (slash) {
-        size_t host_len = slash - p;
-        if (host_len >= host_size) host_len = host_size - 1;
-        strncpy(host, p, host_len);
-        strncpy(path, slash, path_size - 1);
-    } else {
-        strncpy(host, p, host_size - 1);
-    }
+    if (wpath[0])
+        WideCharToMultiByte(CP_UTF8, 0, wpath, -1, path, (int)path_size, NULL, NULL);
 
     return 1;
 }

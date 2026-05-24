@@ -56,7 +56,7 @@ CFLAGS += $(WAMR_INC)
 CFLAGS += $(WAMR_DEFS)
 
 LDFLAGS = -L$(MSYS2_PREFIX)/lib -static
-LIBS = -lbrotlidec -lbrotlicommon -lwolfssl -lws2_32 -lbcrypt -lcrypt32 -lm -luser32 -lgdi32 -lcomctl32 -lffi -lntdll -lshell32
+LIBS = -lbrotlidec -lbrotlicommon -lwolfssl -lws2_32 -lbcrypt -lcrypt32 -lm -luser32 -lgdi32 -lcomctl32 -lffi -lntdll -lshell32 -lwininet
 
 TARGET = $(BUILD_DIR)/win.exe
 NPM_PKG_DIR = dist/quickwin
