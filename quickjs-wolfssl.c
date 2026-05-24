@@ -331,36 +331,9 @@ static const JSCFunctionListEntry wolfssl_funcs[] = {
     JS_CFUNC_DEF("wolfSSL_UseSNI", 3, js_wolfSSL_UseSNI),
 };
 
-#define DEF(x) JS_PROP_INT32_DEF(#x, x, JS_PROP_CONFIGURABLE)
-static const JSCFunctionListEntry wolfssl_consts[] = {
-    DEF(SSL_SUCCESS),
-    DEF(SSL_FAILURE),
-    DEF(SSL_FILETYPE_PEM),
-    DEF(SSL_FILETYPE_ASN1),
-    DEF(SSL_FILETYPE_DEFAULT),
-    
-    DEF(SSL_VERIFY_NONE),
-    DEF(SSL_VERIFY_PEER),
-    DEF(SSL_VERIFY_FAIL_IF_NO_PEER_CERT),
-    DEF(SSL_VERIFY_CLIENT_ONCE),
-    
-    DEF(WOLFSSL_ERROR_NONE),
-    DEF(WOLFSSL_ERROR_WANT_READ),
-    DEF(WOLFSSL_ERROR_WANT_WRITE),
-    DEF(WOLFSSL_ERROR_WANT_CONNECT),
-    DEF(WOLFSSL_ERROR_WANT_ACCEPT),
-    DEF(WOLFSSL_ERROR_SYSCALL),
-    DEF(WOLFSSL_ERROR_ZERO_RETURN),
-    
-    DEF(WOLFSSL_SNI_HOST_NAME),
-};
-
 static int wolfssl_init(JSContext *ctx, JSModuleDef *m)
 {
-    int ret = JS_SetModuleExportList(ctx, m, wolfssl_funcs, countof(wolfssl_funcs));
-    if (ret != 0)
-        return ret;
-    return JS_SetModuleExportList(ctx, m, wolfssl_consts, countof(wolfssl_consts));
+    return JS_SetModuleExportList(ctx, m, wolfssl_funcs, countof(wolfssl_funcs));
 }
 
 JSModuleDef *js_init_module_wolfssl(JSContext *ctx)
@@ -369,6 +342,5 @@ JSModuleDef *js_init_module_wolfssl(JSContext *ctx)
     if (!m)
         return NULL;
     JS_AddModuleExportList(ctx, m, wolfssl_funcs, countof(wolfssl_funcs));
-    JS_AddModuleExportList(ctx, m, wolfssl_consts, countof(wolfssl_consts));
     return m;
 }

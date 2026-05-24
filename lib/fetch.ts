@@ -511,19 +511,19 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
         sock.set_on_event(fd, (event: { lNetworkEvents: number; iErrorCode: number[] }) => {
             if (state === ST_DONE) return
 
-            if (event.lNetworkEvents & sock.FD_CONNECT) {
+            if (event.lNetworkEvents & sock.FdEvent.FD_CONNECT) {
                 const err = event.iErrorCode[0]
                 if (err !== 0) { doReject(new Error('Connection failed: ' + err)); return }
 
                 if (isHTTPS) {
                     const method = wolfssl.wolfTLSv1_2_client_method()
                     ctx = wolfssl.wolfSSL_CTX_new(method)
-                    wolfssl.wolfSSL_CTX_set_verify(ctx, wolfssl.SSL_VERIFY_NONE)
+                    wolfssl.wolfSSL_CTX_set_verify(ctx, wolfssl.VerifyMode.SSL_VERIFY_NONE)
                     ssl = wolfssl.wolfSSL_new(ctx)
                     if (!ssl) { doReject(new Error('SSL_new failed')); return }
                     wolfssl.wolfSSL_set_fd(ssl, sock.get_fd(fd))
                     const sniHost = headers.get('host') || parsedUrl.hostname
-                    if (sniHost) wolfssl.wolfSSL_UseSNI(ssl, wolfssl.WOLFSSL_SNI_HOST_NAME, sniHost)
+                    if (sniHost) wolfssl.wolfSSL_UseSNI(ssl, wolfssl.SniType.WOLFSSL_SNI_HOST_NAME, sniHost)
                     state = ST_HANDSHAKE
                 } else {
                     sock.send(fd, str2ab(request))
@@ -531,17 +531,17 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
                 }
             }
 
-            if ((event.lNetworkEvents & sock.FD_READ) || (event.lNetworkEvents & sock.FD_WRITE)) {
+            if ((event.lNetworkEvents & sock.FdEvent.FD_READ) || (event.lNetworkEvents & sock.FdEvent.FD_WRITE)) {
                 if (state === ST_HANDSHAKE) {
                     if (!ssl) { doReject(new Error('TLS not initialized')); return }
                     const ret = wolfssl.wolfSSL_connect(ssl)
-                    if (ret === wolfssl.SSL_SUCCESS) {
+                    if (ret === wolfssl.ReturnCode.SSL_SUCCESS) {
                         wolfssl.wolfSSL_write(ssl, str2ab(request))
                         state = ST_RECV_HEADERS
                     } else {
                         const err = wolfssl.wolfSSL_get_error(ssl, ret)
-                        if (err !== wolfssl.WOLFSSL_ERROR_WANT_READ &&
-                            err !== wolfssl.WOLFSSL_ERROR_WANT_WRITE) {
+                        if (err !== wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_READ &&
+                            err !== wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_WRITE) {
                             doReject(new Error('TLS handshake failed: ' + err))
                         }
                     }
@@ -614,7 +614,7 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
                 }
             }
 
-            if (event.lNetworkEvents & sock.FD_CLOSE) {
+            if (event.lNetworkEvents & sock.FdEvent.FD_CLOSE) {
                 if (state === ST_DONE) return
                 if (state === ST_RECV_HEADERS) {
                     doReject(new Error('Connection closed before response'))

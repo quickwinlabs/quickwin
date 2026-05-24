@@ -305,18 +305,11 @@ declare module "sock" {
     function get_fd(sock: SockHandle): number;
     function resolve(hostname: string): string | null;
 
-    const AF_INET: number;
-    const SOCK_STREAM: number;
-    const SOCK_DGRAM: number;
-    const IPPROTO_TCP: number;
-    const IPPROTO_UDP: number;
-    const SD_RECEIVE: number;
-    const SD_SEND: number;
-    const SD_BOTH: number;
-    const FD_READ: number;
-    const FD_WRITE: number;
-    const FD_CONNECT: number;
-    const FD_CLOSE: number;
+    const enum AddrFamily { AF_INET = 2 }
+    const enum SockType { SOCK_STREAM = 1, SOCK_DGRAM = 2 }
+    const enum Protocol { IPPROTO_TCP = 6, IPPROTO_UDP = 17 }
+    const enum Shutdown { SD_RECEIVE = 0, SD_SEND = 1, SD_BOTH = 2 }
+    const enum FdEvent { FD_READ = 1, FD_WRITE = 2, FD_CONNECT = 16, FD_CLOSE = 32 }
 }
 
 declare module "wolfssl" {
@@ -345,13 +338,11 @@ declare module "wolfssl" {
     function wolfTLSv1_2_client_method(): WOLFSSL_METHOD;
     function wolfTLSv1_3_client_method(): WOLFSSL_METHOD;
 
-    const SSL_VERIFY_NONE: number;
-    const SSL_VERIFY_PEER: number;
-    const WOLFSSL_SNI_HOST_NAME: number;
-    const SSL_FILETYPE_PEM: number;
-    const SSL_SUCCESS: number;
-    const WOLFSSL_ERROR_WANT_READ: number;
-    const WOLFSSL_ERROR_WANT_WRITE: number;
+    const enum VerifyMode { SSL_VERIFY_NONE = 0, SSL_VERIFY_PEER = 1 }
+    const enum SniType { WOLFSSL_SNI_HOST_NAME = 0 }
+    const enum FileType { SSL_FILETYPE_PEM = 1 }
+    const enum ReturnCode { SSL_SUCCESS = 1 }
+    const enum ErrorCode { WOLFSSL_ERROR_WANT_READ = 2, WOLFSSL_ERROR_WANT_WRITE = 3 }
 }
 
 declare module "win" {
