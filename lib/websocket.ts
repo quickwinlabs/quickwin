@@ -66,7 +66,7 @@ function createFrame(opcode: number, payload: Uint8Array): ArrayBuffer {
         view[off++] = payload.length & 0xFF
     } else if (payload.length >= 65536) {
         const len = payload.length
-        const hi = Math.floor(len / 0x100000000) >>> 0
+        const hi = (len / 0x100000000) >>> 0
         const lo = len >>> 0
         view[off++] = (hi >> 24) & 0xFF
         view[off++] = (hi >> 16) & 0xFF
