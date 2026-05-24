@@ -145,7 +145,6 @@ declare module "std" {
     function loadScript(filename: string): any;
     /** 只适合读取 UTF-8 文本文件，读取二进制文件用 std.open + FILE.read */
     function loadFile(filename: string, options?: OpenOptions): string | Uint8Array | null;
-    function writeFile(filename: string, data: string | ArrayBuffer | Uint8Array): void;
     function open(filename: string, flags: string, errorObj?: { errno: number }): FILE | null;
     function popen(command: string, flags: string, errorObj?: { errno: number }): FILE | null;
     function fdopen(fd: number, flags: string, errorObj?: { errno: number }): FILE | null;
@@ -293,23 +292,16 @@ declare module "sock" {
     type SockHandle = number;
 
     function socket(domain?: number, type?: number, protocol?: number): SockHandle;
-    function bind(sock: SockHandle, addr: string, port: number): number;
-    function listen(sock: SockHandle, backlog: number): number;
-    function accept(sock: SockHandle): SockHandle;
     function connect(sock: SockHandle, addr: string, port: number): number;
     function send(sock: SockHandle, buf: ArrayBuffer, flags?: number): number;
-    function recv(sock: SockHandle, buf: ArrayBuffer, flags?: number): number;
-    function recv(sock: SockHandle, size: number, flags?: number): ArrayBuffer | null;
+    function recv(sock: SockHandle, size?: number, flags?: number): ArrayBuffer | null;
     function closesocket(sock: SockHandle): void;
     function shutdown(sock: SockHandle, how: number): number;
-    function setsockopt(sock: SockHandle, level: number, optname: number, optval: number): number;
-    function ioctlsocket(sock: SockHandle, cmd: number, argp: number): number;
     function set_on_event(sock: SockHandle, callback: (events: { lNetworkEvents: number; iErrorCode: number[] }) => void): void;
     function get_fd(sock: SockHandle): number;
     function resolve(hostname: string): string | null;
 
     const AF_INET: number;
-    const AF_INET6: number;
     const SOCK_STREAM: number;
     const SOCK_DGRAM: number;
     const IPPROTO_TCP: number;
@@ -319,7 +311,6 @@ declare module "sock" {
     const SD_BOTH: number;
     const FD_READ: number;
     const FD_WRITE: number;
-    const FD_ACCEPT: number;
     const FD_CONNECT: number;
     const FD_CLOSE: number;
 }
@@ -333,27 +324,22 @@ declare module "wolfssl" {
     function wolfSSL_CTX_new(method: WOLFSSL_METHOD): WOLFSSL_CTX;
     function wolfSSL_CTX_free(ctx: WOLFSSL_CTX): void;
     function wolfSSL_CTX_set_verify(ctx: WOLFSSL_CTX, mode: number): number;
-    function wolfSSL_CTX_load_system_CA_certs(ctx: WOLFSSL_CTX): number;
-    function wolfSSL_CTX_set_default_passwd_cb(ctx: WOLFSSL_CTX, cb: number): void;
+    function wolfSSL_CTX_use_certificate_file(ctx: WOLFSSL_CTX, file: string, format?: number): number;
+    function wolfSSL_CTX_use_PrivateKey_file(ctx: WOLFSSL_CTX, file: string, format?: number): number;
 
     function wolfSSL_new(ctx: WOLFSSL_CTX): WOLFSSL;
     function wolfSSL_free(ssl: WOLFSSL): void;
     function wolfSSL_set_fd(ssl: WOLFSSL, fd: number): number;
     function wolfSSL_connect(ssl: WOLFSSL): number;
-    function wolfSSL_accept(ssl: WOLFSSL): number;
     function wolfSSL_shutdown(ssl: WOLFSSL): number;
     function wolfSSL_write(ssl: WOLFSSL, buf: ArrayBuffer): number;
     function wolfSSL_read(ssl: WOLFSSL, sz: number): ArrayBuffer | null;
     function wolfSSL_get_error(ssl: WOLFSSL, ret: number): number;
-    function wolfSSL_use_certificate_file(ssl: WOLFSSL, file: string, format: number): number;
-    function wolfSSL_use_PrivateKey_file(ssl: WOLFSSL, file: string, format: number): number;
     function wolfSSL_UseSNI(ssl: WOLFSSL, type: number, name: string, len?: number): number;
 
-    function wolfTLS_client_method(): WOLFSSL_METHOD;
-    function wolfTLS_server_method(): WOLFSSL_METHOD;
+    function wolfSSLv23_client_method(): WOLFSSL_METHOD;
     function wolfTLSv1_2_client_method(): WOLFSSL_METHOD;
     function wolfTLSv1_3_client_method(): WOLFSSL_METHOD;
-    function wolfSSLv23_client_method(): WOLFSSL_METHOD;
 
     const SSL_VERIFY_NONE: number;
     const SSL_VERIFY_PEER: number;
@@ -362,10 +348,6 @@ declare module "wolfssl" {
     const SSL_SUCCESS: number;
     const WOLFSSL_ERROR_WANT_READ: number;
     const WOLFSSL_ERROR_WANT_WRITE: number;
-}
-
-declare module "tls" {
-    function https_get_sync(url: string): string;
 }
 
 declare module "win" {
@@ -607,10 +589,6 @@ declare module "ffi" {
     function ffiCall<const T extends Exclude<FfiType, TYPE_OF_FFI_TYPE_VOID>[], const R extends FfiType>(func: number, argTypes: T, args: TypeArgs<T>, retType: R): R extends TYPE_OF_FFI_TYPE_VOID ? undefined : R extends TYPE_OF_FFI_TYPE_POINTER ? number | null : TypeArg<R>;
     function bufferPtr(buf: ArrayBuffer): number;
     function readByte(ptr: number): number;
-}
-
-declare module "../lib/fetch.js" {
-    export { fetch, Request, Response, Headers, RequestInit, HeadersInit };
 }
 
 declare module "wamr" {
