@@ -154,6 +154,10 @@ function tryParseFrame(buffer: Uint8Array): ParsedFrame | null {
 
 // ── WebSocket class ──
 
+interface WebSocketOptions {
+    headers?: Record<string, string>
+}
+
 interface WSEventMap {
     open: Event
     message: MessageEvent
@@ -169,6 +173,7 @@ class WebSocket {
     onerror: ((event: Event) => void) | null = null
     onmessage: ((event: MessageEvent) => void) | null = null
 
+    private _options: WebSocketOptions
     private _sock: number | null = null
     private _ssl: number | null = null
     private _ctx: number | null = null
@@ -185,8 +190,9 @@ class WebSocket {
     private _closeReason: string = ''
     private _requestKey: string = ''
 
-    constructor(url: string) {
+    constructor(url: string, options?: WebSocketOptions) {
         this.url = url
+        this._options = options || {}
         this._connect()
     }
 
@@ -252,6 +258,14 @@ class WebSocket {
         const requestKey = generateKey()
         this._requestKey = requestKey
 
+        let customHeaders = ''
+        if (this._options.headers) {
+            for (const name in this._options.headers) {
+                const value = this._options.headers[name]
+                customHeaders += name + ': ' + value + '\r\n'
+            }
+        }
+
         const request = (
             'GET ' + path + ' HTTP/1.1\r\n' +
             'Host: ' + host + ':' + port + '\r\n' +
@@ -259,6 +273,7 @@ class WebSocket {
             'Connection: Upgrade\r\n' +
             'Sec-WebSocket-Key: ' + requestKey + '\r\n' +
             'Sec-WebSocket-Version: 13\r\n' +
+            customHeaders +
             '\r\n'
         )
 
@@ -561,7 +576,7 @@ declare global {
     }
 
     var WebSocket: {
-        new(url: string): WebSocket
+        new(url: string, options?: WebSocketOptions): WebSocket
         readonly CONNECTING: number
         readonly OPEN: number
         readonly CLOSING: number
