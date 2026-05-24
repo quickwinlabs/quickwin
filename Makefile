@@ -203,7 +203,7 @@ js:
 	@npx tsgo --project tsconfig.json
 	@find $(BUILD_DIR) -name '*.js' -exec sed -i 's|from "\(.*\)/jsx-runtime"|from "\1/jsx-runtime.js"|g' {} +
 	@echo "Copying vendor/mupdf-wasm to $(BUILD_DIR)/vendor/mupdf-wasm..."
-	@mkdir -p $(BUILD_DIR)/vendor && cp -r vendor/mupdf-wasm $(BUILD_DIR)/vendor/mupdf-wasm
+	@mkdir -p $(BUILD_DIR)/vendor/mupdf-wasm && cp -r vendor/mupdf-wasm/. $(BUILD_DIR)/vendor/mupdf-wasm/
 	@echo "TypeScript compilation complete"
 
 test: nodebug js wasm
