@@ -109,6 +109,17 @@ export const suite = {
         let vc = 0; for (const _ of h2.values()) { vc++ }
         assert('values()', vc === 2)
 
+        // ── Chunked Transfer-Encoding ──
+        t.section('chunked transfer encoding')
+        const r8 = await safeFetch('https://catfact.ninja/fact')
+        if (r8) {
+            assert('chunked status 200', r8.status === 200)
+            const body = await r8.json()
+            assert('chunked json has fact', typeof body.fact === 'string' && body.fact.length > 0)
+        } else {
+            assert('catfact.ninja reachable', false)
+        }
+
         // ── stream cancel ──
         t.section('stream cancel')
         const r7 = await safeFetch('https://httpbin.org/anything')

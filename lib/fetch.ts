@@ -23,6 +23,30 @@ function str2ab(str: string): ArrayBuffer {
     return buf
 }
 
+function decodeChunked(raw: ArrayBuffer): ArrayBuffer {
+    const str = ab2str(raw)
+    const chunks: string[] = []
+    let pos = 0
+    while (pos < str.length) {
+        const crlf = str.indexOf('\r\n', pos)
+        if (crlf < 0) break
+        const sizeHex = str.slice(pos, crlf)
+        if (sizeHex === '') break
+        const size = parseInt(sizeHex, 16)
+        if (isNaN(size) || size === 0) {
+            pos = crlf + 2
+            const trailerEnd = str.indexOf('\r\n\r\n', pos)
+            if (trailerEnd >= 0) pos = trailerEnd + 4
+            break
+        }
+        const dataStart = crlf + 2
+        if (dataStart + size > str.length) break
+        chunks.push(str.slice(dataStart, dataStart + size))
+        pos = dataStart + size + 2
+    }
+    return str2ab(chunks.join(''))
+}
+
 function ab2str(buf: ArrayBuffer): string {
     const view = new Uint8Array(buf)
     let str = ''
@@ -449,6 +473,8 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
         let timerId: number | undefined
         let stream: _QuickReadableStream | null = null
         let headerBuffer = ''
+        let isChunked = false
+        let chunkedBuf = ''
 
         const cleanupSocket = (): void => {
             state = ST_DONE
@@ -538,12 +564,17 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
 
                             const trailingBody = headerBuffer.slice(headerEnd + 4)
 
-                            const contentLength = parseInt(
+                            isChunked = (parsed.headers.get('transfer-encoding') || '').toLowerCase().includes('chunked')
+                            const contentLength = isChunked ? 0 : parseInt(
                                 parsed.headers.get('content-length') || '0', 10
                             )
                             stream = new _QuickReadableStream(fd, ssl, isHTTPS, streamCleanup, contentLength)
                             if (trailingBody.length > 0) {
-                                stream._pushChunk(str2ab(trailingBody))
+                                if (isChunked) {
+                                    chunkedBuf = trailingBody
+                                } else {
+                                    stream._pushChunk(str2ab(trailingBody))
+                                }
                             }
 
                             const response = new FetchResponse(
@@ -567,7 +598,18 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
                             data = sock.recv(s, 8192)
                         } else { break }
                         if (!data || data.byteLength === 0) break
-                        stream._pushChunk(data)
+                        if (isChunked) {
+                            chunkedBuf += ab2str(data)
+                            if (chunkedBuf.indexOf('\r\n0\r\n\r\n') >= 0) {
+                                stream._pushChunk(decodeChunked(str2ab(chunkedBuf)))
+                                stream._close()
+                                stream = null
+                                state = ST_DONE
+                                break
+                            }
+                        } else {
+                            stream._pushChunk(data)
+                        }
                     }
                 }
             }
@@ -577,6 +619,7 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
                 if (state === ST_RECV_HEADERS) {
                     doReject(new Error('Connection closed before response'))
                 } else if (state === ST_RECV_BODY && stream) {
+                    let remainingBuf = ''
                     while (true) {
                         if (!s && !ssl) break
                         let data: ArrayBuffer | null
@@ -586,7 +629,13 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
                             data = sock.recv(s, 8192)
                         } else { break }
                         if (!data || data.byteLength === 0) break
-                        stream._pushChunk(data)
+                        remainingBuf += ab2str(data)
+                    }
+                    if (isChunked) {
+                        chunkedBuf += remainingBuf
+                        stream._pushChunk(decodeChunked(str2ab(chunkedBuf)))
+                    } else if (remainingBuf) {
+                        stream._pushChunk(str2ab(remainingBuf))
                     }
                     stream._close()
                     stream = null
