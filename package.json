@@ -20,7 +20,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/anomalyco/quickwin.git"
+    "url": "git+https://github.com/xna00/quickwin.git"
   },
   "devDependencies": {
     "@typescript/native-preview": "^7.0.0-dev.20260426.1"

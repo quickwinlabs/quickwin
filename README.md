@@ -16,6 +16,7 @@ quickwin script.js
 - **WebAssembly** — WAMR-based, supports `WebAssembly.*` standard API
 - **FFI** — call any DLL function via libffi
 - **mupdf** — embedded PDF rendering
+- **Polyfills** — `TextEncoder`, `URL`, `URLSearchParams`, `btoa`/`atob`, `crypto.subtle`, `setTimeout`
 - **Dynamic import** — `import('https://esm.sh/...')`, no npm install needed
 
 ## CLI
@@ -32,13 +33,16 @@ quickwin examples/preact_demo.js    # run an example
 | `std` | built-in | file I/O, environment, URL download |
 | `os` | built-in | filesystem, process, Worker, timer |
 | `gui` | built-in | Win32 window/control/message/tray API |
-| `sock` | built-in | socket networking |
-| `wolfssl` | built-in | TLS/SSL |
+| `sock` | built-in | socket networking (`AddrFamily`, `FdEvent` etc.) |
+| `wolfssl` | built-in | TLS/SSL (`VerifyMode`, `ReturnCode` etc.) |
 | `ffi` | built-in | foreign function interface |
-| `fetch` | `./lib/fetch.js` | `fetch()` API |
-| `websocket` | `./lib/websocket.js` | WebSocket client |
-| `polyfill` | `./lib/polyfill.js` | TextEncoder, URL, setTimeout polyfills |
-| `preact` | `../lib/preact` | JSX → Win32 renderer |
+| `win` | built-in | DLL loading (`LoadLibrary`, `GetProcAddress`) |
+| `brotli` | built-in | Brotli decompression |
+| `wamr` | built-in | low-level WAMR API |
+| `fetch` | `import './lib/fetch.js'` | adds `fetch()`, `Response`, `Headers` to globalThis |
+| `websocket` | `import './lib/websocket.js'` | adds `WebSocket` to globalThis |
+| `polyfill` | `import './lib/polyfill.js'` | adds `TextEncoder`, `URL`, `btoa`/`atob`, `setTimeout` to globalThis |
+| `preact` | `lib/preact/...` | JSX → Win32 renderer (`render`, `useState`, `useEffect`) |
 
 ## Examples
 
