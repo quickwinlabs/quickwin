@@ -167,8 +167,11 @@ declare module "std" {
         const ENOENT: number;
         const EPERM: number;
         const EPIPE: number;
+        const EBADF: number;
     }
 
+    function parseExtJSON(str: string): any;
+    function __printObject(val: any): void;
     function strerror(errno: number): string;
     function gc(): void;
     function getenv(name: string): string | undefined;
@@ -258,6 +261,7 @@ declare module "os" {
     const O_CREAT: number;
     const O_EXCL: number;
     const O_TRUNC: number;
+    const O_BINARY: number;
     const O_TEXT: number;
 
     const SIGINT: number;
@@ -366,6 +370,7 @@ declare module "gui" {
 
     function RegisterClass(className: string, wndProc?: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): number;
     function CreateWindow(className: string, title: string, style: number, x: number, y: number, width: number, height: number, parent: HWND | null, menu: HMENU | null): HWND;
+    function DestroyWindow(hwnd: HWND): boolean;
     function ShowWindow(hwnd: HWND, nCmdShow?: number): void;
     function SetWindowProc(hwnd: HWND, wndProc: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): void;
     function DefWindowProc(hwnd: HWND, msg: number, wParam: number, lParam: number): number;
