@@ -16,9 +16,15 @@
 > - 节省大量调试时间
 > - 确保使用正确的 API 和方法签名
 
-> **禁止自动 commit：提交前必须先让用户 review**
+> **禁止自动 commit：提交前必须先让用户确认 diff 和 commit message**
 >
-> 每次 commit 前，先把变更内容展示给用户，获得明确确认后才执行 git commit 操作。不可在用户未确认的情况下直接提交。用户说 "commit" 时仍照常执行。
+> 每次 commit 前，先把 `git diff`（变更内容）和拟用的 commit message 展示给用户，用户明确同意后才执行 `git commit` 和 `git push`。用户说 "continue"、"commit"、"push" 或直接给出 commit message 时视为同意。
+>
+> **流程：**
+> 1. 运行 `git diff` 展示变更
+> 2. 写出拟用的 commit message
+> 3. 等待用户确认
+> 4. 确认后执行 `git add` + `git commit` + `git push`
 
 > **commit message 必须基于 `git diff --cached 或 git diff` 内容生成**
 >
