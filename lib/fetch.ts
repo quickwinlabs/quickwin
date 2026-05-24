@@ -452,7 +452,11 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
         const timeout = options.timeout || 30000
         const isHTTPS = parsedUrl.protocol === 'https:'
 
-        if (!headers.has('host')) headers.set('Host', parsedUrl.hostname)
+        const defaultPort = isHTTPS ? 443 : 80
+        const hostHeader = parsedUrl.port && parsedUrl.port !== String(defaultPort)
+            ? parsedUrl.hostname + ':' + parsedUrl.port
+            : parsedUrl.hostname
+        if (!headers.has('host')) headers.set('Host', hostHeader)
         if (!headers.has('user-agent')) headers.set('User-Agent', 'QuickJS/1.0')
         if (!headers.has('connection')) headers.set('Connection', 'close')
         if (!headers.has('accept-encoding')) headers.set('Accept-Encoding', 'br')

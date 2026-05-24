@@ -1,4 +1,5 @@
 #include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -504,21 +505,30 @@ char* http_get_sync(const char* url) {
 
     int is_https = is_https_url(url);
 
-    SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (sock == INVALID_SOCKET) return NULL;
+    struct addrinfo hints, *res, *rp;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
 
-    struct hostent* he = gethostbyname(host);
-    if (!he) { closesocket(sock); return NULL; }
+    if (getaddrinfo(host, NULL, &hints, &res) != 0)
+        return NULL;
 
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    memcpy(&addr.sin_addr, he->h_addr_list[0], he->h_length);
+    SOCKET sock = INVALID_SOCKET;
+    for (rp = res; rp; rp = rp->ai_next) {
+        sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (sock == INVALID_SOCKET) continue;
 
-    if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR) {
-        closesocket(sock); return NULL;
+        if (rp->ai_family == AF_INET)
+            ((struct sockaddr_in*)rp->ai_addr)->sin_port = htons(port);
+        else if (rp->ai_family == AF_INET6)
+            ((struct sockaddr_in6*)rp->ai_addr)->sin6_port = htons(port);
+
+        if (connect(sock, rp->ai_addr, (int)rp->ai_addrlen) == 0)
+            break;
+        closesocket(sock);
     }
+    freeaddrinfo(res);
+    if (rp == NULL) return NULL;
 
     WOLFSSL* ssl = NULL;
     WOLFSSL_CTX* ctx = NULL;
@@ -537,6 +547,13 @@ char* http_get_sync(const char* url) {
         }
     }
 
+    int default_port = is_https ? 443 : 80;
+    char host_header[512];
+    if (port != default_port)
+        snprintf(host_header, sizeof(host_header), "%s:%d", host, port);
+    else
+        snprintf(host_header, sizeof(host_header), "%s", host);
+
     char request[2048];
     snprintf(request, sizeof(request),
              "GET %s HTTP/1.1\r\n"
@@ -545,7 +562,7 @@ char* http_get_sync(const char* url) {
              "Accept-Encoding: br\r\n"
              "Connection: close\r\n"
              "\r\n",
-             path, host);
+             path, host_header);
 
     if (http_debug)
         fprintf(stderr, "---[ HTTP request ]---\n%s\n", request);
@@ -650,7 +667,7 @@ char* js_module_normalize_name(JSContext *ctx,
         return js_strdup(ctx, name);
     }
 
-    if (is_http_url(name) || is_https_url(name)) {
+    if (is_http_url(name) || is_https_url(name) || (name[0] != '.' && name[0] != '/')) {
         return js_strdup(ctx, name);
     }
 
