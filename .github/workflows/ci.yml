@@ -14,79 +14,64 @@ jobs:
         include:
           - msystem: UCRT64
             arch: mingw-w64-ucrt-x86_64
-            msys2_prefix: C:/msys64/ucrt64
           - msystem: MINGW64
             arch: mingw-w64-x86_64
-            msys2_prefix: C:/msys64/mingw64
-    defaults:
-      run:
-        shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
+      - name: Get submodule pin hashes
+        id: submodules
+        shell: bash
+        run: |
+          echo "qjs=$(git submodule status quickjs | head -c8)" >> "$GITHUB_OUTPUT"
+          echo "wamr=$(git submodule status wamr | head -c8)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache exe
+        id: cache-exe
+        uses: actions/cache@v4
+        with:
+          path: _build/win.exe
+          key: exe-${{ matrix.msystem }}-${{ hashFiles('*.c', '*.h', 'Makefile', 'app.rc') }}-wamr-${{ steps.submodules.outputs.wamr }}-qjs-${{ steps.submodules.outputs.qjs }}
+
       - uses: msys2/setup-msys2@v2
+        if: steps.cache-exe.outputs.cache-hit != 'true'
         with:
           msystem: ${{ matrix.msystem }}
+          release: false
           install: >-
-            git
             make
             ${{ matrix.arch }}-gcc
             ${{ matrix.arch }}-cmake
-            ${{ matrix.arch }}-wabt
             ${{ matrix.arch }}-brotli
             ${{ matrix.arch }}-wolfssl
             ${{ matrix.arch }}-libffi
-            ${{ matrix.arch }}-nodejs
             upx
 
-      - name: Cache WAMR build
-        id: cache-wamr
-        uses: actions/cache@v4
-        with:
-          path: |
-            wamr/build
-            wamr/lib/libiwasm.a
-          key: wamr-${{ matrix.msystem }}-${{
-            hashFiles('wamr/**/*.c', 'wamr/**/*.h', 'wamr/**/CMakeLists.txt') }}
-
-      - name: Cache npm dependencies
-        id: cache-npm
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: npm-${{ hashFiles('package-lock.json') }}
-
-      - name: Install npm dependencies
-        if: steps.cache-npm.outputs.cache-hit != 'true'
-        run: npm install
-
       - name: Build WAMR
-        if: steps.cache-wamr.outputs.cache-hit != 'true'
+        if: steps.cache-exe.outputs.cache-hit != 'true'
+        shell: msys2 {0}
         run: make wamr
 
-      - name: Build quickwin (minimal)
+      - name: Build exe
+        if: steps.cache-exe.outputs.cache-hit != 'true'
+        shell: msys2 {0}
         run: make minimal
         env:
-          MSYS2_PREFIX: ${{ matrix.msys2_prefix }}
+          MSYS2_PREFIX: C:/msys64/${{ matrix.msystem == 'UCRT64' && 'ucrt64' || 'mingw64' }}
 
-      - name: Run tests
-        run: make test
-        env:
-          MSYS2_PREFIX: ${{ matrix.msys2_prefix }}
-
-      - name: Rename binary with msystem suffix
-        run: mv _build/win.exe _build/win-${{ matrix.msystem }}.exe
+      - name: Rename
+        shell: bash
+        run: cp _build/win.exe _build/win-${{ matrix.msystem }}.exe
 
       - uses: actions/upload-artifact@v4
-        if: github.ref == 'refs/heads/main'
         with:
           name: quickwin-${{ matrix.msystem }}-${{ github.sha }}
           path: _build/win-${{ matrix.msystem }}.exe
 
-  publish:
-    if: github.ref == 'refs/heads/main'
+  test:
+    name: test
     needs: build
     runs-on: windows-latest
     defaults:
@@ -97,46 +82,61 @@ jobs:
         with:
           submodules: recursive
 
+      - uses: actions/setup-node@v4
+        with:
+          registry-url: 'https://registry.npmjs.org'
+
       - uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
+          release: false
           install: >-
             make
-            mingw-w64-x86_64-wabt
             mingw-w64-x86_64-nodejs
+            mingw-w64-x86_64-wabt
 
       - uses: actions/download-artifact@v4
         with:
-          pattern: quickwin-*
+          pattern: quickwin-MINGW64-${{ github.sha }}
           merge-multiple: true
 
-      - name: Cache npm dependencies
+      - name: Place exe
+        run: mkdir -p _build && mv win-MINGW64.exe _build/win.exe
+
+      - name: Cache npm
         id: cache-npm
         uses: actions/cache@v4
         with:
           path: node_modules
           key: npm-${{ hashFiles('package-lock.json') }}
 
-      - name: Install npm dependencies
+      - name: Install npm
         if: steps.cache-npm.outputs.cache-hit != 'true'
         run: npm install
 
+      - name: Compile JS + WASM
+        run: make js wasm
+
+      - name: Run tests
+        run: _build/win.exe _build/test/run.js
+
+      # ─── publish steps (仅 main) ───
+
       - name: Package npm
+        if: github.ref == 'refs/heads/main'
         run: make npm-pkg
 
-      - name: Place exe in build dir
-        run: |
-          mv win-MINGW64.exe dist/quickwin/win-mingw64.exe
+      - name: Place exe for publish
+        if: github.ref == 'refs/heads/main'
+        run: cp _build/win.exe dist/quickwin/win-mingw64.exe
 
-      - name: Set version from date (UTC+8)
+      - name: Set version (UTC+8)
+        if: github.ref == 'refs/heads/main'
         run: npm version $(TZ=Asia/Shanghai date +%Y.%-m.%-d-%H%M%S) --no-git-tag-version
         working-directory: dist/quickwin
 
-      - uses: actions/setup-node@v4
-        with:
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Publish to npm
+      - name: Publish
+        if: github.ref == 'refs/heads/main'
         run: npm publish --tag latest
         working-directory: dist/quickwin
         env:

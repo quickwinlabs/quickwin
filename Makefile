@@ -134,9 +134,12 @@ $(BUILD_DIR)/app.o: app.rc
 	mkdir -p $(BUILD_DIR)
 	$(WINDRES) $< -o $@
 
-ifneq ($(MAKECMDGOALS),clean)
-ifneq ($(MAKECMDGOALS),distclean)
-    -include $(DEPS)
+ifeq ($(MAKECMDGOALS),)
+-include $(DEPS)
+else
+BUILD_GOALS := $(filter-out js wasm npm-pkg info help clean distclean, $(MAKECMDGOALS))
+ifneq ($(BUILD_GOALS),)
+-include $(DEPS)
 endif
 endif
 
