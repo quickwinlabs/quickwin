@@ -8,6 +8,20 @@ import { options, type VNode as PreactVNode, type ComponentChild } from './preac
 const scaleFactor = gui.GetScaleFactor()
 const dpiFont = gui.CreateSystemDpiFont()
 
+type RefCallback = (hwnd: gui.HWND) => void
+
+function setHwndRef(vnode: QWVNode, hwnd: gui.HWND): void {
+    vnode[HWND_PROP] = hwnd
+    const ref = vnode.ref as RefCallback | { current: unknown } | null
+    if (ref) {
+        if (typeof ref === 'function') {
+            ref(hwnd)
+        } else {
+            ref.current = hwnd
+        }
+    }
+}
+
 const HWND_PROP = '__qw_hwnd'
 const STYLE_PROP = '__qw_style'
 const CHILDREN_HWNDS_PROP = '__qw_children'
@@ -107,7 +121,7 @@ function renderToWin32(vnode: unknown, parentHwnd: gui.HWND, context: any): gui.
         }
         if (!hwnd) return 0 as gui.HWND
 
-        vnode[HWND_PROP] = hwnd
+        setHwndRef(vnode, hwnd)
         vnode[STYLE_PROP] = vnode.props?.style ?? {}
 
         const children = getChildren(vnode)
@@ -146,7 +160,7 @@ function renderComponent(vnode: QWVNode, parentHwnd: gui.HWND, context: any): gu
     const rendered = invokeComponent(newComponent(vnode, parentHwnd, context), vnode)
     if (rendered == null) return 0 as gui.HWND
     const resultHwnd = renderToWin32(rendered, parentHwnd, context)
-    vnode[HWND_PROP] = resultHwnd
+    setHwndRef(vnode, resultHwnd)
     vnode[RENDERED_VNODE_PROP] = rendered
     return resultHwnd
 }
@@ -181,6 +195,14 @@ function destroyVNode(vnode: QWVNode): void {
 
     const hwnd = vnode[HWND_PROP] as number | undefined
     if (hwnd) destroyHwnd(hwnd)
+    const ref = vnode.ref as RefCallback | { current: unknown } | null
+    if (ref) {
+        if (typeof ref === 'function') {
+            ref(0 as gui.HWND)
+        } else {
+            ref.current = null
+        }
+    }
     vnode[HWND_PROP] = 0
 
     for (const child of getChildren(vnode)) {
@@ -243,7 +265,7 @@ function reconcile(
             if (oldResult && isVNode(oldResult)) destroyVNode(oldResult as QWVNode)
             resultHwnd = 0 as gui.HWND
         }
-        n[HWND_PROP] = resultHwnd
+        setHwndRef(n, resultHwnd)
         n[RENDERED_VNODE_PROP] = newResult
         return resultHwnd
     }
@@ -254,7 +276,7 @@ function reconcile(
         if (oldCtrl === newCtrl) {
             const hwnd = o[HWND_PROP] as gui.HWND | undefined
             if (hwnd) {
-                n[HWND_PROP] = hwnd
+                setHwndRef(n, hwnd)
                 n[STYLE_PROP] = n.props?.style ?? {}
                 n._oldProc = o._oldProc
                 applyProps(hwnd, n.props || {}, n)
