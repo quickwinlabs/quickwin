@@ -28,6 +28,18 @@ export const suite = {
             assert('httpbin.org reachable', false)
         }
 
+        // ── Query string ──
+        t.section('query string')
+        const rq = await safeFetch('https://httpbin.org/anything?foo=bar&baz=42')
+        if (rq) {
+            const body = JSON.parse(await rq.text())
+            assert('query args received', body.args !== undefined)
+            assert('?foo=bar preserved', body.args.foo === 'bar')
+            assert('?baz=42 preserved', body.args.baz === '42')
+        } else {
+            assert('query string endpoint reachable', false)
+        }
+
         // ── body / bodyUsed / stream ──
         t.section('body / bodyUsed / stream')
         const r2 = await safeFetch('https://httpbin.org/anything')

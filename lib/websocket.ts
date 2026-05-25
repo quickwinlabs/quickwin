@@ -253,7 +253,7 @@ class WebSocket {
         const host = url.hostname
         const isWSS = url.protocol === 'wss:'
         const port = url.port ? parseInt(url.port, 10) : (isWSS ? 443 : 80)
-        const path = url.pathname
+        const path = url.pathname + (url.search || '')
 
         const requestKey = generateKey()
         this._requestKey = requestKey

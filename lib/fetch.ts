@@ -444,7 +444,7 @@ const ST_DONE = 5
 
 // ── Main fetch request ──
 
-function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: string; pathname: string }, options: RequestOptions): Promise<FetchResponse> {
+function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: string; pathname: string; search?: string }, options: RequestOptions): Promise<FetchResponse> {
     return new Promise((resolve, reject) => {
         const method = options.method || 'GET'
         const headers = new FetchHeaders(options.headers)
@@ -462,7 +462,7 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
         if (!headers.has('accept-encoding')) headers.set('Accept-Encoding', 'br')
         if (body && !headers.has('content-length')) headers.set('Content-Length', String(body.length))
 
-        let request = method + ' ' + parsedUrl.pathname + ' HTTP/1.1\r\n'
+        let request = method + ' ' + parsedUrl.pathname + (parsedUrl.search || '') + ' HTTP/1.1\r\n'
         headers.forEach((value: string, name: string) => {
             request += name + ': ' + value + '\r\n'
         })
