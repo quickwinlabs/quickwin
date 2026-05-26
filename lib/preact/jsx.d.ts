@@ -11,6 +11,7 @@ interface WEvent {
 interface WIntrinsicProps {
     type?: string
     text?: string
+    ws?: number
     disabled?: boolean
     visible?: boolean
     style?: LayoutStyle

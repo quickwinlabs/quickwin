@@ -47,7 +47,8 @@ let rootHwnd: gui.HWND | null = null
 let rootVNode: QWVNode | null = null
 
 function createControl(type: string, parentHwnd: gui.HWND, vnode: QWVNode): gui.HWND {
-    const style = gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE
+    const ws = (vnode.props?.ws as number) || 0
+    const style = gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE | ws
     const text = (vnode.props?.text || '') as string
     const hwnd = gui.CreateWindow(type, text, style, 0, 0, 0, 0, parentHwnd, null)
     if (!hwnd) return 0 as gui.HWND

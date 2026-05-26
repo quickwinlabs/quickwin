@@ -4,6 +4,8 @@ import * as ffi from 'ffi'
 import * as win from 'win'
 import { useState } from '../lib/preact/hooks.js'
 import { render, notifyResize, scaleFactor } from '../lib/preact/render.js'
+import { Button } from '../lib/preact/components/Button.js'
+import { EditBox } from '../lib/preact/components/EditBox.js'
 
 const _user32 = win.LoadLibrary('user32.dll')
 const GetSystemMetrics = _user32 ? win.GetProcAddress(_user32, 'GetSystemMetrics') : 0
@@ -32,15 +34,17 @@ const mainWnd = gui.CreateWindow('DemoApp', 'Preact Demo',
 
 function App() {
     const [count, setCount] = useState(0)
+    const [text, setText] = useState('hello')
 
     return (
         <w type="STATIC" style={{ flexDirection: 'column', padding: 10, gap: 8 }}>
             <w type="STATIC" text={`Counter: ${count}`} style={{ height: 24 }} />
             <w type="STATIC" style={{ flexDirection: 'row', gap: 8 }}>
-                <w type="BUTTON" text="+1" style={{ width: 80, height: 28 }} onEvent={(e) => { if (e.msg === gui.WmMsg.LBUTTONDOWN) setCount(count + 1) }} />
-                <w type="BUTTON" text="-1" style={{ width: 80, height: 28 }} onEvent={(e) => { if (e.msg === gui.WmMsg.LBUTTONDOWN) setCount(count - 1) }} />
+                <Button text="+1" onClick={() => setCount(count + 1)} style={{ width: 80, height: 28 }} />
+                <Button text="-1" onClick={() => setCount(count - 1)} style={{ width: 80, height: 28 }} />
             </w>
-            <w type="EDIT" text="test input" style={{ height: 26 }} />
+            <EditBox value={text} onChange={setText} style={{ height: 26 }} />
+            <w type="STATIC" text={`echo: ${text}`} style={{ height: 24 }} />
         </w>
     )
 }

@@ -358,6 +358,7 @@ static JSValue js_SendMessage(JSContext *ctx, JSValueConst this_val, int argc, J
 {
     int64_t wParam;
     int32_t msg;
+    LRESULT result;
     HWND hwnd = toHWND(ctx, argv[0]);
     JS_ToInt32(ctx, &msg, argv[1]);
     JS_ToInt64(ctx, &wParam, argv[2]);
@@ -365,7 +366,7 @@ static JSValue js_SendMessage(JSContext *ctx, JSValueConst this_val, int argc, J
     {
         const char *utf8 = JS_ToCString(ctx, argv[3]);
         wchar_t *lParam = utf8ToWide(utf8);
-        SendMessageW(hwnd, msg, wParam, (LPARAM)lParam);
+        result = SendMessageW(hwnd, msg, wParam, (LPARAM)lParam);
         free(lParam);
         JS_FreeCString(ctx, utf8);
     }
@@ -373,9 +374,13 @@ static JSValue js_SendMessage(JSContext *ctx, JSValueConst this_val, int argc, J
     {
         int64_t lParam;
         JS_ToInt64(ctx, &lParam, argv[3]);
-        SendMessageW(hwnd, msg, wParam, lParam);
+        result = SendMessageW(hwnd, msg, wParam, lParam);
     }
-    return JS_UNDEFINED;
+    else
+    {
+        return JS_ThrowTypeError(ctx, "SendMessage: lParam must be string or number");
+    }
+    return JS_NewInt64(ctx, result);
 }
 
 static JSValue js_alert(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)

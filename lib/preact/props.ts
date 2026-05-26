@@ -19,6 +19,7 @@ const SW_SHOW = gui.ShowWindowCmd.SHOW
 export interface WProps {
     type?: string
     text?: string
+    ws?: number
     disabled?: boolean
     visible?: boolean
     style?: Record<string, any>

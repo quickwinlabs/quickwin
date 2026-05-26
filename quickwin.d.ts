@@ -366,7 +366,7 @@ declare module "gui" {
     function SetWindowProc(hwnd: HWND, wndProc: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): void;
     function DefWindowProc(hwnd: HWND, msg: number, wParam: number, lParam: number): number;
     function PostQuitMessage(exitCode: number): void;
-    function SendMessage(hwnd: HWND, msg: number, wParam: number, lParam: number | string): void;
+    function SendMessage(hwnd: HWND, msg: number, wParam: number, lParam: number | string): number;
     function MessageBox(message: string): void;
     function SetWindowText(hwnd: HWND, text: string): void;
     function GetWindowText(hwnd: HWND): string;
@@ -422,6 +422,7 @@ declare module "gui" {
         HSCROLL = 0x00100000,
         VSCROLL = 0x00200000,
         CLIPCHILDREN = 0x02000000,
+        TABSTOP = 0x00010000,
     }
 
     // 窗口消息 (Window Messages)
@@ -479,9 +480,10 @@ declare module "gui" {
     // 按钮样式 (Button Styles)
     export const enum ButtonStyle {
         PUSHBUTTON = 0x00000000,
-        GROUPBOX = 0x00000007,
+        DEFPUSHBUTTON = 0x00000001,
         CHECKBOX = 0x00000002,
         AUTOCHECKBOX = 0x00000003,
+        GROUPBOX = 0x00000007,
     }
 
     // ListBox 消息
@@ -497,7 +499,13 @@ declare module "gui" {
     // 编辑框样式 (Edit Control Styles)
     export const enum EditStyle {
         LEFT = 0x0000,
+        MULTILINE = 0x0004,
+        PASSWORD = 0x0020,
+        AUTOVSCROLL = 0x0040,
         AUTOHSCROLL = 0x0080,
+        READONLY = 0x0800,
+        WANTRETURN = 0x1000,
+        NUMBER = 0x2000,
     }
 
     // 组合框样式 (Combo Box Styles)

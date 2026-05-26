@@ -33,6 +33,7 @@ const suiteDefs = [
     { name: 'polyfill',          file: './test_polyfill.js',         tags: [] },
     { name: 'brotli',            file: './test_brotli.js',           tags: [] },
     { name: 'preact-ref',        file: './test_preact_ref.js',       tags: [] },
+    { name: 'components',        file: './test_components.js',       tags: [] },
 ]
 
 async function main(): Promise<void> {
