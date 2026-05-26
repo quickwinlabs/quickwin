@@ -440,6 +440,7 @@ declare module "gui" {
         MOUSEMOVE = 0x0200,
         LBUTTONDOWN = 0x0201,
         LBUTTONUP = 0x0202,
+        LBUTTONDBLCLK = 0x0203,
         RBUTTONDOWN = 0x0204,
         RBUTTONUP = 0x0205,
         SETFONT = 0x0030,
@@ -489,6 +490,14 @@ declare module "gui" {
     // ListBox 消息
     export const enum LbMsg {
         ADDSTRING = 0x0180,
+        INSERTSTRING = 0x0181,
+        DELETESTRING = 0x0182,
+        RESETCONTENT = 0x0184,
+        SETCURSEL = 0x0186,
+        GETCURSEL = 0x0188,
+        GETTEXT = 0x0189,
+        GETTEXTLEN = 0x018A,
+        GETCOUNT = 0x018B,
     }
 
     // 静态控件样式 (Static Control Styles)
@@ -516,6 +525,12 @@ declare module "gui" {
     // 列表框样式 (List Box Styles)
     export const enum ListBoxStyle {
         NOTIFY = 0x0001,
+        SORT = 0x0002,
+        MULTIPLESEL = 0x0008,
+        HASSTRINGS = 0x0040,
+        NOINTEGRALHEIGHT = 0x0100,
+        EXTENDEDSEL = 0x0800,
+        STANDARD = 0x0001 | 0x0002 | 0x00200000 | 0x00800000,
     }
 
     // ShowWindow 命令 (ShowWindow nCmdShow)

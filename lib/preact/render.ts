@@ -136,6 +136,7 @@ function renderComponent(vnode: QWVNode, parentHwnd: gui.HWND, context: any): gu
     const resultHwnd = renderToWin32(rendered, parentHwnd, context)
     setHwndRef(vnode, resultHwnd)
     vnode[RENDERED_VNODE_PROP] = rendered
+    vnode[STYLE_PROP] = vnode.props?.style as Record<string, any> ?? rendered[STYLE_PROP] as Record<string, any> ?? {}
     return resultHwnd
 }
 
@@ -241,6 +242,7 @@ function reconcile(
         }
         setHwndRef(n, resultHwnd)
         n[RENDERED_VNODE_PROP] = newResult
+        n[STYLE_PROP] = n.props?.style as Record<string, any> ?? (newResult ? newResult[STYLE_PROP] : {}) ?? {}
         return resultHwnd
     }
 

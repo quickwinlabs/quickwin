@@ -18,6 +18,7 @@ export interface LayoutStyle {
     flexDirection?: 'row' | 'column'
     justifyContent?: string
     alignItems?: string
+    flex?: number
     flexGrow?: number
     width?: number | string
     height?: number | string
@@ -94,10 +95,14 @@ function layoutNode(hwnd: number, vnode: VNode, availableRect: LayoutRect): void
     const mainSize = (isRow ? nodeW : nodeH) - padding * 2 - totalGap
     const crossSize = (isRow ? nodeH : nodeW) - padding * 2
 
+    function getFlexGrow(s: LayoutStyle): number {
+        return s.flexGrow ?? s.flex ?? 0
+    }
+
     let totalFlex = 0
     let fixedMainTotal = 0
     for (const child of children) {
-        const fg = child.style.flexGrow || 0
+        const fg = getFlexGrow(child.style)
         const fixedMain = isRow
             ? resolveSize(child.style.width, mainSize)
             : resolveSize(child.style.height, mainSize)
@@ -114,7 +119,7 @@ function layoutNode(hwnd: number, vnode: VNode, availableRect: LayoutRect): void
 
     let offset = 0
     for (const child of children) {
-        const fg = child.style.flexGrow || 0
+        const fg = getFlexGrow(child.style)
         let childMain: number
         if (fg > 0) {
             childMain = (fg * flexUnit) | 0

@@ -6,6 +6,7 @@ import { useState } from '../lib/preact/hooks.js'
 import { render, notifyResize, scaleFactor } from '../lib/preact/render.js'
 import { Button } from '../lib/preact/components/Button.js'
 import { EditBox } from '../lib/preact/components/EditBox.js'
+import { ListBox } from '../lib/preact/components/ListBox.js'
 
 const _user32 = win.LoadLibrary('user32.dll')
 const GetSystemMetrics = _user32 ? win.GetProcAddress(_user32, 'GetSystemMetrics') : 0
@@ -32,9 +33,12 @@ const mainWnd = gui.CreateWindow('DemoApp', 'Preact Demo',
     gui.WindowStyle.OVERLAPPEDWINDOW,
     winX, winY, winW, winH, null, null)
 
+const fruits = ['Apple', 'Banana', 'Cherry', 'Durian', 'Elderberry']
+
 function App() {
     const [count, setCount] = useState(0)
     const [text, setText] = useState('hello')
+    const [selFruit, setSelFruit] = useState('(none)')
 
     return (
         <w type="STATIC" style={{ flexDirection: 'column', padding: 10, gap: 8 }}>
@@ -45,6 +49,8 @@ function App() {
             </w>
             <EditBox value={text} onChange={setText} style={{ height: 26 }} />
             <w type="STATIC" text={`echo: ${text}`} style={{ height: 24 }} />
+            <w type="STATIC" text={`fruit: ${selFruit}`} style={{ height: 24 }} />
+            <ListBox items={fruits} onChange={(i, t) => setSelFruit(t)} style={{ flex: 1 }} />
         </w>
     )
 }
