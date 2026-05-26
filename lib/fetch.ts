@@ -320,6 +320,38 @@ class FetchHeaders {
     }
 }
 
+// ── Request ──
+
+class FetchRequest {
+    readonly url: string
+    readonly method: string
+    readonly headers: FetchHeaders
+    readonly body: string | null
+    readonly redirect: 'follow' | 'manual' | 'error'
+    readonly timeout: number
+    readonly maxRedirects: number
+
+    constructor(input: string | FetchRequest, init: RequestInit = {}) {
+        if (input instanceof FetchRequest) {
+            this.url = input.url
+            this.method = init.method || input.method
+            this.headers = new FetchHeaders(init.headers || input.headers)
+            this.body = init.body !== undefined ? init.body : input.body
+            this.redirect = init.redirect || input.redirect
+            this.timeout = init.timeout || input.timeout
+            this.maxRedirects = init.maxRedirects || input.maxRedirects
+        } else {
+            this.url = input
+            this.method = init.method || 'GET'
+            this.headers = new FetchHeaders(init.headers)
+            this.body = init.body || null
+            this.redirect = init.redirect || 'follow'
+            this.timeout = init.timeout || 30000
+            this.maxRedirects = init.maxRedirects || 5
+        }
+    }
+}
+
 // ── Response ──
 
 class FetchResponse {
@@ -670,10 +702,28 @@ function parseMaxAge(cc: string): number {
     return m ? parseInt(m[1], 10) : 0
 }
 
-async function fetch(url: string, options: RequestOptions = {}): Promise<FetchResponse> {
+async function fetch(url: string | Request, init: RequestInit = {}): Promise<FetchResponse> {
+    // Normalize: if first arg is a Request, unwrap it
+    let currentUrl: string
+    let options: RequestOptions
+    if (url instanceof FetchRequest) {
+        const req = url
+        currentUrl = req.url
+        options = {
+            method: init.method || req.method,
+            headers: init.headers || headersToObj(req.headers),
+            body: init.body !== undefined ? init.body : req.body || undefined,
+            timeout: init.timeout || req.timeout,
+            redirect: init.redirect || req.redirect,
+            maxRedirects: init.maxRedirects || req.maxRedirects,
+        }
+    } else {
+        currentUrl = url as string
+        options = init as RequestOptions
+    }
+
     const redirectMode = options.redirect || 'follow'
     const maxRedirects = redirectMode === 'follow' ? (options.maxRedirects || 5) : 0
-    let currentUrl = url
     let redirectCount = 0
     const method = options.method || 'GET'
     const cache = typeof __httpCache__ !== 'undefined' ? __httpCache__ : null
@@ -854,11 +904,21 @@ declare global {
     }
     var Response: typeof FetchResponse;
 
-    var fetch: (url: string, init?: RequestInit) => Promise<Response>;
+    interface Request {
+        readonly url: string;
+        readonly method: string;
+        readonly headers: Headers;
+        readonly body: string | null;
+        readonly redirect: 'follow' | 'manual' | 'error';
+    }
+    var Request: typeof FetchRequest;
+
+    var fetch: (url: string | Request, init?: RequestInit) => Promise<Response>;
 }
 
 // ── Register globals ──
 
 globalThis.fetch = fetch
 globalThis.Response = FetchResponse
+globalThis.Request = FetchRequest
 globalThis.Headers = FetchHeaders

@@ -10,7 +10,7 @@ export const suite = {
             else { t.fail++; std.printf('  FAIL: %s\n', name) }
         }
 
-        async function safeFetch(url: string, init?: RequestInit) {
+        async function safeFetch(url: any, init?: RequestInit) {
             try {
                 return await fetch(url, init);
             } catch {
@@ -38,6 +38,40 @@ export const suite = {
             assert('?baz=42 preserved', body.args.baz === '42')
         } else {
             assert('query string endpoint reachable', false)
+        }
+
+        // ── Request constructor ──
+        t.section('Request constructor')
+        {
+            const r = new Request('https://httpbin.org/anything?x=1&y=2', { method: 'POST', headers: { 'X-Test': 'val' }, body: 'hello' })
+            assert('Request.url', r.url === 'https://httpbin.org/anything?x=1&y=2')
+            assert('Request.method', r.method === 'POST')
+            assert('Request.headers get', r.headers.get('x-test') === 'val')
+            assert('Request.body', r.body === 'hello')
+        }
+        {
+            const r1 = new Request('https://example.com/path')
+            assert('Request default method GET', r1.method === 'GET')
+            assert('Request default redirect follow', r1.redirect === 'follow')
+        }
+        {
+            const r2 = new Request('https://httpbin.org/anything')
+            // clone with override
+            const r3 = new Request(r2, { method: 'PUT' })
+            assert('Request clone same url', r3.url === r2.url)
+            assert('Request clone override method', r3.method === 'PUT')
+        }
+        {
+            const r = await safeFetch(new Request('https://httpbin.org/anything', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: 'req-class' }))
+            if (r) {
+                const body = JSON.parse(await r.text())
+                assert('fetch(Request) status', r.status > 0)
+                assert('fetch(Request) method POST', body.method === 'POST')
+                assert('fetch(Request) body received', body.data === 'req-class')
+                assert('fetch(Request) content-type', body.headers['Content-Type'] === 'text/plain')
+            } else {
+                assert('fetch(Request) endpoint reachable', false)
+            }
         }
 
         // ── body / bodyUsed / stream ──
