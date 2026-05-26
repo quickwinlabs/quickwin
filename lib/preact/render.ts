@@ -46,29 +46,10 @@ interface QWVNode extends PreactVNode {
 let rootHwnd: gui.HWND | null = null
 let rootVNode: QWVNode | null = null
 
-const WIN32_CLASS: Record<string, string> = {
-    button: 'BUTTON', edit: 'EDIT', static: 'STATIC',
-    checkbox: 'BUTTON', groupbox: 'BUTTON', combobox: 'COMBOBOX',
-    listbox: 'LISTBOX', progressbar: 'msctls_progress32',
-}
-
-const WIN32_STYLE: Record<string, number> = {
-    button: gui.ButtonStyle.PUSHBUTTON,
-    edit: gui.WindowStyle.BORDER | gui.EditStyle.AUTOHSCROLL,
-    static: gui.StaticStyle.LEFT,
-    checkbox: gui.ButtonStyle.AUTOCHECKBOX,
-    groupbox: gui.ButtonStyle.GROUPBOX,
-    combobox: gui.ComboBoxStyle.DROPDOWNLIST,
-    listbox: gui.ListBoxStyle.NOTIFY | gui.WindowStyle.VSCROLL,
-    progressbar: 0,
-}
-
 function createControl(type: string, parentHwnd: gui.HWND, vnode: QWVNode): gui.HWND {
-    const base = gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE
-    const winClass = WIN32_CLASS[type] || 'STATIC'
-    const style = base | (WIN32_STYLE[type] ?? gui.StaticStyle.LEFT)
-    const text = (vnode.props?.text || vnode.props?.value || '') as string
-    const hwnd = gui.CreateWindow(winClass, text, style, 0, 0, 0, 0, parentHwnd, null)
+    const style = gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE
+    const text = (vnode.props?.text || '') as string
+    const hwnd = gui.CreateWindow(type, text, style, 0, 0, 0, 0, parentHwnd, null)
     if (!hwnd) return 0 as gui.HWND
     gui.SendMessage(hwnd, gui.WmMsg.SETFONT, dpiFont as unknown as number, 1)
     applyProps(hwnd, vnode.props || {}, vnode)
@@ -108,17 +89,9 @@ function renderToWin32(vnode: unknown, parentHwnd: gui.HWND, context: any): gui.
     }
 
     if (vnode.type === 'w') {
-        const ctrlType = (vnode.props?.type as string) || ''
-        let hwnd: gui.HWND
-        if (ctrlType) {
-            hwnd = createControl(ctrlType, parentHwnd, vnode)
-        } else {
-            hwnd = gui.CreateWindow('STATIC', '', gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE, 0, 0, 0, 0, parentHwnd, null)
-            if (hwnd) {
-                gui.SendMessage(hwnd, gui.WmMsg.SETFONT, dpiFont as unknown as number, 1)
-                applyProps(hwnd, vnode.props || {}, vnode)
-            }
-        }
+        const ctrlType = vnode.props?.type as string | undefined
+        if (!ctrlType) return 0 as gui.HWND
+        const hwnd = createControl(ctrlType, parentHwnd, vnode)
         if (!hwnd) return 0 as gui.HWND
 
         setHwndRef(vnode, hwnd)

@@ -13,14 +13,14 @@ export const suite = {
 
         t.section('object ref')
         const myRef = createRef()
-        const vnode = createElement('w', { type: 'static', ref: myRef })
+        const vnode = createElement('w', { type: 'STATIC', ref: myRef })
         render(vnode, parentHwnd)
         t.checkTrue('ref.current is truthy', myRef.current !== null && myRef.current !== 0)
 
         t.section('callback ref')
         let captured = 0
         const cbRef = (hwnd: any) => { captured = hwnd }
-        const vnode2 = createElement('w', { type: 'static', ref: cbRef } as any)
+        const vnode2 = createElement('w', { type: 'STATIC', ref: cbRef } as any)
         render(vnode2, parentHwnd)
         t.checkTrue('callback captured hwnd', captured !== 0)
 

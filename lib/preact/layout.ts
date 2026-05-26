@@ -52,17 +52,7 @@ function resolveSize(val: number | string | undefined, available: number): numbe
     return -1
 }
 
-const DEFAULT_SIZES: Record<string, number> = {
-    button: (24 * scaleFactor) | 0, edit: (24 * scaleFactor) | 0,
-    static: (20 * scaleFactor) | 0, checkbox: (24 * scaleFactor) | 0,
-    groupbox: (48 * scaleFactor) | 0, combobox: (200 * scaleFactor) | 0,
-    listbox: (100 * scaleFactor) | 0, progressbar: (24 * scaleFactor) | 0,
-}
-
-function getDefaultChildSize(vnode: VNode): number {
-    const ctrlType = typeof vnode.props === 'object' ? vnode.props?.type : undefined
-    return DEFAULT_SIZES[ctrlType as string] ?? (30 * scaleFactor) | 0
-}
+const DEFAULT_CHILD_SIZE = (30 * scaleFactor) | 0
 
 function getLayoutChildren(vnode: VNode): { hwnd: number; style: LayoutStyle; vnode: VNode }[] {
     const result: { hwnd: number; style: LayoutStyle; vnode: VNode }[] = []
@@ -116,7 +106,7 @@ function layoutNode(hwnd: number, vnode: VNode, availableRect: LayoutRect): void
         } else if (fixedMain >= 0) {
             fixedMainTotal += fixedMain
         } else {
-            fixedMainTotal += getDefaultChildSize(child.vnode)
+            fixedMainTotal += DEFAULT_CHILD_SIZE
         }
     }
 
@@ -132,7 +122,7 @@ function layoutNode(hwnd: number, vnode: VNode, availableRect: LayoutRect): void
             const fixed = isRow
                 ? resolveSize(child.style.width, mainSize)
                 : resolveSize(child.style.height, mainSize)
-            childMain = fixed >= 0 ? fixed : getDefaultChildSize(child.vnode)
+            childMain = fixed >= 0 ? fixed : DEFAULT_CHILD_SIZE
         }
 
         const childCross = isRow

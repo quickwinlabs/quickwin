@@ -34,13 +34,13 @@ function App() {
     const [count, setCount] = useState(0)
 
     return (
-        <w style={{ flexDirection: 'column', padding: 10, gap: 8 }}>
-            <w type="static" text={`Counter: ${count}`} style={{ height: 24 }} />
-            <w style={{ flexDirection: 'row', gap: 8 }}>
-                <w type="button" text="+1" style={{ width: 80, height: 28 }} onEvent={(e) => { if (e.msg === gui.WmMsg.LBUTTONDOWN) setCount(count + 1) }} />
-                <w type="button" text="-1" style={{ width: 80, height: 28 }} onEvent={(e) => { if (e.msg === gui.WmMsg.LBUTTONDOWN) setCount(count - 1) }} />
+        <w type="STATIC" style={{ flexDirection: 'column', padding: 10, gap: 8 }}>
+            <w type="STATIC" text={`Counter: ${count}`} style={{ height: 24 }} />
+            <w type="STATIC" style={{ flexDirection: 'row', gap: 8 }}>
+                <w type="BUTTON" text="+1" style={{ width: 80, height: 28 }} onEvent={(e) => { if (e.msg === gui.WmMsg.LBUTTONDOWN) setCount(count + 1) }} />
+                <w type="BUTTON" text="-1" style={{ width: 80, height: 28 }} onEvent={(e) => { if (e.msg === gui.WmMsg.LBUTTONDOWN) setCount(count - 1) }} />
             </w>
-            <w type="edit" value="test input" style={{ height: 26 }} />
+            <w type="EDIT" text="test input" style={{ height: 26 }} />
         </w>
     )
 }

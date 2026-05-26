@@ -9,18 +9,12 @@ interface WEvent {
 }
 
 interface WIntrinsicProps {
-    type?: 'button' | 'edit' | 'static' | 'checkbox' | 'groupbox' | 'combobox' | 'listbox' | 'progressbar'
+    type?: string
     text?: string
-    value?: string
     disabled?: boolean
     visible?: boolean
     style?: LayoutStyle
     onEvent?: (e: WEvent) => void
-    placeholder?: string
-    password?: boolean
-    checked?: boolean
-    items?: string[]
-    max?: number
     children?: ComponentChildren
 }
 
