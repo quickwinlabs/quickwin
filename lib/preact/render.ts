@@ -226,6 +226,7 @@ function reconcile(
             oldComp._qw_parent_hwnd = parentHwnd
             comp = oldComp
         } else {
+            if (isVNode(o)) destroyVNode(o)
             comp = newComponent(n, parentHwnd, context)
         }
         n._component = comp as any
