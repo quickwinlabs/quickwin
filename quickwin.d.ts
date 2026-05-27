@@ -318,13 +318,13 @@ declare module "wolfssl" {
     type WOLFSSL_METHOD = number;
 
     function wolfSSL_library_init(): number;
-    function wolfSSL_CTX_new(method: WOLFSSL_METHOD): WOLFSSL_CTX;
+    function wolfSSL_CTX_new(method: WOLFSSL_METHOD): WOLFSSL_CTX | null;
     function wolfSSL_CTX_free(ctx: WOLFSSL_CTX): void;
     function wolfSSL_CTX_set_verify(ctx: WOLFSSL_CTX, mode: number): number;
     function wolfSSL_CTX_use_certificate_file(ctx: WOLFSSL_CTX, file: string, format?: number): number;
     function wolfSSL_CTX_use_PrivateKey_file(ctx: WOLFSSL_CTX, file: string, format?: number): number;
 
-    function wolfSSL_new(ctx: WOLFSSL_CTX): WOLFSSL;
+    function wolfSSL_new(ctx: WOLFSSL_CTX): WOLFSSL | null;
     function wolfSSL_free(ssl: WOLFSSL): void;
     function wolfSSL_set_fd(ssl: WOLFSSL, fd: number): number;
     function wolfSSL_connect(ssl: WOLFSSL): number;
@@ -360,7 +360,7 @@ declare module "gui" {
     type WNDPROC = number & { readonly __label: unique symbol };
 
     function RegisterClass(className: string, wndProc?: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): number;
-    function CreateWindow(className: string, title: string, style: number, x: number, y: number, width: number, height: number, parent: HWND | null, menu: HMENU | null): HWND;
+    function CreateWindow(className: string, title: string, style: number, x: number, y: number, width: number, height: number, parent: HWND | null, menu: HMENU | null): HWND | null;
     function DestroyWindow(hwnd: HWND): boolean;
     function ShowWindow(hwnd: HWND, nCmdShow?: number): void;
     function SetWindowProc(hwnd: HWND, wndProc: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): void;

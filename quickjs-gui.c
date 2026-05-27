@@ -218,7 +218,7 @@ static JSValue js_createWindow(JSContext *ctx, JSValueConst this_val, int argc, 
     {
         return JS_NewInt64(ctx, (int64_t)hwnd);
     }
-    return JS_NewInt64(ctx, 0);
+    return JS_NULL;
 }
 
 static JSValue js_showWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)

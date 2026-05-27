@@ -45,7 +45,7 @@ static JSValue js_wolfSSL_CTX_new(JSContext *ctx, JSValueConst this_val, int arg
     
     WOLFSSL_METHOD *method = (WOLFSSL_METHOD *)(size_t)method_ptr;
     WOLFSSL_CTX *ssl_ctx = wolfSSL_CTX_new(method);
-    
+    if (!ssl_ctx) return JS_NULL;
     return JS_NewInt64(ctx, (int64_t)(size_t)ssl_ctx);
 }
 
@@ -69,7 +69,7 @@ static JSValue js_wolfSSL_new(JSContext *ctx, JSValueConst this_val, int argc, J
     
     WOLFSSL_CTX *ssl_ctx = (WOLFSSL_CTX *)(size_t)ctx_ptr;
     WOLFSSL *ssl = wolfSSL_new(ssl_ctx);
-    
+    if (!ssl) return JS_NULL;
     return JS_NewInt64(ctx, (int64_t)(size_t)ssl);
 }
 
