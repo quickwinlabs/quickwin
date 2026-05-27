@@ -2,6 +2,8 @@
 import * as gui from 'gui'
 import * as os from 'os'
 
+const _prevKeys = new Map<number, string>()
+
 export interface ListBoxProps {
     items: string[]
     selectedIndex?: number
@@ -17,6 +19,16 @@ export interface ListBoxProps {
     ws?: number
 }
 
+function populateItems(hwnd: gui.HWND, items: string[], selectedIndex: number) {
+    gui.SendMessage(hwnd, gui.LbMsg.RESETCONTENT, 0, 0)
+    for (const item of items) {
+        gui.SendMessage(hwnd, gui.LbMsg.ADDSTRING, 0, item)
+    }
+    if (selectedIndex >= 0 && selectedIndex < items.length) {
+        gui.SendMessage(hwnd, gui.LbMsg.SETCURSEL, selectedIndex, 0)
+    }
+}
+
 export function ListBox(props: ListBoxProps) {
     let listStyle = gui.ListBoxStyle.NOTIFY | gui.ListBoxStyle.HASSTRINGS | gui.ListBoxStyle.NOINTEGRALHEIGHT | gui.WindowStyle.VSCROLL | gui.WindowStyle.BORDER
     if (props.sort) listStyle |= gui.ListBoxStyle.SORT
@@ -26,14 +38,13 @@ export function ListBox(props: ListBoxProps) {
 
     const listRef = (hwnd: gui.HWND) => {
         if (!hwnd) return
+        const key = JSON.stringify(props.items || [])
+        if (_prevKeys.get(hwnd as number) === key) return
+        _prevKeys.set(hwnd as number, key)
+
         const items = props.items || []
-        for (const item of items) {
-            gui.SendMessage(hwnd, gui.LbMsg.ADDSTRING, 0, item)
-        }
         const idx = props.selectedIndex !== undefined ? props.selectedIndex : (props.defaultSelectedIndex !== undefined ? props.defaultSelectedIndex : -1)
-        if (idx >= 0 && idx < items.length) {
-            gui.SendMessage(hwnd, gui.LbMsg.SETCURSEL, idx, 0)
-        }
+        populateItems(hwnd, items, idx)
     }
 
     const onChange = props.onChange

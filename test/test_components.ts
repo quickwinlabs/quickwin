@@ -7,6 +7,7 @@ import { Button } from '../lib/preact/components/Button.js'
 import { EditBox } from '../lib/preact/components/EditBox.js'
 import { ListBox } from '../lib/preact/components/ListBox.js'
 import { Tab } from '../lib/preact/components/Tab.js'
+import { ListView } from '../lib/preact/components/ListView.js'
 
 export const suite = {
     name: 'components',
@@ -85,6 +86,40 @@ export const suite = {
         })
         const tab2Hwnd = render(tab2, parent)
         t.checkTrue('returned hwnd is truthy', tab2Hwnd !== null && tab2Hwnd !== 0)
+
+        t.section('ListView renders')
+        const lv = createElement(ListView, {
+            columns: [{ title: 'Name' }, { title: 'Value' }],
+            items: [['A', '1'], ['B', '2'], ['C', '3']]
+        })
+        const lvHwnd = render(lv, parent)
+        t.checkTrue('returned hwnd is truthy', lvHwnd !== null && lvHwnd !== 0)
+
+        t.section('ListView with selectedIndex')
+        const lv2 = createElement(ListView, {
+            columns: [{ title: 'X' }],
+            items: [['P'], ['Q'], ['R']],
+            selectedIndex: 1
+        })
+        const lv2Hwnd = render(lv2, parent)
+        t.checkTrue('returned hwnd is truthy', lv2Hwnd !== null && lv2Hwnd !== 0)
+
+        t.section('ListView with gridLines')
+        const lv3 = createElement(ListView, {
+            columns: [{ title: 'A' }],
+            items: [['1'], ['2']],
+            gridLines: true
+        })
+        const lv3Hwnd = render(lv3, parent)
+        t.checkTrue('returned hwnd is truthy', lv3Hwnd !== null && lv3Hwnd !== 0)
+
+        t.section('ListView with column widths')
+        const lv4 = createElement(ListView, {
+            columns: [{ title: 'Wide', width: 200 }, { title: 'Narrow', width: 50 }],
+            items: [['hello', 'world']]
+        })
+        const lv4Hwnd = render(lv4, parent)
+        t.checkTrue('returned hwnd is truthy', lv4Hwnd !== null && lv4Hwnd !== 0)
 
         gui.RemoveWindow(parent)
         gui.DestroyWindow(parent)

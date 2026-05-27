@@ -8,6 +8,7 @@ import { Button } from '../lib/preact/components/Button.js'
 import { EditBox } from '../lib/preact/components/EditBox.js'
 import { ListBox } from '../lib/preact/components/ListBox.js'
 import { Tab } from '../lib/preact/components/Tab.js'
+import { ListView } from '../lib/preact/components/ListView.js'
 
 const _user32 = win.LoadLibrary('user32.dll')
 const GetSystemMetrics = _user32 ? win.GetProcAddress(_user32, 'GetSystemMetrics') : 0
@@ -52,6 +53,20 @@ function App() {
             <w type="STATIC" text={`echo: ${text}`} style={{ height: 24 }} />
             <w type="STATIC" text={`fruit: ${selFruit}`} style={{ height: 24 }} />
             <ListBox items={fruits} onChange={(i, t) => setSelFruit(t)} style={{ height: 120 }} />
+            <ListView columns={[
+                { title: 'Name', width: 150 },
+                { title: 'Color', width: 100 },
+                { title: 'Price', width: 80 },
+            ]} items={[
+                ['Apple', 'Red', '$1.20'],
+                ['Banana', 'Yellow', '$0.80'],
+                ['Cherry', 'Dark Red', '$2.50'],
+                ['Durian', 'Green', '$5.00'],
+                ['Elderberry', 'Purple', '$3.00'],
+            ]} onChange={(i) => {
+                const row = [['Apple', 'Red', '$1.20'], ['Banana', 'Yellow', '$0.80'], ['Cherry', 'Dark Red', '$2.50'], ['Durian', 'Green', '$5.00'], ['Elderberry', 'Purple', '$3.00']][i]
+                setSelFruit(row ? row[0] : '(none)')
+            }} style={{ flex: 1 }} />
             <Tab tabs={[
                 { title: 'Hello', content: <w type="STATIC" text="Hello tab!" /> },
                 { title: 'World', content: <w type="STATIC" text="World tab!" /> },

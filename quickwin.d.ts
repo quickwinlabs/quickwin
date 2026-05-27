@@ -550,6 +550,40 @@ declare module "gui" {
         SETCURSEL = 0x130C,
     }
 
+    // ListView 控件样式 (List-View Styles)
+    export const enum ListViewStyle {
+        REPORT = 0x0001,
+        SINGLESEL = 0x0004,
+        SHOWSELALWAYS = 0x0008,
+        NOSORTHEADER = 0x8000,
+    }
+
+    // ListView 扩展样式 (List-View Extended Styles)
+    export const enum LvExStyle {
+        GRIDLINES = 0x00000001,
+        CHECKBOXES = 0x00000004,
+        TRACKSELECT = 0x00000008,
+        HEADERDRAGDROP = 0x00000010,
+        FULLROWSELECT = 0x00000020,
+        DOUBLEBUFFER = 0x00010000,
+    }
+
+    // ListView 控件消息 (List-View Messages)
+    export const enum LvMsg {
+        GETITEMCOUNT = 0x1004,
+        DELETEALLITEMS = 0x1009,
+        GETNEXTITEM = 0x100C,
+        GETITEMSTATE = 0x102C,
+        SETITEMSTATE = 0x102B,
+        GETSELECTEDCOUNT = 0x1032,
+        SETEXTENDEDLISTVIEWSTYLE = 0x1036,
+        INSERTCOLUMNW = 0x1061,
+        GETSELECTIONMARK = 0x1042,
+        INSERTITEMW = 0x104D,
+        SETITEMW = 0x104C,
+        ENSUREVISIBLE = 0x1013,
+    }
+
     // ShowWindow 命令 (ShowWindow nCmdShow)
     export const enum ShowWindowCmd {
         HIDE = 0,
