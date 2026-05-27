@@ -15,7 +15,7 @@ export const suite = {
         const myRef = createRef()
         const vnode = createElement('w', { type: 'STATIC', ref: myRef })
         render(vnode, parentHwnd)
-        t.checkTrue('ref.current is truthy', myRef.current !== null && myRef.current !== 0)
+        t.checkTrue('ref.current is truthy', myRef?.current !== null && myRef.current !== 0)
 
         t.section('callback ref')
         let captured = 0

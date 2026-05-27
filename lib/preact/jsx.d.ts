@@ -1,8 +1,9 @@
-import type { VNode, ComponentChildren } from './preact.js'
+import type { VNode, ComponentChildren, Ref } from './preact.js'
 import type { LayoutStyle } from './layout.js'
+import type { HWND } from 'gui'
 
 interface WEvent {
-    hwnd: number
+    hwnd: HWND
     msg: number
     wParam: number
     lParam: number
@@ -11,6 +12,7 @@ interface WEvent {
 interface WIntrinsicProps {
     type?: string
     text?: string
+    ref?: Ref<HWND>
     ws?: number
     disabled?: boolean
     visible?: boolean
@@ -24,8 +26,8 @@ declare global {
         interface IntrinsicElements {
             w: WIntrinsicProps
         }
-        interface Element extends VNode {}
+        interface Element extends VNode { }
     }
 }
 
-export {}
+export { }

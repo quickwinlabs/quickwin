@@ -3,6 +3,7 @@ import * as gui from 'gui'
 import * as os from 'os'
 import * as ffi from 'ffi'
 import { useState, useRef } from '../hooks.js'
+import type { LayoutStyle } from '../layout.js'
 
 const TCIF_TEXT = 0x0001
 const FFI_U64 = ffi.FFI_TYPE_UINT64
@@ -19,7 +20,7 @@ export interface TabProps {
     selectedIndex?: number
     defaultSelectedIndex?: number
     onChange?: (index: number) => void
-    style?: Record<string, any>
+    style?: LayoutStyle
 }
 
 function insertTabItem(hwnd: gui.HWND, title: string, index: number) {
@@ -46,9 +47,9 @@ export function Tab(props: TabProps) {
     const sel = props.selectedIndex !== undefined ? props.selectedIndex : internalSel
     const onChange = props.onChange
     const currentTabs = props.tabs || []
-    const contentRef = useRef<number>(0)
+    const contentRef = useRef<gui.HWND | null>(null)
 
-    const tabRef = (hwnd: gui.HWND) => {
+    const tabRef = (hwnd: gui.HWND | null) => {
         if (!hwnd) return
         gui.SendMessage(hwnd, gui.TcMsg.DELETEALLITEMS, 0, 0)
         for (let i = 0; i < currentTabs.length; i++) {
@@ -64,11 +65,11 @@ export function Tab(props: TabProps) {
         <w type="SysTabControl32"
             ref={tabRef}
             ws={gui.TabStyle.FOCUSNEVER}
-            style={{ flex: 1, ...props.style } as any}
+            style={{ flex: 1, ...props.style }}
             onEvent={(e) => {
                 if (e.msg === gui.WmMsg.LBUTTONDOWN) {
                     os.setTimeout(() => {
-                        const hwnd = e.hwnd as gui.HWND
+                        const hwnd = e.hwnd
                         const curSel = gui.SendMessage(hwnd, gui.TcMsg.GETCURSEL, 0, 0) as number
                         if (curSel >= 0 && curSel !== sel) {
                             setInternalSel(curSel)
@@ -78,8 +79,8 @@ export function Tab(props: TabProps) {
                 }
             }}>
             {typeof currentTabs[sel]?.content === 'string' || typeof currentTabs[sel]?.content === 'number'
-                ? <w type="STATIC" ref={contentRef as any} text={String(currentTabs[sel]?.content)} />
-                : <w type="STATIC" ref={contentRef as any}>{currentTabs[sel]?.content ?? null}</w>}
+                ? <w type="STATIC" ref={contentRef} text={String(currentTabs[sel]?.content)} />
+                : <w type="STATIC" ref={contentRef}>{currentTabs[sel]?.content ?? null}</w>}
         </w>
     )
 }

@@ -119,7 +119,7 @@ export function ListView(props: ListViewProps) {
 
     let listStyle = gui.ListViewStyle.REPORT | gui.ListViewStyle.SINGLESEL | gui.ListViewStyle.SHOWSELALWAYS | gui.WindowStyle.VSCROLL | gui.WindowStyle.BORDER
 
-    const listRef = (hwnd: gui.HWND) => {
+    const listRef = (hwnd: gui.HWND | null) => {
         if (!hwnd) return
 
         if (!_colInserted.has(hwnd as number)) {

@@ -1,6 +1,7 @@
 import * as gui from 'gui'
+import type { HWND } from 'gui'
 import * as ffi from 'ffi'
-import { HWND_PROP, STYLE_PROP, CHILDREN_HWNDS_PROP, RENDERED_VNODE_PROP, isVNode, getChildren, type VNode } from './render.js'
+import { isVNode, getChildren, type VNode } from './render.js'
 import { moveWindow } from './props.js'
 
 const scaleFactor = gui.GetScaleFactor()
@@ -26,8 +27,8 @@ interface LayoutRect {
     h: number
 }
 
-function getClientSize(hwnd: number): { w: number; h: number } {
-    const r = gui.GetClientRect(hwnd as gui.HWND)
+function getClientSize(hwnd: HWND): { w: number; h: number } {
+    const r = gui.GetClientRect(hwnd)
     if (!r) return { w: 0, h: 0 }
     return { w: r.right - r.left, h: r.bottom - r.top }
 }
@@ -44,24 +45,24 @@ function resolveSize(val: number | string | undefined, available: number): numbe
 
 const DEFAULT_CHILD_SIZE = (30 * scaleFactor) | 0
 
-function getLayoutChildren(vnode: VNode): { hwnd: number; style: LayoutStyle; vnode: VNode }[] {
-    const result: { hwnd: number; style: LayoutStyle; vnode: VNode }[] = []
+function getLayoutChildren(vnode: VNode): { hwnd: HWND; style: LayoutStyle; vnode: VNode }[] {
+    const result: { hwnd: HWND; style: LayoutStyle; vnode: VNode }[] = []
     if (vnode.type !== 'w') return result
 
     for (const child of getChildren(vnode)) {
         if (!isVNode(child)) continue
-        const childHwnd = child[HWND_PROP] as number | undefined
+        const childHwnd = child.__qw_hwnd
         if (childHwnd) {
-            result.push({ hwnd: childHwnd, style: (child[STYLE_PROP] as LayoutStyle) || {}, vnode: child })
+            result.push({ hwnd: childHwnd, style: child.__qw_style || {}, vnode: child })
         }
     }
     return result
 }
 
-function layoutNode(hwnd: number, vnode: VNode, availableRect: LayoutRect): void {
+function layoutNode(hwnd: HWND, vnode: VNode, availableRect: LayoutRect): void {
     if (!isVNode(vnode) || vnode.type !== 'w') return
 
-    const style = (vnode[STYLE_PROP] as LayoutStyle) || {}
+    const style = vnode.__qw_style || {}
     const dir = style.flexDirection || 'column'
     const gap = ((style.gap || 0) * scaleFactor) | 0
     const padding = ((style.padding || 0) * scaleFactor) | 0
@@ -78,8 +79,8 @@ function layoutNode(hwnd: number, vnode: VNode, availableRect: LayoutRect): void
 
     let childOffX = 0, childOffY = 0
     let childAreaW = nodeW, childAreaH = nodeH
-    if ((vnode as any)?.props?.type === 'SysTabControl32') {
-        const cr = gui.GetClientRect(hwnd as gui.HWND)
+    if (vnode.props?.type === 'SysTabControl32') {
+        const cr = gui.GetClientRect(hwnd)
         if (cr) {
             const buf = new ArrayBuffer(16)
             const dv = new DataView(buf)
@@ -87,7 +88,7 @@ function layoutNode(hwnd: number, vnode: VNode, availableRect: LayoutRect): void
             dv.setInt32(4, cr.top, true)
             dv.setInt32(8, cr.right, true)
             dv.setInt32(12, cr.bottom, true)
-            gui.SendMessage(hwnd as gui.HWND, TCM_ADJUSTRECT, 0, ffi.bufferPtr(buf) as any)
+            gui.SendMessage(hwnd, TCM_ADJUSTRECT, 0, ffi.bufferPtr(buf) as any)
             const l = dv.getInt32(0, true)
             const t = dv.getInt32(4, true)
             const r = dv.getInt32(8, true)
@@ -170,7 +171,7 @@ function resolveToElementVNode(vnode: VNode): VNode | null {
     if (!isVNode(vnode)) return null
     if (vnode.type === 'w') return vnode
     if (typeof vnode.type === 'function') {
-        const rendered = vnode[RENDERED_VNODE_PROP]
+        const rendered = vnode.__qw_rendered
         if (rendered && isVNode(rendered)) {
             return resolveToElementVNode(rendered)
         }
@@ -178,14 +179,14 @@ function resolveToElementVNode(vnode: VNode): VNode | null {
     return null
 }
 
-export function layout(rootHwnd: number, vnode: any): void {
+export function layout(rootHwnd: HWND, vnode: VNode): void {
     const clientSize = getClientSize(rootHwnd)
     if (clientSize.w <= 0 || clientSize.h <= 0) return
 
     const targetVNode = resolveToElementVNode(vnode)
     if (!targetVNode) return
 
-    const targetHwnd = targetVNode[HWND_PROP] as number
+    const targetHwnd = targetVNode.__qw_hwnd
     if (!targetHwnd) return
 
     moveWindow(targetHwnd, 0, 0, clientSize.w, clientSize.h)

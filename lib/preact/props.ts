@@ -1,6 +1,8 @@
 import * as gui from 'gui'
+import type { HWND, WNDPROC } from 'gui'
 import * as ffi from 'ffi'
 import * as win from 'win'
+import type { LayoutStyle } from './layout.js'
 
 const FFI_S32 = ffi.FFI_TYPE_SINT32
 const FFI_U32 = ffi.FFI_TYPE_UINT32
@@ -22,14 +24,14 @@ export interface WProps {
     ws?: number
     disabled?: boolean
     visible?: boolean
-    style?: Record<string, any>
+    style?: LayoutStyle
     onEvent?: (e: Record<string, any>) => void
     children?: any
 }
 
-export function applyProps(hwnd: number, props: WProps, vnode?: Record<string, any>): void {
+export function applyProps(hwnd: HWND, props: WProps, vnode?: Record<string, any>): void {
     if (props.text !== undefined) {
-        gui.SetWindowText(hwnd as gui.HWND, props.text)
+        gui.SetWindowText(hwnd, props.text)
     }
     if (props.disabled !== undefined && EnableWindow_proc) {
         ffi.ffiCall(EnableWindow_proc, [FFI_U64, FFI_U32] as const, [hwnd, props.disabled ? 0 : 1], FFI_U32)
@@ -38,23 +40,23 @@ export function applyProps(hwnd: number, props: WProps, vnode?: Record<string, a
         ffi.ffiCall(ShowWindow_proc, [FFI_U64, FFI_S32] as const, [hwnd, props.visible ? SW_SHOW : SW_HIDE], FFI_U32)
     }
     if (props.onEvent !== undefined && vnode) {
-        const h = hwnd as unknown as gui.HWND
+        const h = hwnd
         const oldProc = vnode._oldProc || gui.GetWindowLongPtr(h, gui.Gwlp.WNDPROC)
         vnode._oldProc = oldProc
         gui.SetWindowProc(h, (hw, msg, wParam, lParam) => {
             const cb = vnode!.props?.onEvent
-            if (cb) cb({ hwnd: hw as unknown as number, msg, wParam, lParam })
-            return gui.CallWindowProc(oldProc as unknown as gui.WNDPROC, hw, msg, wParam, lParam)
+            if (cb) cb({ hwnd: hw, msg, wParam, lParam })
+            return gui.CallWindowProc(oldProc as unknown as WNDPROC, hw, msg, wParam, lParam)
         })
     }
 }
 
-export function moveWindow(hwnd: number, x: number, y: number, w: number, h: number): void {
+export function moveWindow(hwnd: HWND, x: number, y: number, w: number, h: number): void {
     if (!MoveWindow_proc) return
     ffi.ffiCall(MoveWindow_proc, [FFI_U64, FFI_S32, FFI_S32, FFI_S32, FFI_S32, FFI_U32] as const, [hwnd, x, y, w, h, 1], FFI_U32)
 }
 
-export function destroyWindow(hwnd: number): boolean {
+export function destroyWindow(hwnd: HWND): boolean {
     if (!DestroyWindow_proc) return false
     return !!ffi.ffiCall(DestroyWindow_proc, [FFI_U64] as const, [hwnd], FFI_U32)
 }

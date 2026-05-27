@@ -1,8 +1,9 @@
 /** @jsxImportSource .. */
 import * as gui from 'gui'
 import * as os from 'os'
+import type { LayoutStyle } from '../layout.js'
 
-const _prevKeys = new Map<number, string>()
+const _prevKeys = new Map<gui.HWND, string>()
 
 export interface ListBoxProps {
     items: string[]
@@ -15,7 +16,7 @@ export interface ListBoxProps {
     extendedSelect?: boolean
     disabled?: boolean
     visible?: boolean
-    style?: Record<string, any>
+    style?: LayoutStyle
     ws?: number
 }
 
@@ -36,11 +37,11 @@ export function ListBox(props: ListBoxProps) {
     if (props.extendedSelect) listStyle |= gui.ListBoxStyle.EXTENDEDSEL
     const ws = props.ws !== undefined ? props.ws : 0
 
-    const listRef = (hwnd: gui.HWND) => {
+    const listRef = (hwnd: gui.HWND | null) => {
         if (!hwnd) return
         const key = JSON.stringify(props.items || [])
-        if (_prevKeys.get(hwnd as number) === key) return
-        _prevKeys.set(hwnd as number, key)
+        if (_prevKeys.get(hwnd) === key) return
+        _prevKeys.set(hwnd, key)
 
         const items = props.items || []
         const idx = props.selectedIndex !== undefined ? props.selectedIndex : (props.defaultSelectedIndex !== undefined ? props.defaultSelectedIndex : -1)

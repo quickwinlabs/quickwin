@@ -1,6 +1,7 @@
 /** @jsxImportSource .. */
 import * as gui from 'gui'
 import * as os from 'os'
+import type { LayoutStyle } from '../layout.js'
 
 export interface EditBoxProps {
     value?: string
@@ -12,7 +13,7 @@ export interface EditBoxProps {
     number?: boolean
     disabled?: boolean
     visible?: boolean
-    style?: Record<string, any>
+    style?: LayoutStyle
     ws?: number
 }
 
@@ -26,7 +27,7 @@ export function EditBox(props: EditBoxProps) {
     if (props.number) editStyle |= gui.EditStyle.NUMBER
     const ws = props.ws !== undefined ? props.ws : 0
 
-    const editRef = (hwnd: gui.HWND) => {
+    const editRef = (hwnd: gui.HWND | null) => {
         if (hwnd && props.placeholder) {
             gui.SendMessage(hwnd, gui.EditMsg.SETCUEBANNER, 1, props.placeholder)
         }
@@ -43,7 +44,7 @@ export function EditBox(props: EditBoxProps) {
             onEvent={(e) => {
                 if (e.msg === gui.WmMsg.KEYUP && props.onChange) {
                     os.setTimeout(() => {
-                        props.onChange!(gui.GetWindowText(e.hwnd as gui.HWND))
+                        props.onChange!(gui.GetWindowText(e.hwnd))
                     }, 0)
                 }
             }} />

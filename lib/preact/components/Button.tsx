@@ -1,12 +1,13 @@
 /** @jsxImportSource .. */
 import * as gui from 'gui'
+import type { LayoutStyle } from '../layout.js'
 
 export interface ButtonProps {
     text?: string
     onClick?: () => void
     disabled?: boolean
     default?: boolean
-    style?: Record<string, any>
+    style?: LayoutStyle
 }
 
 export function Button(props: ButtonProps) {

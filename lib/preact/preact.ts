@@ -6,9 +6,9 @@ let vnodeId = 0
 
 export type Key = string | number | null
 
-export interface Ref<T = any> {
-    current: T | null
-}
+export type RefObject<T> = { current: T };
+export type RefCallback<T> = (instance: T | null) => void | (() => void);
+export type Ref<T> = RefCallback<T> | RefObject<T | null> | null;
 
 export type ComponentChild = VNode<any> | string | number | boolean | null | undefined
 export type ComponentChildren = ComponentChild[] | ComponentChild
@@ -25,7 +25,7 @@ export interface VNode<P = any> {
     type: string | ComponentType<P>
     props: P & { children?: ComponentChildren }
     key: Key
-    ref: Ref<any>
+    ref?: Ref<any>
     _children: VNode[]
     _parent: VNode | null
     _depth: number
@@ -68,12 +68,12 @@ export const options: Options = {}
 
 export function createElement<P extends Record<string, any> = {}>(
     type: string | ComponentType<P>,
-    props: (P & { key?: Key; ref?: Ref }) | null,
+    props: (P & { key?: Key; ref?: Ref<any> }) | null,
     ...children: ComponentChildren[]
 ): VNode<P> {
     let normalizedProps: Record<string, any> = {}
     let key: Key = null
-    let ref: Ref | null = null
+    let ref: Ref<any> | null = null
 
     if (props != null) {
         for (const i in props) {
@@ -94,7 +94,7 @@ export function createVNode<P = {}>(
     type: string | ComponentType<P>,
     props: P,
     key: Key,
-    ref: Ref,
+    ref: Ref<any>,
     original: number | null
 ): VNode<P> {
     const vnode: VNode<P> = {
@@ -118,7 +118,7 @@ export function createVNode<P = {}>(
     return vnode
 }
 
-export function createRef<T = null>(): Ref<T> {
+export function createRef<T = any>(): RefObject<T | null> {
     return { current: null }
 }
 

@@ -1,17 +1,74 @@
 import '../polyfill.js'
 import * as gui from 'gui'
+import type { HWND } from 'gui'
 import * as os from 'os'
 import { applyProps, destroyWindow } from './props.js'
-import { layout as doLayout } from './layout.js'
-import { options, type VNode as PreactVNode, type ComponentChild } from './preact.js'
+import { layout as doLayout, type LayoutStyle } from './layout.js'
+import { options, type VNode as PreactVNode, type ComponentChild, type ComponentType, type Component } from './preact.js'
 
 const scaleFactor = gui.GetScaleFactor()
 const dpiFont = gui.CreateSystemDpiFont()
 
-type RefCallback = (hwnd: gui.HWND) => void
+type RefCallback = (hwnd: HWND | null) => void
 
-function setHwndRef(vnode: QWVNode, hwnd: gui.HWND): void {
-    vnode[HWND_PROP] = hwnd
+const HWND_PROP = '__qw_hwnd'
+const STYLE_PROP = '__qw_style'
+const CHILDREN_HWNDS_PROP = '__qw_children'
+const RENDERED_VNODE_PROP = '__qw_rendered'
+
+type QWComponent = {
+    _vnode: QWVNode | null
+    props: any
+    context: any
+    __hooks: { _list: any[]; _pendingEffects: any[] } | null
+    _renderCallbacks: Array<() => void>
+    _parentDom: unknown
+    _qw_parent_hwnd: HWND
+    _dirty: boolean
+    _forceUpdate(): void
+    _errorHandler?: (err: any) => void
+}
+
+type Win32ElProps = {
+    type: string
+    text?: string
+    ws?: number
+    style?: LayoutStyle
+    disabled?: boolean
+    visible?: boolean
+    selectedIndex?: number
+    sort?: boolean
+    gridLines?: boolean
+    columns?: string[]
+    columnWidths?: number[]
+    placeholder?: string
+    multiline?: boolean
+    password?: boolean
+    singleline?: boolean
+    onEvent?: (e: Record<string, any>) => void
+    onOK?: () => void
+    children?: ComponentChild
+}
+
+type QWVNodeBase = {
+    __qw_hwnd?: HWND | null
+    __qw_style?: LayoutStyle
+    __qw_children?: HWND[]
+    __qw_rendered?: ComponentChild
+    _oldProc?: unknown
+}
+
+type Win32VNode = Omit<PreactVNode<Win32ElProps>, 'type'> & QWVNodeBase & { type: 'w' }
+
+type FuncVNode<P = {}> = Omit<PreactVNode<P>, 'type'> & QWVNodeBase & { type: ComponentType<P> }
+
+type QWVNode = Win32VNode | FuncVNode<any>
+
+let rootHwnd: HWND | null = null
+let rootVNode: QWVNode | null = null
+
+function setHwndRef(vnode: QWVNode, hwnd: HWND | null): void {
+    vnode.__qw_hwnd = hwnd
     const ref = vnode.ref as RefCallback | { current: unknown } | null
     if (ref) {
         if (typeof ref === 'function') {
@@ -22,37 +79,13 @@ function setHwndRef(vnode: QWVNode, hwnd: gui.HWND): void {
     }
 }
 
-const HWND_PROP = '__qw_hwnd'
-const STYLE_PROP = '__qw_style'
-const CHILDREN_HWNDS_PROP = '__qw_children'
-const RENDERED_VNODE_PROP = '__qw_rendered'
-
-interface QWComponent {
-    _vnode: QWVNode | null
-    props: any
-    context: any
-    __hooks: { _list: any[]; _pendingEffects: any[] } | null
-    _renderCallbacks: Array<() => void>
-    _parentDom: unknown
-    _qw_parent_hwnd: gui.HWND
-    _dirty: boolean
-    _forceUpdate(): void
-}
-
-interface QWVNode extends PreactVNode {
-    [key: string]: unknown
-}
-
-let rootHwnd: gui.HWND | null = null
-let rootVNode: QWVNode | null = null
-
-function createControl(type: string, parentHwnd: gui.HWND, vnode: QWVNode): gui.HWND {
-    const ws = (vnode.props?.ws as number) || 0
+function createControl(type: string, parentHwnd: HWND, vnode: Win32VNode): HWND | null {
+    const ws = vnode.props?.ws || 0
     const style = gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE | ws
-    const text = (vnode.props?.text || '') as string
+    const text = vnode.props?.text || ''
     const hwnd = gui.CreateWindow(type, text, style, 0, 0, 0, 0, parentHwnd, null)
-    if (!hwnd) return 0 as gui.HWND
-    gui.SendMessage(hwnd, gui.WmMsg.SETFONT, dpiFont as unknown as number, 1)
+    if (!hwnd) return null;
+    gui.SendMessage(hwnd, gui.WmMsg.SETFONT, dpiFont!, 1)
     applyProps(hwnd, vnode.props || {}, vnode)
     return hwnd
 }
@@ -65,61 +98,60 @@ function getChildren(vnode: QWVNode): unknown[] {
     const children = vnode.props?.children
     if (children == null) return []
     if (Array.isArray(children)) return children.filter((c: unknown) => c != null && c !== false && c !== true)
-    if (typeof children === 'object' && (children as any).type !== undefined) return [children]
+    if (typeof children === 'object' && (children as any)?.type !== undefined) return [children]
     return []
 }
 
-function renderToWin32(vnode: unknown, parentHwnd: gui.HWND, context: any): gui.HWND {
-    if (vnode == null || vnode === false || vnode === true) return 0 as gui.HWND
+function renderToWin32(vnode: unknown, parentHwnd: HWND, context: any): HWND | null {
+    if (vnode == null || vnode === false || vnode === true) return null
 
     if (typeof vnode === 'string' || typeof vnode === 'number') {
         const hwnd = gui.CreateWindow('STATIC', String(vnode), gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE | gui.StaticStyle.LEFT, 0, 0, 0, 0, parentHwnd, null)
-        if (!hwnd) return 0 as gui.HWND
-        gui.SendMessage(hwnd, gui.WmMsg.SETFONT, dpiFont as unknown as number, 1)
+        if (!hwnd) return null
+        gui.SendMessage(hwnd, gui.WmMsg.SETFONT, dpiFont!, 1)
         return hwnd
     }
 
     if (Array.isArray(vnode)) {
         for (const child of vnode) renderToWin32(child, parentHwnd, context)
-        return 0 as gui.HWND
+        return null
     }
 
-    if (!isVNode(vnode)) return 0 as gui.HWND
+    if (!isVNode(vnode)) return null
 
     if (typeof vnode.type === 'function') {
         return renderComponent(vnode, parentHwnd, context)
     }
 
     if (vnode.type === 'w') {
-        const ctrlType = vnode.props?.type as string | undefined
-        if (!ctrlType) return 0 as gui.HWND
+        const ctrlType = vnode.props?.type
+        if (!ctrlType) return null
         const hwnd = createControl(ctrlType, parentHwnd, vnode)
-        if (!hwnd) return 0 as gui.HWND
+        if (!hwnd) return null
 
         setHwndRef(vnode, hwnd)
-        vnode[STYLE_PROP] = vnode.props?.style ?? {}
+        vnode.__qw_style = vnode.props?.style ?? {}
 
         const children = getChildren(vnode)
-        const childHwnds: number[] = []
+        const childHwnds: HWND[] = []
         for (const child of children) {
             const childHwnd = renderToWin32(child, hwnd, context)
-            if (childHwnd) childHwnds.push(childHwnd as unknown as number)
+            if (childHwnd) childHwnds.push(childHwnd)
         }
-        vnode[CHILDREN_HWNDS_PROP] = childHwnds
+        vnode.__qw_children = childHwnds
         return hwnd
     }
 
-    return 0 as gui.HWND
+    return null
 }
 
-function invokeComponent(component: QWComponent, vnode: QWVNode): ComponentChild {
+function invokeComponent(component: QWComponent, vnode: FuncVNode<any>): ComponentChild {
     options._diff?.(vnode)
     options._render?.(vnode)
     try {
-        const fn = vnode.type as (...args: any[]) => any
-        return fn.call(component, component.props, component.context)
+        return vnode.type(component.props, component.context)
     } catch (e: unknown) {
-        const errHandler = (component as any)._errorHandler
+        const errHandler = component._errorHandler
         if (errHandler) {
             errHandler(e)
             return null
@@ -131,17 +163,17 @@ function invokeComponent(component: QWComponent, vnode: QWVNode): ComponentChild
     }
 }
 
-function renderComponent(vnode: QWVNode, parentHwnd: gui.HWND, context: any): gui.HWND {
+function renderComponent(vnode: FuncVNode<any>, parentHwnd: HWND, context: any): HWND | null {
     const rendered = invokeComponent(newComponent(vnode, parentHwnd, context), vnode)
-    if (rendered == null) return 0 as gui.HWND
+    if (rendered == null) return null
     const resultHwnd = renderToWin32(rendered, parentHwnd, context)
     setHwndRef(vnode, resultHwnd)
-    vnode[RENDERED_VNODE_PROP] = rendered
-    vnode[STYLE_PROP] = vnode.props?.style as Record<string, any> ?? rendered[STYLE_PROP] as Record<string, any> ?? {}
+    vnode.__qw_rendered = rendered
+    vnode.__qw_style = vnode.props?.style ?? (isVNode(rendered) ? rendered.__qw_style : undefined) ?? {}
     return resultHwnd
 }
 
-function newComponent(vnode: QWVNode, parentHwnd: gui.HWND, context: any): QWComponent {
+function newComponent(vnode: FuncVNode<any>, parentHwnd: HWND, context: any): QWComponent {
     const component: QWComponent = {
         _vnode: vnode,
         props: vnode.props,
@@ -156,67 +188,65 @@ function newComponent(vnode: QWVNode, parentHwnd: gui.HWND, context: any): QWCom
             scheduleUpdate(component)
         },
     }
-    vnode._component = component as any
+    vnode._component = component
     return component
 }
 
-function destroyHwnd(hwnd: number): void {
+function destroyHwnd(hwnd: HWND): void {
     if (!hwnd) return
-    gui.UnsetWindowProc(hwnd as gui.HWND)
+    gui.UnsetWindowProc(hwnd)
     destroyWindow(hwnd)
 }
 
 function destroyVNode(vnode: QWVNode): void {
     options.unmount?.(vnode)
 
-    const hwnd = vnode[HWND_PROP] as number | undefined
-    if (hwnd) destroyHwnd(hwnd)
+    if (vnode.__qw_hwnd) destroyHwnd(vnode.__qw_hwnd)
     const ref = vnode.ref as RefCallback | { current: unknown } | null
     if (ref) {
         if (typeof ref === 'function') {
-            ref(0 as gui.HWND)
+            ref(null)
         } else {
             ref.current = null
         }
     }
-    vnode[HWND_PROP] = 0
+    vnode.__qw_hwnd = null
 
     for (const child of getChildren(vnode)) {
         if (isVNode(child)) destroyVNode(child)
     }
 
-    const extra = vnode[CHILDREN_HWNDS_PROP] as number[] | undefined
-    if (extra) {
-        for (const h of extra) destroyHwnd(h)
+    if (vnode.__qw_children) {
+        for (const h of vnode.__qw_children) destroyHwnd(h)
     }
-    vnode[CHILDREN_HWNDS_PROP] = []
+    vnode.__qw_children = []
 }
 
 function reconcile(
     oldVNode: unknown,
     newVNode: unknown,
-    parentHwnd: gui.HWND,
+    parentHwnd: HWND,
     context: any
-): gui.HWND {
+): HWND | null {
     if (oldVNode == null || oldVNode === false || oldVNode === true) {
         return renderToWin32(newVNode, parentHwnd, context)
     }
     if (newVNode == null || newVNode === false || newVNode === true) {
-        if (isVNode(oldVNode)) destroyVNode(oldVNode as QWVNode)
-        return 0 as gui.HWND
+        if (isVNode(oldVNode)) destroyVNode(oldVNode)
+        return null
     }
     if (typeof oldVNode !== typeof newVNode ||
         typeof oldVNode === 'string' || typeof oldVNode === 'number' ||
         Array.isArray(oldVNode) || Array.isArray(newVNode)) {
-        if (isVNode(oldVNode)) destroyVNode(oldVNode as QWVNode)
+        if (isVNode(oldVNode)) destroyVNode(oldVNode)
         return renderToWin32(newVNode, parentHwnd, context)
     }
     if (!isVNode(oldVNode) || !isVNode(newVNode)) {
         return renderToWin32(newVNode, parentHwnd, context)
     }
 
-    const o = oldVNode as QWVNode
-    const n = newVNode as QWVNode
+    const o = oldVNode
+    const n = newVNode
 
     if (typeof n.type === 'function') {
         const oldComp = o._component as QWComponent | null
@@ -230,39 +260,39 @@ function reconcile(
             if (isVNode(o)) destroyVNode(o)
             comp = newComponent(n, parentHwnd, context)
         }
-        n._component = comp as any
+        n._component = comp
 
-        const oldResult = o[RENDERED_VNODE_PROP]
+        const oldResult = o.__qw_rendered
         const newResult = invokeComponent(comp, n)
 
-        let resultHwnd: gui.HWND
+        let resultHwnd: HWND | null
         if (newResult != null) {
             resultHwnd = reconcile(oldResult || null, newResult, parentHwnd, context)
         } else {
-            if (oldResult && isVNode(oldResult)) destroyVNode(oldResult as QWVNode)
-            resultHwnd = 0 as gui.HWND
+            if (oldResult && isVNode(oldResult)) destroyVNode(oldResult)
+            resultHwnd = null
         }
         setHwndRef(n, resultHwnd)
-        n[RENDERED_VNODE_PROP] = newResult
-        n[STYLE_PROP] = n.props?.style as Record<string, any> ?? (newResult ? newResult[STYLE_PROP] : {}) ?? {}
+        n.__qw_rendered = newResult
+        n.__qw_style = n.props?.style ?? (isVNode(newResult) ? newResult.__qw_style : undefined) ?? {}
         return resultHwnd
     }
 
     if (o.type === 'w' && n.type === 'w') {
-        const oldCtrl = (o.props?.type as string) || ''
-        const newCtrl = (n.props?.type as string) || ''
+        const oldCtrl = o.props?.type || ''
+        const newCtrl = n.props?.type || ''
         if (oldCtrl === newCtrl) {
-            const hwnd = o[HWND_PROP] as gui.HWND | undefined
+            const hwnd = o.__qw_hwnd
             if (hwnd) {
                 setHwndRef(n, hwnd)
-                n[STYLE_PROP] = n.props?.style ?? {}
+                n.__qw_style = n.props?.style ?? {}
                 n._oldProc = o._oldProc
                 applyProps(hwnd, n.props || {}, n)
 
                 const oldChildren = getChildren(o)
                 const newChildren = getChildren(n)
-                const oldChildHwnds = o[CHILDREN_HWNDS_PROP] as number[] | undefined
-                const childHwnds: number[] = []
+                const oldChildHwnds = o.__qw_children
+                const childHwnds: HWND[] = []
                 const maxLen = Math.max(oldChildren.length, newChildren.length)
                 for (let i = 0; i < maxLen; i++) {
                     const oc = oldChildren[i]
@@ -271,13 +301,13 @@ function reconcile(
                         if (nc != null && nc !== false && nc !== true) {
                             if (typeof oc === 'string' && typeof nc === 'string') {
                                 if (oc !== nc && oldChildHwnds && oldChildHwnds[i]) {
-                                    applyProps(oldChildHwnds[i] as gui.HWND, { text: nc })
+                                    applyProps(oldChildHwnds[i], { text: nc })
                                 }
                                 if (oldChildHwnds && oldChildHwnds[i])
                                     childHwnds.push(oldChildHwnds[i])
                             } else {
                                 const ch = reconcile(oc, nc, hwnd, context)
-                                if (ch) childHwnds.push(ch as unknown as number)
+                                if (ch) childHwnds.push(ch)
                             }
                         } else {
                             if (isVNode(oc)) destroyVNode(oc)
@@ -286,11 +316,11 @@ function reconcile(
                         }
                     } else if (nc != null && nc !== false && nc !== true) {
                         const ch = renderToWin32(nc, hwnd, context)
-                        if (ch) childHwnds.push(ch as unknown as number)
+                        if (ch) childHwnds.push(ch)
                     }
                 }
-                n[CHILDREN_HWNDS_PROP] = childHwnds
-        return hwnd as gui.HWND
+                n.__qw_children = childHwnds
+                return hwnd
             }
         }
     }
@@ -305,45 +335,46 @@ function scheduleUpdate(component: QWComponent): void {
         if (!component._dirty) return
         component._dirty = false
 
-        const vnode = component._vnode as QWVNode
+        const vnode = component._vnode!
         const parentHwnd = component._qw_parent_hwnd
         if (!parentHwnd) return
+        if (typeof vnode.type !== 'function') return
 
-        const oldRendered = vnode[RENDERED_VNODE_PROP]
+        const oldRendered = vnode.__qw_rendered
         const rendered = invokeComponent(component, vnode)
 
         if (rendered != null) {
             reconcile(oldRendered || null, rendered, parentHwnd, component.context)
         } else if (oldRendered) {
-            if (isVNode(oldRendered)) destroyVNode(oldRendered as QWVNode)
+            if (isVNode(oldRendered)) destroyVNode(oldRendered)
         }
-        vnode[RENDERED_VNODE_PROP] = rendered
+        vnode.__qw_rendered = rendered
 
-        const commitQueue = [component]
-        options._commit?.(vnode, commitQueue as any)
+        const commitQueue: Component[] = [component]
+        options._commit?.(vnode, commitQueue)
 
         if (rootHwnd && rootVNode) {
-            doLayout(rootHwnd as unknown as number, rootVNode)
+            doLayout(rootHwnd, rootVNode)
         }
     }, 0)
 }
 
-export function notifyResize(hwnd: gui.HWND): void {
-    if (rootVNode) doLayout(hwnd as unknown as number, rootVNode)
+export function notifyResize(hwnd: HWND): void {
+    if (rootVNode) doLayout(hwnd, rootVNode)
 }
 
-export function render(vnode: any, containerHwnd: gui.HWND): gui.HWND {
+export function render(vnode: any, containerHwnd: HWND): HWND {
     rootHwnd = containerHwnd
     rootVNode = vnode
 
     renderToWin32(vnode, containerHwnd, {})
 
     if (vnode._component) {
-        const commitQueue = [vnode._component]
-        options._commit?.(vnode, commitQueue as any)
+        const commitQueue: Component[] = [vnode._component]
+        options._commit?.(vnode, commitQueue)
     }
 
-    doLayout(containerHwnd as unknown as number, vnode)
+    doLayout(containerHwnd, vnode)
     return containerHwnd
 }
 

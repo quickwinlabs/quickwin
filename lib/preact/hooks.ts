@@ -115,7 +115,7 @@ options.unmount = (vnode: VNode) => {
                 hasErrored = e
             }
         })
-        c.__hooks = null as any
+        c.__hooks = null
         if (hasErrored && options._catchError) options._catchError(hasErrored, c._vnode!)
     }
 }
