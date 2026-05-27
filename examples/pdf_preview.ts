@@ -36,13 +36,11 @@ const PatBlt = loadProc(_gdi32, 'PatBlt')
 const InvalidateRect = loadProc(_user32, 'InvalidateRect')
 const GetSystemMetrics = loadProc(_user32, 'GetSystemMetrics')
 const SetScrollInfo = loadProc(_user32, 'SetScrollInfo')
-const GetClientRect = loadProc(_user32, 'GetClientRect')
 
 const TOP_OFFSET = 50
 
 // FFI 类型签名快捷常量
 const T_U64 = [ffi.FFI_TYPE_UINT64] as [typeof ffi.FFI_TYPE_UINT64]
-const T_U64_PTR = [ffi.FFI_TYPE_UINT64, FFI_PTR] as [typeof ffi.FFI_TYPE_UINT64, typeof ffi.FFI_TYPE_POINTER]
 const T_U64_S32_PTR_U32 = [ffi.FFI_TYPE_UINT64, FFI_S32, FFI_PTR, FFI_U32] as [typeof ffi.FFI_TYPE_UINT64, typeof ffi.FFI_TYPE_SINT32, typeof ffi.FFI_TYPE_POINTER, typeof ffi.FFI_TYPE_UINT32]
 const T_U64_U64_U32 = [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64, FFI_U32] as [typeof ffi.FFI_TYPE_UINT64, typeof ffi.FFI_TYPE_UINT64, typeof ffi.FFI_TYPE_UINT32]
 
@@ -240,10 +238,9 @@ function renderPdfPage(mupdf: MuPdf, filePath: string, pageIndex: number): Pixma
 
 
 function getClientSize(h: number): { w: number, h: number } {
-    const rect = new ArrayBuffer(16)
-    ffi.ffiCall(GetClientRect, T_U64_PTR, [h, rect], FFI_U32) as number
-    const dv = new DataView(rect)
-    return { w: dv.getInt32(8, true), h: dv.getInt32(12, true) }
+    const r = gui.GetClientRect(h as gui.HWND)
+    if (!r) return { w: 0, h: 0 }
+    return { w: r.right - r.left, h: r.bottom - r.top }
 }
 
 function setScrollPos(h: number, bar: number, pos: number): void {

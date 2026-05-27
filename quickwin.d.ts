@@ -412,6 +412,8 @@ declare module "gui" {
     function GetCursorPos(): [number, number] | null;
     /** Returns [width, height] of the primary monitor */
     function GetScreenSize(): [number, number];
+    /** Returns { left, top, right, bottom } of client area, or null if invalid */
+    function GetClientRect(hwnd: HWND): { left: number; top: number; right: number; bottom: number } | null;
 
     // 窗口样式 (Window Styles)
     export const enum WindowStyle {

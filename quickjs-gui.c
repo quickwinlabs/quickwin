@@ -591,6 +591,21 @@ static JSValue js_getScreenSize(JSContext *ctx, JSValueConst this_val, int argc,
     return arr;
 }
 
+static JSValue js_getClientRect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int64_t hwnd_val;
+    JS_ToInt64(ctx, &hwnd_val, argv[0]);
+    RECT rect;
+    if (!GetClientRect((HWND)hwnd_val, &rect))
+        return JS_NULL;
+    JSValue obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, obj, "left",   JS_NewInt32(ctx, rect.left));
+    JS_SetPropertyStr(ctx, obj, "top",    JS_NewInt32(ctx, rect.top));
+    JS_SetPropertyStr(ctx, obj, "right",  JS_NewInt32(ctx, rect.right));
+    JS_SetPropertyStr(ctx, obj, "bottom", JS_NewInt32(ctx, rect.bottom));
+    return obj;
+}
+
 static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("RegisterClass", 2, js_registerClass),
     JS_CFUNC_DEF("CreateWindow", 9, js_createWindow),
@@ -618,6 +633,7 @@ static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("SetForegroundWindow", 1, js_setForegroundWindow),
     JS_CFUNC_DEF("GetCursorPos", 0, js_getCursorPos),
     JS_CFUNC_DEF("GetScreenSize", 0, js_getScreenSize),
+    JS_CFUNC_DEF("GetClientRect", 1, js_getClientRect),
 };
 
 

@@ -2,7 +2,6 @@
 import * as gui from 'gui'
 import * as os from 'os'
 import * as ffi from 'ffi'
-import * as win from 'win'
 import { useState, useRef } from '../hooks.js'
 import { moveWindow } from '../props.js'
 
@@ -11,9 +10,6 @@ const TCM_ADJUSTRECT = 0x1328
 const FFI_U64 = ffi.FFI_TYPE_UINT64
 const FFI_U32 = ffi.FFI_TYPE_UINT32
 const FFI_PTR = ffi.FFI_TYPE_POINTER
-
-const _user32 = win.LoadLibrary('user32.dll')
-const GetClientRect_proc = _user32 ? win.GetProcAddress(_user32, 'GetClientRect') : 0
 
 export interface TabItem {
     title: string
@@ -48,14 +44,17 @@ function insertTabItem(hwnd: gui.HWND, title: string, index: number) {
 }
 
 function positionContent(tabHwnd: gui.HWND, contentHwnd: number): void {
-    if (!tabHwnd || !contentHwnd || !GetClientRect_proc) return
+    if (!tabHwnd || !contentHwnd) return
 
-    const rectBuf = new ArrayBuffer(16)
-    const ok = ffi.ffiCall(GetClientRect_proc, [FFI_U64, FFI_PTR], [tabHwnd, rectBuf], FFI_U32) as number
-    if (!ok) return
+    const r = gui.GetClientRect(tabHwnd)
+    if (!r) return
 
     const workBuf = new ArrayBuffer(16)
-    new Uint8Array(workBuf).set(new Uint8Array(rectBuf))
+    const wdv = new DataView(workBuf)
+    wdv.setInt32(0, r.left, true)
+    wdv.setInt32(4, r.top, true)
+    wdv.setInt32(8, r.right, true)
+    wdv.setInt32(12, r.bottom, true)
 
     gui.SendMessage(tabHwnd, TCM_ADJUSTRECT, 0, ffi.bufferPtr(workBuf) as any)
 

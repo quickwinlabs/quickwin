@@ -1,18 +1,8 @@
-import * as ffi from 'ffi'
-import * as win from 'win'
 import * as gui from 'gui'
 import { HWND_PROP, STYLE_PROP, CHILDREN_HWNDS_PROP, RENDERED_VNODE_PROP, isVNode, getChildren, type VNode } from './render.js'
 import { moveWindow } from './props.js'
 
 const scaleFactor = gui.GetScaleFactor()
-
-const FFI_PTR = ffi.FFI_TYPE_POINTER
-const FFI_S32 = ffi.FFI_TYPE_SINT32
-const FFI_U32 = ffi.FFI_TYPE_UINT32
-const FFI_U64 = ffi.FFI_TYPE_UINT64
-
-const _user32 = win.LoadLibrary('user32.dll')
-const GetClientRect_proc = _user32 ? win.GetProcAddress(_user32, 'GetClientRect') : 0
 
 export interface LayoutStyle {
     flexDirection?: 'row' | 'column'
@@ -35,12 +25,9 @@ interface LayoutRect {
 }
 
 function getClientSize(hwnd: number): { w: number; h: number } {
-    if (!GetClientRect_proc) return { w: 0, h: 0 }
-    const rectBuf = new ArrayBuffer(16)
-    const ok = ffi.ffiCall(GetClientRect_proc, [FFI_U64, FFI_PTR], [hwnd, rectBuf], FFI_U32) as number
-    if (!ok) return { w: 0, h: 0 }
-    const dv = new DataView(rectBuf)
-    return { w: dv.getInt32(8, true), h: dv.getInt32(12, true) }
+    const r = gui.GetClientRect(hwnd as gui.HWND)
+    if (!r) return { w: 0, h: 0 }
+    return { w: r.right - r.left, h: r.bottom - r.top }
 }
 
 function resolveSize(val: number | string | undefined, available: number): number {
