@@ -412,8 +412,14 @@ declare module "gui" {
     function GetCursorPos(): [number, number] | null;
     /** Returns [width, height] of the primary monitor */
     function GetScreenSize(): [number, number];
+    /** Client-area/mouse rect: { left, top, right, bottom } */
+    type RECT = { left: number; top: number; right: number; bottom: number };
     /** Returns { left, top, right, bottom } of client area, or null if invalid */
-    function GetClientRect(hwnd: HWND): { left: number; top: number; right: number; bottom: number } | null;
+    function GetClientRect(hwnd: HWND): RECT | null;
+    /** Invalidates client area (rect can be null/undefined for full window) */
+    function InvalidateRect(hwnd: HWND, rect?: RECT | null, erase?: boolean): void;
+    /** Sets scroll info; returns current scroll box position. Signature matches Win32 SetScrollInfo. */
+    function SetScrollInfo(hwnd: HWND, bar: number, info: { pos?: number; page?: number; min?: number; max?: number }, redraw?: boolean): number;
 
     // 窗口样式 (Window Styles)
     export const enum WindowStyle {

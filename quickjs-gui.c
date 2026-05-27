@@ -606,6 +606,89 @@ static JSValue js_getClientRect(JSContext *ctx, JSValueConst this_val, int argc,
     return obj;
 }
 
+static JSValue js_invalidateRect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int64_t hwnd;
+    JS_ToInt64(ctx, &hwnd, argv[0]);
+    RECT rect, *pr = NULL;
+    if (argc > 1) {
+        JSValue r = argv[1];
+        if (!JS_IsNull(r) && !JS_IsUndefined(r)) {
+            int32_t tmp;
+            JSValue v;
+            v = JS_GetPropertyStr(ctx, r, "left");   JS_ToInt32(ctx, &tmp, v); rect.left   = tmp; JS_FreeValue(ctx, v);
+            v = JS_GetPropertyStr(ctx, r, "top");    JS_ToInt32(ctx, &tmp, v); rect.top    = tmp; JS_FreeValue(ctx, v);
+            v = JS_GetPropertyStr(ctx, r, "right");  JS_ToInt32(ctx, &tmp, v); rect.right  = tmp; JS_FreeValue(ctx, v);
+            v = JS_GetPropertyStr(ctx, r, "bottom"); JS_ToInt32(ctx, &tmp, v); rect.bottom = tmp; JS_FreeValue(ctx, v);
+            pr = &rect;
+        }
+    }
+    BOOL erase = TRUE;
+    if (argc > 2)
+        erase = JS_ToBool(ctx, argv[2]);
+    InvalidateRect((HWND)hwnd, pr, erase);
+    return JS_UNDEFINED;
+}
+
+static JSValue js_setScrollInfo(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int64_t hwnd;
+    int32_t bar;
+    JS_ToInt64(ctx, &hwnd, argv[0]);
+    JS_ToInt32(ctx, &bar, argv[1]);
+    JSValue info = argv[2];
+
+    SCROLLINFO si;
+    memset(&si, 0, sizeof(si));
+    si.cbSize = sizeof(SCROLLINFO);
+    uint32_t mask = 0;
+
+    JSValue v;
+    v = JS_GetPropertyStr(ctx, info, "pos");
+    if (!JS_IsUndefined(v)) {
+        int32_t pos;
+        JS_ToInt32(ctx, &pos, v);
+        si.nPos = pos;
+        mask |= SIF_POS;
+    }
+    JS_FreeValue(ctx, v);
+
+    v = JS_GetPropertyStr(ctx, info, "page");
+    if (!JS_IsUndefined(v)) {
+        uint32_t page;
+        JS_ToUint32(ctx, &page, v);
+        si.nPage = page;
+        mask |= SIF_PAGE;
+    }
+    JS_FreeValue(ctx, v);
+
+    v = JS_GetPropertyStr(ctx, info, "min");
+    if (!JS_IsUndefined(v)) {
+        int32_t min;
+        JS_ToInt32(ctx, &min, v);
+        si.nMin = min;
+        mask |= SIF_RANGE;
+    }
+    JS_FreeValue(ctx, v);
+
+    v = JS_GetPropertyStr(ctx, info, "max");
+    if (!JS_IsUndefined(v)) {
+        int32_t max;
+        JS_ToInt32(ctx, &max, v);
+        si.nMax = max;
+        mask |= SIF_RANGE;
+    }
+    JS_FreeValue(ctx, v);
+
+    si.fMask = mask;
+
+    BOOL redraw = TRUE;
+    if (argc > 3)
+        redraw = JS_ToBool(ctx, argv[3]);
+
+    return JS_NewInt32(ctx, SetScrollInfo((HWND)hwnd, bar, &si, redraw));
+}
+
 static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("RegisterClass", 2, js_registerClass),
     JS_CFUNC_DEF("CreateWindow", 9, js_createWindow),
@@ -634,6 +717,8 @@ static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("GetCursorPos", 0, js_getCursorPos),
     JS_CFUNC_DEF("GetScreenSize", 0, js_getScreenSize),
     JS_CFUNC_DEF("GetClientRect", 1, js_getClientRect),
+    JS_CFUNC_DEF("InvalidateRect", 3, js_invalidateRect),
+    JS_CFUNC_DEF("SetScrollInfo", 4, js_setScrollInfo),
 };
 
 

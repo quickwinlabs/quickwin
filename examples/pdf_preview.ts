@@ -33,16 +33,11 @@ const ReleaseDC = loadProc(_user32, 'ReleaseDC')
 const GetOpenFileNameW = loadProc(_comdlg32, 'GetOpenFileNameW')
 const SetDIBitsToDevice = loadProc(_gdi32, 'SetDIBitsToDevice')
 const PatBlt = loadProc(_gdi32, 'PatBlt')
-const InvalidateRect = loadProc(_user32, 'InvalidateRect')
-const GetSystemMetrics = loadProc(_user32, 'GetSystemMetrics')
-const SetScrollInfo = loadProc(_user32, 'SetScrollInfo')
 
 const TOP_OFFSET = 50
 
 // FFI 类型签名快捷常量
 const T_U64 = [ffi.FFI_TYPE_UINT64] as [typeof ffi.FFI_TYPE_UINT64]
-const T_U64_S32_PTR_U32 = [ffi.FFI_TYPE_UINT64, FFI_S32, FFI_PTR, FFI_U32] as [typeof ffi.FFI_TYPE_UINT64, typeof ffi.FFI_TYPE_SINT32, typeof ffi.FFI_TYPE_POINTER, typeof ffi.FFI_TYPE_UINT32]
-const T_U64_U64_U32 = [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64, FFI_U32] as [typeof ffi.FFI_TYPE_UINT64, typeof ffi.FFI_TYPE_UINT64, typeof ffi.FFI_TYPE_UINT32]
 
 function clamp(v: number, max: number): number {
     return Math.max(0, Math.min(v, max))
@@ -244,12 +239,7 @@ function getClientSize(h: number): { w: number, h: number } {
 }
 
 function setScrollPos(h: number, bar: number, pos: number): void {
-    const si = new ArrayBuffer(28)
-    const dv = new DataView(si)
-    dv.setUint32(0, 28, true)
-    dv.setUint32(4, gui.ScrollInfoFlag.POS, true)
-    dv.setInt32(20, pos, true)
-    ffi.ffiCall(SetScrollInfo, T_U64_S32_PTR_U32, [h, bar, si, 1], FFI_U32)
+    gui.SetScrollInfo(h as gui.HWND, bar, { pos })
 }
 
 function updateScrollRange(h: number): void {
@@ -261,20 +251,8 @@ function updateScrollRange(h: number): void {
     scrollX = Math.min(scrollX, maxX)
     scrollY = Math.min(scrollY, maxY)
 
-    const si = new ArrayBuffer(28)
-    const dv = new DataView(si)
-    dv.setUint32(0, 28, true)
-
-    dv.setUint32(4, gui.ScrollInfoFlag.RANGE | gui.ScrollInfoFlag.PAGE, true)
-    dv.setInt32(8, 0, true)
-    dv.setInt32(12, currentPixmap.w - 1, true)
-    dv.setUint32(16, client.w, true)
-    ffi.ffiCall(SetScrollInfo, T_U64_S32_PTR_U32, [h, gui.ScrollBar.HORZ, si, 1], FFI_U32)
-
-    dv.setInt32(8, 0, true)
-    dv.setInt32(12, currentPixmap.h - 1, true)
-    dv.setUint32(16, viewH, true)
-    ffi.ffiCall(SetScrollInfo, T_U64_S32_PTR_U32, [h, gui.ScrollBar.VERT, si, 1], FFI_U32)
+    gui.SetScrollInfo(h as gui.HWND, gui.ScrollBar.HORZ, { min: 0, max: currentPixmap.w - 1, page: client.w })
+    gui.SetScrollInfo(h as gui.HWND, gui.ScrollBar.VERT, { min: 0, max: currentPixmap.h - 1, page: viewH })
 
     setScrollPos(h, gui.ScrollBar.HORZ, scrollX)
     setScrollPos(h, gui.ScrollBar.VERT, scrollY)
@@ -286,7 +264,7 @@ function doScroll(h: number, dx: number, dy: number): void {
     scrollY = clamp(scrollY + dy, currentPixmap ? Math.max(0, currentPixmap.h - (client.h - TOP_OFFSET)) : 0)
     setScrollPos(h, gui.ScrollBar.HORZ, scrollX)
     setScrollPos(h, gui.ScrollBar.VERT, scrollY)
-    ffi.ffiCall(InvalidateRect, T_U64_U64_U32, [h, 0, 1], FFI_U32)
+    gui.InvalidateRect(h as gui.HWND, null, true)
 }
 
 function renderAndDisplay(mupdf: MuPdf, path: string, pageIndex: number): void {
@@ -303,7 +281,7 @@ function renderAndDisplay(mupdf: MuPdf, path: string, pageIndex: number): void {
         scrollX = 0
         scrollY = 0
         updateScrollRange(hMain)
-        ffi.ffiCall(InvalidateRect, T_U64_U64_U32, [hMain, 0, 1], FFI_U32)
+        gui.InvalidateRect(hMain, null, true)
     } else {
         gui.MessageBox('渲染 PDF 失败')
     }
@@ -400,7 +378,7 @@ async function main(): Promise<void> {
 
             case gui.WmMsg.SIZE: {
                 if (currentPixmap) updateScrollRange(h)
-                ffi.ffiCall(InvalidateRect, T_U64_U64_U32, [h, 0, 1], FFI_U32)
+    gui.InvalidateRect(h as gui.HWND, null, true)
                 return 0
             }
 
@@ -410,8 +388,7 @@ async function main(): Promise<void> {
     })
 
     const winW = 960, winH = 720
-    const screenW = ffi.ffiCall(GetSystemMetrics, [FFI_S32], [gui.SysMetrics.CXSCREEN], FFI_S32) as number
-    const screenH = ffi.ffiCall(GetSystemMetrics, [FFI_S32], [gui.SysMetrics.CYSCREEN], FFI_S32) as number
+    const [screenW, screenH] = gui.GetScreenSize()
     const winX = Math.max(0, (screenW - winW) >> 1)
     const winY = Math.max(0, (screenH - winH) >> 1)
 
