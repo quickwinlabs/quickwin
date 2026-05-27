@@ -203,7 +203,7 @@ js:
 	@npx tsgo --project tsconfig.json
 	@find $(BUILD_DIR) -name '*.js' -exec sed -i 's|from "\(.*\)/jsx-runtime"|from "\1/jsx-runtime.js"|g' {} +
 	@echo "Copying vendor/mupdf-wasm to $(BUILD_DIR)/vendor/mupdf-wasm..."
-	@mkdir -p $(BUILD_DIR)/vendor/mupdf-wasm && cp -r vendor/mupdf-wasm/. $(BUILD_DIR)/vendor/mupdf-wasm/
+	@rm -rf $(BUILD_DIR)/vendor/mupdf-wasm && mkdir -p $(BUILD_DIR)/vendor/mupdf-wasm && cp -r vendor/mupdf-wasm/. $(BUILD_DIR)/vendor/mupdf-wasm/
 	@echo "TypeScript compilation complete"
 
 test: nodebug js wasm
@@ -211,27 +211,12 @@ test: nodebug js wasm
 
 npm-pkg: js wasm
 	rm -rf $(NPM_PKG_DIR)
-	mkdir -p $(NPM_PKG_DIR)/lib/preact
-	mkdir -p $(NPM_PKG_DIR)/test
-	mkdir -p $(NPM_PKG_DIR)/examples
-	mkdir -p $(NPM_PKG_DIR)/vendor/mupdf-wasm
-	# compiled JS
-	cp $(BUILD_DIR)/lib/*.js $(NPM_PKG_DIR)/lib/
-	cp $(BUILD_DIR)/lib/preact/*.js $(NPM_PKG_DIR)/lib/preact/
-	cp $(BUILD_DIR)/test/*.js $(NPM_PKG_DIR)/test/
-	cp $(BUILD_DIR)/examples/*.js $(NPM_PKG_DIR)/examples/
-	# TS sources
+	mkdir -p $(NPM_PKG_DIR)
+	cp -r $(BUILD_DIR)/lib $(BUILD_DIR)/test $(BUILD_DIR)/examples $(BUILD_DIR)/vendor $(NPM_PKG_DIR)/
+	cp -r lib/preact $(NPM_PKG_DIR)/lib/
 	cp lib/*.ts $(NPM_PKG_DIR)/lib/
-	cp lib/preact/*.ts $(NPM_PKG_DIR)/lib/preact/
-	cp lib/preact/*.d.ts $(NPM_PKG_DIR)/lib/preact/
 	cp test/*.ts $(NPM_PKG_DIR)/test/
-	cp examples/*.ts $(NPM_PKG_DIR)/examples/
-	cp examples/*.tsx $(NPM_PKG_DIR)/examples/
-	# WASM fixtures
-	cp $(BUILD_DIR)/test/*.wasm $(NPM_PKG_DIR)/test/
-	# vendor
-	cp -r $(BUILD_DIR)/vendor/mupdf-wasm/* $(NPM_PKG_DIR)/vendor/mupdf-wasm/
-	# root files
+	cp examples/*.ts examples/*.tsx $(NPM_PKG_DIR)/examples/
 	cp quickwin.d.ts tsconfig.json package.json README.md $(NPM_PKG_DIR)/
 	@echo "npm package created at $(NPM_PKG_DIR)"
 
