@@ -24,7 +24,7 @@ export const suite = {
         render(vnode2, parentHwnd)
         t.checkTrue('callback captured hwnd', captured !== 0)
 
-        gui.RemoveWindow(parentHwnd)
+        gui.UnsetWindowProc(parentHwnd)
         gui.DestroyWindow(parentHwnd)
     }
 }

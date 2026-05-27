@@ -374,7 +374,7 @@ declare module "gui" {
     function CreateSystemDpiFont(): HFONT | null;
     function GetWindowLongPtr(hwnd: HWND, nIndex: number): number;
     function SetWindowLongPtr(hwnd: HWND, nIndex: number, newLong: number): number;
-    function RemoveWindow(hwnd: HWND): boolean;
+    function UnsetWindowProc(hwnd: HWND): boolean;
     function CallWindowProc(wndProc: WNDPROC, hwnd: HWND, msg: number, wParam: number, lParam: number): number;
 
     // Tray icon

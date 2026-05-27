@@ -121,7 +121,7 @@ export const suite = {
         const lv4Hwnd = render(lv4, parent)
         t.checkTrue('returned hwnd is truthy', lv4Hwnd !== null && lv4Hwnd !== 0)
 
-        gui.RemoveWindow(parent)
+        gui.UnsetWindowProc(parent)
         gui.DestroyWindow(parent)
     }
 }

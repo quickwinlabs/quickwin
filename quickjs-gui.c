@@ -11,6 +11,7 @@ JSContext *g_ctx = NULL;
 typedef struct {
     HWND hWnd;
     JSValue proc;
+    WNDPROC oldProc;
 } WindowEntry;
 static WindowEntry *g_windows = NULL;
 static int g_windowCount = 0;
@@ -259,15 +260,17 @@ static JSValue js_setWndProc(JSContext *ctx, JSValueConst this_val, int argc, JS
             g_windows = p;
             g_windowCapacity = newCap;
         }
+        WNDPROC oldProc = (WNDPROC)GetWindowLongPtrW(hwnd, GWLP_WNDPROC);
         SetWindowLongPtrW(hwnd, GWLP_WNDPROC, (LONG_PTR)ProxyWndProc);
         g_windows[g_windowCount].hWnd = hwnd;
+        g_windows[g_windowCount].oldProc = oldProc;
         g_windows[g_windowCount].proc = JS_DupValue(g_ctx, argv[1]);
         g_windowCount++;
     }
     return JS_UNDEFINED;
 }
 
-static JSValue js_removeWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+static JSValue js_unsetWindowProc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     int64_t hwnd_val;
     JS_ToInt64(ctx, &hwnd_val, argv[0]);
@@ -276,10 +279,12 @@ static JSValue js_removeWindow(JSContext *ctx, JSValueConst this_val, int argc, 
     int idx = findWindowIndex(hwnd);
     if (idx >= 0)
     {
+        if (g_windows[idx].oldProc)
+            SetWindowLongPtrW(hwnd, GWLP_WNDPROC, (LONG_PTR)g_windows[idx].oldProc);
         JS_FreeValue(ctx, g_windows[idx].proc);
         for (int i = idx; i < g_windowCount - 1; i++)
         {
-            g_windows[i] = g_windows[i + 1];
+             g_windows[i] = g_windows[i + 1];
         }
         g_windowCount--;
         return JS_TRUE;
@@ -602,7 +607,7 @@ static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("CreateSystemDpiFont", 0, js_createSystemDpiFont),
     JS_CFUNC_DEF("GetWindowLongPtr", 2, js_GetWindowLongPtr),
     JS_CFUNC_DEF("SetWindowLongPtr", 3, js_SetWindowLongPtr),
-    JS_CFUNC_DEF("RemoveWindow", 1, js_removeWindow),
+    JS_CFUNC_DEF("UnsetWindowProc", 1, js_unsetWindowProc),
     JS_CFUNC_DEF("CallWindowProc", 5, js_CallWindowProc),
     JS_CFUNC_DEF("ShellNotifyIcon", 2, js_shellNotifyIcon),
     JS_CFUNC_DEF("LoadIcon", 1, js_loadIcon),

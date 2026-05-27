@@ -161,7 +161,7 @@ function newComponent(vnode: QWVNode, parentHwnd: gui.HWND, context: any): QWCom
 
 function destroyHwnd(hwnd: number): void {
     if (!hwnd) return
-    gui.RemoveWindow(hwnd as gui.HWND)
+    gui.UnsetWindowProc(hwnd as gui.HWND)
     destroyWindow(hwnd)
 }
 
