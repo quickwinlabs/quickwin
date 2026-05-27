@@ -16,7 +16,7 @@ if (!dpiFont) throw new Error('Failed to create DPI font')
 
 const CreateWindow: typeof CreateWindowWithoutScale = (className, title, style, x, y, cx, cy, parent, id) => {
     let hwnd = CreateWindowWithoutScale(className, title, style, x * scaleFactor, y * scaleFactor, cx * scaleFactor, cy * scaleFactor, parent, id);
-    SendMessage(hwnd, WmMsg.SETFONT, dpiFont, 1);
+    if (hwnd) SendMessage(hwnd, WmMsg.SETFONT, dpiFont, 1);
     return hwnd;
 }
 
@@ -31,6 +31,7 @@ function wndProc(hwnd: HWND, msg: number, wParam: number, lParam: number) {
         list = CreateWindow("LISTBOX", "", WindowStyle.CHILD | WindowStyle.VISIBLE | WindowStyle.BORDER, 10, 40, 200, 100, hwnd, null);
         let group = CreateWindow("BUTTON", "添加", WindowStyle.CHILD | WindowStyle.VISIBLE | ButtonStyle.GROUPBOX, 10, 180, 100, 30, hwnd, null);
         let check = CreateWindow("BUTTON", "添加到列表", WindowStyle.CHILD | WindowStyle.VISIBLE | ButtonStyle.AUTOCHECKBOX, 10, 280, 100, 30, hwnd, null);
+        if (!btn) return 0
         const oldProc = GetWindowLongPtr(btn, Gwlp.WNDPROC);
         SetWindowProc(btn, (hwnd, msg, wParam, lParam) => {
             if (msg == WmMsg.LBUTTONDOWN) {
@@ -61,4 +62,4 @@ function wndProc(hwnd: HWND, msg: number, wParam: number, lParam: number) {
 
 RegisterClass("MainWindow", wndProc);
 var hwnd = CreateWindow("MainWindow", "Hello QuickJS", WindowStyle.OVERLAPPEDWINDOW, 0, 0, 600, 400, null, null);
-ShowWindow(hwnd);
+if (hwnd) ShowWindow(hwnd);

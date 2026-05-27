@@ -75,5 +75,7 @@ function App() {
     )
 }
 
-gui.ShowWindow(mainWnd)
-render(<App />, mainWnd)
+if (mainWnd) {
+    gui.ShowWindow(mainWnd)
+    render(<App />, mainWnd)
+}

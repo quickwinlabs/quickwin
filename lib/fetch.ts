@@ -554,6 +554,7 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
                 if (isHTTPS) {
                     const method = wolfssl.wolfTLSv1_2_client_method()
                     ctx = wolfssl.wolfSSL_CTX_new(method)
+                    if (!ctx) { doReject(new Error('SSL_CTX_new failed')); return }
                     wolfssl.wolfSSL_CTX_set_verify(ctx, wolfssl.VerifyMode.SSL_VERIFY_NONE)
                     ssl = wolfssl.wolfSSL_new(ctx)
                     if (!ssl) { doReject(new Error('SSL_new failed')); return }

@@ -74,7 +74,8 @@ function renderToWin32(vnode: unknown, parentHwnd: gui.HWND, context: any): gui.
 
     if (typeof vnode === 'string' || typeof vnode === 'number') {
         const hwnd = gui.CreateWindow('STATIC', String(vnode), gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE | gui.StaticStyle.LEFT, 0, 0, 0, 0, parentHwnd, null)
-        if (hwnd) gui.SendMessage(hwnd, gui.WmMsg.SETFONT, dpiFont as unknown as number, 1)
+        if (!hwnd) return 0 as gui.HWND
+        gui.SendMessage(hwnd, gui.WmMsg.SETFONT, dpiFont as unknown as number, 1)
         return hwnd
     }
 
@@ -289,7 +290,7 @@ function reconcile(
                     }
                 }
                 n[CHILDREN_HWNDS_PROP] = childHwnds
-                return hwnd
+        return hwnd as gui.HWND
             }
         }
     }

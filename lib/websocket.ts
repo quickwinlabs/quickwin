@@ -328,12 +328,10 @@ class WebSocket {
                 if (isWSS) {
                     const method = wolfssl.wolfTLSv1_2_client_method()
                     this._ctx = wolfssl.wolfSSL_CTX_new(method)
+                    if (!this._ctx) { doError(new Error('SSL_CTX_new failed')); return }
                     wolfssl.wolfSSL_CTX_set_verify(this._ctx, wolfssl.VerifyMode.SSL_VERIFY_NONE)
                     this._ssl = wolfssl.wolfSSL_new(this._ctx)
-                    if (!this._ssl) {
-                        doError(new Error('SSL_new failed'))
-                        return
-                    }
+                    if (!this._ssl) { doError(new Error('SSL_new failed')); return }
                     wolfssl.wolfSSL_set_fd(this._ssl, sock.get_fd(fd))
                     const sniHost = host
                     if (sniHost) wolfssl.wolfSSL_UseSNI(this._ssl, wolfssl.SniType.WOLFSSL_SNI_HOST_NAME, sniHost)

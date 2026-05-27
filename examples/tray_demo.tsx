@@ -44,6 +44,7 @@ const scr = gui.GetScreenSize()
 const x = (scr[0] - W) >> 1
 const y = (scr[1] - H) >> 1
 const hwnd = gui.CreateWindow('TrayApp', '系统托盘示例', gui.WindowStyle.OVERLAPPEDWINDOW, x, y, W, H, null, null)
+if (!hwnd) std.exit(0)
 gui.ShowWindow(hwnd)
 
 // 添加说明文字
@@ -66,7 +67,7 @@ if (text) {
 const hIcon = gui.LoadIcon('APPLICATION')
 if (hIcon) {
     const ok = gui.ShellNotifyIcon(gui.NotifyIconCmd.ADD, {
-        hwnd, uID: 1,
+        hwnd: hwnd as number, uID: 1,
         flags: gui.NotifyIconFlag.MESSAGE | gui.NotifyIconFlag.ICON,
         callbackMessage: WM_TRAY,
         hIcon,
