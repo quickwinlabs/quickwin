@@ -1,8 +1,10 @@
 import * as gui from 'gui'
+import * as ffi from 'ffi'
 import { HWND_PROP, STYLE_PROP, CHILDREN_HWNDS_PROP, RENDERED_VNODE_PROP, isVNode, getChildren, type VNode } from './render.js'
 import { moveWindow } from './props.js'
 
 const scaleFactor = gui.GetScaleFactor()
+const TCM_ADJUSTRECT = 0x1328
 
 export interface LayoutStyle {
     flexDirection?: 'row' | 'column'
@@ -74,13 +76,36 @@ function layoutNode(hwnd: number, vnode: VNode, availableRect: LayoutRect): void
     const nodeY = availableRect.y + margin
     moveWindow(hwnd, nodeX, nodeY, nodeW, nodeH)
 
+    let childOffX = 0, childOffY = 0
+    let childAreaW = nodeW, childAreaH = nodeH
+    if ((vnode as any)?.props?.type === 'SysTabControl32') {
+        const cr = gui.GetClientRect(hwnd as gui.HWND)
+        if (cr) {
+            const buf = new ArrayBuffer(16)
+            const dv = new DataView(buf)
+            dv.setInt32(0, cr.left, true)
+            dv.setInt32(4, cr.top, true)
+            dv.setInt32(8, cr.right, true)
+            dv.setInt32(12, cr.bottom, true)
+            gui.SendMessage(hwnd as gui.HWND, TCM_ADJUSTRECT, 0, ffi.bufferPtr(buf) as any)
+            const l = dv.getInt32(0, true)
+            const t = dv.getInt32(4, true)
+            const r = dv.getInt32(8, true)
+            const b = dv.getInt32(12, true)
+            childOffX = l - cr.left
+            childOffY = t - cr.top
+            childAreaW = Math.max(r - l, 0)
+            childAreaH = Math.max(b - t, 0)
+        }
+    }
+
     const children = getLayoutChildren(vnode)
     if (children.length === 0) return
 
     const isRow = dir === 'row'
     const totalGap = gap * Math.max(0, children.length - 1)
-    const mainSize = (isRow ? nodeW : nodeH) - padding * 2 - totalGap
-    const crossSize = (isRow ? nodeH : nodeW) - padding * 2
+    const mainSize = (isRow ? childAreaW : childAreaH) - padding * 2 - totalGap
+    const crossSize = (isRow ? childAreaH : childAreaW) - padding * 2
 
     function getFlexGrow(s: LayoutStyle): number {
         return s.flexGrow ?? s.flex ?? 0
@@ -123,8 +148,8 @@ function layoutNode(hwnd: number, vnode: VNode, availableRect: LayoutRect): void
         const actualCross = childCross >= 0 ? childCross : crossSize
 
         const childMargin = ((child.style.margin || 0) * scaleFactor) | 0
-        const relX = isRow ? padding + offset : padding + childMargin
-        const relY = isRow ? padding + childMargin : padding + offset
+        const relX = childOffX + (isRow ? padding + offset : padding + childMargin)
+        const relY = childOffY + (isRow ? padding + childMargin : padding + offset)
         const cw = isRow ? childMain : actualCross - childMargin * 2
         const ch = isRow ? actualCross - childMargin * 2 : childMain
 

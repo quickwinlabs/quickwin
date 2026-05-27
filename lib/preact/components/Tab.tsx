@@ -3,10 +3,8 @@ import * as gui from 'gui'
 import * as os from 'os'
 import * as ffi from 'ffi'
 import { useState, useRef } from '../hooks.js'
-import { moveWindow } from '../props.js'
 
 const TCIF_TEXT = 0x0001
-const TCM_ADJUSTRECT = 0x1328
 const FFI_U64 = ffi.FFI_TYPE_UINT64
 const FFI_U32 = ffi.FFI_TYPE_UINT32
 const FFI_PTR = ffi.FFI_TYPE_POINTER
@@ -43,30 +41,6 @@ function insertTabItem(hwnd: gui.HWND, title: string, index: number) {
     gui.SendMessage(hwnd, gui.TcMsg.INSERTITEMW, index, itemPtr as any)
 }
 
-function positionContent(tabHwnd: gui.HWND, contentHwnd: number): void {
-    if (!tabHwnd || !contentHwnd) return
-
-    const r = gui.GetClientRect(tabHwnd)
-    if (!r) return
-
-    const workBuf = new ArrayBuffer(16)
-    const wdv = new DataView(workBuf)
-    wdv.setInt32(0, r.left, true)
-    wdv.setInt32(4, r.top, true)
-    wdv.setInt32(8, r.right, true)
-    wdv.setInt32(12, r.bottom, true)
-
-    gui.SendMessage(tabHwnd, TCM_ADJUSTRECT, 0, ffi.bufferPtr(workBuf) as any)
-
-    const dv = new DataView(workBuf)
-    const left = dv.getInt32(0, true)
-    const top = dv.getInt32(4, true)
-    const right = dv.getInt32(8, true)
-    const bottom = dv.getInt32(12, true)
-
-    moveWindow(contentHwnd, left, top, Math.max(right - left, 0), Math.max(bottom - top, 0))
-}
-
 export function Tab(props: TabProps) {
     const [internalSel, setInternalSel] = useState(props.defaultSelectedIndex ?? 0)
     const sel = props.selectedIndex !== undefined ? props.selectedIndex : internalSel
@@ -84,9 +58,6 @@ export function Tab(props: TabProps) {
         if (sel >= 0 && sel < currentTabs.length) {
             gui.SendMessage(hwnd, gui.TcMsg.SETCURSEL, sel, 0)
         }
-        os.setTimeout(() => {
-            if (contentRef.current) positionContent(hwnd, contentRef.current)
-        }, 0)
     }
 
     return (
@@ -95,11 +66,6 @@ export function Tab(props: TabProps) {
             ws={gui.TabStyle.FOCUSNEVER}
             style={{ flex: 1, ...props.style } as any}
             onEvent={(e) => {
-                if (e.msg === gui.WmMsg.SIZE) {
-                    os.setTimeout(() => {
-                        if (contentRef.current) positionContent(e.hwnd as gui.HWND, contentRef.current)
-                    }, 0)
-                }
                 if (e.msg === gui.WmMsg.LBUTTONDOWN) {
                     os.setTimeout(() => {
                         const hwnd = e.hwnd as gui.HWND
@@ -107,9 +73,6 @@ export function Tab(props: TabProps) {
                         if (curSel >= 0 && curSel !== sel) {
                             setInternalSel(curSel)
                             onChange?.(curSel)
-                            os.setTimeout(() => {
-                                if (contentRef.current) positionContent(hwnd, contentRef.current)
-                            }, 0)
                         }
                     }, 0)
                 }
