@@ -533,6 +533,23 @@ declare module "gui" {
         STANDARD = 0x0001 | 0x0002 | 0x00200000 | 0x00800000,
     }
 
+    // Tab 控件样式 (Tab Control Styles)
+    export const enum TabStyle {
+        FOCUSNEVER = 0x8000,
+        FIXEDWIDTH = 0x0400,
+    }
+
+    // Tab 控件消息 (Tab Control Messages)
+    // 注意: Vista+ comctl32 v6 使用不同的消息号区分 A/W; W 版使用 TCM_FIRST+60~62
+    export const enum TcMsg {
+        GETITEMCOUNT = 0x1304,
+        INSERTITEMW = 0x133E,
+        DELETEITEM = 0x1308,
+        DELETEALLITEMS = 0x1309,
+        GETCURSEL = 0x130B,
+        SETCURSEL = 0x130C,
+    }
+
     // ShowWindow 命令 (ShowWindow nCmdShow)
     export const enum ShowWindowCmd {
         HIDE = 0,

@@ -143,8 +143,11 @@ function layoutNode(hwnd: number, vnode: VNode, availableRect: LayoutRect): void
 
         moveWindow(child.hwnd, relX, relY, Math.max(cw, 0), Math.max(ch, 0))
 
-        if (isVNode(child.vnode) && child.vnode.type === 'w') {
-            layoutNode(child.hwnd, child.vnode, { x: relX, y: relY, w: Math.max(cw, 0), h: Math.max(ch, 0) })
+        if (isVNode(child.vnode)) {
+            const elementVNode = resolveToElementVNode(child.vnode)
+            if (elementVNode) {
+                layoutNode(child.hwnd, elementVNode, { x: relX, y: relY, w: Math.max(cw, 0), h: Math.max(ch, 0) })
+            }
         }
 
         offset += childMain + gap

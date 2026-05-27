@@ -7,6 +7,7 @@ import { render, notifyResize, scaleFactor } from '../lib/preact/render.js'
 import { Button } from '../lib/preact/components/Button.js'
 import { EditBox } from '../lib/preact/components/EditBox.js'
 import { ListBox } from '../lib/preact/components/ListBox.js'
+import { Tab } from '../lib/preact/components/Tab.js'
 
 const _user32 = win.LoadLibrary('user32.dll')
 const GetSystemMetrics = _user32 ? win.GetProcAddress(_user32, 'GetSystemMetrics') : 0
@@ -50,7 +51,11 @@ function App() {
             <EditBox value={text} onChange={setText} style={{ height: 26 }} />
             <w type="STATIC" text={`echo: ${text}`} style={{ height: 24 }} />
             <w type="STATIC" text={`fruit: ${selFruit}`} style={{ height: 24 }} />
-            <ListBox items={fruits} onChange={(i, t) => setSelFruit(t)} style={{ flex: 1 }} />
+            <ListBox items={fruits} onChange={(i, t) => setSelFruit(t)} style={{ height: 120 }} />
+            <Tab tabs={[
+                { title: 'Hello', content: <w type="STATIC" text="Hello tab!" /> },
+                { title: 'World', content: <w type="STATIC" text="World tab!" /> },
+            ]} style={{ flex: 1 }} />
         </w>
     )
 }

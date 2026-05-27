@@ -59,7 +59,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     wolfSSL_Init();
 
-    InitCommonControls();
+    INITCOMMONCONTROLSEX icex = { sizeof(INITCOMMONCONTROLSEX), ICC_WIN95_CLASSES };
+    InitCommonControlsEx(&icex);
 #if _WIN32_WINNT >= 0x0600
     SetProcessDPIAware();
 #endif

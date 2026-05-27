@@ -6,6 +6,7 @@ import { render } from '../lib/preact/render.js'
 import { Button } from '../lib/preact/components/Button.js'
 import { EditBox } from '../lib/preact/components/EditBox.js'
 import { ListBox } from '../lib/preact/components/ListBox.js'
+import { Tab } from '../lib/preact/components/Tab.js'
 
 export const suite = {
     name: 'components',
@@ -63,6 +64,27 @@ export const suite = {
         const lb4 = createElement(ListBox, { items: ['banana', 'apple', 'cherry'], sort: true, selectedIndex: 2 })
         const lb4Hwnd = render(lb4, parent)
         t.checkTrue('returned hwnd is truthy', lb4Hwnd !== null && lb4Hwnd !== 0)
+
+        t.section('Tab renders with VNode content')
+        const tab = createElement(Tab, {
+            tabs: [
+                { title: 'A', content: createElement('w', { type: 'STATIC', text: 'Alpha' }) },
+                { title: 'B', content: createElement('w', { type: 'STATIC', text: 'Beta' }) },
+            ]
+        })
+        const tabHwnd = render(tab, parent)
+        t.checkTrue('returned hwnd is truthy', tabHwnd !== null && tabHwnd !== 0)
+
+        t.section('Tab with selectedIndex')
+        const tab2 = createElement(Tab, {
+            tabs: [
+                { title: 'X', content: createElement('w', { type: 'STATIC', text: 'Xyz' }) },
+                { title: 'Y', content: createElement('w', { type: 'STATIC', text: 'Yzx' }) },
+            ],
+            selectedIndex: 1
+        })
+        const tab2Hwnd = render(tab2, parent)
+        t.checkTrue('returned hwnd is truthy', tab2Hwnd !== null && tab2Hwnd !== 0)
 
         gui.RemoveWindow(parent)
         gui.DestroyWindow(parent)
