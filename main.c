@@ -153,6 +153,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     }
 
     JSValue result = JS_Eval(ctx, js_code, fsize, js_file, JS_EVAL_TYPE_MODULE);
+    result = js_std_await(ctx, result);
     if (JS_IsException(result))
     {
         JSValue err = JS_GetException(ctx);
