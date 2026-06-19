@@ -184,6 +184,7 @@ done:
     wc.lpfnWndProc = ProxyWndProc;
     wc.hInstance = GetModuleHandleW(NULL);
     wc.hCursor = LoadCursorW(NULL, (LPCWSTR)IDC_ARROW);
+    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     wc.lpszClassName = wclassName;
     ATOM atom = RegisterClassExW(&wc);
 
@@ -270,26 +271,43 @@ static JSValue js_setWndProc(JSContext *ctx, JSValueConst this_val, int argc, JS
     return JS_UNDEFINED;
 }
 
+// 内部函数：清理单个窗口的 WNDPROC 和 JS 引用
+static BOOL unsetWindowProcInternal(HWND hwnd)
+{
+    int idx = findWindowIndex(hwnd);
+    if (idx >= 0) {
+        if (g_windows[idx].oldProc)
+            SetWindowLongPtrW(hwnd, GWLP_WNDPROC, (LONG_PTR)g_windows[idx].oldProc);
+        JS_FreeValue(g_ctx, g_windows[idx].proc);
+        for (int i = idx; i < g_windowCount - 1; i++) {
+            g_windows[i] = g_windows[i + 1];
+        }
+        g_windowCount--;
+        return TRUE;
+    }
+    return FALSE;
+}
+
 static JSValue js_unsetWindowProc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     int64_t hwnd_val;
     JS_ToInt64(ctx, &hwnd_val, argv[0]);
     HWND hwnd = (HWND)hwnd_val;
+    return JS_NewBool(ctx, unsetWindowProcInternal(hwnd));
+}
 
-    int idx = findWindowIndex(hwnd);
-    if (idx >= 0)
-    {
-        if (g_windows[idx].oldProc)
-            SetWindowLongPtrW(hwnd, GWLP_WNDPROC, (LONG_PTR)g_windows[idx].oldProc);
-        JS_FreeValue(ctx, g_windows[idx].proc);
-        for (int i = idx; i < g_windowCount - 1; i++)
-        {
-             g_windows[i] = g_windows[i + 1];
-        }
-        g_windowCount--;
-        return JS_TRUE;
+// 递归清理窗口及其子窗口的 WNDPROC 和 JS 引用
+static void cleanupWindowAndChildren(HWND hwnd)
+{
+    // 先递归清理子窗口
+    HWND child = GetWindow(hwnd, GW_CHILD);
+    while (child) {
+        HWND next = GetWindow(child, GW_HWNDNEXT);
+        cleanupWindowAndChildren(child);
+        child = next;
     }
-    return JS_FALSE;
+    // 清理当前窗口
+    unsetWindowProcInternal(hwnd);
 }
 
 static JSValue js_destroyWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -298,8 +316,21 @@ static JSValue js_destroyWindow(JSContext *ctx, JSValueConst this_val, int argc,
     JS_ToInt64(ctx, &hwnd_val, argv[0]);
     HWND hwnd = (HWND)hwnd_val;
     
+    cleanupWindowAndChildren(hwnd);
     BOOL result = DestroyWindow(hwnd);
     return JS_NewBool(ctx, result);
+}
+
+static JSValue js_getWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int64_t hwnd_val;
+    int32_t cmd;
+    JS_ToInt64(ctx, &hwnd_val, argv[0]);
+    JS_ToInt32(ctx, &cmd, argv[1]);
+    HWND hwnd = (HWND)hwnd_val;
+    
+    HWND result = GetWindow(hwnd, cmd);
+    return JS_NewInt64(ctx, (int64_t)result);
 }
 
 static JSValue js_CallWindowProc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -606,6 +637,21 @@ static JSValue js_getClientRect(JSContext *ctx, JSValueConst this_val, int argc,
     return obj;
 }
 
+static JSValue js_getWindowRect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int64_t hwnd_val;
+    JS_ToInt64(ctx, &hwnd_val, argv[0]);
+    RECT rect;
+    if (!GetWindowRect((HWND)hwnd_val, &rect))
+        return JS_NULL;
+    JSValue obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, obj, "left",   JS_NewInt32(ctx, rect.left));
+    JS_SetPropertyStr(ctx, obj, "top",    JS_NewInt32(ctx, rect.top));
+    JS_SetPropertyStr(ctx, obj, "right",  JS_NewInt32(ctx, rect.right));
+    JS_SetPropertyStr(ctx, obj, "bottom", JS_NewInt32(ctx, rect.bottom));
+    return obj;
+}
+
 static JSValue js_invalidateRect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     int64_t hwnd;
@@ -628,6 +674,13 @@ static JSValue js_invalidateRect(JSContext *ctx, JSValueConst this_val, int argc
         erase = JS_ToBool(ctx, argv[2]);
     InvalidateRect((HWND)hwnd, pr, erase);
     return JS_UNDEFINED;
+}
+
+static JSValue js_isWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int64_t hwnd;
+    JS_ToInt64(ctx, &hwnd, argv[0]);
+    return JS_NewBool(ctx, IsWindow((HWND)hwnd));
 }
 
 static JSValue js_setScrollInfo(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -689,10 +742,74 @@ static JSValue js_setScrollInfo(JSContext *ctx, JSValueConst this_val, int argc,
     return JS_NewInt32(ctx, SetScrollInfo((HWND)hwnd, bar, &si, redraw));
 }
 
+static JSValue js_getScrollInfo(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int64_t hwnd;
+    int32_t bar;
+    JS_ToInt64(ctx, &hwnd, argv[0]);
+    JS_ToInt32(ctx, &bar, argv[1]);
+    SCROLLINFO si;
+    memset(&si, 0, sizeof(si));
+    si.cbSize = sizeof(SCROLLINFO);
+    si.fMask = SIF_ALL;
+    GetScrollInfo((HWND)hwnd, bar, &si);
+    JSValue obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, obj, "pos",      JS_NewInt32(ctx, si.nPos));
+    JS_SetPropertyStr(ctx, obj, "page",     JS_NewInt32(ctx, si.nPage));
+    JS_SetPropertyStr(ctx, obj, "min",      JS_NewInt32(ctx, si.nMin));
+    JS_SetPropertyStr(ctx, obj, "max",      JS_NewInt32(ctx, si.nMax));
+    JS_SetPropertyStr(ctx, obj, "trackPos", JS_NewInt32(ctx, si.nTrackPos));
+    return obj;
+}
+
+static JSValue js_showScrollBar(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int64_t hwnd;
+    int32_t bar;
+    BOOL show;
+    JS_ToInt64(ctx, &hwnd, argv[0]);
+    JS_ToInt32(ctx, &bar, argv[1]);
+    show = JS_ToBool(ctx, argv[2]);
+    return JS_NewBool(ctx, ShowScrollBar((HWND)hwnd, bar, show));
+}
+
+/* ─── Win32 parent/position/state ───────────────────────────── */
+
+static JSValue js_setParent(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    HWND hwnd = toHWND(ctx, argv[0]);
+    HWND parent = toHWND(ctx, argv[1]);
+    HWND old = SetParent(hwnd, parent);
+    return JS_NewInt64(ctx, (int64_t)old);
+}
+
+static JSValue js_enableWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    HWND hwnd = toHWND(ctx, argv[0]);
+    BOOL enable = JS_ToBool(ctx, argv[1]);
+    BOOL prev = EnableWindow(hwnd, enable);
+    return JS_NewBool(ctx, prev);
+}
+
+static JSValue js_setWindowPos(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    HWND hwnd = toHWND(ctx, argv[0]);
+    int64_t insertAfter; JS_ToInt64(ctx, &insertAfter, argv[1]);
+    int32_t x, y, cx, cy, flags;
+    JS_ToInt32(ctx, &x,     argv[2]);
+    JS_ToInt32(ctx, &y,     argv[3]);
+    JS_ToInt32(ctx, &cx,    argv[4]);
+    JS_ToInt32(ctx, &cy,    argv[5]);
+    JS_ToInt32(ctx, &flags, argv[6]);
+    BOOL result = SetWindowPos(hwnd, (HWND)insertAfter, x, y, cx, cy, flags);
+    return JS_NewBool(ctx, result);
+}
+
 static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("RegisterClass", 2, js_registerClass),
     JS_CFUNC_DEF("CreateWindow", 9, js_createWindow),
     JS_CFUNC_DEF("DestroyWindow", 1, js_destroyWindow),
+    JS_CFUNC_DEF("GetWindow", 2, js_getWindow),
     JS_CFUNC_DEF("ShowWindow", 1, js_showWindow),
     JS_CFUNC_DEF("SetWindowProc", 2, js_setWndProc),
     JS_CFUNC_DEF("DefWindowProc", 4, js_DefWindowProc),
@@ -717,8 +834,15 @@ static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("GetCursorPos", 0, js_getCursorPos),
     JS_CFUNC_DEF("GetScreenSize", 0, js_getScreenSize),
     JS_CFUNC_DEF("GetClientRect", 1, js_getClientRect),
+    JS_CFUNC_DEF("GetWindowRect", 1, js_getWindowRect),
     JS_CFUNC_DEF("InvalidateRect", 3, js_invalidateRect),
+    JS_CFUNC_DEF("IsWindow", 1, js_isWindow),
     JS_CFUNC_DEF("SetScrollInfo", 4, js_setScrollInfo),
+    JS_CFUNC_DEF("GetScrollInfo", 2, js_getScrollInfo),
+    JS_CFUNC_DEF("ShowScrollBar", 3, js_showScrollBar),
+    JS_CFUNC_DEF("SetParent", 2, js_setParent),
+    JS_CFUNC_DEF("EnableWindow", 2, js_enableWindow),
+    JS_CFUNC_DEF("SetWindowPos", 7, js_setWindowPos),
 };
 
 

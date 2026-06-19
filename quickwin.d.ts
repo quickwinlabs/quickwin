@@ -1,3 +1,4 @@
+﻿/// <reference path="quickwin_const.d.ts" />
 interface ImportMeta {
     url: string
 }
@@ -251,6 +252,8 @@ declare module "os" {
     function sleepAsync(delay_ms: number): Promise<void>;
     function setTimeout(func: () => void, delay: number): number;
     function clearTimeout(id: number): void;
+    function setInterval(func: () => void, delay: number): number;
+    function clearInterval(id: number): void;
 
     const platform: string;
 
@@ -305,11 +308,6 @@ declare module "sock" {
     function get_fd(sock: SockHandle): number;
     function resolve(hostname: string): string | null;
 
-    const enum AddrFamily { AF_INET = 2 }
-    const enum SockType { SOCK_STREAM = 1, SOCK_DGRAM = 2 }
-    const enum Protocol { IPPROTO_TCP = 6, IPPROTO_UDP = 17 }
-    const enum Shutdown { SD_RECEIVE = 0, SD_SEND = 1, SD_BOTH = 2 }
-    const enum FdEvent { FD_READ = 1, FD_WRITE = 2, FD_CONNECT = 16, FD_CLOSE = 32 }
 }
 
 declare module "wolfssl" {
@@ -338,11 +336,6 @@ declare module "wolfssl" {
     function wolfTLSv1_2_client_method(): WOLFSSL_METHOD;
     function wolfTLSv1_3_client_method(): WOLFSSL_METHOD;
 
-    const enum VerifyMode { SSL_VERIFY_NONE = 0, SSL_VERIFY_PEER = 1 }
-    const enum SniType { WOLFSSL_SNI_HOST_NAME = 0 }
-    const enum FileType { SSL_FILETYPE_PEM = 1 }
-    const enum ReturnCode { SSL_SUCCESS = 1 }
-    const enum ErrorCode { WOLFSSL_ERROR_WANT_READ = 2, WOLFSSL_ERROR_WANT_WRITE = 3 }
 }
 
 declare module "win" {
@@ -361,7 +354,10 @@ declare module "gui" {
 
     function RegisterClass(className: string, wndProc?: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): number;
     function CreateWindow(className: string, title: string, style: number, x: number, y: number, width: number, height: number, parent: HWND | null, menu: HMENU | null): HWND | null;
+    // 销毁窗口及其所有子窗口，自动清理 WNDPROC 和 JS 引用
     function DestroyWindow(hwnd: HWND): boolean;
+    function GetWindow(hwnd: HWND, cmd: number): HWND;
+
     function ShowWindow(hwnd: HWND, nCmdShow?: number): void;
     function SetWindowProc(hwnd: HWND, wndProc: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): void;
     function DefWindowProc(hwnd: HWND, msg: number, wParam: number, lParam: number): number;
@@ -376,10 +372,11 @@ declare module "gui" {
     function SetWindowLongPtr(hwnd: HWND, nIndex: number, newLong: number): number;
     function UnsetWindowProc(hwnd: HWND): boolean;
     function CallWindowProc(wndProc: WNDPROC, hwnd: HWND, msg: number, wParam: number, lParam: number): number;
+    function SetParent(hwnd: HWND, parent: HWND | null): void;
+    function EnableWindow(hwnd: HWND, enable: boolean): void;
+    function SetWindowPos(hwnd: HWND, insertAfter: number, x: number, y: number, width: number, height: number, flags: number): void;
 
-    // Tray icon
-    const enum NotifyIconCmd { ADD = 0, MODIFY = 1, DELETE = 2 }
-    const enum NotifyIconFlag { MESSAGE = 1, ICON = 2, TIP = 4 }
+
 
     interface NotifyIconData {
         hwnd: number
@@ -393,15 +390,6 @@ declare module "gui" {
     function ShellNotifyIcon(cmd: number, nid: NotifyIconData): boolean;
     function LoadIcon(name: string): number | null;
 
-    // Popup menu
-    const enum MenuFlag {
-        STRING = 0,
-        SEPARATOR = 0x0800,
-        CHECKED = 0x0008,
-        GRAYED = 0x0001,
-        DISABLED = 0x0002,
-        POPUP = 0x0010,
-    }
 
     function CreatePopupMenu(): number | null;
     function AppendMenu(menu: number, flags: number, id: number, text: string): boolean;
@@ -416,225 +404,46 @@ declare module "gui" {
     type RECT = { left: number; top: number; right: number; bottom: number };
     /** Returns { left, top, right, bottom } of client area, or null if invalid */
     function GetClientRect(hwnd: HWND): RECT | null;
+    
+    function GetWindowRect(hwnd: HWND): RECT | null;
     /** Invalidates client area (rect can be null/undefined for full window) */
     function InvalidateRect(hwnd: HWND, rect?: RECT | null, erase?: boolean): void;
+    /** Checks if the window handle is valid */
+    function IsWindow(hwnd: HWND): boolean;
     /** Sets scroll info; returns current scroll box position. Signature matches Win32 SetScrollInfo. */
     function SetScrollInfo(hwnd: HWND, bar: number, info: { pos?: number; page?: number; min?: number; max?: number }, redraw?: boolean): number;
 
-    // 窗口样式 (Window Styles)
-    export const enum WindowStyle {
-        OVERLAPPEDWINDOW = 0x00CF0000,
-        CHILD = 0x40000000,
-        VISIBLE = 0x10000000,
-        BORDER = 0x00800000,
-        HSCROLL = 0x00100000,
-        VSCROLL = 0x00200000,
-        CLIPCHILDREN = 0x02000000,
-        TABSTOP = 0x00010000,
-    }
+    /** Gets scroll info. Signature matches Win32 GetScrollInfo. */
+    function GetScrollInfo(hwnd: HWND, bar: number): { pos: number; page: number; min: number; max: number; trackPos: number };
 
-    // 窗口消息 (Window Messages)
-    export const enum WmMsg {
-        CREATE = 0x0001,
-        DESTROY = 0x0002,
-        CLOSE = 0x0010,
-        QUIT = 0x0012,
-        PAINT = 0x000F,
-        COMMAND = 0x0111,
-        SIZE = 0x0003,
-        CHAR = 0x0102,
-        KEYDOWN = 0x0100,
-        KEYUP = 0x0101,
-        MOUSEMOVE = 0x0200,
-        LBUTTONDOWN = 0x0201,
-        LBUTTONUP = 0x0202,
-        LBUTTONDBLCLK = 0x0203,
-        RBUTTONDOWN = 0x0204,
-        RBUTTONUP = 0x0205,
-        SETFONT = 0x0030,
-        HSCROLL = 0x0114,
-        VSCROLL = 0x0115,
-        MOUSEWHEEL = 0x020A,
-    }
+    /** Shows or hides a scroll bar. Signature matches Win32 ShowScrollBar. */
+    function ShowScrollBar(hwnd: HWND, bar: number, show: boolean): boolean;
 
-    // 滚动条常量 (Scroll Bar)
-    export const enum ScrollBar {
-        HORZ = 0,
-        VERT = 1,
-    }
 
-    // 滚动命令 (Scroll Commands)
-    export const enum ScrollCmd {
-        LINEUP = 0,
-        LINEDOWN = 1,
-        PAGEUP = 2,
-        PAGEDOWN = 3,
-        THUMBTRACK = 5,
-    }
 
-    // 滚动信息标志 (Scroll Info Flags)
-    export const enum ScrollInfoFlag {
-        RANGE = 0x0001,
-        PAGE = 0x0002,
-        POS = 0x0004,
-        ALL = 0x0017,
-    }
 
-    // 系统度量 (System Metrics)
-    export const enum SysMetrics {
-        CXSCREEN = 0,
-        CYSCREEN = 1,
-    }
 
-    // 按钮样式 (Button Styles)
-    export const enum ButtonStyle {
-        PUSHBUTTON = 0x00000000,
-        DEFPUSHBUTTON = 0x00000001,
-        CHECKBOX = 0x00000002,
-        AUTOCHECKBOX = 0x00000003,
-        GROUPBOX = 0x00000007,
-    }
 
-    // ListBox 消息
-    export const enum LbMsg {
-        ADDSTRING = 0x0180,
-        INSERTSTRING = 0x0181,
-        DELETESTRING = 0x0182,
-        RESETCONTENT = 0x0184,
-        SETCURSEL = 0x0186,
-        GETCURSEL = 0x0188,
-        GETTEXT = 0x0189,
-        GETTEXTLEN = 0x018A,
-        GETCOUNT = 0x018B,
-    }
 
-    // 静态控件样式 (Static Control Styles)
-    export const enum StaticStyle {
-        LEFT = 0x00000000,
-    }
 
-    // 编辑框样式 (Edit Control Styles)
-    export const enum EditStyle {
-        LEFT = 0x0000,
-        MULTILINE = 0x0004,
-        PASSWORD = 0x0020,
-        AUTOVSCROLL = 0x0040,
-        AUTOHSCROLL = 0x0080,
-        READONLY = 0x0800,
-        WANTRETURN = 0x1000,
-        NUMBER = 0x2000,
-    }
 
-    // 组合框样式 (Combo Box Styles)
-    export const enum ComboBoxStyle {
-        DROPDOWNLIST = 0x0003,
-    }
 
-    // 列表框样式 (List Box Styles)
-    export const enum ListBoxStyle {
-        NOTIFY = 0x0001,
-        SORT = 0x0002,
-        MULTIPLESEL = 0x0008,
-        HASSTRINGS = 0x0040,
-        NOINTEGRALHEIGHT = 0x0100,
-        EXTENDEDSEL = 0x0800,
-        STANDARD = 0x0001 | 0x0002 | 0x00200000 | 0x00800000,
-    }
 
-    // Tab 控件样式 (Tab Control Styles)
-    export const enum TabStyle {
-        FOCUSNEVER = 0x8000,
-        FIXEDWIDTH = 0x0400,
-    }
 
-    // Tab 控件消息 (Tab Control Messages)
-    // 注意: Vista+ comctl32 v6 使用不同的消息号区分 A/W; W 版使用 TCM_FIRST+60~62
-    export const enum TcMsg {
-        GETITEMCOUNT = 0x1304,
-        INSERTITEMW = 0x133E,
-        DELETEITEM = 0x1308,
-        DELETEALLITEMS = 0x1309,
-        GETCURSEL = 0x130B,
-        SETCURSEL = 0x130C,
-    }
 
-    // ListView 控件样式 (List-View Styles)
-    export const enum ListViewStyle {
-        REPORT = 0x0001,
-        SINGLESEL = 0x0004,
-        SHOWSELALWAYS = 0x0008,
-        NOSORTHEADER = 0x8000,
-    }
 
-    // ListView 扩展样式 (List-View Extended Styles)
-    export const enum LvExStyle {
-        GRIDLINES = 0x00000001,
-        CHECKBOXES = 0x00000004,
-        TRACKSELECT = 0x00000008,
-        HEADERDRAGDROP = 0x00000010,
-        FULLROWSELECT = 0x00000020,
-        DOUBLEBUFFER = 0x00010000,
-    }
 
-    // ListView 控件消息 (List-View Messages)
-    export const enum LvMsg {
-        GETITEMCOUNT = 0x1004,
-        DELETEALLITEMS = 0x1009,
-        GETNEXTITEM = 0x100C,
-        GETITEMSTATE = 0x102C,
-        SETITEMSTATE = 0x102B,
-        GETSELECTEDCOUNT = 0x1032,
-        SETEXTENDEDLISTVIEWSTYLE = 0x1036,
-        INSERTCOLUMNW = 0x1061,
-        GETSELECTIONMARK = 0x1042,
-        INSERTITEMW = 0x104D,
-        SETITEMW = 0x104C,
-        ENSUREVISIBLE = 0x1013,
-    }
 
-    // ShowWindow 命令 (ShowWindow nCmdShow)
-    export const enum ShowWindowCmd {
-        HIDE = 0,
-        SHOW = 5,
-    }
 
-    // 按钮消息 (Button Control Messages)
-    export const enum ButtonMsg {
-        GETCHECK = 0x00F0,
-        SETCHECK = 0x00F1,
-    }
 
-    // 按钮选中状态 (Button Check State)
-    export const enum ButtonCheckState {
-        UNCHECKED = 0,
-        CHECKED = 1,
-    }
 
-    // 编辑框消息 (Edit Control Messages)
-    export const enum EditMsg {
-        SETCUEBANNER = 0x1501,
-        SETPASSWORDCHAR = 0x00CC,
-    }
 
-    // 组合框消息 (Combo Box Messages)
-    export const enum ComboBoxMsg {
-        ADDSTRING = 0x0143,
-    }
 
-    // 进度条消息 (Progress Bar Messages)
-    export const enum ProgressMsg {
-        SETRANGE32 = 0x0406,
-        SETPOS = 0x0402,
-    }
 
-    // 窗口额外数据偏移 (GetWindowLongPtr 索引)
-    export const enum Gwlp {
-        WNDPROC = -4,
-        HINSTANCE = -6,
-        HWNDPARENT = -8,
-        USERDATA = -21,
-        ID = -12,
-    }
+
+
+
+
 }
 
 declare module "ffi" {
@@ -662,7 +471,7 @@ declare module "ffi" {
 
     type FfiType = TYPE_OF_FFI_TYPE_VOID | TYPE_OF_FFI_TYPE_UINT8 | TYPE_OF_FFI_TYPE_SINT8 | TYPE_OF_FFI_TYPE_UINT16 | TYPE_OF_FFI_TYPE_SINT16 | TYPE_OF_FFI_TYPE_UINT32 | TYPE_OF_FFI_TYPE_SINT32 | TYPE_OF_FFI_TYPE_UINT64 | TYPE_OF_FFI_TYPE_SINT64 | TYPE_OF_FFI_TYPE_POINTER;
     type TypeArg<T extends FfiType> = T extends Exclude<FfiType, TYPE_OF_FFI_TYPE_VOID | TYPE_OF_FFI_TYPE_POINTER> ? number : T extends TYPE_OF_FFI_TYPE_POINTER ? (ArrayBuffer | null) : never;
-    type TypeArgs<T extends FfiType[], Args = []> = T extends [infer T1, ...infer RES] ? TypeArgs<RES, [...Args, TypeArg<T1>]> : Args;
+    type TypeArgs<T extends FfiType[], Args extends(number | null | ArrayBuffer)[] = []> = T extends [infer T1 extends FfiType, ...infer RES extends FfiType[]] ? TypeArgs<RES, [...Args, TypeArg<T1>]> : Args;
 
     function ffiCall<const T extends Exclude<FfiType, TYPE_OF_FFI_TYPE_VOID>[], const R extends FfiType>(func: number, argTypes: T, args: TypeArgs<T>, retType: R): R extends TYPE_OF_FFI_TYPE_VOID ? undefined : R extends TYPE_OF_FFI_TYPE_POINTER ? number | null : TypeArg<R>;
     function bufferPtr(buf: ArrayBuffer): number;

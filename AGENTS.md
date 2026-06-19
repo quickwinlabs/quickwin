@@ -16,6 +16,16 @@
 > - 节省大量调试时间
 > - 确保使用正确的 API 和方法签名
 
+> **禁止手写 Windows 常量：所有 const enum 必须在 `tools/gen_const.c` 中定义**
+> 
+> 所有 Windows API 常量（窗口样式、消息号、通知码等）都必须通过 `tools/gen_const.c` 
+> 中的 `DEC` 宏从 SDK 头文件获取，不得在 TS 代码中手写数值。
+> 
+> 流程：
+> 1. 在 `tools/gen_const.c` `print_enums()` 中添加 `DEC(TS_NAME, SDK_MACRO)` 行
+> 2. 运行 `make const` 重新生成 `quickwin_const.d.ts`
+> 3. 在 TS 代码中通过 `gui.EnumName.MEMBER` 使用
+
 > **禁止自动 commit：提交前必须先让用户确认 diff 和 commit message**
 >
 > 每次 commit 前，先把 `git diff`（变更内容）和拟用的 commit message 展示给用户，用户明确同意后才执行 `git commit` 和 `git push`。用户说 "continue"、"commit"、"push" 或直接给出 commit message 时视为同意。
@@ -304,3 +314,9 @@ return extract_body(response);
 ### 相关文件
 - `quickjs-http.c` — `http_get_sync`、`decode_chunked`、`is_chunked`、`skip_crlf`
 - `quickjs-brotli.c` / `quickjs-brotli.h` — Brotli 解压 JS API (`brotli.decompress`)、`JS_BrotliDecompress`
+
+## 10. React Custom Renderer 计划
+
+**文件位置：** `.agents/REACT_RENDERER_PLAN.md`
+
+**功能：** 记录 React Custom Renderer 实现方案，包括完整步骤（清理 preact、esbuild bundle、reconciler、公开 API、组件移植）、类型方案（`@types/react` + vendor bundle 桥接）和依赖清单。每次迭代前查看该文件了解当前进度。

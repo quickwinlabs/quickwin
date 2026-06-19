@@ -146,9 +146,17 @@ endif
 clean:
 	@echo "Cleaning..."
 	rm -rf $(BUILD_DIR)
+	rm -f quickwin_const.d.ts tools/gen_const.exe
 	@echo "Clean complete"
 
 distclean: clean
+
+
+const: tools/gen_const.exe
+	tools/gen_const.exe > quickwin_const.d.ts
+
+tools/gen_const.exe: tools/gen_const.c
+	$(CC) -o $@ $<
 
 wamr:
 	@echo "Building WAMR..."
@@ -198,10 +206,11 @@ info:
 	@echo "  BUILD_DIR = $(BUILD_DIR)"
 	@echo "  DEBUG     = $(DEBUG)"
 
-js:
+js: const
 	@echo "Compiling TypeScript files to JavaScript using tsgo..."
 	@npx tsgo --project tsconfig.json
-	@find $(BUILD_DIR) -name '*.js' -exec sed -i 's|from "\(.*\)/jsx-runtime"|from "\1/jsx-runtime.js"|g' {} +
+	@echo "Bundling react entries with esbuild..."
+	@node build.ts
 	@echo "Copying vendor/mupdf-wasm to $(BUILD_DIR)/vendor/mupdf-wasm..."
 	@rm -rf $(BUILD_DIR)/vendor/mupdf-wasm && mkdir -p $(BUILD_DIR)/vendor/mupdf-wasm && cp -r vendor/mupdf-wasm/. $(BUILD_DIR)/vendor/mupdf-wasm/
 	@echo "TypeScript compilation complete"
@@ -213,7 +222,6 @@ npm-pkg: js wasm
 	rm -rf $(NPM_PKG_DIR)
 	mkdir -p $(NPM_PKG_DIR)
 	cp -r $(BUILD_DIR)/lib $(BUILD_DIR)/test $(BUILD_DIR)/examples $(BUILD_DIR)/vendor $(NPM_PKG_DIR)/
-	cp -r lib/preact $(NPM_PKG_DIR)/lib/
 	cp lib/*.ts $(NPM_PKG_DIR)/lib/
 	cp test/*.ts $(NPM_PKG_DIR)/test/
 	cp examples/*.ts examples/*.tsx $(NPM_PKG_DIR)/examples/
@@ -230,6 +238,7 @@ help:
 	@echo "  clean     - Remove built files and JS files"
 	@echo "  distclean - Remove all generated files"
 	@echo "  info      - Show build configuration"
+	@echo "  const     - Generate quickwin_const.d.ts from tools/gen_const.c"
 	@echo "  js        - Compile TypeScript files to JavaScript"
 	@echo "  test      - Run all suites: make test"
 	@echo "  test      - Filter by name: make test TEST=wasm"

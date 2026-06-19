@@ -8,10 +8,12 @@ dist/
 *.wasm
 *.png
 *.tsbuildinfo
+opencode.json
 output.png
 
 node_modules/
 wamr/build/
+temp/
 ./quickjs
 !vendor/mupdf-wasm/**
 vendor/mupdf-wasm/mupdf-wasm.wat
