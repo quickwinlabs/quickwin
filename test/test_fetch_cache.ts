@@ -81,7 +81,7 @@ export const suite = {
         assert('cacheKey returns 16 hex chars', /^[0-9a-f]{16}$/.test(key))
 
         t.section('fetch with caching')
-        const cacheTestUrl = 'https://httpbin.org/cache/60'
+        const cacheTestUrl = 'https://httpbun.com/cache/60'
         trackedUrls.push(cacheTestUrl)
 
         const resp1 = await fetch(cacheTestUrl)
@@ -110,7 +110,7 @@ export const suite = {
         assert('second fetch body same length', body2.length === body1.length)
 
         t.section('timing: network vs cache')
-        const timingUrl = 'https://httpbin.org/cache/60?t=' + String(Date.now())
+        const timingUrl = 'https://httpbun.com/cache/60?t=' + String(Date.now())
         trackedUrls.push(timingUrl)
 
         const t0 = Date.now()

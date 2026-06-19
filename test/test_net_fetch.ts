@@ -19,18 +19,18 @@ export const suite = {
         }
         // ── Basic HTTP GET ──
         t.section('HTTP GET')
-        const r1 = await safeFetch('https://httpbin.org/anything')
+        const r1 = await safeFetch('https://httpbun.com/any')
         if (r1) {
             assert('status received', r1.status > 0)
             const body = await r1.text()
             assert('body received', body.length > 0)
         } else {
-            assert('httpbin.org reachable', false)
+            assert('httpbun.com reachable', false)
         }
 
         // ── Query string ──
         t.section('query string')
-        const rq = await safeFetch('https://httpbin.org/anything?foo=bar&baz=42')
+        const rq = await safeFetch('https://httpbun.com/any?foo=bar&baz=42')
         if (rq) {
             const body = JSON.parse(await rq.text())
             assert('query args received', body.args !== undefined)
@@ -43,8 +43,8 @@ export const suite = {
         // ── Request constructor ──
         t.section('Request constructor')
         {
-            const r = new Request('https://httpbin.org/anything?x=1&y=2', { method: 'POST', headers: { 'X-Test': 'val' }, body: 'hello' })
-            assert('Request.url', r.url === 'https://httpbin.org/anything?x=1&y=2')
+            const r = new Request('https://httpbun.com/any?x=1&y=2', { method: 'POST', headers: { 'X-Test': 'val' }, body: 'hello' })
+            assert('Request.url', r.url === 'https://httpbun.com/any?x=1&y=2')
             assert('Request.method', r.method === 'POST')
             assert('Request.headers get', r.headers.get('x-test') === 'val')
             assert('Request.body', r.body === 'hello')
@@ -55,14 +55,14 @@ export const suite = {
             assert('Request default redirect follow', r1.redirect === 'follow')
         }
         {
-            const r2 = new Request('https://httpbin.org/anything')
+            const r2 = new Request('https://httpbun.com/any')
             // clone with override
             const r3 = new Request(r2, { method: 'PUT' })
             assert('Request clone same url', r3.url === r2.url)
             assert('Request clone override method', r3.method === 'PUT')
         }
         {
-            const r = await safeFetch(new Request('https://httpbin.org/anything', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: 'req-class' }))
+            const r = await safeFetch(new Request('https://httpbun.com/any', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: 'req-class' }))
             if (r) {
                 const body = JSON.parse(await r.text())
                 assert('fetch(Request) status', r.status > 0)
@@ -76,7 +76,7 @@ export const suite = {
 
         // ── body / bodyUsed / stream ──
         t.section('body / bodyUsed / stream')
-        const r2 = await safeFetch('https://httpbin.org/anything')
+        const r2 = await safeFetch('https://httpbun.com/any')
         if (r2) {
             assert('r.body exists', typeof r2.body === 'object' && r2.body !== null)
             assert('bodyUsed false before read', r2.bodyUsed === false)
@@ -96,13 +96,13 @@ export const suite = {
 
         // ── text/json/arrayBuffer ──
         t.section('text / json / arrayBuffer')
-        const r3 = await safeFetch('https://httpbin.org/anything')
+        const r3 = await safeFetch('https://httpbun.com/any')
         if (r3) {
             const text = await r3.text()
             assert('text() returns string', typeof text === 'string' && text.length > 0)
             assert('bodyUsed true after text()', r3.bodyUsed === true)
 
-            const r4 = await safeFetch('https://httpbin.org/anything')
+            const r4 = await safeFetch('https://httpbun.com/any')
             if (r4) {
                 const buf = await r4.arrayBuffer()
                 assert('arrayBuffer() returns bytes', buf.byteLength > 0)
@@ -113,7 +113,7 @@ export const suite = {
 
         // double text() throws
         t.section('bodyUsed throws')
-        const r5 = await safeFetch('https://httpbin.org/anything')
+        const r5 = await safeFetch('https://httpbun.com/any')
         if (r5) {
             await r5.text()
             try { await r5.text(); assert('double text() throws', false) }
@@ -122,7 +122,7 @@ export const suite = {
 
         // ── POST ──
         t.section('POST')
-        const r6 = await safeFetch('https://httpbin.org/anything', {
+        const r6 = await safeFetch('https://httpbun.com/any', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ msg: 'hello' })
@@ -168,7 +168,7 @@ export const suite = {
 
         // ── stream cancel ──
         t.section('stream cancel')
-        const r7 = await safeFetch('https://httpbin.org/anything')
+        const r7 = await safeFetch('https://httpbun.com/any')
         if (r7) {
             r7.body.cancel()
             assert('cancel() succeeds', true)
