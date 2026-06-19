@@ -146,7 +146,7 @@ endif
 clean:
 	@echo "Cleaning..."
 	rm -rf $(BUILD_DIR)
-	rm -f quickwin_const.d.ts tools/gen_const.exe
+	rm -f tools/gen_const.exe
 	@echo "Clean complete"
 
 distclean: clean
@@ -206,7 +206,7 @@ info:
 	@echo "  BUILD_DIR = $(BUILD_DIR)"
 	@echo "  DEBUG     = $(DEBUG)"
 
-js: const
+js:
 	@echo "Compiling TypeScript files to JavaScript using tsgo..."
 	@npx tsgo --project tsconfig.json
 	@echo "Bundling react entries with esbuild..."
