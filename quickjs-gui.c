@@ -106,50 +106,70 @@ static HMENU toHMENU(JSContext *ctx, JSValueConst v)
     return (HMENU)val;
 }
 
-LRESULT CALLBACK ProxyWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+// 窗口级代理 — 只查 g_windows[hwnd]（由 SetWindowProc 设置）
+LRESULT CALLBACK SubProxyWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     int idx = findWindowIndex(hWnd);
-    JSValue wndProc = JS_UNDEFINED;
     if (idx >= 0 && !JS_IsUndefined(g_windows[idx].proc))
     {
-        wndProc = g_windows[idx].proc;
-    }
-    else
-    {
-        wchar_t classNameW[64];
-        if (GetClassNameW(hWnd, classNameW, 64) > 0)
+        JSValue argv[4] = {
+            JS_NewInt64(g_ctx, (int64_t)hWnd),
+            JS_NewInt32(g_ctx, msg),
+            JS_NewInt64(g_ctx, wParam),
+            JS_NewInt64(g_ctx, lParam)};
+        JSValue ret = JS_Call(g_ctx, g_windows[idx].proc, JS_UNDEFINED, 4, argv);
+        if (JS_IsException(ret))
         {
-            char className[64];
-            WideCharToMultiByte(CP_UTF8, 0, classNameW, -1, className, sizeof(className), NULL, NULL);
-            wndProc = findClassProc(className);
+            JSValue err = JS_GetException(g_ctx);
+            const char *err_str = JS_ToCString(g_ctx, err);
+            showError(err_str);
+            JS_FreeCString(g_ctx, err_str);
+            JS_FreeValue(g_ctx, err);
+            JS_FreeValue(g_ctx, ret);
+            return DefWindowProcW(hWnd, msg, wParam, lParam);
+        }
+        LRESULT result = 0;
+        JS_ToInt64(g_ctx, &result, ret);
+        JS_FreeValue(g_ctx, ret);
+        return result;
+    }
+    return DefWindowProcW(hWnd, msg, wParam, lParam);
+}
+
+// 类级代理 — 只查 g_classes[className]（由 RegisterClass 设置）
+LRESULT CALLBACK ClassProxyWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    wchar_t classNameW[64];
+    if (GetClassNameW(hWnd, classNameW, 64) > 0)
+    {
+        char className[64];
+        WideCharToMultiByte(CP_UTF8, 0, classNameW, -1, className, sizeof(className), NULL, NULL);
+        JSValue wndProc = findClassProc(className);
+        if (!JS_IsUndefined(wndProc))
+        {
+            JSValue argv[4] = {
+                JS_NewInt64(g_ctx, (int64_t)hWnd),
+                JS_NewInt32(g_ctx, msg),
+                JS_NewInt64(g_ctx, wParam),
+                JS_NewInt64(g_ctx, lParam)};
+            JSValue ret = JS_Call(g_ctx, wndProc, JS_UNDEFINED, 4, argv);
+            if (JS_IsException(ret))
+            {
+                JSValue err = JS_GetException(g_ctx);
+                const char *err_str = JS_ToCString(g_ctx, err);
+                showError(err_str);
+                JS_FreeCString(g_ctx, err_str);
+                JS_FreeValue(g_ctx, err);
+                JS_FreeValue(g_ctx, ret);
+                return DefWindowProcW(hWnd, msg, wParam, lParam);
+            }
+            LRESULT result = 0;
+            JS_ToInt64(g_ctx, &result, ret);
+            JS_FreeValue(g_ctx, ret);
+            return result;
         }
     }
-    if (JS_IsUndefined(wndProc))
-        return DefWindowProcW(hWnd, msg, wParam, lParam);
-
-    JSValue argv[4] = {
-        JS_NewInt64(g_ctx, (int64_t)hWnd),
-        JS_NewInt32(g_ctx, msg),
-        JS_NewInt64(g_ctx, wParam),
-        JS_NewInt64(g_ctx, lParam)};
-
-    JSValue ret = JS_Call(g_ctx, wndProc, JS_UNDEFINED, 4, argv);
-
-    if (JS_IsException(ret))
-    {
-        JSValue err = JS_GetException(g_ctx);
-        const char *err_str = JS_ToCString(g_ctx, err);
-        showError(err_str);
-        JS_FreeCString(g_ctx, err_str);
-        JS_FreeValue(g_ctx, err);
-        JS_FreeValue(g_ctx, ret);
-        return DefWindowProcW(hWnd, msg, wParam, lParam);
-    }
-
-    LRESULT result = 0;
-    JS_ToInt64(g_ctx, &result, ret);
-    JS_FreeValue(g_ctx, ret);
-    return result;
+    return DefWindowProcW(hWnd, msg, wParam, lParam);
 }
 
 static JSValue js_registerClass(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -181,7 +201,7 @@ done:
     WNDCLASSEXW wc = {0};
     wc.cbSize = sizeof(WNDCLASSEXW);
     wc.style = CS_HREDRAW | CS_VREDRAW;
-    wc.lpfnWndProc = ProxyWndProc;
+    wc.lpfnWndProc = ClassProxyWndProc;
     wc.hInstance = GetModuleHandleW(NULL);
     wc.hCursor = LoadCursorW(NULL, (LPCWSTR)IDC_ARROW);
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
@@ -262,7 +282,7 @@ static JSValue js_setWndProc(JSContext *ctx, JSValueConst this_val, int argc, JS
             g_windowCapacity = newCap;
         }
         WNDPROC oldProc = (WNDPROC)GetWindowLongPtrW(hwnd, GWLP_WNDPROC);
-        SetWindowLongPtrW(hwnd, GWLP_WNDPROC, (LONG_PTR)ProxyWndProc);
+        SetWindowLongPtrW(hwnd, GWLP_WNDPROC, (LONG_PTR)SubProxyWndProc);
         g_windows[g_windowCount].hWnd = hwnd;
         g_windows[g_windowCount].oldProc = oldProc;
         g_windows[g_windowCount].proc = JS_DupValue(g_ctx, argv[1]);
