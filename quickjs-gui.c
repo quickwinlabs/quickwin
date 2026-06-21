@@ -126,6 +126,8 @@ LRESULT CALLBACK SubProxyWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
             JS_FreeCString(g_ctx, err_str);
             JS_FreeValue(g_ctx, err);
             JS_FreeValue(g_ctx, ret);
+            if (g_windows[idx].oldProc)
+                return CallWindowProcW(g_windows[idx].oldProc, hWnd, msg, wParam, lParam);
             return DefWindowProcW(hWnd, msg, wParam, lParam);
         }
         LRESULT result = 0;
@@ -133,6 +135,8 @@ LRESULT CALLBACK SubProxyWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
         JS_FreeValue(g_ctx, ret);
         return result;
     }
+    if (idx >= 0 && g_windows[idx].oldProc)
+        return CallWindowProcW(g_windows[idx].oldProc, hWnd, msg, wParam, lParam);
     return DefWindowProcW(hWnd, msg, wParam, lParam);
 }
 
