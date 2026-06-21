@@ -28,6 +28,7 @@ static void print_enums(void) {
     DEC(SWP_NOACTIVATE, SWP_NOACTIVATE);
     DEC(SWP_SHOWWINDOW, SWP_SHOWWINDOW);
     DEC(SWP_HIDEWINDOW, SWP_HIDEWINDOW);
+    DEC(SWP_FRAMECHANGED, SWP_FRAMECHANGED);
     printf("    }\n\n");
 
     printf("    export const enum NotifyIconCmd {\n");
@@ -88,6 +89,7 @@ static void print_enums(void) {
     DEC(NOTIFY, WM_NOTIFY);
     DEC(NCHITTEST, WM_NCHITTEST);
     DEC(NCLBUTTONDOWN, WM_NCLBUTTONDOWN);
+    DEC(ERASEBKGND, WM_ERASEBKGND);
     printf("    }\n\n");
 
     printf("    export const enum ScrollBar {\n");
@@ -101,6 +103,7 @@ static void print_enums(void) {
     DEC(PAGEUP, SB_PAGEUP);
     DEC(PAGEDOWN, SB_PAGEDOWN);
     DEC(THUMBTRACK, SB_THUMBTRACK);
+    DEC(THUMBPOSITION, SB_THUMBPOSITION);
     DEC(TOP, SB_TOP);
     DEC(BOTTOM, SB_BOTTOM);
     DEC(ENDSCROLL, SB_ENDSCROLL);
@@ -386,12 +389,14 @@ static void print_enums(void) {
     DEC(DROPHILITE, TVGN_DROPHILITE);
     printf("    }\n\n");
 
+    printf("    // GetWindowLongPtr/GWL 索引\n");
     printf("    export const enum Gwlp {\n");
     DEC(WNDPROC, GWLP_WNDPROC);
     DEC(HINSTANCE, GWLP_HINSTANCE);
     DEC(HWNDPARENT, GWLP_HWNDPARENT);
     DEC(USERDATA, GWLP_USERDATA);
     DEC(ID, GWLP_ID);
+    DEC(STYLE, GWL_STYLE);
     printf("    }\n\n");
 
     printf("    export const enum SysLinkMsg {\n");

@@ -408,6 +408,8 @@ declare module "gui" {
     function GetWindowRect(hwnd: HWND): RECT | null;
     /** Invalidates client area (rect can be null/undefined for full window) */
     function InvalidateRect(hwnd: HWND, rect?: RECT | null, erase?: boolean): void;
+    /** Forces immediate repaint of invalidated area */
+    function UpdateWindow(hwnd: HWND): void;
     /** Checks if the window handle is valid */
     function IsWindow(hwnd: HWND): boolean;
     /** Sets scroll info; returns current scroll box position. Signature matches Win32 SetScrollInfo. */

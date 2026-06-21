@@ -16,6 +16,7 @@ declare module "gui" {
         SWP_NOACTIVATE = 16, // 0x10
         SWP_SHOWWINDOW = 64, // 0x40
         SWP_HIDEWINDOW = 128, // 0x80
+        SWP_FRAMECHANGED = 32, // 0x20
     }
 
     export const enum NotifyIconCmd {
@@ -76,6 +77,7 @@ declare module "gui" {
         NOTIFY = 78, // 0x4E
         NCHITTEST = 132, // 0x84
         NCLBUTTONDOWN = 161, // 0xA1
+        ERASEBKGND = 20, // 0x14
     }
 
     export const enum ScrollBar {
@@ -89,6 +91,7 @@ declare module "gui" {
         PAGEUP = 2, // 0x2
         PAGEDOWN = 3, // 0x3
         THUMBTRACK = 5, // 0x5
+        THUMBPOSITION = 4, // 0x4
         TOP = 6, // 0x6
         BOTTOM = 7, // 0x7
         ENDSCROLL = 8, // 0x8
@@ -374,12 +377,14 @@ declare module "gui" {
         DROPHILITE = 8, // 0x8
     }
 
+    // GetWindowLongPtr/GWL 索引
     export const enum Gwlp {
         WNDPROC = -4, // 0xFFFFFFFC
         HINSTANCE = -6, // 0xFFFFFFFA
         HWNDPARENT = -8, // 0xFFFFFFF8
         USERDATA = -21, // 0xFFFFFFEB
         ID = -12, // 0xFFFFFFF4
+        STYLE = -16, // 0xFFFFFFF0
     }
 
     export const enum SysLinkMsg {

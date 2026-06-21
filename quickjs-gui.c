@@ -696,6 +696,14 @@ static JSValue js_invalidateRect(JSContext *ctx, JSValueConst this_val, int argc
     return JS_UNDEFINED;
 }
 
+static JSValue js_updateWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int64_t hwnd;
+    JS_ToInt64(ctx, &hwnd, argv[0]);
+    UpdateWindow((HWND)hwnd);
+    return JS_UNDEFINED;
+}
+
 static JSValue js_isWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     int64_t hwnd;
@@ -856,6 +864,7 @@ static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("GetClientRect", 1, js_getClientRect),
     JS_CFUNC_DEF("GetWindowRect", 1, js_getWindowRect),
     JS_CFUNC_DEF("InvalidateRect", 3, js_invalidateRect),
+    JS_CFUNC_DEF("UpdateWindow", 1, js_updateWindow),
     JS_CFUNC_DEF("IsWindow", 1, js_isWindow),
     JS_CFUNC_DEF("SetScrollInfo", 4, js_setScrollInfo),
     JS_CFUNC_DEF("GetScrollInfo", 2, js_getScrollInfo),
