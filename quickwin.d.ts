@@ -252,8 +252,6 @@ declare module "os" {
     function sleepAsync(delay_ms: number): Promise<void>;
     function setTimeout(func: () => void, delay: number): number;
     function clearTimeout(id: number): void;
-    function setInterval(func: () => void, delay: number): number;
-    function clearInterval(id: number): void;
 
     const platform: string;
 
