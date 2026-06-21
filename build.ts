@@ -1,6 +1,6 @@
 import { build } from 'esbuild'
 
-const nativeModules = ['gui', 'os', 'std', 'sock', 'brotli', 'ffi', 'wamr', 'win', 'tls', 'wolfssl', '../lib/polyfill.js']
+const nativeModules = ['gui', 'os', 'std', 'sock', 'brotli', 'ffi', 'wamr', 'win', 'tls', 'wolfssl', '../lib/polyfill.js', '../vendor/mupdf-wasm/mupdf.js', '../vendor/mupdf-wasm/mupdf-wasm.js']
 
 async function main() {
   await build({
@@ -14,6 +14,7 @@ async function main() {
       '_build/examples/test_gallery.js',
       '_build/examples/test_tab.js',
       '_build/examples/test_react_listbox.js',
+      '_build/examples/pdf_viewer.js',
     ],
     allowOverwrite: true,
     bundle: true,
