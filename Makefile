@@ -225,7 +225,7 @@ npm-pkg: js wasm
 	cp lib/*.ts $(NPM_PKG_DIR)/lib/
 	cp test/*.ts $(NPM_PKG_DIR)/test/
 	cp examples/*.ts examples/*.tsx $(NPM_PKG_DIR)/examples/
-	cp quickwin.d.ts tsconfig.json package.json README.md $(NPM_PKG_DIR)/
+	cp quickwin.d.ts quickwin_const.d.ts tsconfig.json package.json README.md $(NPM_PKG_DIR)/
 	@echo "npm package created at $(NPM_PKG_DIR)"
 
 help:

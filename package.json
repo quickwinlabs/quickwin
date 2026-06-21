@@ -12,6 +12,7 @@
     "examples/",
     "vendor/",
     "quickwin.d.ts",
+    "quickwin_const.d.ts",
     "tsconfig.json",
     "README.md"
   ],
