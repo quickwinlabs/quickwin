@@ -4,7 +4,8 @@ import * as gui from 'gui'
 import * as win from 'win'
 import * as ffi from 'ffi'
 import { useState } from 'react'
-import { render, Button, Input, ScrollView, PdfCanvas } from '../lib/react-qw/index.js'
+import { render, Button, Input, ScrollView } from '../lib/react-qw/index.js'
+import { PdfCanvas } from './PdfCanvas.js'
 
 type MuPdf = typeof import('../vendor/mupdf-wasm/mupdf.js')
 

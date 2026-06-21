@@ -2,7 +2,7 @@ import { forwardRef, useRef } from 'react'
 import * as gui from 'gui'
 import * as win from 'win'
 import * as ffi from 'ffi'
-import type { WStyle } from '../jsx.d.ts'
+import type { WStyle } from '../lib/react-qw/jsx.d.ts'
 
 const _user32 = win.LoadLibrary('user32.dll')
 const _gdi32 = win.LoadLibrary('gdi32.dll')

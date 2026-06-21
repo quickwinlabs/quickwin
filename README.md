@@ -10,7 +10,7 @@ quickwin script.js
 ## Features
 
 - **Win32 GUI** — native windows, buttons, edit boxes, list boxes, tray icons, popup menus
-- **Preact renderer** — declarative GUI in JSX with `useState`/`useEffect`, diff updates
+- **React renderer** — declarative GUI in JSX with `useState`/`useEffect`, diff updates ([react-qw](lib/react-qw/))
 - **HTTP/HTTPS** — `fetch()` API, Brotli decompression, chunked transfer, conditional caching
 - **WebSocket** — full RFC 6455 implementation, ws:// + wss://
 - **WebAssembly** — WAMR-based, supports `WebAssembly.*` standard API
@@ -43,6 +43,7 @@ quickwin examples/preact_demo.js    # run an example
 | `websocket` | `import './lib/websocket.js'` | adds `WebSocket` to globalThis |
 | `polyfill` | `import './lib/polyfill.js'` | adds `TextEncoder`, `URL`, `btoa`/`atob`, `setTimeout` to globalThis |
 | `preact` | `lib/preact/...` | JSX → Win32 renderer (`render`, `useState`, `useEffect`) |
+| `react-qw` | `lib/react-qw/` | React Custom Renderer for Win32 GUI ([docs](lib/react-qw/)) |
 
 ## Examples
 
