@@ -33,6 +33,7 @@ const suiteDefs = [
     { name: 'polyfill',          file: './test_polyfill.js',         tags: [] },
     { name: 'brotli',            file: './test_brotli.js',           tags: [] },
     { name: 'worker',            file: './test_worker.js',           tags: [] },
+    { name: 'worker-wasm',       file: './test_worker_wasm_concurrent.js', tags: ['wasm'] },
     { name: 'worker-http',       file: './test_worker_net.js',       tags: ['net'] },
     { name: 'worker-fetch',      file: './test_worker_fetch.js',     tags: ['net'] }
 ]
