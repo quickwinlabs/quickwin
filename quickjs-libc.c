@@ -3531,6 +3531,7 @@ typedef struct {
 
 static JSClassID js_worker_class_id;
 static JSContext *(*js_worker_new_context_func)(JSRuntime *rt);
+static void (*js_worker_free_rt_func)(JSRuntime *rt);
 
 static int atomic_add_int(int *ptr, int v)
 {
@@ -3711,6 +3712,8 @@ static void *worker_func(void *opaque)
 
     JS_FreeContext(ctx);
     js_std_free_handlers(rt);
+    if (js_worker_free_rt_func)
+        js_worker_free_rt_func(rt);
     JS_FreeRuntime(rt);
     return NULL;
 }
@@ -3958,6 +3961,13 @@ void js_std_set_worker_new_context_func(JSContext *(*func)(JSRuntime *rt))
 {
 #ifdef USE_WORKER
     js_worker_new_context_func = func;
+#endif
+}
+
+void js_std_set_worker_free_rt_func(void (*func)(JSRuntime *rt))
+{
+#ifdef USE_WORKER
+    js_worker_free_rt_func = func;
 #endif
 }
 

@@ -34,6 +34,7 @@ static void showError(JSContext *ctx, const char *err_str)
 
 static JSContext *JS_NewCustomContext(JSRuntime *rt)
 {
+    js_sock_init(rt);
     JSContext *ctx;
     ctx = JS_NewContext(rt);
     if (!ctx)
@@ -50,6 +51,14 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
     js_init_module_wamr(ctx);
     js_init_http_cache_api(ctx);
     return ctx;
+}
+
+static void JS_FreeCustomRuntime(JSRuntime *rt)
+{
+    js_async_task_destroy(rt);
+    js_sock_free_handles(rt);
+    js_sock_remove_runtime(rt);
+    js_wamr_cleanup(rt);
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
@@ -109,9 +118,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     JSRuntime *rt = JS_NewRuntime();
     js_async_task_init(rt);
-    js_sock_init(rt);
-    
+
     js_std_set_worker_new_context_func(JS_NewCustomContext);
+    js_std_set_worker_free_rt_func(JS_FreeCustomRuntime);
     js_std_init_handlers(rt);
     JS_SetModuleLoaderFunc2(rt, js_module_normalize_name, js_module_loader, NULL, NULL);
     // JS_SetModuleLoaderFunc2(rt, NULL, js_module_loader, NULL, NULL);
@@ -178,8 +187,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     gui_cleanup();
     js_std_free_handlers(rt);
-    js_sock_free_handles(rt);
-    js_async_task_destroy(rt);
+    JS_FreeCustomRuntime(rt);
     js_async_task_cleanup();
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
@@ -187,7 +195,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         for (int i = 0; i < cmd_argc; i++) free(cmd_argv[i]);
         free(cmd_argv);
     }
-    js_wamr_cleanup(rt);
     wolfSSL_Cleanup();
     WSACleanup();
     return 0;

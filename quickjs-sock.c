@@ -57,6 +57,16 @@ void js_sock_init(JSRuntime *rt)
     r->slot_count = 0;
 }
 
+void js_sock_remove_runtime(JSRuntime *rt)
+{
+    SockRuntime *r = find_runtime(rt);
+    if (!r) return;
+    int idx = r - g_sock_runtimes;
+    g_nsock_runtimes--;
+    if (idx < g_nsock_runtimes)
+        g_sock_runtimes[idx] = g_sock_runtimes[g_nsock_runtimes];
+}
+
 int js_sock_slot_count(JSRuntime *rt)
 {
     SockRuntime *r = find_runtime(rt);

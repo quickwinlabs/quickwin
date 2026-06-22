@@ -315,7 +315,32 @@ return extract_body(response);
 - `quickjs-http.c` — `http_get_sync`、`decode_chunked`、`is_chunked`、`skip_crlf`
 - `quickjs-brotli.c` / `quickjs-brotli.h` — Brotli 解压 JS API (`brotli.decompress`)、`JS_BrotliDecompress`
 
-## 10. React Custom Renderer 计划
+## 10. 已知问题：Worker 线程安全
+
+### `g_sock_runtimes` / `g_nsock_runtimes`（quickjs-sock.c）和 `g_runtimes` / `g_nruntimes`（quickjs-async-task.c）存在数据竞争
+
+**背景：** Worker 的 `JSRuntime` 在**子线程**中创建（`worker_func` → `pthread_create`）。每个 Worker 线程只操作自己的 `JSRuntime` 和对应的本地数据（socket handlers 链表、async task slots 等），不会跨线程访问另一个 Runtime 的数据。
+
+**真正的问题：** 全局计数器 + 全局数组在多 Worker **并发**时存在竞争：
+
+| 模块 | 竞争点 | 症状 |
+|------|--------|------|
+| `sock` | `g_nsock_runtimes++`（`js_sock_init`） | 俩 Worker 同时 init，读到相同 counter，写到同一个 slot 互相覆盖 |
+| `sock` | `g_nsock_runtimes--` + swap-remove（`js_sock_remove_runtime`） | 同时 remove 时计数器/数组错乱 |
+| `async_task` | `g_nruntimes++` + `realloc`（`js_async_task_init`） | 同时 init 时 `realloc` 不是线程安全的，可能 double-free 或泄漏 |
+| `async_task` | `g_nruntimes--` + swap-remove（`js_async_task_destroy`） | 同上 |
+
+**触发条件：** 需要**两个或多个 Worker 同时存活**。主线程创建 Worker 是串行的（`pthread_create` 不阻塞），如果 Worker A 还没跑到 `js_sock_init` 就创建 Worker B，两者就是并发的。同样，两个 Worker 同时退出时 cleanup 也会竞争。
+
+**根因：** 每个 Worker 在自己的线程里调 `js_sock_init(rt)`（通过 `JS_NewCustomContext`）和 `js_async_task_destroy(rt)`（通过 `JS_FreeCustomRuntime`）。虽然主线程（`main_rt` 在 slot 0）不受影响（`find_runtime(main_rt)` 在 slot 0 就匹配到了，不会往后读），但**多个 Worker 同时存在时**它们之间的并发是未保护的。
+
+**修复方向：** 给 `quickjs-sock.c` 和 `quickjs-async-task.c` 加 `CRITICAL_SECTION` 保护：
+- `js_sock_init` / `js_sock_remove_runtime` / `find_runtime`（及其调用者 `collect_handles` / `handle_event`）
+- `js_async_task_init` / `js_async_task_destroy` / `find_runtime`
+
+**当前状态：** 已确认问题，暂时未修。单 Worker 场景完全安全（当前所有测试都是串行 Worker）。
+
+## 11. React Custom Renderer 计划
 
 **文件位置：** `.agents/REACT_RENDERER_PLAN.md`
 
