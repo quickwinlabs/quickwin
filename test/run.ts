@@ -32,7 +32,8 @@ const suiteDefs = [
     { name: 'fetch-cache',       file: './test_fetch_cache.js',      tags: ['net'] },
     { name: 'polyfill',          file: './test_polyfill.js',         tags: [] },
     { name: 'brotli',            file: './test_brotli.js',           tags: [] },
-    { name: 'worker',            file: './test_worker.js',           tags: [] }
+    { name: 'worker',            file: './test_worker.js',           tags: [] },
+    { name: 'worker-http',       file: './test_worker_net.js',       tags: ['net'] }
 ]
 
 async function main(): Promise<void> {
@@ -86,6 +87,7 @@ async function main(): Promise<void> {
     }
     std.printf('%s====== Summary: %d/%d passed ======%s\n', color, totalOk, totalOk + totalFail, RESET)
     if (totalFail > 0) std.exit(1)
+    if (totalOk + totalFail > 0) std.exit(0)
 }
 
 main()
