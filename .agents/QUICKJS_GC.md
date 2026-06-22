@@ -579,3 +579,4 @@ static void js_wasm_instance_finalizer(JSRuntime *rt, JSValue val)
 ## 相关文档
 
 - [WASM Module/Instance 引用计数问题分析](./WASM_MODULE_INSTANCE_GC.md) - 详细分析了 WASM Module/Instance 的引用计数问题和修复方案
+- [Worker 生命周期管理](./WORKER_GC_BUG.md) - Worker 引用管理：QuickJS 与浏览器的设计差异

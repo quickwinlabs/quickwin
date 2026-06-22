@@ -32,6 +32,7 @@ const suiteDefs = [
     { name: 'fetch-cache',       file: './test_fetch_cache.js',      tags: ['net'] },
     { name: 'polyfill',          file: './test_polyfill.js',         tags: [] },
     { name: 'brotli',            file: './test_brotli.js',           tags: [] },
+    { name: 'worker',            file: './test_worker.js',           tags: [] }
 ]
 
 async function main(): Promise<void> {
