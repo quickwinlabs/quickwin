@@ -16,49 +16,58 @@ interface RequestOptions {
     maxRedirects?: number
 }
 
-function str2ab(str: string): ArrayBuffer {
-    const buf = new ArrayBuffer(str.length)
-    const view = new Uint8Array(buf)
-    for (let i = 0; i < str.length; i++) view[i] = str.charCodeAt(i)
-    return buf
+function _concat(parts: Uint8Array[]): Uint8Array {
+    if (parts.length === 0) return new Uint8Array(0)
+    let totalLen = 0
+    for (const p of parts) totalLen += p.length
+    const result = new Uint8Array(totalLen)
+    let offset = 0
+    for (const p of parts) { result.set(p, offset); offset += p.length }
+    return result
 }
 
-function decodeChunked(raw: ArrayBuffer): ArrayBuffer {
-    const str = ab2str(raw)
-    const chunks: string[] = []
+function _hasChunkedEnd(data: Uint8Array): boolean {
+    for (let i = data.length - 7; i >= 0; i--) {
+        if (data[i] === 0x0D && data[i+1] === 0x0A && data[i+2] === 0x30 && data[i+3] === 0x0D && data[i+4] === 0x0A && data[i+5] === 0x0D && data[i+6] === 0x0A) return true
+    }
+    return false
+}
+
+function decodeChunked(data: Uint8Array): Uint8Array {
+    const chunks: Uint8Array[] = []
     let pos = 0
-    while (pos < str.length) {
-        const crlf = str.indexOf('\r\n', pos)
+    while (pos < data.length) {
+        let crlf = -1
+        for (let i = pos; i < data.length - 1; i++) {
+            if (data[i] === 0x0D && data[i + 1] === 0x0A) { crlf = i; break }
+        }
         if (crlf < 0) break
-        const sizeHex = str.slice(pos, crlf)
-        if (sizeHex === '') break
-        const size = parseInt(sizeHex, 16)
-        if (isNaN(size) || size === 0) {
-            pos = crlf + 2
-            const trailerEnd = str.indexOf('\r\n\r\n', pos)
-            if (trailerEnd >= 0) pos = trailerEnd + 4
+
+        let size = 0
+        for (let i = pos; i < crlf; i++) {
+            const b = data[i]
+            if (b >= 0x30 && b <= 0x39) size = size * 16 + (b - 0x30)
+            else if (b >= 0x41 && b <= 0x46) size = size * 16 + (b - 0x37)
+            else if (b >= 0x61 && b <= 0x66) size = size * 16 + (b - 0x57)
+            else break
+        }
+
+        const dataStart = crlf + 2
+        if (size === 0) {
+            for (let i = dataStart; i < data.length - 3; i++) {
+                if (data[i] === 0x0D && data[i+1] === 0x0A && data[i+2] === 0x0D && data[i+3] === 0x0A) {
+                    pos = i + 4; break
+                }
+            }
+            if (pos === dataStart) break
             break
         }
-        const dataStart = crlf + 2
-        if (dataStart + size > str.length) break
-        chunks.push(str.slice(dataStart, dataStart + size))
+
+        if (dataStart + size > data.length) break
+        chunks.push(data.subarray(dataStart, dataStart + size))
         pos = dataStart + size + 2
     }
-    return str2ab(chunks.join(''))
-}
-
-function ab2str(buf: ArrayBuffer): string {
-    const view = new Uint8Array(buf)
-    let str = ''
-    for (let i = 0; i < view.length; i++) str += String.fromCharCode(view[i])
-    return str
-}
-
-function getArrayBuffer(view: Uint8Array): ArrayBuffer {
-    if (view.buffer instanceof ArrayBuffer) return view.buffer
-    const copy = new ArrayBuffer(view.byteLength)
-    new Uint8Array(copy).set(view)
-    return copy
+    return _concat(chunks)
 }
 
 // ── ReadableStream implementation ──
@@ -114,9 +123,8 @@ class _QuickReadableStream {
 
     // ── Internal methods called by socket handler ──
 
-    _pushChunk(buf: ArrayBuffer): void {
+    _pushChunk(chunk: Uint8Array): void {
         if (this._state !== 'readable') return
-        const chunk = new Uint8Array(buf)
         this._receivedBytes += chunk.length
         if (this._pendingRead) {
             const pr = this._pendingRead
@@ -385,18 +393,18 @@ class FetchResponse {
         if (this._preloadedBody) {
             if (this._bodyConsumed) throw new TypeError('Body already used')
             this._bodyConsumed = true
-            return ab2str(this._preloadedBody)
+            return new TextDecoder('utf-8').decode(this._preloadedBody)
         }
         if (this.bodyUsed) throw new TypeError('Body already used')
         this._bodyConsumed = true
         const reader = this.body.getReader()
-        let result = ''
+        const chunks: Uint8Array[] = []
         while (true) {
             const { done, value } = await reader.read()
             if (done) break
-            for (let i = 0; i < value.length; i++) result += String.fromCharCode(value[i])
+            chunks.push(value)
         }
-        return result
+        return new TextDecoder('utf-8').decode(_concat(chunks))
     }
 
     async json(): Promise<any> {
@@ -414,20 +422,13 @@ class FetchResponse {
         this._bodyConsumed = true
         const reader = this.body.getReader()
         const chunks: Uint8Array[] = []
-        let totalLength = 0
         while (true) {
             const { done, value } = await reader.read()
             if (done) break
             chunks.push(value)
-            totalLength += value.length
         }
-        const result = new Uint8Array(totalLength)
-        let offset = 0
-        for (const chunk of chunks) {
-            result.set(chunk, offset)
-            offset += chunk.length
-        }
-        return getArrayBuffer(result)
+        const combined = _concat(chunks)
+        return combined.buffer as ArrayBuffer
     }
 }
 
@@ -492,14 +493,19 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
         if (!headers.has('user-agent')) headers.set('User-Agent', 'QuickJS/1.0')
         if (!headers.has('connection')) headers.set('Connection', 'close')
         if (!headers.has('accept-encoding')) headers.set('Accept-Encoding', 'br')
-        if (body && !headers.has('content-length')) headers.set('Content-Length', String(body.length))
+        const bodyBytes = body ? new TextEncoder().encode(body) : null
+        if (body && !headers.has('content-length')) headers.set('Content-Length', String(bodyBytes!.length))
 
         let request = method + ' ' + parsedUrl.pathname + (parsedUrl.search || '') + ' HTTP/1.1\r\n'
         headers.forEach((value: string, name: string) => {
             request += name + ': ' + value + '\r\n'
         })
         request += '\r\n'
-        if (body) request += body
+
+        const requestBytes = new TextEncoder().encode(request)
+        const httpRequest = _concat(
+            bodyBytes ? [requestBytes, bodyBytes] : [requestBytes]
+        ).buffer as ArrayBuffer
 
         let s: number | null = null
         let ssl: number | null = null
@@ -508,9 +514,9 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
         let resolved = false
         let timerId: number | undefined
         let stream: _QuickReadableStream | null = null
-        let headerBuffer = ''
+        let headerRaw: Uint8Array = new Uint8Array(0)
         let isChunked = false
-        let chunkedBuf = ''
+        let chunkedParts: Uint8Array[] = []
 
         const cleanupSocket = (): void => {
             state = ST_DONE
@@ -563,7 +569,7 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
                     if (sniHost) wolfssl.wolfSSL_UseSNI(ssl, wolfssl.SniType.WOLFSSL_SNI_HOST_NAME, sniHost)
                     state = ST_HANDSHAKE
                 } else {
-                    sock.send(fd, str2ab(request))
+                    sock.send(fd, httpRequest)
                     state = ST_RECV_HEADERS
                 }
             }
@@ -573,7 +579,7 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
                     if (!ssl) { doReject(new Error('TLS not initialized')); return }
                     const ret = wolfssl.wolfSSL_connect(ssl)
                     if (ret === wolfssl.ReturnCode.SSL_SUCCESS) {
-                        wolfssl.wolfSSL_write(ssl, str2ab(request))
+                        wolfssl.wolfSSL_write(ssl, httpRequest)
                         state = ST_RECV_HEADERS
                     } else {
                         const err = wolfssl.wolfSSL_get_error(ssl, ret)
@@ -593,31 +599,48 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
                             data = sock.recv(s, 8192)
                         } else { break }
                         if (!data || data.byteLength === 0) break
-                        headerBuffer += ab2str(data)
-                        const headerEnd = headerBuffer.indexOf('\r\n\r\n')
+
+                        const incoming = new Uint8Array(data)
+                        headerRaw = _concat([headerRaw, incoming])
+
+                        let headerEnd = -1
+                        for (let i = 0; i < headerRaw.length - 3; i++) {
+                            if (headerRaw[i] === 0x0D && headerRaw[i+1] === 0x0A && headerRaw[i+2] === 0x0D && headerRaw[i+3] === 0x0A) {
+                                headerEnd = i; break
+                            }
+                        }
                         if (headerEnd >= 0) {
-                            const parsed = parseHeaders(headerBuffer)
+                            const headerStr = new TextDecoder('utf-8').decode(headerRaw.subarray(0, headerEnd + 4))
+                            const parsed = parseHeaders(headerStr)
                             if (!parsed) { doReject(new Error('Failed to parse HTTP headers')); return }
 
-                            const trailingBody = headerBuffer.slice(headerEnd + 4)
+                            const trailingBodyBytes = headerRaw.subarray(headerEnd + 4)
 
                             isChunked = (parsed.headers.get('transfer-encoding') || '').toLowerCase().includes('chunked')
                             const contentLength = isChunked ? 0 : parseInt(
                                 parsed.headers.get('content-length') || '0', 10
                             )
                             stream = new _QuickReadableStream(fd, ssl, isHTTPS, streamCleanup, contentLength)
-                            if (trailingBody.length > 0) {
+                            if (trailingBodyBytes.length > 0) {
                                 if (isChunked) {
-                                    chunkedBuf = trailingBody
+                                    chunkedParts = [trailingBodyBytes]
+                                    if (_hasChunkedEnd(trailingBodyBytes)) {
+                                        const decoded = decodeChunked(trailingBodyBytes)
+                                        stream._pushChunk(decoded)
+                                        stream._close()
+                                        state = ST_DONE
+                                    }
                                 } else {
-                                    stream._pushChunk(str2ab(trailingBody))
+                                    stream._pushChunk(trailingBodyBytes)
                                 }
                             }
 
                             const response = new FetchResponse(
                                 parsed.status, parsed.statusText, parsed.headers, stream
                             )
-                            state = ST_RECV_BODY
+                            if (state !== ST_DONE) {
+                                state = ST_RECV_BODY
+                            }
                             doResolve(response)
                             // Break out of header recv loop — any remaining data
                             // in the socket will be handled by the ST_RECV_BODY path below
@@ -636,16 +659,18 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
                         } else { break }
                         if (!data || data.byteLength === 0) break
                         if (isChunked) {
-                            chunkedBuf += ab2str(data)
-                            if (chunkedBuf.indexOf('\r\n0\r\n\r\n') >= 0) {
-                                stream._pushChunk(decodeChunked(str2ab(chunkedBuf)))
+                            chunkedParts.push(new Uint8Array(data))
+                            const combined = _concat(chunkedParts)
+                            if (_hasChunkedEnd(combined)) {
+                                const decoded = decodeChunked(combined)
+                                stream._pushChunk(decoded)
                                 stream._close()
                                 stream = null
                                 state = ST_DONE
                                 break
                             }
                         } else {
-                            stream._pushChunk(data)
+                            stream._pushChunk(new Uint8Array(data))
                         }
                     }
                 }
@@ -656,7 +681,7 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
                 if (state === ST_RECV_HEADERS) {
                     doReject(new Error('Connection closed before response'))
                 } else if (state === ST_RECV_BODY && stream) {
-                    let remainingBuf = ''
+                    let remainingParts: Uint8Array[] = []
                     while (true) {
                         if (!s && !ssl) break
                         let data: ArrayBuffer | null
@@ -666,13 +691,14 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
                             data = sock.recv(s, 8192)
                         } else { break }
                         if (!data || data.byteLength === 0) break
-                        remainingBuf += ab2str(data)
+                        remainingParts.push(new Uint8Array(data))
                     }
                     if (isChunked) {
-                        chunkedBuf += remainingBuf
-                        stream._pushChunk(decodeChunked(str2ab(chunkedBuf)))
-                    } else if (remainingBuf) {
-                        stream._pushChunk(str2ab(remainingBuf))
+                        chunkedParts.push(...remainingParts)
+                        const decoded = decodeChunked(_concat(chunkedParts))
+                        stream._pushChunk(decoded)
+                    } else if (remainingParts.length > 0) {
+                        stream._pushChunk(_concat(remainingParts))
                     }
                     stream._close()
                     stream = null

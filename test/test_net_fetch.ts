@@ -184,5 +184,32 @@ export const suite = {
         } else {
             assert('cancel test endpoint reachable', false)
         }
+
+        // ── UTF-8 Chinese text body ──
+        t.section('utf-8 chinese text')
+        const r9 = await safeFetch('https://httpbun.com/base64/5Lit5paH')
+        if (r9) {
+            assert('chinese status 200', r9.status === 200)
+            const body = await r9.text()
+            assert('chinese body is 中文', body === '\u4e2d\u6587')
+            assert('chinese body length=2', body.length === 2)
+        } else {
+            assert('httpbun.com reachable', false)
+        }
+
+        // ── POST with Chinese body ──
+        t.section('post with chinese body')
+        const r10 = await safeFetch('https://httpbun.com/post', {
+            method: 'POST',
+            body: '\u4e2d\u6587',
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+        })
+        if (r10) {
+            assert('post status 200', r10.status === 200)
+            const body = await r10.text()
+            assert('post body contains 中文', body.includes('\u4e2d\u6587'))
+        } else {
+            assert('httpbun.com reachable', false)
+        }
     }
 }
