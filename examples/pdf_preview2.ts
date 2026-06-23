@@ -41,10 +41,7 @@ function makeBitmapInfo(w: number, h: number): ArrayBuffer {
 }
 
 function strToWide(str: string): ArrayBuffer {
-    const buf = new ArrayBuffer((str.length + 1) * 2)
-    const dv = new DataView(buf)
-    for (let i = 0; i < str.length; i++) dv.setUint16(i * 2, str.charCodeAt(i), true)
-    return buf
+    return new TextEncoder('utf-16le').encode(str + '\0').buffer as ArrayBuffer
 }
 
 function wideToStr(buf: ArrayBuffer): string {

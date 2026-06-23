@@ -45,6 +45,18 @@
 #include "quickjs-http.h"
 #include "quickjs-sock.h"
 #include "quickjs-async-task.h"
+
+#if defined(_WIN32)
+static FILE *fopen_utf8(const char *filename, const char *mode)
+{
+    wchar_t wpath[MAX_PATH + 1], wmode[8];
+    MultiByteToWideChar(CP_UTF8, 0, filename, -1, wpath, MAX_PATH + 1);
+    MultiByteToWideChar(CP_UTF8, 0, mode, -1, wmode, 8);
+    return _wfopen(wpath, wmode);
+}
+#else
+#define fopen_utf8 fopen
+#endif
 #else
 #include <dlfcn.h>
 #include <termios.h>
@@ -396,7 +408,7 @@ uint8_t *js_load_file(JSContext *ctx, size_t *pbuf_len, const char *filename)
     size_t buf_len;
     long lret;
 
-    f = fopen(filename, "rb");
+    f = fopen_utf8(filename, "rb");
     // printf("FIlE:%p", f); fflush(stdout);
     if (!f)
         return NULL;
@@ -1030,7 +1042,7 @@ static JSValue js_std_open(JSContext *ctx, JSValueConst this_val,
         goto fail;
     }
 
-    f = fopen(filename, mode);
+    f = fopen_utf8(filename, mode);
     if (!f)
         err = errno;
     else
