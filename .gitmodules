@@ -4,3 +4,7 @@
 [submodule "quickjs"]
 	path = quickjs
 	url = https://github.com/bellard/quickjs
+
+[submodule "wolfssl"]
+	path = wolfssl
+	url = https://github.com/wolfSSL/wolfssl.git

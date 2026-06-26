@@ -13,6 +13,8 @@ output.png
 
 node_modules/
 wamr/build/
+wolfssl/build/
+wolfssl/lib/
 temp/
 ./quickjs
 !vendor/mupdf-wasm/**

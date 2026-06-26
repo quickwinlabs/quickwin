@@ -49,14 +49,21 @@ WAMR_DEFS = \
 WAMR_BUILD_DIR = $(WAMR_DIR)/build
 WAMR_LIB = $(WAMR_DIR)/lib/libiwasm.a
 
+WOLFSSL_DIR = wolfssl
+WOLFSSL_INC = -I$(WOLFSSL_DIR) -I$(WOLFSSL_BUILD_DIR)
+WOLFSSL_BUILD_DIR = $(WOLFSSL_DIR)/build
+WOLFSSL_LIB_STATIC = $(WOLFSSL_DIR)/lib/libwolfssl.a
+WOLFSSL_LIB ?= $(WOLFSSL_LIB_STATIC)
+
 WAT_SRCS = $(wildcard test/*.wat)
 WASM_OBJS = $(WAT_SRCS:test/%.wat=$(BUILD_DIR)/test/%.wasm)
 
 CFLAGS += $(WAMR_INC)
 CFLAGS += $(WAMR_DEFS)
+CFLAGS += $(WOLFSSL_INC)
 
 LDFLAGS = -L$(MSYS2_PREFIX)/lib -static
-LIBS = -lbrotlidec -lbrotlicommon -lwolfssl -lws2_32 -lbcrypt -lcrypt32 -lm -luser32 -lgdi32 -lcomctl32 -lffi -lntdll -lshell32 -lwininet
+LIBS = -lbrotlidec -lbrotlicommon $(WOLFSSL_LIB) -lws2_32 -lbcrypt -lcrypt32 -lm -luser32 -lgdi32 -lcomctl32 -lffi -lntdll -lshell32 -lwininet
 
 TARGET = $(BUILD_DIR)/win.exe
 NPM_PKG_DIR = dist/quickwin
@@ -77,7 +84,7 @@ SRCS = main.c \
 OBJS = $(SRCS:%.c=$(BUILD_DIR)/%.o) $(BUILD_DIR)/app.o
 DEPS = $(SRCS:%.c=$(BUILD_DIR)/%.d)
 
-.PHONY: all clean debug nodebug release minimal test wamr wasm js npm-pkg info help
+.PHONY: all clean debug nodebug release small minimal wolfsmin test wamr wasm js npm-pkg info help
 
 all: nodebug
 
@@ -91,11 +98,18 @@ release:
 	@$(MAKE) OPT=-O2 MINIMAL=1 nodebug
 	@echo "Build complete: $(TARGET) (-O2, LTO, stripped)"
 
+small:
+	rm -f $(OBJS) $(DEPS) $(TARGET) $(QUICKJS_LIB)
+	@$(MAKE) OPT=-Os MINIMAL=1 nodebug
+	@echo "Build complete: $(TARGET) (-Os, LTO, stripped)"
+
 minimal:
 	rm -f $(OBJS) $(DEPS) $(TARGET) $(QUICKJS_LIB)
 	@$(MAKE) OPT=-Os MINIMAL=1 nodebug
 	@if command -v upx >/dev/null 2>&1; then upx --best $(TARGET); fi
 	@echo "Build complete: $(TARGET) (-Os, LTO, stripped, UPXed)"
+
+
 
 QJ_DEFINES = -D_GNU_SOURCE -DCONFIG_WIN32 -DCONFIG_VERSION=\"2025-09-13\"
 
@@ -111,7 +125,9 @@ $(QUICKJS_LIB):
 	ar rcs $@ $(BUILD_DIR)/quickjs/*.nolto.o
 	@echo "QuickJS library built"
 
-$(TARGET): $(OBJS) $(QUICKJS_LIB) $(WAMR_LIB)
+$(WOLFSSL_LIB_STATIC): wolfsmin
+
+$(TARGET): $(OBJS) $(QUICKJS_LIB) $(WAMR_LIB) $(WOLFSSL_LIB_STATIC)
 	@echo "Linking $@..."
 	mkdir -p $(BUILD_DIR)
 	$(CC) -o $@ $(OBJS) $(QUICKJS_LIB) $(WAMR_LIB) $(LDFLAGS) $(LIBS)
@@ -120,7 +136,7 @@ ifeq ($(MINIMAL), 1)
 endif
 	@echo "Build complete: $@"
 
-$(BUILD_DIR)/%.o: %.c
+$(BUILD_DIR)/%.o: %.c | $(WOLFSSL_LIB_STATIC)
 	@echo "Compiling $<..."
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -129,7 +145,7 @@ $(BUILD_DIR)/%.d: %.c
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -MM -MT '$(BUILD_DIR)/$*.o' $< > $@
 
-$(BUILD_DIR)/app.o: app.rc
+$(BUILD_DIR)/app.o: app.rc | $(WOLFSSL_LIB_STATIC)
 	@echo "Compiling resource $<..."
 	mkdir -p $(BUILD_DIR)
 	$(WINDRES) $< -o $@
@@ -189,6 +205,45 @@ wamr:
 	cp $(WAMR_BUILD_DIR)/libiwasm.a $(WAMR_LIB)
 	@echo "WAMR build complete"
 
+wolfsmin:
+	@echo "Building minimal wolfSSL..."
+	if [ ! -f "$(WOLFSSL_DIR)/README.md" ]; then git submodule update --init --depth 1 $(WOLFSSL_DIR); fi
+	@mkdir -p $(WOLFSSL_BUILD_DIR) $(WOLFSSL_DIR)/lib
+	cd $(WOLFSSL_DIR) && cmake -B build \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_C_FLAGS_RELEASE="-Os" \
+		-DBUILD_SHARED_LIBS=OFF \
+		-DWOLFSSL_TLS13=OFF \
+		-DWOLFSSL_MLKEM=OFF \
+		-DWOLFSSL_PQC_HYBRIDS=OFF \
+		-DWOLFSSL_CHACHA=OFF \
+		-DWOLFSSL_POLY1305=OFF \
+		-DWOLFSSL_CURVE25519=OFF \
+		-DWOLFSSL_ED25519=OFF \
+		-DWOLFSSL_CURVE448=OFF \
+		-DWOLFSSL_ED448=OFF \
+		-DWOLFSSL_DH=OFF \
+		-DWOLFSSL_OLD_TLS=OFF \
+		-DWOLFSSL_SHA3=OFF \
+		-DWOLFSSL_SHAKE128=OFF \
+		-DWOLFSSL_SHAKE256=OFF \
+		-DWOLFSSL_SHA224=OFF \
+		-DWOLFSSL_SHA512=OFF \
+		-DWOLFSSL_SESSION_TICKET=OFF \
+		-DWOLFSSL_HARDEN=OFF \
+		-DWOLFSSL_HKDF=OFF \
+		-DWOLFSSL_EXAMPLES=OFF \
+		-DWOLFSSL_CRYPT_TESTS=OFF \
+		-DWOLFSSL_PKCS12=OFF \
+		-DWOLFSSL_DH_DEFAULT_PARAMS=OFF \
+		-DWOLFSSL_SNI=ON \
+		-DWOLFSSL_TLSX=ON \
+		-DWOLFSSL_BASE64_ENCODE=ON \
+		-DWOLFSSL_SUPPORTED_CURVES=ON
+	cmake --build $(WOLFSSL_BUILD_DIR) --config Release
+	cp $(WOLFSSL_BUILD_DIR)/libwolfssl.a $(WOLFSSL_LIB_STATIC)
+	@echo "Minimal wolfSSL build complete"
+
 wasm: $(WASM_OBJS)
 
 $(BUILD_DIR)/test/%.wasm: test/%.wat
@@ -231,10 +286,10 @@ npm-pkg: js wasm
 
 help:
 	@echo "Available targets:"
-	@echo "  all       - Build nodebug version (default)"
-	@echo "  nodebug   - Build without optimization (fast compile)"
-	@echo "  release   - Build with -O2 + LTO + stripped (~2.5MB)"
-	@echo "  minimal   - Build with -Os + LTO + stripped + UPX (~1MB)"
+	@echo "  all       - Build nodebug version (default, custom wolfSSL)"
+	@echo "  release   - Build with -O2 + LTO + stripped + custom wolfSSL"
+	@echo "  small     - Build with -Os + LTO + stripped + custom wolfSSL"
+	@echo "  minimal   - Build with -Os + LTO + stripped + UPX + custom wolfSSL"
 	@echo "  debug     - Build debug version (-g -O0, always has DUMP_GC/DUMP_LEAKS)"
 	@echo "  clean     - Remove built files and JS files"
 	@echo "  distclean - Remove all generated files"
@@ -246,4 +301,5 @@ help:
 	@echo "  test      - Exclude by tag: make test TEST=-net"
 	@echo "  wasm      - Convert WAT files to WASM (requires wabt)"
 	@echo "  npm-pkg   - Package distributable into $(NPM_PKG_DIR)"
+	@echo "  wolfsmin  - Build custom minimal wolfSSL static library"
 	@echo "  help      - Show this help message"

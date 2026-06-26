@@ -27,13 +27,14 @@ jobs:
         run: |
           echo "qjs=$(git submodule status quickjs | head -c8)" >> "$GITHUB_OUTPUT"
           echo "wamr=$(git submodule status wamr | head -c8)" >> "$GITHUB_OUTPUT"
+          echo "wolfssl=$(git submodule status wolfssl | head -c8)" >> "$GITHUB_OUTPUT"
 
       - name: Cache exe
         id: cache-exe
         uses: actions/cache@v4
         with:
           path: _build/win.exe
-          key: exe-${{ matrix.msystem }}-${{ hashFiles('*.c', '*.h', 'Makefile', 'app.rc') }}-wamr-${{ steps.submodules.outputs.wamr }}-qjs-${{ steps.submodules.outputs.qjs }}
+          key: exe-${{ matrix.msystem }}-${{ hashFiles('*.c', '*.h', 'Makefile', 'app.rc') }}-wamr-${{ steps.submodules.outputs.wamr }}-qjs-${{ steps.submodules.outputs.qjs }}-wolfssl-${{ steps.submodules.outputs.wolfssl }}
 
       - uses: msys2/setup-msys2@v2
         if: steps.cache-exe.outputs.cache-hit != 'true'
@@ -45,7 +46,6 @@ jobs:
             ${{ matrix.arch }}-gcc
             ${{ matrix.arch }}-cmake
             ${{ matrix.arch }}-brotli
-            ${{ matrix.arch }}-wolfssl
             ${{ matrix.arch }}-libffi
             upx
 
