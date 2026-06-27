@@ -296,7 +296,7 @@ class WebSocket {
         }
 
         this._sock = sock.socket()
-        if (!this._sock) {
+        if (this._sock < 0) {
             const self = this
             os.setTimeout(() => {
                 self._fireError(new Error('Failed to create socket'))

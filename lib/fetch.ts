@@ -547,7 +547,7 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
         }, timeout)
 
         s = sock.socket()
-        if (!s || s === 0) { doReject(new Error('Failed to create socket')); return }
+        if (s < 0) { doReject(new Error('Failed to create socket')); return }
         const fd: number = s
 
         sock.set_on_event(fd, (event: { lNetworkEvents: number; iErrorCode: number[] }) => {

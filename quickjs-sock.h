@@ -13,5 +13,6 @@ int  js_sock_slot_count(JSRuntime *rt);
 void js_sock_collect_handles(JSRuntime *rt, HANDLE *handles, int max, int *count);
 int  js_sock_handle_event(JSRuntime *rt, HANDLE triggered);
 void js_sock_free_handles(JSRuntime *rt);
+void js_sock_cleanup(void);
 
 #endif

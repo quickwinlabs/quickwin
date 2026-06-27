@@ -6,20 +6,18 @@
 
 #include "quickjs.h"
 #include "quickjs-sock.h"
-#include "quickjs/list.h"
 #include "quickjs/cutils.h"
 
 #ifndef countof
 #define countof(x) (sizeof(x) / sizeof((x)[0]))
 #endif
 
-#define MAX_SOCK_RUNTIMES 4
+#define INIT_SLOTS_CAP 16
 
 /* ─── Internal types ────────────────────────────────────────── */
 
 typedef struct SockHandle {
-    struct list_head link;
-    int fd;
+    int fd;            /* -1 if slot is free */
     WSAEVENT event;
     JSValue on_event;
     JSContext *js_ctx;
@@ -27,14 +25,16 @@ typedef struct SockHandle {
 
 typedef struct {
     JSRuntime *rt;
-    struct list_head socket_handlers;
+    SockHandle *slots;
     int slot_count;
+    int slots_capacity;
 } SockRuntime;
 
 /* ─── Global state ──────────────────────────────────────────── */
 
-static SockRuntime g_sock_runtimes[MAX_SOCK_RUNTIMES];
-static int g_nsock_runtimes;
+static SockRuntime *g_sock_runtimes = NULL;
+static int g_nsock_runtimes = 0;
+static int g_runtimes_capacity = 0;
 
 static SockRuntime *find_runtime(JSRuntime *rt)
 {
@@ -49,22 +49,45 @@ static SockRuntime *find_runtime(JSRuntime *rt)
 
 void js_sock_init(JSRuntime *rt)
 {
-    if (g_nsock_runtimes >= MAX_SOCK_RUNTIMES)
-        return;
-    SockRuntime *r = &g_sock_runtimes[g_nsock_runtimes++];
+    if (g_nsock_runtimes >= g_runtimes_capacity) {
+        int newCap = g_runtimes_capacity ? g_runtimes_capacity * 2 : 4;
+        SockRuntime *p = realloc(g_sock_runtimes, newCap * sizeof(SockRuntime));
+        if (!p) return;
+        g_sock_runtimes = p;
+        g_runtimes_capacity = newCap;
+    }
+
+    SockRuntime *r = &g_sock_runtimes[g_nsock_runtimes];
     r->rt = rt;
-    init_list_head(&r->socket_handlers);
     r->slot_count = 0;
+    r->slots_capacity = INIT_SLOTS_CAP;
+    r->slots = malloc(r->slots_capacity * sizeof(SockHandle));
+    if (!r->slots) {
+        r->slots_capacity = 0;
+        return;
+    }
+    g_nsock_runtimes++;
+    for (int i = 0; i < r->slots_capacity; i++)
+        r->slots[i].fd = -1;
 }
 
 void js_sock_remove_runtime(JSRuntime *rt)
 {
     SockRuntime *r = find_runtime(rt);
     if (!r) return;
+    free(r->slots);
     int idx = r - g_sock_runtimes;
     g_nsock_runtimes--;
     if (idx < g_nsock_runtimes)
         g_sock_runtimes[idx] = g_sock_runtimes[g_nsock_runtimes];
+}
+
+void js_sock_cleanup(void)
+{
+    free(g_sock_runtimes);
+    g_sock_runtimes = NULL;
+    g_nsock_runtimes = 0;
+    g_runtimes_capacity = 0;
 }
 
 int js_sock_slot_count(JSRuntime *rt)
@@ -77,11 +100,10 @@ void js_sock_collect_handles(JSRuntime *rt, HANDLE *handles, int max, int *count
 {
     SockRuntime *r = find_runtime(rt);
     if (!r) return;
-    struct list_head *el;
-    list_for_each(el, &r->socket_handlers) {
-        SockHandle *sock = list_entry(el, SockHandle, link);
-        if (sock->event != WSA_INVALID_EVENT && *count < max) {
-            handles[*count] = (HANDLE)sock->event;
+    for (int i = 0; i < r->slots_capacity; i++) {
+        SockHandle *s = &r->slots[i];
+        if (s->fd >= 0 && *count < max) {
+            handles[*count] = (HANDLE)s->event;
             (*count)++;
         }
     }
@@ -91,21 +113,21 @@ int js_sock_handle_event(JSRuntime *rt, HANDLE triggered)
 {
     SockRuntime *r = find_runtime(rt);
     if (!r) return 0;
-    struct list_head *el;
-    list_for_each(el, &r->socket_handlers) {
-        SockHandle *sock = list_entry(el, SockHandle, link);
-        if ((HANDLE)sock->event == triggered) {
+    for (int i = 0; i < r->slots_capacity; i++) {
+        SockHandle *s = &r->slots[i];
+        if (s->fd < 0) continue;
+        if ((HANDLE)s->event == triggered) {
             WSANETWORKEVENTS events;
             memset(&events, 0, sizeof(events));
-            if (WSAEnumNetworkEvents(sock->fd, sock->event, &events) != SOCKET_ERROR) {
-                if (!JS_IsUndefined(sock->on_event)) {
-                    JSContext *ctx = sock->js_ctx;
-                    JSValue callback = JS_DupValue(ctx, sock->on_event);
+            if (WSAEnumNetworkEvents(s->fd, s->event, &events) != SOCKET_ERROR) {
+                if (!JS_IsUndefined(s->on_event)) {
+                    JSContext *ctx = s->js_ctx;
+                    JSValue callback = JS_DupValue(ctx, s->on_event);
                     JSValue event_obj = JS_NewObject(ctx);
                     JS_SetPropertyStr(ctx, event_obj, "lNetworkEvents", JS_NewInt32(ctx, events.lNetworkEvents));
                     JSValue error_codes = JS_NewArray(ctx);
-                    for (int i = 0; i < FD_MAX_EVENTS; i++) {
-                        JS_SetPropertyUint32(ctx, error_codes, i, JS_NewInt32(ctx, events.iErrorCode[i]));
+                    for (int j = 0; j < FD_MAX_EVENTS; j++) {
+                        JS_SetPropertyUint32(ctx, error_codes, j, JS_NewInt32(ctx, events.iErrorCode[j]));
                     }
                     JS_SetPropertyStr(ctx, event_obj, "iErrorCode", error_codes);
                     JSValue args[1] = { event_obj };
@@ -131,35 +153,57 @@ void js_sock_free_handles(JSRuntime *rt)
 {
     SockRuntime *r = find_runtime(rt);
     if (!r) return;
-    struct list_head *el, *el1;
-    list_for_each_safe(el, el1, &r->socket_handlers) {
-        SockHandle *sock = list_entry(el, SockHandle, link);
-        list_del(&sock->link);
-        if (!JS_IsUndefined(sock->on_event))
-            JS_FreeValueRT(rt, sock->on_event);
-        if (sock->event != WSA_INVALID_EVENT)
-            WSACloseEvent(sock->event);
-        if (sock->fd >= 0)
-            closesocket(sock->fd);
-        free(sock);
+    for (int i = 0; i < r->slots_capacity; i++) {
+        SockHandle *s = &r->slots[i];
+        if (s->fd < 0) continue;
+        if (!JS_IsUndefined(s->on_event))
+            JS_FreeValueRT(rt, s->on_event);
+        if (s->event != WSA_INVALID_EVENT)
+            WSACloseEvent(s->event);
+        if (s->fd >= 0)
+            closesocket(s->fd);
+        s->fd = -1;
     }
     r->slot_count = 0;
 }
 
 /* ─── Internal helpers ──────────────────────────────────────── */
 
-static struct list_head *get_list_head(JSContext *ctx)
-{
-    SockRuntime *r = find_runtime(JS_GetRuntime(ctx));
-    return r ? &r->socket_handlers : NULL;
-}
-
 static SockHandle *get_sock(JSContext *ctx, JSValueConst val)
 {
-    int64_t idx;
-    if (JS_ToInt64(ctx, &idx, val))
+    int idx;
+    if (JS_ToInt32(ctx, &idx, val))
         return NULL;
-    return (SockHandle *)(size_t)idx;
+    SockRuntime *r = find_runtime(JS_GetRuntime(ctx));
+    if (!r || idx < 0 || idx >= r->slots_capacity || r->slots[idx].fd < 0)
+        return NULL;
+    return &r->slots[idx];
+}
+
+static int find_free_slot(SockRuntime *r)
+{
+    for (int i = 0; i < r->slots_capacity; i++) {
+        if (r->slots[i].fd < 0)
+            return i;
+    }
+    return -1;
+}
+
+static SockHandle *make_slot(SockRuntime *r, JSRuntime *rt)
+{
+    int idx = find_free_slot(r);
+    if (idx >= 0)
+        return &r->slots[idx];
+
+    int newCap = r->slots_capacity ? r->slots_capacity * 2 : INIT_SLOTS_CAP;
+    SockHandle *p = realloc(r->slots, newCap * sizeof(SockHandle));
+    if (!p) return NULL;
+    r->slots = p;
+    for (int i = r->slots_capacity; i < newCap; i++)
+        r->slots[i].fd = -1;
+    idx = r->slots_capacity;
+    r->slots_capacity = newCap;
+    return &r->slots[idx];
 }
 
 /* ─── JS API functions ──────────────────────────────────────── */
@@ -175,9 +219,8 @@ static JSValue js_socket(JSContext *ctx, JSValueConst this_val, int argc, JSValu
     if (argc > 2) JS_ToInt32(ctx, &protocol, argv[2]);
 
     SOCKET fd = socket(af, type, protocol);
-    if (fd == INVALID_SOCKET) {
+    if (fd == INVALID_SOCKET)
         return JS_NewInt32(ctx, -1);
-    }
 
     u_long mode = 1;
     ioctlsocket(fd, FIONBIO, &mode);
@@ -195,33 +238,27 @@ static JSValue js_socket(JSContext *ctx, JSValueConst this_val, int argc, JSValu
         return JS_NewInt32(ctx, -1);
     }
 
-    SockHandle *sock = malloc(sizeof(SockHandle));
+    SockRuntime *r = find_runtime(JS_GetRuntime(ctx));
+    if (!r) {
+        WSACloseEvent(event);
+        closesocket(fd);
+        return JS_NewInt32(ctx, -1);
+    }
+
+    SockHandle *sock = make_slot(r, JS_GetRuntime(ctx));
     if (!sock) {
         WSACloseEvent(event);
         closesocket(fd);
         return JS_NewInt32(ctx, -1);
     }
 
-    memset(sock, 0, sizeof(SockHandle));
     sock->fd = (int)fd;
     sock->event = event;
     sock->on_event = JS_UNDEFINED;
     sock->js_ctx = ctx;
+    r->slot_count++;
 
-    struct list_head *head = get_list_head(ctx);
-    if (!head) {
-        WSACloseEvent(event);
-        free(sock);
-        closesocket(fd);
-        return JS_NewInt32(ctx, -1);
-    }
-
-    list_add_tail(&sock->link, head);
-
-    SockRuntime *r = find_runtime(JS_GetRuntime(ctx));
-    if (r) r->slot_count++;
-
-    return JS_NewInt64(ctx, (int64_t)(size_t)sock);
+    return JS_NewInt32(ctx, sock - r->slots);
 }
 
 static JSValue js_connect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -255,14 +292,12 @@ static JSValue js_connect(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 
     int ret = connect(sock->fd, (struct sockaddr*)&addr, sizeof(addr));
 
-    if (ret == 0) {
+    if (ret == 0)
         return JS_NewInt32(ctx, 0);
-    }
 
     int err = WSAGetLastError();
-    if (err == WSAEWOULDBLOCK) {
+    if (err == WSAEWOULDBLOCK)
         return JS_NewInt32(ctx, 0);
-    }
 
     return JS_NewInt32(ctx, -1);
 }
@@ -335,12 +370,8 @@ static JSValue js_closesocket(JSContext *ctx, JSValueConst this_val, int argc, J
         sock->on_event = JS_UNDEFINED;
     }
 
-    list_del(&sock->link);
-
     SockRuntime *r = find_runtime(JS_GetRuntime(ctx));
     if (r && r->slot_count > 0) r->slot_count--;
-
-    free(sock);
 
     return JS_UNDEFINED;
 }
