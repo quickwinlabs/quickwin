@@ -591,15 +591,15 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
                 }
                 else if (state === ST_RECV_HEADERS) {
                     while (true) {
-                        if (!s && !ssl) break
+                        if (s !== null && s < 0 && !ssl) break
                         let data: ArrayBuffer | null
                         if (isHTTPS && ssl) {
                             data = wolfssl.wolfSSL_read(ssl, 8192)
-                        } else if (s) {
+                        } else if (s !== null && s >= 0) {
                             data = sock.recv(s, 8192)
                         } else { break }
+                        if (typeof data !== 'object') break
                         if (!data || data.byteLength === 0) break
-
                         const incoming = new Uint8Array(data)
                         headerRaw = _concat([headerRaw, incoming])
 
@@ -650,13 +650,14 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
                 }
                 else if (state === ST_RECV_BODY && stream) {
                     while (true) {
-                        if (!s && !ssl) break
+                        if (s !== null && s < 0 && !ssl) break
                         let data: ArrayBuffer | null
                         if (isHTTPS && ssl) {
                             data = wolfssl.wolfSSL_read(ssl, 8192)
-                        } else if (s) {
+                        } else if (s !== null && s >= 0) {
                             data = sock.recv(s, 8192)
                         } else { break }
+                        if (typeof data !== 'object') break
                         if (!data || data.byteLength === 0) break
                         if (isChunked) {
                             chunkedParts.push(new Uint8Array(data))
@@ -683,13 +684,14 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
                 } else if (state === ST_RECV_BODY && stream) {
                     let remainingParts: Uint8Array[] = []
                     while (true) {
-                        if (!s && !ssl) break
+                        if (s !== null && s < 0 && !ssl) break
                         let data: ArrayBuffer | null
                         if (isHTTPS && ssl) {
                             data = wolfssl.wolfSSL_read(ssl, 8192)
-                        } else if (s) {
+                        } else if (s !== null && s >= 0) {
                             data = sock.recv(s, 8192)
                         } else { break }
+                        if (typeof data !== 'object') break
                         if (!data || data.byteLength === 0) break
                         remainingParts.push(new Uint8Array(data))
                     }

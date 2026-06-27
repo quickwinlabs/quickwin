@@ -17,6 +17,18 @@ export const suite = {
                 return null;
             }
         }
+        // ── Plain HTTP GET (regression: slot 0 + !s bug) ──
+        t.section('plain HTTP')
+        const r0 = await safeFetch('http://example.com/', { timeout: 5000 })
+        if (r0) {
+            assert('plain HTTP status 200', r0.status === 200)
+            const body = await r0.text()
+            assert('plain HTTP body non-empty', body.length > 0)
+            assert('plain HTTP has html', body.includes('<html') || body.includes('<!doctype'))
+        } else {
+            assert('plain HTTP endpoint reachable', false)
+        }
+
         // ── Basic HTTP GET ──
         t.section('HTTP GET')
         const r1 = await safeFetch('https://httpbun.com/any')
