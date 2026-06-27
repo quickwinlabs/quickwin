@@ -113,9 +113,8 @@ declare module "std" {
         error(): boolean;
         clearerr(): void;
         read(buffer: ArrayBuffer, position?: number, length?: number): number;
-        write(buffer: ArrayBuffer | string, position?: number, length?: number): number;
+        write(buffer: ArrayBuffer, position?: number, length?: number): number;
         getline(): string | null;
-        readAsArrayBuffer(max_size?: number): ArrayBuffer | null;
         readAsString(max_size?: number): string | null;
         getByte(): number;
         putByte(c: number): void;
@@ -213,7 +212,6 @@ declare module "os" {
         env?: Record<string, string>;
         uid?: number;
         gid?: number;
-        groups?: number[];
     }
 
     function open(filename: string, flags: number, mode?: number): number;
@@ -228,11 +226,8 @@ declare module "os" {
     function rename(oldname: string, newname: string): number;
     function realpath(path: string): [string, number];
     function getcwd(): [string, number];
-    function exePath(): string | undefined;
     function chdir(path: string): number;
     function mkdir(path: string, mode?: number): number;
-    function mkdtemp(pattern?: string): [string, number];
-    function mkstemp(pattern?: string): [string, number];
     function stat(path: string): [StatResult, number];
     function lstat(path: string): [StatResult, number];
     function utimes(path: string, atime: number, mtime: number): number;
