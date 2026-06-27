@@ -127,6 +127,7 @@ declare module "gui" {
         INSERTSTRING = 385, // 0x181
         DELETESTRING = 386, // 0x182
         RESETCONTENT = 388, // 0x184
+        SETTOPINDEX = 407, // 0x197
         SETCURSEL = 390, // 0x186
         GETCURSEL = 392, // 0x188
         GETTEXT = 393, // 0x189

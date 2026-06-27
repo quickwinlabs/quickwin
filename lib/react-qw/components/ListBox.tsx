@@ -1,4 +1,4 @@
-import { forwardRef, useRef, useEffect, useState } from 'react'
+import { forwardRef, useRef, useEffect, useState, useImperativeHandle } from 'react'
 import * as gui from 'gui'
 import type { WStyle } from '../jsx.d.ts'
 
@@ -10,15 +10,17 @@ export interface ListBoxProps {
   style?: WStyle
   disabled?: boolean
   sort?: boolean
+  scrollToBottom?: boolean
 }
 
 export const ListBox = forwardRef<gui.HWND, ListBoxProps>(
   ({ items, selectedIndex: controlledIndex, defaultSelectedIndex = -1,
-     onChange, style, disabled, sort }, ref) => {
+     onChange, style, disabled, sort, scrollToBottom }, ref) => {
     const [internalIndex, setInternalIndex] = useState(defaultSelectedIndex)
     const isControlled = controlledIndex !== undefined
     const sel = isControlled ? controlledIndex : internalIndex
     const lbRef = useRef<gui.HWND>(null)
+    useImperativeHandle(ref, () => lbRef.current!)
 
     const lbWs = gui.WindowStyle.VISIBLE | gui.WindowStyle.BORDER | gui.WindowStyle.VSCROLL
       | gui.ListBoxStyle.HASSTRINGS | gui.ListBoxStyle.NOTIFY | gui.ListBoxStyle.NOINTEGRALHEIGHT
@@ -32,6 +34,8 @@ export const ListBox = forwardRef<gui.HWND, ListBoxProps>(
         gui.SendMessage(h, gui.LbMsg.ADDSTRING, 0, item)
       if (sel >= 0 && sel < items.length)
         gui.SendMessage(h, gui.LbMsg.SETCURSEL, sel, 0)
+      if (scrollToBottom && items.length > 0)
+        gui.SendMessage(h, gui.LbMsg.SETTOPINDEX, items.length - 1, 0)
     }, [items])
 
     useEffect(() => {
@@ -44,7 +48,6 @@ export const ListBox = forwardRef<gui.HWND, ListBoxProps>(
         type="STATIC"
         ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN}
         style={{ ...style, flexDirection: 'column', alignItems: 'stretch' }}
-        ref={ref}
         onEvent={(e) => {
           if (e.msg !== gui.WmMsg.COMMAND) return
           const code = (e.wParam >> 16) & 0xFFFF
