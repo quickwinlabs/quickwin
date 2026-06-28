@@ -13,7 +13,7 @@ export const suite = {
     run: async (t: Tester): Promise<void> => {
         await new Promise<void>((resolve, reject) => {
             const s = sock.socket()
-            if (!s || s === 0) { t.fail++; reject(new Error('socket() failed')); return }
+            if (s === null || s < 0) { t.fail++; reject(new Error('socket() failed')); return }
 
             var connected = false, gotData = false
 
