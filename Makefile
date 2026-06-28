@@ -58,6 +58,9 @@ WOLFSSL_LIB ?= $(WOLFSSL_LIB_STATIC)
 
 WAT_SRCS = $(wildcard test/*.wat)
 WASM_OBJS = $(WAT_SRCS:test/%.wat=$(BUILD_DIR)/test/%.wasm)
+AOT_OBJS = $(WASM_OBJS:%.wasm=%.aot)
+
+WAMRC ?= tools/wamrc.exe
 
 CFLAGS += $(WAMR_INC)
 CFLAGS += $(WAMR_DEFS)
@@ -245,12 +248,18 @@ wolfsmin:
 	cp $(WOLFSSL_BUILD_DIR)/libwolfssl.a $(WOLFSSL_LIB_STATIC)
 	@echo "Minimal wolfSSL build complete"
 
-wasm: $(WASM_OBJS)
+wasm: $(WASM_OBJS) aot
 
 $(BUILD_DIR)/test/%.wasm: test/%.wat
 	@echo "  $< -> $@"
 	mkdir -p $(BUILD_DIR)/test
 	wat2wasm $< -o $@
+
+$(BUILD_DIR)/test/%.aot: $(BUILD_DIR)/test/%.wasm
+	@echo "  $< -> $@"
+	$(WAMRC) -o $@ $<
+
+aot: $(AOT_OBJS)
 
 info:
 	@echo "Build Configuration:"
