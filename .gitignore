@@ -8,6 +8,8 @@ dist/
 *.wasm
 *.png
 *.tsbuildinfo
+*.aot
+tools/*.zip
 opencode.json
 output.png
 

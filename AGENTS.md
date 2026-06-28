@@ -56,7 +56,7 @@
 :: 使用 MSYS2 make
 make                   # 构建发布版本（默认，推荐）
 make debug             # 构建调试版本（含 bridge 调试日志，仅在排错时使用）
-make js                # 编译 TypeScript
+make js                # 编译 TypeScript（输出到 _build/ 目录）
 make test              # 运行测试（默认跑所有，网络测试较慢）
 make test TEST=net     # 只跑网络测试（国外 URL，可能慢/不可达）
 make test TEST=-net    # 跳过网络测试（日常快速验证推荐）
@@ -73,7 +73,6 @@ make wat               # 将 WAT 文件编译为 WASM
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ./run.ps1 -Command "make js"
-powershell -ExecutionPolicy Bypass -File ./run.ps1 -Command "./win.exe test/test_wasm_bidirectional.js"
 powershell -ExecutionPolicy Bypass -File ./run.ps1 -Command "make js && ./win.exe test/test_wasm_bidirectional.js"
 ```
 
@@ -81,6 +80,11 @@ powershell -ExecutionPolicy Bypass -File ./run.ps1 -Command "make js && ./win.ex
 - 构建前确保 `win.exe` 未运行
 - 需要 MSYS2 UCRT64 和 Node.js 环境
 - `run.ps1` 用于在 PowerShell 中执行 MSYS2 bash 命令，支持包含 `&&` 的复杂命令
+- **`make js` 编译产物在 `_build/` 目录**，手动运行测试需用 `_build/` 前缀，例如：
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File ./run.ps1 -Command "./win.exe _build/test/test_aot_load.js"
+  ```
+  CI 中使用 `_build/win.exe _build/test/run.js` 运行测试集。
 
 ## 2. Event Loop Assistant (事件循环助手)
 
@@ -250,6 +254,30 @@ cp wamr/build/libiwasm.a wamr/lib/libiwasm.a
 - **wat2wasm 找不到：** 需要安装 wabt 包：`pacman -S wabt`
 - **`WASMModule` 结构体偏移错位：** 如果直接 `(WASMModule *)wasm_module_t` 后读取字段得到垃圾值（如 `import_global_count=624`），说明 `WASM_ENABLE_TAGS`/`WASM_ENABLE_BULK_MEMORY` 等条件编译宏在 WAMR 库和项目代码中不一致。用 `make wamr` 重建 WAMR 库（需先 `rm -rf wamr/build` 清除 CMake cache），确保 `-DWAMR_BUILD_EXCE_HANDLING=1` 等选项生效
 - **`make clean` 会删除所有 `lib/*.js`、`test/*.js` 和根目录 `*.js`：** 运行 `make clean` 后必须执行 `make js` 从 `.ts` 重新生成 JS 文件，否则测试或运行时找不到 `.js` 文件
+
+## AOT (Ahead-of-Time) 编译
+
+### 工作流程
+
+```bash
+# 1. 编译 WAT → WASM
+wat2wasm test/add.wat -o test/add.wasm
+
+# 2. WASM → AOT（需要预编译 wamrc.exe）
+tools/wamrc.exe -o test/add.aot test/add.wasm
+
+# 3. 运行 AOT 测试
+./win.exe _build/test/test_aot_load.js
+```
+
+### 依赖
+
+- **预编译 `wamrc.exe`：** 下载 `wamrc-<version>-x86_64-windows-2022.zip` 解压到 `tools/wamrc.exe`
+  - 例如 WAMR-2.4.5：`curl -LO https://github.com/bytecodealliance/wasm-micro-runtime/releases/download/WAMR-2.4.5/wamrc-2.4.5-x86_64-windows-2022.zip`
+  - 需要安装 Microsoft Visual C++ Redistributable
+- **构建 `libiwasm.a`：** `make wamr` 需设置 `WAMR_BUILD_AOT=1`
+- **AOT 版本一致性：** `wamrc` 输出的 AOT 版本必须与 runtime 的 `AOT_CURRENT_VERSION`（`core/config.h`）一致
+- **当前子模块 `AOT_CURRENT_VERSION = 6`**（`core/config.h:87`），预编译 wamrc 必须输出 v6
 - **控制台中文乱码：** 运行 `chcp 65001` 设置 UTF-8 编码后再执行程序
 - **`make js` Segmentation fault：** tsgo 本身偶尔会 segfault，不是代码问题。直接重新运行 `make js` 即可，通常第二次就能成功
 

@@ -20,6 +20,7 @@ const suiteDefs = [
     { name: 'wasm-types',        file: './test_wasm_types.js',       tags: ['wasm'] },
     { name: 'wasm-import-global', file: './test_wasm_import_global.js', tags: ['wasm'] },
     { name: 'wasm-sjlj',          file: './test_wasm_sjlj.js',       tags: ['wasm'] },
+    { name: 'aot-load',          file: './test_aot_load.js',       tags: ['wasm'] },
     { name: 'wasm-frame-encoding', file: './test_frame_encoding.js', tags: ['wasm'] },
     { name: 'mupdf-wasm',        file: './test_mupdf_wasm.js',       tags: ['wasm', 'mupdf'] },
     { name: 'mupdf-twice',       file: './test_mupdf_twice.js',      tags: ['wasm', 'mupdf'] },

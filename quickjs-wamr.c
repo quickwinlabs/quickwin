@@ -282,11 +282,12 @@ static JSValue js_webassembly_compile(JSContext *ctx, JSValueConst this_val, int
     }
     memcpy(buf, _buf, buf_size);
     LoadArgs args = {.no_resolve = true};
-    wasm_module_t module = wasm_runtime_load_ex(buf, buf_size, &args, NULL, 0);
+    char wamr_err[128] = {0};
+    wasm_module_t module = wasm_runtime_load_ex(buf, buf_size, &args, wamr_err, sizeof(wamr_err));
     if (!module)
     {
         js_free(ctx, buf);
-        JS_ThrowTypeError(ctx, "WASM compilation failed");
+        JS_ThrowTypeError(ctx, "WASM compilation failed: %s", wamr_err);
         JSValue error = JS_GetException(ctx);
         JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, (JSValueConst *)&error);
         JS_FreeValue(ctx, error);
@@ -325,11 +326,12 @@ static JSValue js_webassembly_instantiate(JSContext *ctx, JSValueConst this_val,
     uint8_t *buf = js_malloc(ctx, buf_size);
     memcpy(buf, _buf, buf_size);
     LoadArgs args = {.no_resolve = true};
-    wasm_module_t module = wasm_runtime_load_ex(buf, buf_size, &args, NULL, 0);
+    char wamr_err[128] = {0};
+    wasm_module_t module = wasm_runtime_load_ex(buf, buf_size, &args, wamr_err, sizeof(wamr_err));
     if (!module)
     {
         js_free(ctx, buf);
-        return JS_ThrowTypeError(ctx, "WebAssembly.instantiate: compilation failed");
+        return JS_ThrowTypeError(ctx, "WebAssembly.instantiate: compilation failed: %s", wamr_err);
     }
     JSValue module_obj = create_wasm_module_object(ctx, buf, module);
 
