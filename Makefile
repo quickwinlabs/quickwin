@@ -6,6 +6,7 @@ MINIMAL = 0
 OPT = -Os
 BUILD_DIR = _build
 MSYS2_PREFIX ?= C:/msys64/ucrt64
+JS_EMBED ?= embed.js
 
 ifeq ($(DEBUG), 1)
     CFLAGS = -I./quickjs -I$(MSYS2_PREFIX)/include -g -O0 -DDEBUG
@@ -84,7 +85,7 @@ SRCS = main.c \
 OBJS = $(SRCS:%.c=$(BUILD_DIR)/%.o) $(BUILD_DIR)/app.o
 DEPS = $(SRCS:%.c=$(BUILD_DIR)/%.d)
 
-.PHONY: all clean debug nodebug release small minimal wolfsmin test wamr wasm js npm-pkg info help
+.PHONY: all clean debug nodebug release small minimal wolfsmin test wamr wasm js npm-pkg embed-js info help
 
 all: nodebug
 
@@ -284,6 +285,9 @@ npm-pkg: js wasm
 	cp quickwin.d.ts quickwin_const.d.ts tsconfig.json package.json README.md $(NPM_PKG_DIR)/
 	@echo "npm package created at $(NPM_PKG_DIR)"
 
+embed-js: $(TARGET)
+	powershell -ExecutionPolicy Bypass -File scripts/embed-js.ps1 -ExePath $(TARGET) -JsFile $(JS_EMBED)
+
 help:
 	@echo "Available targets:"
 	@echo "  all       - Build nodebug version (default, custom wolfSSL)"
@@ -300,6 +304,7 @@ help:
 	@echo "  test      - Filter by name: make test TEST=wasm"
 	@echo "  test      - Exclude by tag: make test TEST=-net"
 	@echo "  wasm      - Convert WAT files to WASM (requires wabt)"
+	@echo "  embed-js  - Embed JS_EMBED (default: embed.js) into exe: make embed-js JS_EMBED=script.js"
 	@echo "  npm-pkg   - Package distributable into $(NPM_PKG_DIR)"
 	@echo "  wolfsmin  - Build custom minimal wolfSSL static library"
 	@echo "  help      - Show this help message"

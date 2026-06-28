@@ -26,6 +26,31 @@ quickwin script.js                  # run a script
 quickwin examples/preact_demo.js    # run an example
 ```
 
+## Embedded Script
+
+You can embed a JS script directly into the `win.exe` binary — no recompilation needed.
+
+### Format (appended to exe)
+
+```
+[JS bytes (N)] [N: uint32 LE] [magic "QWJS"]
+```
+
+### Usage
+
+```bash
+# Embed a script
+powershell -ExecutionPolicy Bypass -File scripts/embed-js.ps1 -ExePath _build/win.exe -JsFile script.js
+
+# Or via make
+make embed-js JS_EMBED=script.js
+
+# Run it (no file argument needed)
+win.exe
+```
+
+When run without a script file argument, `win.exe` checks for embedded JS at the end of itself. If found, it executes the embedded code. If not, it falls back to `main.js`.
+
 ## Modules
 
 | Module | Import | Description |
@@ -87,6 +112,7 @@ cd quickwin
 | `make test TEST=-net` | skip network tests (fast) |
 | `make test TEST=wasm` | run WASM tests only |
 | `make wamr` | rebuild WAMR library |
+| `make embed-js` | embed `embed.js` into exe (use `JS_EMBED=file.js`) |
 | `make npm-pkg` | package into `dist/quickwin/` |
 | `make clean` | clean build artifacts |
 

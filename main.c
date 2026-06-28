@@ -4,6 +4,7 @@
 #include <commctrl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 #include "quickjs.h"
 #include "quickjs-libc.h"
@@ -30,6 +31,40 @@ static void showError(JSContext *ctx, const char *err_str)
     wchar_t wtitle[64] = L"JS Error";
     // MessageBoxW(NULL, werr, wtitle, MB_OK);
     free(werr);
+}
+
+// Try to load JS code embedded at the end of the exe (appended data).
+// Format: [JS bytes (N)] [N: uint32 LE] [magic "QWJS"]
+static uint8_t *load_embedded_js(JSContext *ctx, size_t *psize)
+{
+    wchar_t wpath[MAX_PATH];
+    GetModuleFileNameW(NULL, wpath, MAX_PATH);
+
+    FILE *fp = _wfopen(wpath, L"rb");
+    if (!fp) return NULL;
+
+    char magic[4];
+    if (fseek(fp, -4, SEEK_END) != 0) { fclose(fp); return NULL; }
+    if (fread(magic, 1, 4, fp) != 4) { fclose(fp); return NULL; }
+    if (memcmp(magic, "QWJS", 4) != 0) { fclose(fp); return NULL; }
+
+    uint32_t len;
+    if (fseek(fp, -8, SEEK_END) != 0) { fclose(fp); return NULL; }
+    if (fread(&len, 1, 4, fp) != 4) { fclose(fp); return NULL; }
+
+    if (fseek(fp, -(8 + len), SEEK_END) != 0) { fclose(fp); return NULL; }
+    uint8_t *buf = js_malloc(ctx, len + 1);
+    if (!buf) { fclose(fp); return NULL; }
+    if (fread(buf, 1, len, fp) != len) {
+        js_free(ctx, buf);
+        fclose(fp);
+        return NULL;
+    }
+    buf[len] = '\0';
+    fclose(fp);
+
+    *psize = len;
+    return buf;
 }
 
 static JSContext *JS_NewCustomContext(JSRuntime *rt)
@@ -132,14 +167,23 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     js_std_add_helpers(ctx, cmd_argc - optind, cmd_argv + optind);
 
     size_t fsize;
-    uint8_t *js_code;
+    uint8_t *js_code = NULL;
     if (expr) {
         js_code = (uint8_t *)js_malloc(ctx, strlen(expr) + 1);
         memcpy(js_code, expr, strlen(expr) + 1);
         fsize = strlen(expr);
         js_file = "<eval>";
     } else {
-        js_code = js_load_file(ctx, &fsize, js_file);
+        // No -e and no file arg → try embedded JS, fallback to main.js
+        if (optind >= cmd_argc) {
+            js_code = load_embedded_js(ctx, &fsize);
+            if (js_code) {
+                js_file = "<embedded>";
+            }
+        }
+        if (!js_code) {
+            js_code = js_load_file(ctx, &fsize, js_file);
+        }
     }
 
     if (!js_code) {
