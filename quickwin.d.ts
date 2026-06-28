@@ -3,9 +3,15 @@ interface ImportMeta {
     url: string
 }
 
+/** Provides the command line arguments. The first argument is the script name. */
+declare var scriptArgs: string[];
+/** Print the arguments separated by spaces and a trailing newline. */
+declare function print(...args: any[]): void;
+/** Same as print(). */
 declare const console: Console
 
 interface Console {
+    /** Same as print(). */
     log: (...args: any) => void
 }
 
@@ -101,27 +107,51 @@ interface ReadableStream {
 
 declare module "std" {
     interface FILE {
+        /** Close the file. Return 0 if OK or `-errno` in case of I/O error. */
         close(): number;
+        /** Outputs the string with the UTF-8 encoding. */
         puts(str: string): void;
+        /**
+         * Formatted printf.
+         * The same formats as the standard C library `printf` are supported.
+         * Integer format types (e.g. `%d`) truncate the Numbers or BigInts to 32 bits.
+         * Use the `l` modifier (e.g. `%ld`) to truncate to 64 bits.
+         */
         printf(fmt: string, ...args: any[]): void;
+        /** Flush the buffered file. */
         flush(): void;
+        /** Seek to a give file position (whence is `std.SEEK_*`). `offset` can be a number or a bigint. Return 0 if OK or `-errno` in case of I/O error. */
         seek(offset: number | bigint, whence: number): number;
+        /** Return the current file position. */
         tell(): number;
+        /** Return the current file position as a bigint. */
         tello(): bigint;
+        /** Return true if end of file. */
         eof(): boolean;
+        /** Return the associated OS handle. */
         fileno(): number;
+        /** Return true if there was an error. */
         error(): boolean;
+        /** Clear the error indication. */
         clearerr(): void;
-        read(buffer: ArrayBuffer, position?: number, length?: number): number;
-        write(buffer: ArrayBuffer, position?: number, length?: number): number;
+        /** Read `length` bytes from the file to the ArrayBuffer `buffer` at byte position `position` (wrapper to the libc `fread`). */
+        read(buffer: ArrayBuffer, position: number, length: number): number;
+        /** Write `length` bytes to the file from the ArrayBuffer `buffer` at byte position `position` (wrapper to the libc `fwrite`). */
+        write(buffer: ArrayBuffer, position: number, length: number): number;
+        /** Return the next line from the file, assuming UTF-8 encoding, excluding the trailing line feed. */
         getline(): string | null;
+        /** Read `max_size` bytes from the file and return them as a string assuming UTF-8 encoding. If `max_size` is not present, the file is read up its end. */
         readAsString(max_size?: number): string | null;
+        /** Return the next byte from the file. Return -1 if the end of file is reached. */
         getByte(): number;
+        /** Write one byte to the file. */
         putByte(c: number): void;
     }
 
     interface UrlGetOptions {
+        /** Boolean (default = false). If true, the response is an ArrayBuffer instead of a string. */
         binary?: boolean;
+        /** Boolean (default = false). If true, return the an object contains the properties `response`, `responseHeaders`, `status`. */
         full?: boolean;
     }
 
@@ -132,30 +162,44 @@ declare module "std" {
     }
 
     interface EvalScriptOptions {
+        /** Boolean (default = false). If true, error backtraces do not list the stack frames below the evalScript. */
         backtrace_barrier?: boolean;
+        /** Boolean (default = false). If true, `await` is accepted in the script and a promise is returned. */
         async?: boolean;
     }
 
-    interface OpenOptions {
-        binary?: boolean;
-    }
-
+    /** Exit the process. */
     function exit(n: number): never;
+    /** Evaluate the string `str` as a script (global eval). */
     function evalScript(str: string, options?: EvalScriptOptions): any;
+    /** Evaluate the file `filename` as a script (global eval). */
     function loadScript(filename: string): any;
-    /** 只适合读取 UTF-8 文本文件，读取二进制文件用 std.open + FILE.read */
-    function loadFile(filename: string, options?: OpenOptions): string | Uint8Array | null;
+    /** Load the file `filename` and return it as a string assuming UTF-8 encoding. Return `null` in case of I/O error. */
+    function loadFile(filename: string): string | null;
+    /** Open a file (wrapper to the libc `fopen()`). Return the FILE object or `null` in case of I/O error. If `errorObj` is not undefined, set its `errno` property to the error code or to 0 if no error occured. */
     function open(filename: string, flags: string, errorObj?: { errno: number }): FILE | null;
+    /** Open a process by creating a pipe (wrapper to the libc `popen()`). Return the FILE object or `null` in case of I/O error. If `errorObj` is not undefined, set its `errno` property to the error code or to 0 if no error occured. */
     function popen(command: string, flags: string, errorObj?: { errno: number }): FILE | null;
+    /** Open a file from a file handle (wrapper to the libc `fdopen()`). Return the FILE object or `null` in case of I/O error. If `errorObj` is not undefined, set its `errno` property to the error code or to 0 if no error occured. */
     function fdopen(fd: number, flags: string, errorObj?: { errno: number }): FILE | null;
+    /** Open a temporary file. Return the FILE object or `null` in case of I/O error. If `errorObj` is not undefined, set its `errno` property to the error code or to 0 if no error occured. */
     function tmpfile(errorObj?: { errno: number }): FILE | null;
+    /** Equivalent to `std.out.puts(str)`. */
     function puts(str: string): void;
+    /** Equivalent to `std.out.printf(fmt, ...args)`. */
     function printf(fmt: string, ...args: any[]): void;
+    /** Equivalent to the libc sprintf(). */
     function sprintf(fmt: string, ...args: any[]): string;
 
+    /** Wrappers to the libc file `stdout`. */
     const out: FILE;
+    /** Wrappers to the libc file `stderr`. */
     const err: FILE;
 
+    /**
+     * Enumeration object containing the integer value of common errors
+     * (additional error codes may be defined):
+     */
     namespace Error {
         const EINVAL: number;
         const EIO: number;
@@ -170,19 +214,37 @@ declare module "std" {
         const EBADF: number;
     }
 
+    /**
+     * Parse `str` using a superset of `JSON.parse`. The superset is very close to the JSON5 specification.
+     * Extensions: comments, unquoted properties, trailing comma, single quoted strings, hex/octal/binary integers, NaN, Infinity, etc.
+     */
     function parseExtJSON(str: string): any;
     function __printObject(val: any): void;
+    /** Return a string that describes the error `errno`. */
     function strerror(errno: number): string;
+    /** Manually invoke the cycle removal algorithm. The cycle removal algorithm is automatically started when needed, so this function is useful in case of specific memory constraints or for testing. */
     function gc(): void;
+    /** Return the value of the environment variable `name` or `undefined` if it is not defined. */
     function getenv(name: string): string | undefined;
+    /** Set the value of the environment variable `name` to the string `value`. */
     function setenv(name: string, value: string): void;
+    /** Delete the environment variable `name`. */
     function unsetenv(name: string): void;
+    /** Return an object containing the environment variables as key-value pairs. */
     function getenviron(): Record<string, string>;
+    /** Download `url` using the curl command line utility. */
     function urlGet(url: string, options?: UrlGetOptions): string | ArrayBuffer | UrlGetFullResult | null;
 
+    /** Constants for seek(). */
     const SEEK_SET: number;
     const SEEK_CUR: number;
     const SEEK_END: number;
+}
+
+/** Wrappers to the libc file `stdin`. */
+declare module "std" {
+    const _in: FILE;
+    export { _in as in };
 }
 
 declare module "os" {
@@ -201,55 +263,58 @@ declare module "os" {
         ctime: number;
     }
 
-    interface ExecOptions {
-        block?: boolean;
-        usePath?: boolean;
-        file?: string;
-        cwd?: string;
-        stdin?: number;
-        stdout?: number;
-        stderr?: number;
-        env?: Record<string, string>;
-        uid?: number;
-        gid?: number;
-    }
-
+    /** Open a file. Return a handle or < 0 if error. */
     function open(filename: string, flags: number, mode?: number): number;
+    /** Close the file handle `fd`. */
     function close(fd: number): number;
+    /** Seek in the file. Use `std.SEEK_*` for `whence`. `offset` is either a number or a bigint. If `offset` is a bigint, a bigint is returned too. */
     function seek(fd: number, offset: number | bigint, whence: number): number | bigint;
+    /** Read `length` bytes from the file handle `fd` to the ArrayBuffer `buffer` at byte position `offset`. Return the number of read bytes or < 0 if error. */
     function read(fd: number, buffer: ArrayBuffer, offset: number, length: number): number;
+    /** Write `length` bytes to the file handle `fd` from the ArrayBuffer `buffer` at byte position `offset`. Return the number of written bytes or < 0 if error. */
     function write(fd: number, buffer: ArrayBuffer, offset: number, length: number): number;
+    /** Return `true` if `fd` is a TTY (terminal) handle. */
     function isatty(fd: number): boolean;
+    /** Return the TTY size as `[width, height]` or `null` if not available. */
     function ttyGetWinSize(fd: number): [number, number] | null;
+    /** Set the TTY in raw mode. */
     function ttySetRaw(fd: number): void;
+    /** Remove a file. Return 0 if OK or `-errno`. */
     function remove(filename: string): number;
+    /** Rename a file. Return 0 if OK or `-errno`. */
     function rename(oldname: string, newname: string): number;
+    /** Return `[str, err]` where `str` is the canonicalized absolute pathname of `path` and `err` the error code. */
     function realpath(path: string): [string, number];
+    /** Return `[str, err]` where `str` is the current working directory and `err` the error code. */
     function getcwd(): [string, number];
+    /** Change the current directory. Return 0 if OK or `-errno`. */
     function chdir(path: string): number;
+    /** Create a directory at `path`. Return 0 if OK or `-errno`. */
     function mkdir(path: string, mode?: number): number;
+    /** Return `[obj, err]` where `obj` is an object containing the file status of `path`. `err` is the error code. */
     function stat(path: string): [StatResult, number];
-    function lstat(path: string): [StatResult, number];
+    /** Change the access and modification times of the file `path`. The times are specified in milliseconds since 1970. Return 0 if OK or `-errno`. */
     function utimes(path: string, atime: number, mtime: number): number;
-    function symlink(target: string, linkpath: string): number;
-    function readlink(path: string): [string, number];
+    /** Return `[array, err]` where `array` is an array of strings containing the filenames of the directory `path`. `err` is the error code. */
     function readdir(path: string): [string[], number];
+    /** Add a read handler to the file handle `fd`. `func` is called each time there is data pending for `fd`. A single read handler per file handle is supported. Use `func = null` to remove the handler. */
     function setReadHandler(fd: number, func: (() => void) | null): void;
+    /** Add a write handler to the file handle `fd`. `func` is called each time data can be written to `fd`. A single write handler per file handle is supported. Use `func = null` to remove the handler. */
     function setWriteHandler(fd: number, func: (() => void) | null): void;
+    /** Call the function `func` when the signal `signal` happens. Only a single handler per signal number is supported. Use `null` to set the default handler or `undefined` to ignore the signal. Signal handlers can only be defined in the main thread. */
     function signal(signal: number, func: (() => void) | null | undefined): void;
-    function kill(pid: number, sig: number): void;
-    function exec(args: string[], options?: ExecOptions): number;
-    function waitpid(pid: number, options: number): [number, number];
-    function dup(fd: number): number;
-    function dup2(oldfd: number, newfd: number): number;
-    function pipe(): [number, number] | null;
+    /** Sleep during `delay_ms` milliseconds. */
     function sleep(delay_ms: number): void;
+    /** Asynchronouse sleep during `delay_ms` milliseconds. Returns a promise. */
     function sleepAsync(delay_ms: number): Promise<void>;
+    /** Return a timestamp in milliseconds with more precision than `Date.now()`. */
+    function now(): number;
+    /** Call the function `func` after `delay` ms. Return a handle to the timer. */
     function setTimeout(func: () => void, delay: number): number;
+    /** Cancel a timer. */
     function clearTimeout(id: number): void;
 
-    const platform: string;
-
+    /** POSIX open flags. */
     const O_RDONLY: number;
     const O_WRONLY: number;
     const O_RDWR: number;
@@ -257,9 +322,12 @@ declare module "os" {
     const O_CREAT: number;
     const O_EXCL: number;
     const O_TRUNC: number;
+    /** (Windows specific). Open the file in text mode. The default is binary mode. */
     const O_BINARY: number;
+    /** (Windows specific). Open the file in text mode. The default is binary mode. */
     const O_TEXT: number;
 
+    /** POSIX signal numbers. */
     const SIGINT: number;
     const SIGABRT: number;
     const SIGFPE: number;
@@ -267,25 +335,27 @@ declare module "os" {
     const SIGSEGV: number;
     const SIGTERM: number;
 
-    const WNOHANG: number;
-
+    /** Constants to interpret the `mode` property returned by `stat()`. They have the same value as in the C system header `sys/stat.h`. */
     const S_IFMT: number;
     const S_IFIFO: number;
     const S_IFCHR: number;
     const S_IFDIR: number;
     const S_IFBLK: number;
     const S_IFREG: number;
-    const S_IFSOCK: number;
-    const S_IFLNK: number;
-    const S_ISGID: number;
-    const S_ISUID: number;
 
     class Worker {
+        /** Constructor to create a new thread (worker) with an API close to the `WebWorkers`. `module_filename` is a string specifying the module filename which is executed in the newly created thread. */
         constructor(module_filename: string);
+        /** Send a message to the corresponding worker. `msg` is cloned in the destination worker using an algorithm similar to the `HTML` structured clone algorithm. */
         postMessage(msg: any): void;
+        /** Getter and setter. Set a function which is called each time a message is received. The function is called with a single argument. It is an object with a `data` property containing the received message. */
         onmessage: ((event: { data: any }) => void) | null;
+        /** In the created worker, `Worker.parent` represents the parent worker and is used to send or receive messages. */
         static parent: Worker;
     }
+
+    /** Return a string representing the platform: `"linux"`, `"darwin"`, `"win32"` or `"js"`. */
+    const platform: string;
 }
 
 declare module "sock" {
