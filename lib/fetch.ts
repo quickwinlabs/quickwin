@@ -522,7 +522,7 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
             state = ST_DONE
             if (ssl) { wolfssl.wolfSSL_free(ssl); ssl = null }
             if (ctx) { wolfssl.wolfSSL_CTX_free(ctx); ctx = null }
-            if (s) { sock.closesocket(s); s = null }
+            if (s !== null && s >= 0) { sock.closesocket(s); s = null }
         }
 
         const cleanup = (): void => {

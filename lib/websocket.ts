@@ -284,7 +284,7 @@ class WebSocket {
         const cleanup = (): void => {
             if (this._ssl) { wolfssl.wolfSSL_free(this._ssl); this._ssl = null }
             if (this._ctx) { wolfssl.wolfSSL_CTX_free(this._ctx); this._ctx = null }
-            if (this._sock) { sock.closesocket(this._sock); this._sock = null }
+            if (this._sock !== null && this._sock >= 0) { sock.closesocket(this._sock); this._sock = null }
         }
 
         const doError = (err: Error): void => {
@@ -362,7 +362,7 @@ class WebSocket {
                         let data: ArrayBuffer | null
                         if (isWSS && this._ssl) {
                             data = wolfssl.wolfSSL_read(this._ssl, 8192)
-                        } else if (this._sock) {
+                        } else if (this._sock !== null && this._sock >= 0) {
                             data = sock.recv(this._sock, 8192)
                         } else { break }
                         if (!data || data.byteLength === 0) break
@@ -434,7 +434,7 @@ class WebSocket {
     }
 
     private _sendRaw(buf: ArrayBuffer): void {
-        if (!this._sock) return
+        if (this._sock === null || this._sock < 0) return
         if (this._ssl) {
             wolfssl.wolfSSL_write(this._ssl, buf)
         } else {
@@ -454,7 +454,7 @@ class WebSocket {
             let data: ArrayBuffer | null
             if (this._ssl) {
                 data = wolfssl.wolfSSL_read(this._ssl, 8192)
-            } else if (this._sock) {
+            } else if (this._sock !== null && this._sock >= 0) {
                 data = sock.recv(this._sock, 8192)
             } else { break }
             if (!data || data.byteLength === 0) break
@@ -517,7 +517,7 @@ class WebSocket {
     private _cleanup(): void {
         if (this._ssl) { wolfssl.wolfSSL_free(this._ssl); this._ssl = null }
         if (this._ctx) { wolfssl.wolfSSL_CTX_free(this._ctx); this._ctx = null }
-        if (this._sock) { sock.closesocket(this._sock); this._sock = null }
+        if (this._sock !== null && this._sock >= 0) { sock.closesocket(this._sock); this._sock = null }
     }
 }
 
