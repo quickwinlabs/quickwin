@@ -47,7 +47,6 @@ jobs:
             ${{ matrix.arch }}-cmake
             ${{ matrix.arch }}-brotli
             ${{ matrix.arch }}-libffi
-            upx
 
       - name: Build WAMR
         if: steps.cache-exe.outputs.cache-hit != 'true'
@@ -57,7 +56,7 @@ jobs:
       - name: Build exe
         if: steps.cache-exe.outputs.cache-hit != 'true'
         shell: msys2 {0}
-        run: make minimal
+        run: make small
         env:
           MSYS2_PREFIX: C:/msys64/${{ matrix.msystem == 'UCRT64' && 'ucrt64' || 'mingw64' }}
 
