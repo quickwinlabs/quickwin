@@ -94,7 +94,7 @@ export const suite = {
             assert('r.body exists', typeof r2.body === 'object' && r2.body !== null)
             assert('bodyUsed false before read', r2.bodyUsed === false)
 
-            const reader = r2.body.getReader()
+            const reader = r2.body!.getReader()
             let total = 0
             while (true) {
                 const { done, value } = await reader.read()
@@ -183,9 +183,10 @@ export const suite = {
         t.section('stream cancel')
         const r7 = await safeFetch(BASE + '/any')
         if (r7) {
-            r7.body.cancel()
+            r7.body!.cancel()
             assert('cancel() succeeds', true)
-            const reader = r7.body.getReader()
+            // After cancel: buffered chunks still readable, then done
+            const reader = r7.body!.getReader()
             let finalDone = false
             while (true) {
                 const { done } = await reader.read()

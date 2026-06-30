@@ -9,10 +9,10 @@ const clearTimeout = os.clearTimeout
 
 interface RequestOptions {
     method?: string
-    headers?: { [key: string]: string }
+    headers?: HeadersInit
     body?: string
     timeout?: number
-    redirect?: 'follow' | 'manual' | 'error'
+    redirect?: RequestRedirect
     maxRedirects?: number
 }
 
@@ -78,7 +78,19 @@ type ReadResult =
 
 type PendingRead = { resolve: (result: ReadResult) => void, reject: (err: Error) => void }
 
-class _QuickReadableStream {
+interface _Reader {
+    read(): Promise<ReadResult>
+    cancel(reason?: any): void
+    releaseLock(): void
+}
+
+interface _ReadableStream {
+    readonly locked: boolean
+    getReader(): _Reader
+    cancel(reason?: any): void
+}
+
+class _QuickReadableStream implements _ReadableStream {
     _chunks: Uint8Array[] = []
     _state: 'readable' | 'closed' | 'errored' = 'readable'
     _pendingRead: PendingRead | null = null
@@ -100,7 +112,7 @@ class _QuickReadableStream {
 
     get locked(): boolean { return this._locked }
 
-    getReader(): _QuickReader {
+    getReader(): _Reader {
         if (this._locked) throw new TypeError('ReadableStream is locked')
         this._locked = true
         return new _QuickReader(this)
@@ -174,7 +186,7 @@ class _QuickReadableStream {
     }
 }
 
-class _PreloadedStream {
+class _PreloadedStream implements _ReadableStream {
     _buffer: Uint8Array
     _offset: number = 0
     _state: 'readable' | 'closed' = 'readable'
@@ -187,7 +199,7 @@ class _PreloadedStream {
 
     get locked(): boolean { return this._locked }
 
-    getReader() {
+    getReader(): _Reader {
         if (this._locked) throw new TypeError('ReadableStream is locked')
         this._locked = true
         const stream = this
@@ -260,10 +272,14 @@ class _QuickReader {
 class FetchHeaders {
     private _headers: { [key: string]: string } = {}
 
-    constructor(init?: { [key: string]: string } | FetchHeaders) {
+    constructor(init?: HeadersInit) {
         if (init) {
             if (init instanceof FetchHeaders) {
                 this._headers = { ...init._headers }
+            } else if (Array.isArray(init)) {
+                for (const [key, val] of init) {
+                    this._headers[key.toLowerCase()] = val
+                }
             } else if (typeof init === 'object') {
                 for (const key in init) {
                     this._headers[key.toLowerCase()] = init[key]
@@ -308,11 +324,11 @@ class FetchHeaders {
         for (const key in this._headers) {
             entries.push([key, this._headers[key]])
         }
-        return entries[Symbol.iterator]() as IterableIterator<[string, string]>
+        return entries[Symbol.iterator]()
     }
 
     keys(): IterableIterator<string> {
-        return Object.keys(this._headers)[Symbol.iterator]() as IterableIterator<string>
+        return Object.keys(this._headers)[Symbol.iterator]()
     }
 
     values(): IterableIterator<string> {
@@ -320,7 +336,7 @@ class FetchHeaders {
         for (const key in this._headers) {
             values.push(this._headers[key])
         }
-        return values[Symbol.iterator]() as IterableIterator<string>
+        return values[Symbol.iterator]()
     }
 
     [Symbol.iterator](): IterableIterator<[string, string]> {
@@ -335,16 +351,27 @@ class FetchRequest {
     readonly method: string
     readonly headers: FetchHeaders
     readonly body: string | null
-    readonly redirect: 'follow' | 'manual' | 'error'
+    readonly redirect: RequestRedirect
     readonly timeout: number
     readonly maxRedirects: number
+    readonly bodyUsed: boolean = false
+    readonly integrity: string = ''
+    readonly keepalive: boolean = false
+    readonly mode: string = 'cors'
+    readonly cache: string = 'default'
+    readonly credentials: string = 'same-origin'
+    readonly referrer: string = 'about:client'
+    readonly referrerPolicy: string = ''
+    readonly signal: AbortSignal | null = null
+    readonly destination: string = ''
 
     constructor(input: string | FetchRequest, init: RequestInit = {}) {
+        const bodyStr = typeof init.body === 'string' ? init.body : undefined
         if (input instanceof FetchRequest) {
             this.url = input.url
             this.method = init.method || input.method
             this.headers = new FetchHeaders(init.headers || input.headers)
-            this.body = init.body !== undefined ? init.body : input.body
+            this.body = bodyStr !== undefined ? bodyStr : input.body
             this.redirect = init.redirect || input.redirect
             this.timeout = init.timeout || input.timeout
             this.maxRedirects = init.maxRedirects || input.maxRedirects
@@ -352,11 +379,44 @@ class FetchRequest {
             this.url = input
             this.method = init.method || 'GET'
             this.headers = new FetchHeaders(init.headers)
-            this.body = init.body || null
+            this.body = bodyStr || null
             this.redirect = init.redirect || 'follow'
             this.timeout = init.timeout || 30000
             this.maxRedirects = init.maxRedirects || 5
         }
+    }
+
+    async arrayBuffer(): Promise<ArrayBuffer> {
+        if (this.body === null) return new ArrayBuffer(0)
+        return new TextEncoder().encode(this.body).buffer as ArrayBuffer
+    }
+
+    async blob(): Promise<Blob> {
+        throw new TypeError('Blob not supported')
+    }
+
+    async formData(): Promise<FormData> {
+        throw new TypeError('FormData not supported')
+    }
+
+    async json(): Promise<any> {
+        if (this.body === null) throw new TypeError('Body is null')
+        return JSON.parse(this.body)
+    }
+
+    async text(): Promise<string> {
+        return this.body || ''
+    }
+
+    clone(): FetchRequest {
+        return new FetchRequest(this.url, {
+            method: this.method,
+            headers: this.headers,
+            body: this.body || undefined,
+            redirect: this.redirect,
+            timeout: this.timeout,
+            maxRedirects: this.maxRedirects,
+        })
     }
 }
 
@@ -365,12 +425,12 @@ class FetchRequest {
 class FetchResponse {
     readonly status: number
     readonly statusText: string
-    readonly headers: FetchHeaders
+    headers: FetchHeaders
     readonly ok: boolean
     redirected: boolean
-    type: string
+    type: ResponseType
     url: string
-    body: _QuickReadableStream
+    body: _ReadableStream
     private _bodyConsumed: boolean = false
     _preloadedBody: ArrayBuffer | null = null
 
@@ -378,7 +438,7 @@ class FetchResponse {
         return this._bodyConsumed || this.body.locked
     }
 
-    constructor(status: number, statusText: string, headers: FetchHeaders, bodyStream: _QuickReadableStream) {
+    constructor(status: number, statusText: string, headers: FetchHeaders, bodyStream: _ReadableStream) {
         this.status = status
         this.statusText = statusText
         this.headers = headers
@@ -412,6 +472,14 @@ class FetchResponse {
         return JSON.parse(text)
     }
 
+    async blob(): Promise<Blob> {
+        throw new TypeError('Blob not supported')
+    }
+
+    async formData(): Promise<FormData> {
+        throw new TypeError('FormData not supported')
+    }
+
     async arrayBuffer(): Promise<ArrayBuffer> {
         if (this._preloadedBody) {
             if (this._bodyConsumed) throw new TypeError('Body already used')
@@ -429,6 +497,14 @@ class FetchResponse {
         }
         const combined = _concat(chunks)
         return combined.buffer as ArrayBuffer
+    }
+
+    /** Replace body/headers after brotli decompression. */
+    _applyDecompressedBody(stream: _ReadableStream, body: ArrayBuffer, newHeaders: FetchHeaders): void {
+        this._preloadedBody = body
+        this._bodyConsumed = false
+        this.body = stream
+        this.headers = newHeaders
     }
 }
 
@@ -726,29 +802,58 @@ function headersToObj(headers: FetchHeaders): { [key: string]: string } {
     return obj
 }
 
+function normalizeHeaders(headers: HeadersInit | undefined): Record<string, string> {
+    if (!headers) return {}
+    if (headers instanceof FetchHeaders) return headersToObj(headers)
+    if (Array.isArray(headers)) {
+        const obj: Record<string, string> = {}
+        for (const [key, val] of headers) obj[key.toLowerCase()] = val
+        return obj
+    }
+    return headers as Record<string, string>
+}
+
 function parseMaxAge(cc: string): number {
     const m = cc.match(/max-age=(\d+)/)
     return m ? parseInt(m[1], 10) : 0
+}
+
+interface CacheMeta {
+    storedAt: number;
+    maxAge: number;
+    status: number;
+    statusText: string;
+    headers: Record<string, string>;
+    etag?: string;
+    lastModified?: string;
 }
 
 async function fetch(url: string | Request, init: RequestInit = {}): Promise<FetchResponse> {
     // Normalize: if first arg is a Request, unwrap it
     let currentUrl: string
     let options: RequestOptions
+    const bodyStr = typeof init.body === 'string' ? init.body : undefined
     if (url instanceof FetchRequest) {
         const req = url
         currentUrl = req.url
         options = {
             method: init.method || req.method,
             headers: init.headers || headersToObj(req.headers),
-            body: init.body !== undefined ? init.body : req.body || undefined,
+            body: bodyStr !== undefined ? bodyStr : req.body || undefined,
             timeout: init.timeout || req.timeout,
             redirect: init.redirect || req.redirect,
             maxRedirects: init.maxRedirects || req.maxRedirects,
         }
     } else {
         currentUrl = url as string
-        options = init as RequestOptions
+        options = {
+            method: init.method,
+            headers: init.headers,
+            body: bodyStr,
+            timeout: init.timeout,
+            redirect: init.redirect,
+            maxRedirects: init.maxRedirects,
+        }
     }
 
     const redirectMode = options.redirect || 'follow'
@@ -758,13 +863,13 @@ async function fetch(url: string | Request, init: RequestInit = {}): Promise<Fet
     const cache = typeof __httpCache__ !== 'undefined' ? __httpCache__ : null
 
     // ── Cache lookup (GET only) ──
-    let cachedMeta: any = null
+    let cachedMeta: CacheMeta | null = null
     let conditionalHeaders: { [key: string]: string } = {}
 
     if (cache && method === 'GET') {
         const metaStr = cache.readMeta(currentUrl)
         if (metaStr) {
-            cachedMeta = JSON.parse(metaStr)
+            cachedMeta = JSON.parse(metaStr) as CacheMeta
             const age = Math.floor(Date.now() / 1000) - cachedMeta.storedAt
             if (cachedMeta.maxAge > 0 && age < cachedMeta.maxAge) {
                 const body = cache.readBody(currentUrl)
@@ -772,7 +877,7 @@ async function fetch(url: string | Request, init: RequestInit = {}): Promise<Fet
                     const resp = new FetchResponse(
                         cachedMeta.status, cachedMeta.statusText,
                         new FetchHeaders(cachedMeta.headers || {}),
-                        new _PreloadedStream(body) as any
+                        new _PreloadedStream(body)
                     )
                     resp.url = currentUrl
                     resp._preloadedBody = body
@@ -786,7 +891,7 @@ async function fetch(url: string | Request, init: RequestInit = {}): Promise<Fet
 
     while (true) {
         const mergedOptions: RequestOptions = { ...options }
-        const mergedHeaders = { ...(options.headers || {}) }
+        const mergedHeaders = normalizeHeaders(options.headers)
         for (const key in conditionalHeaders) {
             mergedHeaders[key] = conditionalHeaders[key]
         }
@@ -807,11 +912,8 @@ async function fetch(url: string | Request, init: RequestInit = {}): Promise<Fet
                 if (k !== 'content-encoding') newHeaders.set(k, v)
             })
             newHeaders.set('content-length', String(decompressedBody.byteLength))
-            const stream = new _PreloadedStream(decompressedBody) as any
-            ;(response as any)._preloadedBody = decompressedBody
-            ;(response as any)._bodyConsumed = false
-            ;(response as any).body = stream
-            ;(response as any).headers = newHeaders
+            const stream = new _PreloadedStream(decompressedBody)
+            response._applyDecompressedBody(stream, decompressedBody, newHeaders)
         }
 
         // ── Handle 304 Not Modified ──
@@ -826,7 +928,7 @@ async function fetch(url: string | Request, init: RequestInit = {}): Promise<Fet
                 const resp = new FetchResponse(
                     cachedMeta.status, cachedMeta.statusText,
                     new FetchHeaders(cachedMeta.headers),
-                    new _PreloadedStream(body) as any
+                    new _PreloadedStream(body)
                 )
                 resp.url = currentUrl
                 resp._preloadedBody = body
@@ -854,7 +956,7 @@ async function fetch(url: string | Request, init: RequestInit = {}): Promise<Fet
             }
             const resp = new FetchResponse(
                 response.status, response.statusText,
-                response.headers, new _PreloadedStream(body) as any
+                response.headers, new _PreloadedStream(body)
             )
             resp.url = currentUrl
             resp._preloadedBody = body
@@ -903,6 +1005,41 @@ async function fetch(url: string | Request, init: RequestInit = {}): Promise<Fet
 // These are available to files that import './lib/fetch.js'
 
 declare global {
+    type HeadersInit = [string, string][] | Record<string, string> | Headers
+    type BodyInit = ReadableStream | string | ArrayBuffer | ArrayBufferView
+    type RequestRedirect = 'error' | 'follow' | 'manual'
+    type RequestCache = 'default' | 'force-cache' | 'no-cache' | 'no-store' | 'only-if-cached' | 'reload'
+    type RequestCredentials = 'include' | 'omit' | 'same-origin'
+    type RequestMode = 'cors' | 'navigate' | 'no-cors' | 'same-origin'
+    type ResponseType = 'basic' | 'cors' | 'default' | 'error' | 'opaque' | 'opaqueredirect'
+
+    interface AbortSignal {
+        readonly aborted: boolean;
+        readonly reason: any;
+        onabort: ((event: Event) => void) | null;
+        throwIfAborted(): void;
+    }
+
+    interface RequestInit {
+        body?: BodyInit | null;
+        cache?: RequestCache;
+        credentials?: RequestCredentials;
+        headers?: HeadersInit;
+        integrity?: string;
+        keepalive?: boolean;
+        method?: string;
+        mode?: RequestMode;
+        redirect?: RequestRedirect;
+        referrer?: string;
+        referrerPolicy?: string;
+        signal?: AbortSignal | null;
+        window?: null;
+        /** QuickWin extension: request timeout in ms (default 30000) */
+        timeout?: number;
+        /** QuickWin extension: max redirect count (default 5) */
+        maxRedirects?: number;
+    }
+
     interface Headers {
         append(name: string, value: string): void;
         delete(name: string): void;
@@ -923,13 +1060,15 @@ declare global {
         readonly headers: Headers;
         readonly ok: boolean;
         readonly redirected: boolean;
-        readonly type: string;
+        readonly type: ResponseType;
         readonly url: string;
-        readonly body: ReadableStream;
+        readonly body: ReadableStream | null;
         readonly bodyUsed: boolean;
-        text(): Promise<string>;
-        json(): Promise<any>;
         arrayBuffer(): Promise<ArrayBuffer>;
+        blob(): Promise<Blob>;
+        formData(): Promise<FormData>;
+        json(): Promise<any>;
+        text(): Promise<string>;
     }
     var Response: typeof FetchResponse;
 
@@ -938,7 +1077,23 @@ declare global {
         readonly method: string;
         readonly headers: Headers;
         readonly body: string | null;
-        readonly redirect: 'follow' | 'manual' | 'error';
+        readonly bodyUsed: boolean;
+        readonly redirect: RequestRedirect;
+        readonly integrity: string;
+        readonly keepalive: boolean;
+        readonly mode: string;
+        readonly cache: string;
+        readonly credentials: string;
+        readonly referrer: string;
+        readonly referrerPolicy: string;
+        readonly signal: AbortSignal | null;
+        readonly destination: string;
+        arrayBuffer(): Promise<ArrayBuffer>;
+        blob(): Promise<Blob>;
+        formData(): Promise<FormData>;
+        json(): Promise<any>;
+        text(): Promise<string>;
+        clone(): Request;
     }
     var Request: typeof FetchRequest;
 

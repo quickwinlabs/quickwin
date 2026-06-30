@@ -15,18 +15,6 @@ interface Console {
     log: (...args: any) => void
 }
 
-interface HeadersInit {
-    [name: string]: string;
-}
-
-interface RequestInit {
-    method?: string;
-    headers?: HeadersInit;
-    body?: string;
-    timeout?: number;
-    redirect?: 'follow' | 'manual' | 'error';
-    maxRedirects?: number;
-}
 
 declare namespace WebAssembly {
     interface Module { }
