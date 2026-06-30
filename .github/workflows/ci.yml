@@ -117,7 +117,12 @@ jobs:
         run: make js wasm
 
       - name: Run tests
-        run: _build/win.exe _build/test/run.js
+        run: |
+          node --experimental-strip-types tools/serve_test.ts 18923 & SERVER_PID=$!
+          _build/win.exe _build/test/run.js
+          rc=$?
+          kill $SERVER_PID 2>/dev/null
+          exit $rc
 
       # ─── publish steps (仅 main) ───
 
