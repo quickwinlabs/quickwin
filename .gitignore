@@ -16,6 +16,7 @@ wamr/build/
 wolfssl/build/
 wolfssl/lib/
 temp/
+_cache/
 ./quickjs
 !vendor/mupdf-wasm/**
 vendor/mupdf-wasm/mupdf-wasm.wat

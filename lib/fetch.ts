@@ -27,10 +27,9 @@ function _concat(parts: Uint8Array[]): Uint8Array {
 }
 
 function _hasChunkedEnd(data: Uint8Array): boolean {
-    for (let i = data.length - 7; i >= 0; i--) {
-        if (data[i] === 0x0D && data[i+1] === 0x0A && data[i+2] === 0x30 && data[i+3] === 0x0D && data[i+4] === 0x0A && data[i+5] === 0x0D && data[i+6] === 0x0A) return true
-    }
-    return false
+    if (data.length < 7) return false
+    let i = data.length - 7
+    return data[i] === 0x0D && data[i+1] === 0x0A && data[i+2] === 0x30 && data[i+3] === 0x0D && data[i+4] === 0x0A && data[i+5] === 0x0D && data[i+6] === 0x0A
 }
 
 function decodeChunked(data: Uint8Array): Uint8Array {
