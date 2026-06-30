@@ -486,9 +486,10 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
         const isHTTPS = parsedUrl.protocol === 'https:'
 
         const defaultPort = isHTTPS ? 443 : 80
+        const hostname = parsedUrl.hostname.includes(':') ? `[${parsedUrl.hostname}]` : parsedUrl.hostname
         const hostHeader = parsedUrl.port && parsedUrl.port !== String(defaultPort)
-            ? parsedUrl.hostname + ':' + parsedUrl.port
-            : parsedUrl.hostname
+            ? hostname + ':' + parsedUrl.port
+            : hostname
         if (!headers.has('host')) headers.set('Host', hostHeader)
         if (!headers.has('user-agent')) headers.set('User-Agent', 'QuickJS/1.0')
         if (!headers.has('connection')) headers.set('Connection', 'close')
@@ -565,8 +566,7 @@ function fetchRequest(parsedUrl: { protocol: string; hostname: string; port: str
                     ssl = wolfssl.wolfSSL_new(ctx)
                     if (!ssl) { doReject(new Error('SSL_new failed')); return }
                     wolfssl.wolfSSL_set_fd(ssl, sock.get_fd(fd))
-                    const sniHost = headers.get('host') || parsedUrl.hostname
-                    if (sniHost) wolfssl.wolfSSL_UseSNI(ssl, wolfssl.SniType.WOLFSSL_SNI_HOST_NAME, sniHost)
+                    if (parsedUrl.hostname) wolfssl.wolfSSL_UseSNI(ssl, wolfssl.SniType.WOLFSSL_SNI_HOST_NAME, parsedUrl.hostname)
                     state = ST_HANDSHAKE
                 } else {
                     sock.send(fd, httpRequest)

@@ -543,7 +543,7 @@ class URLImpl {
         if (this._hostname || (special.includes(this._scheme) && this._pathname.startsWith('/'))) {
             s += '//'
             if (this._username) { s += _encode(this._username); if (this._password) s += ':' + _encode(this._password); s += '@' }
-            s += this._hostname
+            s += this._hostname.includes(':') ? '[' + this._hostname + ']' : this._hostname
             if (this._port) s += ':' + this._port
         }
         s += this._pathname

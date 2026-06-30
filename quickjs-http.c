@@ -540,11 +540,17 @@ char* http_get_sync(const char* url) {
     }
 
     int default_port = is_https ? 443 : 80;
+    char hostBracket[520];
     char host_header[512];
+    const char *h = host;
+    if (strchr(host, ':')) {
+        snprintf(hostBracket, sizeof(hostBracket), "[%s]", host);
+        h = hostBracket;
+    }
     if (port != default_port)
-        snprintf(host_header, sizeof(host_header), "%s:%d", host, port);
+        snprintf(host_header, sizeof(host_header), "%s:%d", h, port);
     else
-        snprintf(host_header, sizeof(host_header), "%s", host);
+        snprintf(host_header, sizeof(host_header), "%s", h);
 
     char request[2048];
     snprintf(request, sizeof(request),
@@ -707,14 +713,20 @@ char* js_module_normalize_name(JSContext *ctx,
         }
     }
 
-    char *result = js_malloc(ctx, 256 + sizeof(new_path));
+    char result_host[256];
+    const char *h2 = hbase;
+    if (strchr(hbase, ':')) {
+        snprintf(result_host, sizeof(result_host), "[%s]", hbase);
+        h2 = result_host;
+    }
+    char *result = js_malloc(ctx, 512 + sizeof(new_path));
     if (!result)
         return NULL;
 
     if (port == 80) {
-        snprintf(result, 256 + sizeof(new_path), "%s://%s%s", scheme, hbase, new_path);
+        snprintf(result, 512 + sizeof(new_path), "%s://%s%s", scheme, h2, new_path);
     } else {
-        snprintf(result, 256 + sizeof(new_path), "%s://%s:%d%s", scheme, hbase, port, new_path);
+        snprintf(result, 512 + sizeof(new_path), "%s://%s:%d%s", scheme, h2, port, new_path);
     }
 
     return result;

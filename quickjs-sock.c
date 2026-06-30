@@ -1,4 +1,5 @@
 #include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -277,20 +278,49 @@ static JSValue js_connect(JSContext *ctx, JSValueConst this_val, int argc, JSVal
         return JS_ThrowTypeError(ctx, "port required");
     }
 
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = inet_addr(host);
+    int is_ipv6 = (strchr(host, ':') != NULL);
+    SOCKET fd = sock->fd;
+    int ret;
 
-    if (addr.sin_addr.s_addr == INADDR_NONE) {
+    if (is_ipv6) {
+        struct sockaddr_in6 addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sin6_family = AF_INET6;
+        addr.sin6_port = htons(port);
+        if (inet_pton(AF_INET6, host, &addr.sin6_addr) != 1) {
+            JS_FreeCString(ctx, host);
+            return JS_NewInt32(ctx, -1);
+        }
         JS_FreeCString(ctx, host);
-        return JS_NewInt32(ctx, -1);
+
+        /* Need an AF_INET6 socket — recreate if necessary */
+        if (fd != INVALID_SOCKET) {
+            (void)closesocket(fd);
+            fd = socket(AF_INET6, SOCK_STREAM, 0);
+            if (fd == INVALID_SOCKET)
+                return JS_NewInt32(ctx, -1);
+            u_long mode = 1;
+            ioctlsocket(fd, FIONBIO, &mode);
+            WSAEventSelect(fd, sock->event, FD_READ | FD_WRITE | FD_CONNECT | FD_CLOSE);
+            sock->fd = (int)fd;
+        }
+
+        ret = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
+    } else {
+        struct sockaddr_in addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(port);
+        addr.sin_addr.s_addr = inet_addr(host);
+
+        if (addr.sin_addr.s_addr == INADDR_NONE) {
+            JS_FreeCString(ctx, host);
+            return JS_NewInt32(ctx, -1);
+        }
+
+        JS_FreeCString(ctx, host);
+        ret = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
     }
-
-    JS_FreeCString(ctx, host);
-
-    int ret = connect(sock->fd, (struct sockaddr*)&addr, sizeof(addr));
 
     if (ret == 0)
         return JS_NewInt32(ctx, 0);
@@ -418,14 +448,39 @@ static JSValue js_resolve(JSContext *ctx, JSValueConst this_val, int argc, JSVal
     if (!hostname)
         return JS_NULL;
 
-    struct hostent *he = gethostbyname(hostname);
+    struct addrinfo hints, *res;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    int gai_err = getaddrinfo(hostname, NULL, &hints, &res);
     JS_FreeCString(ctx, hostname);
 
-    if (!he)
+    if (gai_err != 0 || !res)
         return JS_NULL;
 
-    char *ip = inet_ntoa(*(struct in_addr*)he->h_addr_list[0]);
-    if (!ip)
+    char ip[INET6_ADDRSTRLEN];
+    const char *ip_str = NULL;
+    struct addrinfo *ipv6 = NULL;
+
+    for (struct addrinfo *rp = res; rp; rp = rp->ai_next) {
+        if (rp->ai_family == AF_INET) {
+            struct sockaddr_in *sin = (struct sockaddr_in *)rp->ai_addr;
+            ip_str = inet_ntop(AF_INET, &sin->sin_addr, ip, sizeof(ip));
+            break;
+        }
+        if (rp->ai_family == AF_INET6 && !ipv6)
+            ipv6 = rp;
+    }
+
+    if (!ip_str && ipv6) {
+        struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)ipv6->ai_addr;
+        ip_str = inet_ntop(AF_INET6, &sin6->sin6_addr, ip, sizeof(ip));
+    }
+
+    freeaddrinfo(res);
+
+    if (!ip_str)
         return JS_NULL;
 
     return JS_NewString(ctx, ip);

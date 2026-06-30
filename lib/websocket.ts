@@ -251,6 +251,7 @@ class WebSocket {
             return
         }
         const host = url.hostname
+        const hostHeader = host.includes(':') ? `[${host}]` : host
         const isWSS = url.protocol === 'wss:'
         const port = url.port ? parseInt(url.port, 10) : (isWSS ? 443 : 80)
         const path = url.pathname + (url.search || '')
@@ -268,7 +269,7 @@ class WebSocket {
 
         const request = (
             'GET ' + path + ' HTTP/1.1\r\n' +
-            'Host: ' + host + ':' + port + '\r\n' +
+            'Host: ' + hostHeader + ':' + port + '\r\n' +
             'Upgrade: websocket\r\n' +
             'Connection: Upgrade\r\n' +
             'Sec-WebSocket-Key: ' + requestKey + '\r\n' +
