@@ -15,6 +15,7 @@ const RESET = '\x1b[0m'
 
 const suiteDefs = [
     { name: 'basic',             file: './test_basic.js',            tags: [] },
+    { name: 'basic-fetch',       file: './test_basic_fetch.js',       tags: [] },
     { name: 'url',               file: './test_url.js',              tags: [] },
     { name: 'wasm-basic',        file: './test_wasm_basic.js',       tags: ['wasm'] },
     { name: 'wasm-types',        file: './test_wasm_types.js',       tags: ['wasm'] },

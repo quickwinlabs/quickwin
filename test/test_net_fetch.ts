@@ -17,32 +17,34 @@ export const suite = {
                 return null;
             }
         }
+        const BASE = 'http://localhost:18923'
+
         // ── Plain HTTP GET (regression: slot 0 + !s bug) ──
         t.section('plain HTTP')
-        const r0 = await safeFetch('http://example.com/', { timeout: 5000 })
+        const r0 = await safeFetch(BASE + '/', { timeout: 5000 })
         if (r0) {
             assert('plain HTTP status 200', r0.status === 200)
             const body = await r0.text()
             assert('plain HTTP body non-empty', body.length > 0)
-            assert('plain HTTP has html', body.includes('<html') || body.includes('<!doctype'))
+            assert('plain HTTP body matches', body === 'hello from test server')
         } else {
             assert('plain HTTP endpoint reachable', false)
         }
 
         // ── Basic HTTP GET ──
         t.section('HTTP GET')
-        const r1 = await safeFetch('https://httpbun.com/any')
+        const r1 = await safeFetch(BASE + '/any')
         if (r1) {
             assert('status received', r1.status > 0)
             const body = await r1.text()
             assert('body received', body.length > 0)
         } else {
-            assert('httpbun.com reachable', false)
+            assert('local server reachable', false)
         }
 
         // ── Query string ──
         t.section('query string')
-        const rq = await safeFetch('https://httpbun.com/any?foo=bar&baz=42')
+        const rq = await safeFetch(BASE + '/any?foo=bar&baz=42')
         if (rq) {
             const body = JSON.parse(await rq.text())
             assert('query args received', body.args !== undefined)
@@ -68,19 +70,18 @@ export const suite = {
         }
         {
             const r2 = new Request('https://httpbun.com/any')
-            // clone with override
             const r3 = new Request(r2, { method: 'PUT' })
             assert('Request clone same url', r3.url === r2.url)
             assert('Request clone override method', r3.method === 'PUT')
         }
         {
-            const r = await safeFetch(new Request('https://httpbun.com/any', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: 'req-class' }))
+            const r = await safeFetch(new Request(BASE + '/any', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: 'req-class' }))
             if (r) {
                 const body = JSON.parse(await r.text())
                 assert('fetch(Request) status', r.status > 0)
                 assert('fetch(Request) method POST', body.method === 'POST')
                 assert('fetch(Request) body received', body.data === 'req-class')
-                assert('fetch(Request) content-type', body.headers['Content-Type'] === 'text/plain')
+                assert('fetch(Request) content-type', body.headers['content-type'] === 'text/plain')
             } else {
                 assert('fetch(Request) endpoint reachable', false)
             }
@@ -88,7 +89,7 @@ export const suite = {
 
         // ── body / bodyUsed / stream ──
         t.section('body / bodyUsed / stream')
-        const r2 = await safeFetch('https://httpbun.com/any')
+        const r2 = await safeFetch(BASE + '/any')
         if (r2) {
             assert('r.body exists', typeof r2.body === 'object' && r2.body !== null)
             assert('bodyUsed false before read', r2.bodyUsed === false)
@@ -108,13 +109,13 @@ export const suite = {
 
         // ── text/json/arrayBuffer ──
         t.section('text / json / arrayBuffer')
-        const r3 = await safeFetch('https://httpbun.com/any')
+        const r3 = await safeFetch(BASE + '/any')
         if (r3) {
             const text = await r3.text()
             assert('text() returns string', typeof text === 'string' && text.length > 0)
             assert('bodyUsed true after text()', r3.bodyUsed === true)
 
-            const r4 = await safeFetch('https://httpbun.com/any')
+            const r4 = await safeFetch(BASE + '/any')
             if (r4) {
                 const buf = await r4.arrayBuffer()
                 assert('arrayBuffer() returns bytes', buf.byteLength > 0)
@@ -125,7 +126,7 @@ export const suite = {
 
         // double text() throws
         t.section('bodyUsed throws')
-        const r5 = await safeFetch('https://httpbun.com/any')
+        const r5 = await safeFetch(BASE + '/any')
         if (r5) {
             await r5.text()
             try { await r5.text(); assert('double text() throws', false) }
@@ -134,7 +135,7 @@ export const suite = {
 
         // ── POST ──
         t.section('POST')
-        const r6 = await safeFetch('https://httpbun.com/any', {
+        const r6 = await safeFetch(BASE + '/any', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ msg: 'hello' })
@@ -169,24 +170,22 @@ export const suite = {
 
         // ── Chunked Transfer-Encoding ──
         t.section('chunked transfer encoding')
-        const r8 = await safeFetch('https://catfact.ninja/fact')
+        const r8 = await safeFetch(BASE + '/anything')
         if (r8) {
             assert('chunked status 200', r8.status === 200)
             const body = await r8.json()
-            assert('chunked json has fact', typeof body.fact === 'string' && body.fact.length > 0)
+            assert('chunked json has url', typeof body.url === 'string' && body.url.length > 0)
         } else {
-            assert('catfact.ninja reachable', false)
+            assert('local server reachable', false)
         }
 
         // ── stream cancel ──
         t.section('stream cancel')
-        const r7 = await safeFetch('https://httpbun.com/any')
+        const r7 = await safeFetch(BASE + '/any')
         if (r7) {
             r7.body.cancel()
             assert('cancel() succeeds', true)
-            // After cancel: buffered chunks still readable, then done
             const reader = r7.body.getReader()
-            // After cancel: buffered chunks still readable, then done
             let finalDone = false
             while (true) {
                 const { done } = await reader.read()
@@ -199,19 +198,19 @@ export const suite = {
 
         // ── UTF-8 Chinese text body ──
         t.section('utf-8 chinese text')
-        const r9 = await safeFetch('https://httpbun.com/base64/5Lit5paH')
+        const r9 = await safeFetch(BASE + '/base64/5Lit5paH')
         if (r9) {
             assert('chinese status 200', r9.status === 200)
             const body = await r9.text()
             assert('chinese body is 中文', body === '\u4e2d\u6587')
             assert('chinese body length=2', body.length === 2)
         } else {
-            assert('httpbun.com reachable', false)
+            assert('local server reachable', false)
         }
 
         // ── POST with Chinese body ──
         t.section('post with chinese body')
-        const r10 = await safeFetch('https://httpbun.com/post', {
+        const r10 = await safeFetch(BASE + '/post', {
             method: 'POST',
             body: '\u4e2d\u6587',
             headers: { 'Content-Type': 'text/plain; charset=utf-8' }
@@ -221,7 +220,18 @@ export const suite = {
             const body = await r10.text()
             assert('post body contains 中文', body.includes('\u4e2d\u6587'))
         } else {
-            assert('httpbun.com reachable', false)
+            assert('local server reachable', false)
+        }
+
+        // ── HTTPS fetch ──
+        t.section('HTTPS fetch')
+        const r11 = await safeFetch('https://localhost:18924/', { timeout: 5000 })
+        if (r11) {
+            assert('https status 200', r11.status === 200)
+            const body = await r11.text()
+            assert('https body matches', body === 'hello from test server')
+        } else {
+            assert('https endpoint reachable', false)
         }
     }
 }

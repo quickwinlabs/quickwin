@@ -272,7 +272,7 @@ js:
 	@echo "TypeScript compilation complete"
 
 test: nodebug js wasm
-	$(TARGET) $(BUILD_DIR)/test/run.js $(TEST)
+	node --experimental-strip-types tools/serve_test.ts 18923 & SERVER_PID=$$!; $(TARGET) $(BUILD_DIR)/test/run.js $(TEST); rc=$$?; kill $$SERVER_PID 2>/dev/null; exit $$rc
 
 npm-pkg: js wasm
 	rm -rf $(NPM_PKG_DIR)

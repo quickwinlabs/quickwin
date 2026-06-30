@@ -29,7 +29,7 @@ export const suite = {
         t.section('wss basic text message')
         const p1 = waitForTest()
         let opened = false, received = false, closed = false
-        const ws1 = new WebSocket("wss://ws.postman-echo.com/raw")
+        const ws1 = new WebSocket("ws://localhost:18923")
         ws1.onopen = () => { opened = true; ws1.send("Hello WebSocket!") }
         ws1.onmessage = () => { received = true; ws1.close(1000, "done") }
         ws1.onclose = (e) => {
@@ -48,7 +48,7 @@ export const suite = {
         // ── binary send ──
         t.section('binary message (ArrayBuffer)')
         const pBin = waitForTest()
-        const wsBin = new WebSocket("wss://ws.postman-echo.com/raw")
+        const wsBin = new WebSocket("ws://localhost:18923")
         let binClose = false
         wsBin.onopen = () => {
             const buf = new ArrayBuffer(5)
@@ -68,20 +68,20 @@ export const suite = {
         // ── extended length frame ──
         t.section('extended length frame (>65535 bytes)')
         const pExt = waitForTest()
-        const wsExt = new WebSocket("wss://ws.postman-echo.com/raw")
+        const wsExt = new WebSocket("ws://localhost:18923")
         let extClose = false
         wsExt.onopen = () => { wsExt.send("X".repeat(66000)) }
         wsExt.onmessage = () => { wsExt.close(1000, "done") }
         wsExt.onclose = () => { extClose = true; assert('extended frame sent', true); finishTest(pExt.id) }
         wsExt.onerror = () => { assert('no error', false); finishTest(pExt.id) }
-        const timerExt = os.setTimeout(() => { if (!extClose) assert('extended frame timeout (server may drop)', true); finishTest(pExt.id) }, 60000)
+        const timerExt = os.setTimeout(() => { if (!extClose) assert('extended frame timeout', true); finishTest(pExt.id) }, 10000)
         await pExt.promise
         os.clearTimeout(timerExt)
 
         // ── large message ──
         t.section('large message (>125 bytes)')
         const p2 = waitForTest()
-        const ws2 = new WebSocket("wss://ws.postman-echo.com/raw")
+        const ws2 = new WebSocket("ws://localhost:18923")
         let largeOk = false, closed2 = false
         const largeStr = "A".repeat(1000)
         ws2.onopen = () => { ws2.send(largeStr) }
@@ -95,7 +95,7 @@ export const suite = {
         // ── multiple messages ──
         t.section('multiple messages')
         const p3 = waitForTest()
-        const ws3 = new WebSocket("wss://ws.postman-echo.com/raw")
+        const ws3 = new WebSocket("ws://localhost:18923")
         let count = 0, closed3 = false
         ws3.onopen = () => { ws3.send("a"); ws3.send("b"); ws3.send("c") }
         ws3.onmessage = () => { count++; if (count === 3) ws3.close(1000, "done") }
@@ -130,7 +130,7 @@ export const suite = {
         // ── early send/close ──
         t.section('send/close before onopen')
         const p6 = waitForTest()
-        const ws6 = new WebSocket("wss://ws.postman-echo.com/raw")
+        const ws6 = new WebSocket("ws://localhost:18923")
         ws6.send("noop")
         ws6.close(1000, "early")
         let close6 = false
@@ -140,5 +140,25 @@ export const suite = {
         const timer6 = os.setTimeout(() => { if (!close6) assert('no crash', true); finishTest(p6.id) }, 5000)
         await p6.promise
         os.clearTimeout(timer6)
+
+        // ── WSS (Secure WebSocket) ──
+        t.section('wss basic text message')
+        const p7 = waitForTest()
+        let opened7 = false, received7 = false, closed7 = false
+        const ws7 = new WebSocket("wss://localhost:18924")
+        ws7.onopen = () => { opened7 = true; ws7.send("Hello WSS!") }
+        ws7.onmessage = () => { received7 = true; ws7.close(1000, "done") }
+        ws7.onclose = (e) => {
+            closed7 = true
+            assert('wss onopen fired', opened7)
+            assert('wss onmessage received', received7)
+            assert('wss close code=1000', e.code === 1000)
+            assert('wss wasClean', e.wasClean)
+            finishTest(p7.id)
+        }
+        ws7.onerror = () => { assert('wss no error', false); finishTest(p7.id) }
+        const timer7 = os.setTimeout(() => { if (!closed7) { assert('wss no timeout', false); finishTest(p7.id) } }, 10000)
+        await p7.promise
+        os.clearTimeout(timer7)
     }
 }

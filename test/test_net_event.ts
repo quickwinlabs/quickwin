@@ -17,22 +17,19 @@ export const suite = {
 
             var connected = false, gotData = false
 
-            const hostIP = sock.resolve("httpbin.org")
-            if (!hostIP) { t.fail++; reject(new Error('dns failed')); return }
-
             const timeoutId = os.setTimeout(() => {
                 if (!connected) {
                     sock.closesocket(s)
                     reject(new Error('connect timeout'))
                 }
-            }, 10000)
+            }, 5000)
 
             sock.set_on_event(s, (event: WSAEvent) => {
                 if (event.lNetworkEvents & sock.FdEvent.FD_CONNECT) {
                     if (event.iErrorCode[0] === 0) {
                         connected = true; t.ok++
                         os.clearTimeout(timeoutId)
-                        const req = "GET / HTTP/1.1\r\nHost: httpbin.org\r\nConnection: close\r\n\r\n"
+                        const req = "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
                         const buf = new ArrayBuffer(req.length)
                         const v = new Uint8Array(buf)
                         for (let i = 0; i < req.length; i++) v[i] = req.charCodeAt(i)
@@ -53,7 +50,7 @@ export const suite = {
                     else reject(new Error('test incomplete'))
                 }
             })
-            sock.connect(s, hostIP, 80)
+            sock.connect(s, '127.0.0.1', 18923)
         })
     }
 }
