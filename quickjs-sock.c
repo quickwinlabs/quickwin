@@ -454,31 +454,45 @@ static JSValue js_resolve(JSContext *ctx, JSValueConst this_val, int argc, JSVal
     hints.ai_socktype = SOCK_STREAM;
 
     int gai_err = getaddrinfo(hostname, NULL, &hints, &res);
-    JS_FreeCString(ctx, hostname);
-
-    if (gai_err != 0 || !res)
-        return JS_NULL;
 
     char ip[INET6_ADDRSTRLEN];
     const char *ip_str = NULL;
-    struct addrinfo *ipv6 = NULL;
 
-    for (struct addrinfo *rp = res; rp; rp = rp->ai_next) {
-        if (rp->ai_family == AF_INET) {
-            struct sockaddr_in *sin = (struct sockaddr_in *)rp->ai_addr;
-            ip_str = inet_ntop(AF_INET, &sin->sin_addr, ip, sizeof(ip));
-            break;
+    if (gai_err == 0 && res) {
+        struct addrinfo *ipv6 = NULL;
+
+        for (struct addrinfo *rp = res; rp; rp = rp->ai_next) {
+            if (rp->ai_family == AF_INET) {
+                struct sockaddr_in *sin = (struct sockaddr_in *)rp->ai_addr;
+                ip_str = inet_ntop(AF_INET, &sin->sin_addr, ip, sizeof(ip));
+                break;
+            }
+            if (rp->ai_family == AF_INET6 && !ipv6)
+                ipv6 = rp;
         }
-        if (rp->ai_family == AF_INET6 && !ipv6)
-            ipv6 = rp;
+
+        if (!ip_str && ipv6) {
+            struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)ipv6->ai_addr;
+            ip_str = inet_ntop(AF_INET6, &sin6->sin6_addr, ip, sizeof(ip));
+        }
+
+        freeaddrinfo(res);
     }
 
-    if (!ip_str && ipv6) {
-        struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)ipv6->ai_addr;
-        ip_str = inet_ntop(AF_INET6, &sin6->sin6_addr, ip, sizeof(ip));
+    /* Fallback: try numeric IP (v4 or v6) directly */
+    if (!ip_str) {
+        struct in_addr addr4;
+        if (inet_pton(AF_INET, hostname, &addr4) == 1) {
+            ip_str = inet_ntop(AF_INET, &addr4, ip, sizeof(ip));
+        } else {
+            struct in6_addr addr6;
+            if (inet_pton(AF_INET6, hostname, &addr6) == 1) {
+                ip_str = inet_ntop(AF_INET6, &addr6, ip, sizeof(ip));
+            }
+        }
     }
 
-    freeaddrinfo(res);
+    JS_FreeCString(ctx, hostname);
 
     if (!ip_str)
         return JS_NULL;

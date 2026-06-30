@@ -155,9 +155,9 @@ httpsServer.on('upgrade', (request, socket, head) => {
     })
 })
 
-server.listen(HTTP_PORT, '127.0.0.1', () => {
-    console.log(`test server listening on http://127.0.0.1:${HTTP_PORT}/`)
+server.listen({ port: HTTP_PORT, host: '::', ipv6Only: false }, () => {
+    console.log(`test server listening on port ${HTTP_PORT} (HTTP, dual-stack)`)
 })
-httpsServer.listen(HTTPS_PORT, '127.0.0.1', () => {
-    console.log(`test server listening on https://127.0.0.1:${HTTPS_PORT}/`)
+httpsServer.listen({ port: HTTPS_PORT, host: '::', ipv6Only: false }, () => {
+    console.log(`test server listening on port ${HTTPS_PORT} (HTTPS, dual-stack)`)
 })
