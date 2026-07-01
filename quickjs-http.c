@@ -465,7 +465,14 @@ static char* read_http_response(SOCKET sock, WOLFSSL* ssl, size_t* out_total) {
     char buffer[4096];
     int received;
 
-    while ((received = http_recv(sock, ssl, buffer, sizeof(buffer))) > 0) {
+    // Read until we have complete headers
+    while (1) {
+        if (total >= 4 && strstr(response, "\r\n\r\n"))
+            break;
+
+        received = http_recv(sock, ssl, buffer, sizeof(buffer));
+        if (received <= 0) { free(response); return NULL; }
+
         if (total + received > cap) {
             do { cap *= 2; } while (total + received > cap);
             char* new_resp = realloc(response, cap);
@@ -474,6 +481,79 @@ static char* read_http_response(SOCKET sock, WOLFSSL* ssl, size_t* out_total) {
         }
         memcpy(response + total, buffer, received);
         total += received;
+    }
+
+    size_t header_len = strstr(response, "\r\n\r\n") - response + 4;
+
+    // Determine transfer encoding
+    int chunked = is_chunked(response);
+
+    long content_length = -1;
+    const char* cl = strstr(response, "Content-Length:");
+    if (!cl) cl = strstr(response, "content-length:");
+    if (cl) {
+        cl += 15;
+        while (*cl == ' ') cl++;
+        content_length = atol(cl);
+    }
+
+    if (content_length >= 0) {
+        // Read exactly content_length bytes of body
+        while (total - header_len < (size_t)content_length) {
+            int want = (int)min(sizeof(buffer), (size_t)content_length - (total - header_len));
+            if (total + want > cap) {
+                do { cap *= 2; } while (total + want > cap);
+                char* new_resp = realloc(response, cap);
+                if (!new_resp) { free(response); return NULL; }
+                response = new_resp;
+            }
+            received = http_recv(sock, ssl, buffer, want);
+            if (received <= 0) break;
+            memcpy(response + total, buffer, received);
+            total += received;
+        }
+    } else if (chunked) {
+        // Read raw chunked body until terminator "0\r\n\r\n"
+        // The terminator is always the last 5 bytes of a valid chunked body.
+        // Search for "\r\n0\r\n\r\n" (7 bytes) after the body start
+        // which unambiguously marks the chunked body end.
+        const char* term_marker = "\r\n0\r\n\r\n";
+        const int term_len = 7;
+
+        while (1) {
+            // null-terminate at current position so strstr can search
+            char saved = response[total];
+            response[total] = '\0';
+            char* found = strstr(response + header_len, term_marker);
+            response[total] = saved;
+            if (found) {
+                total = (found - response) + term_len;
+                break;
+            }
+
+            received = http_recv(sock, ssl, buffer, sizeof(buffer));
+            if (received <= 0) break;
+            if (total + received > cap) {
+                do { cap *= 2; } while (total + received > cap);
+                char* new_resp = realloc(response, cap);
+                if (!new_resp) { free(response); return NULL; }
+                response = new_resp;
+            }
+            memcpy(response + total, buffer, received);
+            total += received;
+        }
+    } else {
+        // No Content-Length, not chunked — read until close (original behavior)
+        while ((received = http_recv(sock, ssl, buffer, sizeof(buffer))) > 0) {
+            if (total + received > cap) {
+                do { cap *= 2; } while (total + received > cap);
+                char* new_resp = realloc(response, cap);
+                if (!new_resp) { free(response); return NULL; }
+                response = new_resp;
+            }
+            memcpy(response + total, buffer, received);
+            total += received;
+        }
     }
 
     response[total] = '\0';
