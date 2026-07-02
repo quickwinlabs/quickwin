@@ -899,6 +899,8 @@ async function fetch(url: string | Request, init: RequestInit = {}): Promise<Fet
         if (Object.keys(mergedHeaders).length > 0) mergedOptions.headers = mergedHeaders
 
         const parsedUrl = new URL(currentUrl)
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:')
+            throw new Error(`fetch() does not support protocol "${parsedUrl.protocol}"`)
         const response = await fetchRequest(parsedUrl, mergedOptions)
 
         response.url = currentUrl
