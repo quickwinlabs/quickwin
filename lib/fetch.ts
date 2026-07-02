@@ -936,7 +936,7 @@ async function fetch(url: string | Request, init: RequestInit = {}): Promise<Fet
         }
 
         // ── Cache 200 GET responses ──
-        if (cache && method === 'GET' && response.status === 200 && !cachedMeta) {
+        if (cache && method === 'GET' && response.status === 200) {
             const body = await response.arrayBuffer()
             const cc = response.headers.get('cache-control') || ''
             const maxAge = parseMaxAge(cc)
