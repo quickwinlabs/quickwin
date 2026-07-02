@@ -205,8 +205,9 @@ class _PreloadedStream implements _ReadableStream {
         return {
             read(): Promise<ReadResult> {
                 if (stream._offset < stream._buffer.length) {
-                    const chunk = stream._buffer.slice(stream._offset, stream._offset + 8192)
-                    stream._offset += chunk.length
+                    const end = stream._offset + 8192 < stream._buffer.length ? stream._offset + 8192 : stream._buffer.length
+                    const chunk = stream._buffer.subarray(stream._offset, end)
+                    stream._offset = end
                     return Promise.resolve({ done: false, value: chunk })
                 }
                 return Promise.resolve({ done: true })
@@ -228,8 +229,9 @@ class _PreloadedStream implements _ReadableStream {
 
     _tryRead(): Promise<ReadResult> | null {
         if (this._offset < this._buffer.length) {
-            const chunk = this._buffer.slice(this._offset, this._offset + 8192)
-            this._offset += chunk.length
+            const end = this._offset + 8192 < this._buffer.length ? this._offset + 8192 : this._buffer.length
+            const chunk = this._buffer.subarray(this._offset, end)
+            this._offset = end
             return Promise.resolve({ done: false, value: chunk })
         }
         if (this._state === 'closed') return Promise.resolve({ done: true })
