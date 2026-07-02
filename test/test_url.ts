@@ -1,5 +1,5 @@
 import { Tester } from './test_helper.js'
-import '../lib/polyfill.js'
+import '../lib/url.js'
 
 export const suite = {
     name: 'url',
