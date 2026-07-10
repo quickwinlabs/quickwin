@@ -161,12 +161,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         break;
     }
     const char *js_file = "main.js";
+    int has_script_file = 0;
     if (optind < cmd_argc) {
         int file_idx = optind;
         while (file_idx < cmd_argc && cmd_argv[file_idx][0] == '-')
             file_idx++;
         if (file_idx < cmd_argc) {
             js_file = cmd_argv[file_idx];
+            has_script_file = 1;
             for (char *p = cmd_argv[file_idx]; *p; p++)
                 if (*p == '\\') *p = '/';
         }
@@ -196,7 +198,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         js_file = "<eval>";
     } else {
         // No -e and no file arg → try embedded JS, fallback to main.js
-        if (optind >= cmd_argc) {
+        if (!has_script_file) {
             js_code = load_embedded_js(ctx, &fsize);
             if (js_code) {
                 js_file = "<embedded>";
