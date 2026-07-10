@@ -38,8 +38,8 @@ static char* extract_body(char* response) {
 }
 
 static void skip_crlf(char **p) {
-    *p += strcspn(*p, "\r\n");
-    *p += strspn(*p, "\r\n");
+    if ((*p)[0] == '\r' && (*p)[1] == '\n')
+        *p += 2;
 }
 
 static int is_chunked(const char *response) {
