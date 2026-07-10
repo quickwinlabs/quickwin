@@ -23,8 +23,22 @@ quickwin script.js
 
 ```bash
 quickwin script.js                  # run a script
-quickwin examples/preact_demo.js    # run an example
+quickwin -c script.js               # run with console (AllocConsole)
+quickwin -e "console.log('hi')"     # execute expression
+quickwin -- script.js --flag        # -- stops option parsing
 ```
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `-e <expr>` | Execute expression instead of a file |
+| `-c` | Allocate console (`AllocConsole`); only needed for GUI-subsystem builds |
+| `-d` | Enable HTTP debug logging |
+| `--` | Stop option parsing, remaining args passed to script |
+
+All unknown flags are transparently forwarded to `scriptArgs` — no error,
+no consumption. Script file is the first non-flag argument after option parsing.
 
 ## Embedded Script
 
@@ -103,7 +117,7 @@ cd quickwin
 | Target | Description |
 |--------|-------------|
 | `make` / `make nodebug` | fast build |
-| `make minimal` | `-Os` + LTO + UPX, ~1MB |
+| `make minimal` | `-Os` + LTO + `-mwindows` + UPX, no console, add `-c` for console |
 | `make release` | `-O2` + LTO + strip, ~2.5MB |
 | `make debug` | debug build with bridge logs |
 | `make js` | compile TypeScript via tsgo |

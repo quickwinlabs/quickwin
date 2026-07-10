@@ -122,6 +122,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         cmd_argv[cmd_argc] = NULL;
         LocalFree(wargv);
     }
+    int need_console = 0;
+    for (int i = 1; i < cmd_argc; i++) {
+        if (strcmp(cmd_argv[i], "-c") == 0) {
+            need_console = 1;
+            break;
+        }
+    }
+    if (need_console) {
+        AllocConsole();
+        freopen("CONOUT$", "w", stdout);
+        freopen("CONOUT$", "w", stderr);
+    }
+
     int optind = 1;
     char *expr = NULL;
     while (optind < cmd_argc && cmd_argv[optind][0] == '-') {
@@ -141,14 +154,22 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             optind++;
             continue;
         }
-        fprintf(stderr, "Unknown option: %s\n", arg);
-        return 2;
+        if (strcmp(arg, "-c") == 0) {
+            optind++;
+            continue;
+        }
+        break;
     }
     const char *js_file = "main.js";
     if (optind < cmd_argc) {
-        js_file = cmd_argv[optind];
-        for (char *p = cmd_argv[optind]; *p; p++)
-            if (*p == '\\') *p = '/';
+        int file_idx = optind;
+        while (file_idx < cmd_argc && cmd_argv[file_idx][0] == '-')
+            file_idx++;
+        if (file_idx < cmd_argc) {
+            js_file = cmd_argv[file_idx];
+            for (char *p = cmd_argv[file_idx]; *p; p++)
+                if (*p == '\\') *p = '/';
+        }
     }
 
     JSRuntime *rt = JS_NewRuntime();

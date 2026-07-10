@@ -17,11 +17,6 @@ endif
 CFLAGS += -DDUMP_GC -DDUMP_LEAKS
 CFLAGS += -Wall -Wextra
 
-ifeq ($(MINIMAL), 1)
-    CFLAGS += $(OPT) -flto -fdata-sections -ffunction-sections
-    LDFLAGS += -flto -Wl,--gc-sections
-endif
-
 WAMR_DIR = wamr
 WAMR_CORE = $(WAMR_DIR)/core/iwasm
 WAMR_INC = -I$(WAMR_CORE)/include
@@ -65,6 +60,11 @@ CFLAGS += $(WOLFSSL_INC)
 
 LDFLAGS = -L$(MSYS2_PREFIX)/lib -static
 LIBS = -lbrotlidec -lbrotlicommon $(WOLFSSL_LIB) -lws2_32 -lbcrypt -lcrypt32 -lm -luser32 -lgdi32 -lcomctl32 -lffi -lntdll -lshell32 -lwininet
+
+ifeq ($(MINIMAL), 1)
+    CFLAGS += $(OPT) -flto -fdata-sections -ffunction-sections
+    LDFLAGS += -flto -Wl,--gc-sections -mwindows
+endif
 
 TARGET = $(BUILD_DIR)/win.exe
 NPM_PKG_DIR = dist/quickwin
