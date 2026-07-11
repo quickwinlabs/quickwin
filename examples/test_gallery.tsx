@@ -7,6 +7,7 @@ import {
   TreeView, type TreeNode, DateTimePicker, Link, Tooltip,
 } from '../lib/react-qw/index.js'
 
+
 gui.RegisterClass('Gallery', (hwnd, msg, wParam, lParam) => {
   if (!hwnd) return gui.DefWindowProc(hwnd, msg, wParam, lParam)
   if (msg === gui.WmMsg.DESTROY) {
@@ -51,7 +52,7 @@ const treeData: TreeNode[] = [
   },
 ]
 
-function App() {
+function App({ svW, svH }: { svW: number; svH: number }) {
   const [count, setCount] = useState(0)
   const [disabled, setDisabled] = useState(true)
   const [inputText, setInputText] = useState('')
@@ -83,9 +84,10 @@ function App() {
   const cbItems = ['Red', 'Green', 'Blue', 'Yellow', 'Purple', 'Orange']
 
   return (
-    <w type="STATIC" ws={VISIBLE | CLIPCHILDREN} style={{flexDirection:'column', gap:8, width:840, height:1080, x:20, y:20}}>
+    <ScrollView style={{width:svW, height:svH, x:0, y:0}} contentHeight={1049}>
+      <w type="STATIC" ws={VISIBLE | CLIPCHILDREN} style={{flexDirection:'column', gap:8, alignSelf:'stretch', flexGrow:1}}>
       {/* ===== 三列上半区 ===== */}
-      <w type="STATIC" ws={VISIBLE} style={{flexDirection:'row', gap:10, flexGrow:2}}>
+      <w type="STATIC" ws={VISIBLE} style={{flexDirection:'row', gap:10, height:345}}>
 
         {/* --- 左列: Buttons + CheckBoxes --- */}
         <w type="STATIC" ws={VISIBLE | CLIPCHILDREN} style={{flexDirection:'column', gap:6, flexGrow:1}}>
@@ -194,7 +196,7 @@ function App() {
       </w>
 
       {/* ===== 下半区: ListView + ScrollView + TreeView ===== */}
-      <w type="STATIC" ws={VISIBLE} style={{flexDirection:'row', gap:6, alignItems:'stretch', flexGrow:3}}>
+      <w type="STATIC" ws={VISIBLE} style={{flexDirection:'row', gap:6, alignItems:'stretch', height:400}}>
         <w type="STATIC" ws={VISIBLE | CLIPCHILDREN} style={{flexDirection:'column', gap:4, flexGrow:1}}>
           <w type="STATIC" ws={VISIBLE} text={`ListView (sel=${listSel >= 0 ? listData[listSel].name : 'none'})`} style={{height:24}} />
           <w type="STATIC" ws={VISIBLE} style={{flexDirection:'row', gap:6, alignItems:'stretch', flexGrow:1}}>
@@ -217,7 +219,7 @@ function App() {
         </w>
         <w type="STATIC" ws={VISIBLE | CLIPCHILDREN} style={{flexDirection:'column', gap:4, flexGrow:1}}>
           <w type="STATIC" ws={VISIBLE} text="ScrollView (scrollable)" style={{height:24}} />
-          <ScrollView style={{flexGrow:1}}>
+          <ScrollView style={{flexGrow:1}} contentWidth={500} contentHeight={560}>
             {Array.from({ length: 20 }, (_, i) => (
               <w type="STATIC" ws={VISIBLE}
                 key={i}
@@ -232,18 +234,23 @@ function App() {
           <TreeView data={treeData} onSelect={setTreeSel} style={{flexGrow:1}} />
         </w>
       </w>
-    </w>
+      </w>
+    </ScrollView>
   )
 }
 
 const hwnd = gui.CreateWindow(
   'Gallery', 'Component Gallery',
   gui.WindowStyle.OVERLAPPEDWINDOW,
-  100, 100, 900, 1200, null, null
+  100, 100, 1400, 1200, null, null
 )
 
 if (hwnd) {
-  render(<App />, hwnd)
+  const cr = gui.GetClientRect(hwnd)!
+  const scale = gui.GetScaleFactor()
+  const svW = Math.round((cr.right - cr.left) / scale)
+  const svH = Math.round((cr.bottom - cr.top) / scale)
+  render(<App svW={svW} svH={svH} />, hwnd)
   setTimeout(() => {
     gui.ShowWindow(hwnd)
   }, 0)

@@ -1,14 +1,17 @@
-import { forwardRef, useState, useEffect, useRef } from 'react'
+import { forwardRef, useLayoutEffect, useRef } from 'react'
 import * as gui from 'gui'
 import type { WStyle } from '../jsx.d.ts'
+import { forceFlexLayout } from '../reconciler.js'
 
 export interface ScrollViewProps {
   children?: React.ReactNode
   style?: WStyle
+  contentWidth?: number
+  contentHeight?: number
 }
 
 export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
-  ({ children, style }, ref) => {
+  ({ children, style, contentWidth, contentHeight }, ref) => {
     const svRef = useRef<gui.HWND>(null)
     const contentRef = useRef<gui.HWND>(null)
     const scrollXRef = useRef(0)
@@ -25,41 +28,29 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
       const svW = svRect.right - svRect.left
       const svH = svRect.bottom - svRect.top
 
-      // 测量子控件范围：自然宽高
-      let maxRight = 0
-      let maxBottom = 0
-      let child = gui.GetWindow(content, gui.GetWindowCmd.CHILD)
-      while (child) {
-        const cr = gui.GetWindowRect(child)
-        const ctr = gui.GetWindowRect(content)
-        if (!cr || !ctr) { child = gui.GetWindow(child, gui.GetWindowCmd.NEXT); continue }
-        const relRight = cr.right - ctr.left
-        const relBottom = cr.bottom - ctr.top
-        if (relRight > maxRight) maxRight = relRight
-        if (relBottom > maxBottom) maxBottom = relBottom
-        child = gui.GetWindow(child, gui.GetWindowCmd.NEXT)
-      }
-      const naturalW = Math.max(maxRight, svW)
-      const naturalH = Math.max(maxBottom, 30)
+      const scale = gui.GetScaleFactor()
+      const natW = Math.round((contentWidth ?? (svW / scale)) * scale)
+      const natH = Math.round((contentHeight ?? (svH / scale)) * scale)
 
-      scrollXRef.current = Math.max(0, Math.min(scrollXRef.current, naturalW - svW))
-      scrollYRef.current = Math.max(0, Math.min(scrollYRef.current, naturalH - svH))
+      scrollXRef.current = Math.max(0, Math.min(scrollXRef.current, natW - svW))
+      scrollYRef.current = Math.max(0, Math.min(scrollYRef.current, natH - svH))
 
-      gui.SetWindowPos(content, 0, -scrollXRef.current, -scrollYRef.current, naturalW, naturalH,
+      gui.SetWindowPos(content, 0, -scrollXRef.current, -scrollYRef.current, natW, natH,
         gui.SetWindowPosFlag.SWP_NOZORDER)
+      forceFlexLayout(content)
 
-      if (naturalW > svW) {
+      if (natW > svW) {
         gui.SetScrollInfo(sv, gui.ScrollBar.HORZ,
-          { min: 0, max: naturalW - 1, page: svW, pos: scrollXRef.current }, true)
+          { min: 0, max: natW - 1, page: svW, pos: scrollXRef.current }, true)
         gui.ShowScrollBar(sv, gui.ScrollBar.HORZ, true)
       } else {
         scrollXRef.current = 0
         gui.ShowScrollBar(sv, gui.ScrollBar.HORZ, false)
       }
 
-      if (naturalH > svH) {
+      if (natH > svH) {
         gui.SetScrollInfo(sv, gui.ScrollBar.VERT,
-          { min: 0, max: naturalH - 1, page: svH, pos: scrollYRef.current }, true)
+          { min: 0, max: natH - 1, page: svH, pos: scrollYRef.current }, true)
         gui.ShowScrollBar(sv, gui.ScrollBar.VERT, true)
       } else {
         scrollYRef.current = 0
@@ -67,12 +58,12 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
       }
     }
 
-    useEffect(() => {
+    useLayoutEffect(() => {
       const sv = svRef.current
       const content = contentRef.current
       if (!sv || !content) return
       updateScroll(sv, content)
-    })
+    }, [contentWidth, contentHeight])
 
     function setScrollPos(sv: gui.HWND, content: gui.HWND, bar: number, newPos: number) {
       if (bar === gui.ScrollBar.VERT) {
@@ -114,6 +105,8 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
       const dy = -Math.round(wheel * 40 / 120)
       const isHorz = (e.wParam & gui.MouseKeyFlag.MK_SHIFT) !== 0
 
+      if (isHorz && contentWidth === undefined) return
+      if (!isHorz && contentHeight === undefined) return
       const bar = isHorz ? gui.ScrollBar.HORZ : gui.ScrollBar.VERT
       const info = gui.GetScrollInfo(sv, bar)
       const maxPos = info.max - info.page + 1
@@ -125,7 +118,9 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
 
     return (
       <w type="STATIC"
-        ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN | gui.WindowStyle.VSCROLL | gui.WindowStyle.HSCROLL}
+        ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN |
+          (contentWidth !== undefined ? gui.WindowStyle.HSCROLL : 0) |
+          (contentHeight !== undefined ? gui.WindowStyle.VSCROLL : 0)}
         style={style}
         ref={(h: gui.HWND) => {
           svRef.current = h

@@ -10,6 +10,7 @@ import { calculateFlexLayout, type FlexStyle } from './layout.js'
 declare const DEBUG: boolean
 
 const dpiFont = gui.CreateSystemDpiFont()
+export const scaleFactor = gui.GetScaleFactor()
 
 type Container = gui.HWND
 type Props = Record<string, any>
@@ -45,8 +46,8 @@ function ensureChildWindow(child: Instance, parentHwnd: gui.HWND): gui.HWND {
   const ws = (child.props.ws ?? 0) | gui.WindowStyle.CHILD
   const hwnd = gui.CreateWindow(
     child.type, child.props.text || '', ws,
-    sty.x ?? 0, sty.y ?? 0,
-    sty.width ?? 100, sty.height ?? 30,
+    (sty.x ?? 0) * scaleFactor, (sty.y ?? 0) * scaleFactor,
+    (sty.width ?? 100) * scaleFactor, (sty.height ?? 30) * scaleFactor,
     parentHwnd, null
   )!
   if (dpiFont) gui.SendMessage(hwnd, gui.WmMsg.SETFONT, dpiFont, 1)
@@ -71,8 +72,8 @@ function runFlexLayout(inst: Instance) {
   if (visible.length === 0) return
   const rect = gui.GetClientRect(inst.hwnd!)
   if (!rect) { console.log('flex: no rect for', inst.hwnd, inst.type); return }
-  const pw = rect.right - rect.left
-  const ph = rect.bottom - rect.top
+  const pw = (rect.right - rect.left) / scaleFactor
+  const ph = (rect.bottom - rect.top) / scaleFactor
   if (pw <= 0 || ph <= 0) { console.log('flex: zero size for', inst.hwnd, inst.type, pw, ph); return }
   const results = calculateFlexLayout(flex, pw, ph, visible.map(c => ({ style: c.props.style || {} })))
   for (let i = 0; i < results.length; i++) {
@@ -81,10 +82,15 @@ function runFlexLayout(inst: Instance) {
     const lr = child.lastRect
     if (lr && lr.x === r.x && lr.y === r.y && lr.w === r.width && lr.h === r.height) continue
     console.log('flex: set', child.type, child.hwnd, 'to', r.x, r.y, r.width, r.height)
-    gui.SetWindowPos(child.hwnd!, 0, r.x, r.y, r.width, r.height, 0)
+    gui.SetWindowPos(child.hwnd!, 0, r.x * scaleFactor, r.y * scaleFactor, r.width * scaleFactor, r.height * scaleFactor, 0)
     child.lastRect = { x: r.x, y: r.y, w: r.width, h: r.height }
   }
   for (const c of children) runFlexLayout(c)
+}
+
+export function forceFlexLayout(hwnd: gui.HWND): void {
+  const inst = instancesByHwnd.get(hwnd)
+  if (inst) runFlexLayout(inst)
 }
 
 /**
@@ -122,8 +128,8 @@ const hostConfig: QuickWinHostConfig = {
     if (DEBUG) console.log('[reconciler] CreateWindow args:', winClass, props.text || '', ws, sty.x ?? 0, sty.y ?? 0, sty.width ?? 100, sty.height ?? 30, rootContainer)
     const hwnd = gui.CreateWindow(
       winClass, props.text || '', ws,
-      sty.x ?? 0, sty.y ?? 0,
-      sty.width ?? 100, sty.height ?? 30,
+      (sty.x ?? 0) * scaleFactor, (sty.y ?? 0) * scaleFactor,
+      (sty.width ?? 100) * scaleFactor, (sty.height ?? 30) * scaleFactor,
       rootContainer, null
     )!
     if (dpiFont) gui.SendMessage(hwnd, gui.WmMsg.SETFONT, dpiFont, 1)

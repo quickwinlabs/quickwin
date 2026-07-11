@@ -1,5 +1,6 @@
 import * as gui from 'gui'
 import type { Instance } from './reconciler.js'
+import { scaleFactor } from './reconciler.js'
 
 export function applyProps(
   instance: Instance,
@@ -41,7 +42,7 @@ export function applyProps(
     const newW = 'width' in s ? s.width : cur.w
     const newH = 'height' in s ? s.height : cur.h
     if (newX !== cur.x || newY !== cur.y || newW !== cur.w || newH !== cur.h) {
-      gui.SetWindowPos(hwnd, 0, newX, newY, newW, newH, gui.SetWindowPosFlag.SWP_NOZORDER)
+      gui.SetWindowPos(hwnd, 0, newX * scaleFactor, newY * scaleFactor, newW * scaleFactor, newH * scaleFactor, gui.SetWindowPosFlag.SWP_NOZORDER)
       instance.lastRect = { x: newX, y: newY, w: newW, h: newH }
     }
   }
