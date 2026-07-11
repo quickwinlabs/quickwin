@@ -14,10 +14,13 @@ interface WStyle {
 interface WEvent {
   hwnd: HWND; msg: number; wParam: number; lParam: number
 }
+interface WOnEventObj {
+  fn: (e: WEvent & {callOldWndProc: () => number}) => number
+}
 interface WIntrinsicProps {
   key?: string | number; type?: string; text?: string; ws?: number
   disabled?: boolean; visible?: boolean; hidden?: boolean; style?: WStyle
-  onEvent?: (e: WEvent) => number | void
+  onEvent?: ((e: WEvent) => number | void) | WOnEventObj
   children?: React.ReactNode
   ref?: React.Ref<HWND>
 }

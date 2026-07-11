@@ -52,7 +52,7 @@ The only intrinsic element. Maps to a Win32 window of the class specified by `ty
 | `disabled` | `boolean` | Calls `EnableWindow` |
 | `hidden` | `boolean` | Shows/hides the window |
 | `visible` | `boolean` | Shows/hides the window |
-| `onEvent` | `(e: WEvent) => number \| void` | Raw Win32 message callback |
+| `onEvent` | `((e: WEvent) => number \| void) \| { fn: (e: WEvent & { callOldWndProc: () => number }) => number }` | Raw Win32 message callback (function or object form) |
 | `ref` | `React.Ref<gui.HWND>` | Receives the HWND |
 | `children` | `string \| number \| ReactNode` | Text content or child elements |
 
@@ -84,7 +84,21 @@ interface WEvent {
 }
 ```
 
-Return a number to override the window's default processing, or `undefined` to let the default handler run.
+#### Function form
+
+```ts
+onEvent={(e: WEvent) => number | void}
+```
+
+`CallWindowProc(oldProc, ...)` runs first. Return a number to override the result, or `undefined` to keep the default.
+
+#### Object form
+
+```ts
+onEvent={{ fn: (e: WEvent & { callOldWndProc: () => number }) => number }}
+```
+
+`fn` runs **instead of** `oldProc` — no automatic fallback. Call `e.callOldWndProc()` when you want the original class procedure, or `gui.DefWindowProc(...)` for the system default. Must return a `number`.
 
 ---
 

@@ -34,8 +34,13 @@ function setupWindowProc(instance: Instance, hwnd: gui.HWND) {
   const oldProc = gui.GetWindowLongPtr(hwnd, gui.Gwlp.WNDPROC) as unknown as gui.WNDPROC
   instancesByHwnd.set(hwnd, instance)
   gui.SetWindowProc(hwnd, (hwnd: gui.HWND, msg: number, wParam: number, lParam: number) => {
+    const ev = instance.props.onEvent
+    if (!ev) return gui.CallWindowProc(oldProc, hwnd, msg, wParam, lParam)
+    if (typeof ev === 'object') {
+      return ev.fn({ hwnd, msg, wParam, lParam, callOldWndProc: () => gui.CallWindowProc(oldProc, hwnd, msg, wParam, lParam) })
+    }
     const result = gui.CallWindowProc(oldProc, hwnd, msg, wParam, lParam)
-    const override = instance.props.onEvent?.({ hwnd, msg, wParam, lParam })
+    const override = ev({ hwnd, msg, wParam, lParam })
     return Number.isInteger(override) ? override : result
   })
 }

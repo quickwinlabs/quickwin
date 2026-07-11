@@ -127,14 +127,17 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
           if (typeof ref === 'function') ref(h)
           else if (ref) (ref as React.RefObject<gui.HWND | null>).current = h
         }}
-        onEvent={(e) => {
-          if (e.msg === gui.WmMsg.NCHITTEST ||
-              e.msg === gui.WmMsg.NCLBUTTONDOWN) {
-            return gui.DefWindowProc(e.hwnd, e.msg, e.wParam, e.lParam)
+        onEvent={{
+          fn: (e) => {
+            if (e.msg === gui.WmMsg.NCHITTEST ||
+                e.msg === gui.WmMsg.NCLBUTTONDOWN) {
+              return gui.DefWindowProc(e.hwnd, e.msg, e.wParam, e.lParam)
+            }
+            if (e.msg === gui.WmMsg.VSCROLL) { handleScroll(e, gui.ScrollBar.VERT); return 0 }
+            if (e.msg === gui.WmMsg.HSCROLL) { handleScroll(e, gui.ScrollBar.HORZ); return 0 }
+            if (e.msg === gui.WmMsg.MOUSEWHEEL) { handleMouseWheel(e); return 0 }
+            return e.callOldWndProc()
           }
-          if (e.msg === gui.WmMsg.VSCROLL) { handleScroll(e, gui.ScrollBar.VERT); return 0 }
-          if (e.msg === gui.WmMsg.HSCROLL) { handleScroll(e, gui.ScrollBar.HORZ); return 0 }
-          if (e.msg === gui.WmMsg.MOUSEWHEEL) { handleMouseWheel(e); return 0 }
         }}
       >
         <w type="STATIC"
