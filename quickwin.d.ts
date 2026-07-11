@@ -395,6 +395,8 @@ declare module "win" {
     function LoadLibrary(libName: string): HMODULE | null;
     function GetProcAddress(hModule: HMODULE, procName: string): number | null;
     function FreeLibrary(hModule: HMODULE): boolean;
+    /** GetModuleFileName(hModule?) — 传 HMODULE 或不传（当前进程），返回模块完整路径；失败返回 undefined */
+    function GetModuleFileName(hModule?: HMODULE): string | undefined;
 }
 
 declare module "gui" {
