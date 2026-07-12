@@ -10,23 +10,26 @@ export interface RootWindowConfig {
   y?: number
   width?: number
   height?: number
+  onEvent?: (e: { hwnd: gui.HWND; msg: number; wParam: number; lParam: number }) => number | void
 }
 
 let defaultClassRegistered = false
 const DEFAULT_CLASS = '_QuickWinDefault'
-const rootMap = new Map<gui.HWND, any>()
+const rootMap = new Map<gui.HWND, { root: any, onEvent?: RootWindowConfig['onEvent'] }>()
 
 function ensureDefaultClass() {
   if (defaultClassRegistered) return DEFAULT_CLASS
   gui.RegisterClass(DEFAULT_CLASS, (hwnd, msg, wParam, lParam) => {
     if (msg === gui.WmMsg.DESTROY) {
-      const root = rootMap.get(hwnd)
-      if (root) {
-        reconciler.updateContainer(null, root, null, noop)
+      const entry = rootMap.get(hwnd)
+      if (entry) {
+        reconciler.updateContainer(null, entry.root, null, noop)
         rootMap.delete(hwnd)
       }
-      return 0
     }
+    const entry = rootMap.get(hwnd)
+    const result = entry?.onEvent?.({ hwnd, msg, wParam, lParam })
+    if (typeof result === 'number') return result
     return gui.DefWindowProc(hwnd, msg, wParam, lParam)
   })
   defaultClassRegistered = true
@@ -56,7 +59,7 @@ export function createRoot(container: gui.HWND | RootWindowConfig) {
     noop, noop, noop, noop,
   )
   if (typeof container === 'object')
-    rootMap.set(hwnd, root)
+    rootMap.set(hwnd, { root, onEvent: container.onEvent })
   return {
     render(element: any) {
       reconciler.updateContainer(element, root, null, noop)
