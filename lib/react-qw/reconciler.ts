@@ -62,7 +62,7 @@ function ensureChildWindow(child: Instance, parentHwnd: gui.HWND): gui.HWND {
 
 type HostContext = Record<string, never>
 
-const instancesByHwnd = new Map<gui.HWND, Instance>()
+export const instancesByHwnd = new Map<gui.HWND, Instance>()
 
 function runFlexLayout(inst: Instance) {
   const children = inst.children.filter(c => typeof c === 'object') as Instance[]
@@ -174,6 +174,8 @@ const hostConfig: QuickWinHostConfig = {
     } else {
       gui.SetParent(child.hwnd, container)
     }
+    const rootInst = instancesByHwnd.get(container)
+    if (rootInst) rootInst.children.push(child)
     if (DEBUG) console.log('[reconciler] appendChildToContainer container:', container, 'child hwnd:', child.hwnd)
   },
 
@@ -194,6 +196,11 @@ const hostConfig: QuickWinHostConfig = {
     } else {
       gui.SetParent(child.hwnd, container)
     }
+    const rootInst = instancesByHwnd.get(container)
+    if (!rootInst) throw new Error('insertInContainerBefore: no root instance for container')
+    const idx = rootInst.children.indexOf(_before)
+    if (idx >= 0) rootInst.children.splice(idx, 0, child)
+    else rootInst.children.push(child)
     if (DEBUG) console.log('[reconciler] insertInContainerBefore container:', container, 'child hwnd:', child.hwnd)
   },
 
@@ -208,6 +215,11 @@ const hostConfig: QuickWinHostConfig = {
     if (child.hwnd === null) return
     if (DEBUG) console.log('[reconciler] removeChildFromContainer container:', container, 'child hwnd:', child.hwnd)
     gui.DestroyWindow(child.hwnd)
+    const rootInst = instancesByHwnd.get(container)
+    if (rootInst) {
+      const idx = rootInst.children.indexOf(child)
+      if (idx >= 0) rootInst.children.splice(idx, 1)
+    }
   },
 
   commitUpdate(instance: Instance, _type: string, oldProps: Record<string, any>, newProps: Record<string, any>, _internalHandle: any) {
@@ -224,16 +236,9 @@ const hostConfig: QuickWinHostConfig = {
 
   resetAfterCommit(containerInfo: Container) {
     if (DEBUG) console.log('[reconciler] resetAfterCommit')
-    let count = 0
-    let child = gui.GetWindow(containerInfo, gui.GetWindowCmd.CHILD)
-    while (child) {
-      count++
-      if (DEBUG) console.log('[reconciler] resetAfterCommit child:', child)
-      const inst = instancesByHwnd.get(child)
-      if (inst) runFlexLayout(inst)
-      child = gui.GetWindow(child, gui.GetWindowCmd.NEXT)
-    }
-    if (DEBUG) console.log('[reconciler] resetAfterCommit child count:', count)
+    const rootInst = instancesByHwnd.get(containerInfo)
+    if (!rootInst) throw new Error('resetAfterCommit: no root instance for container')
+    runFlexLayout(rootInst)
   },
 
   resetTextContent(_instance: Instance) { },

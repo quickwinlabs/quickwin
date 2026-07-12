@@ -1,5 +1,5 @@
 import * as gui from 'gui'
-import reconciler from './reconciler.js'
+import reconciler, { scaleFactor, instancesByHwnd, forceFlexLayout, type Instance } from './reconciler.js'
 
 const noop = () => { }
 
@@ -10,6 +10,7 @@ export interface RootWindowConfig {
   y?: number
   width?: number
   height?: number
+  noShowWindow?: boolean
   onEvent?: (e: { hwnd: gui.HWND; msg: number; wParam: number; lParam: number }) => number | void
 }
 
@@ -23,13 +24,16 @@ function ensureDefaultClass() {
     if (msg === gui.WmMsg.DESTROY) {
       const entry = rootMap.get(hwnd)
       if (entry) {
-        reconciler.updateContainer(null, entry.root, null, noop)
         rootMap.delete(hwnd)
+        reconciler.updateContainer(null, entry.root, null, () => {
+          instancesByHwnd.delete(hwnd)
+        })
       }
     }
     const entry = rootMap.get(hwnd)
     const result = entry?.onEvent?.({ hwnd, msg, wParam, lParam })
     if (typeof result === 'number') return result
+    if (msg === gui.WmMsg.SIZE) forceFlexLayout(hwnd)
     return gui.DefWindowProc(hwnd, msg, wParam, lParam)
   })
   defaultClassRegistered = true
@@ -44,13 +48,15 @@ export function createRoot(container: gui.HWND | RootWindowConfig) {
     const ws = (cfg.ws ?? 0) | gui.WindowStyle.OVERLAPPEDWINDOW
     const h = gui.CreateWindow(
       className, cfg.text || '', ws,
-      cfg.x ?? 0x80000000, cfg.y ?? 0x80000000,
-      cfg.width ?? 800, cfg.height ?? 600,
+      cfg.x != null ? cfg.x * scaleFactor : gui.CreatePos.USEDEFAULT,
+      cfg.y != null ? cfg.y * scaleFactor : gui.CreatePos.USEDEFAULT,
+      (cfg.width ?? 800) * scaleFactor,
+      (cfg.height ?? 600) * scaleFactor,
       null, null
     )
     if (!h) throw new Error('CreateWindow failed')
     hwnd = h
-    gui.ShowWindow(hwnd)
+    if (!cfg.noShowWindow) gui.ShowWindow(hwnd)
   } else {
     hwnd = container
   }
@@ -58,6 +64,8 @@ export function createRoot(container: gui.HWND | RootWindowConfig) {
     hwnd, 0, null, false, null, '',
     noop, noop, noop, noop,
   )
+  const rootInst: Instance = { hwnd, type: '_root', props: { style: { flexDirection: 'column', alignItems: 'stretch' } }, children: [] }
+  instancesByHwnd.set(hwnd, rootInst)
   if (typeof container === 'object')
     rootMap.set(hwnd, { root, onEvent: container.onEvent })
   return {

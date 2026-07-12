@@ -437,6 +437,10 @@ static void print_enums(void) {
     DEC(USEVISUALSTYLE, TTS_USEVISUALSTYLE);
     printf("    }\n\n");
 
+    printf("    export const enum CreatePos {\n");
+    DEC(USEDEFAULT, CW_USEDEFAULT);
+    printf("    }\n\n");
+
     printf("    export const enum TtToolFlag {\n");
     DEC(SUBCLASS, TTF_SUBCLASS);
     DEC(IDISHWND, TTF_IDISHWND);

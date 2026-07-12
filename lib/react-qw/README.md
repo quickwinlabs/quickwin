@@ -26,14 +26,18 @@ gui.ShowWindow(hwnd)
 ### render(element, containerHwnd, callback?)
 
 ```ts
-function render(element: React.ReactElement, container: gui.HWND, callback?: () => void): void
+function render(element: React.ReactElement, container: gui.HWND | RootWindowConfig, callback?: () => void): void
 ```
 
-### createRoot(containerHwnd)
+`container` can be a raw HWND or a `RootWindowConfig` object. Config-path windows auto re-layout on resize (`WM_SIZE`).
+
+### createRoot(container)
 
 ```ts
-function createRoot(containerHwnd: gui.HWND): { render(element: any): void; unmount(): void }
+function createRoot(container: gui.HWND | RootWindowConfig): { render(element: any): void; unmount(): void }
 ```
+
+Config-path windows get DPI scaling, auto `WM_SIZE` → `forceFlexLayout`, and default class registration with cleanup on `WM_DESTROY`.
 
 ---
 

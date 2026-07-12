@@ -425,6 +425,10 @@ declare module "gui" {
         USEVISUALSTYLE = 256, // 0x100
     }
 
+    export const enum CreatePos {
+        USEDEFAULT = -2147483648, // 0x80000000
+    }
+
     export const enum TtToolFlag {
         SUBCLASS = 16, // 0x10
         IDISHWND = 1, // 0x1
