@@ -15,6 +15,7 @@ async function main() {
       '_build/examples/test_tab.js',
       '_build/examples/test_react_listbox.js',
       '_build/examples/pdf_viewer.js',
+      '_build/examples/test_root_window.js',
     ],
     allowOverwrite: true,
     bundle: true,
