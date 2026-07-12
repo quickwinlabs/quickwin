@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <shellapi.h>
+#include <commdlg.h>
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
 #include <stdio.h>
@@ -29,6 +30,11 @@ static void print_enums(void) {
     DEC(SWP_SHOWWINDOW, SWP_SHOWWINDOW);
     DEC(SWP_HIDEWINDOW, SWP_HIDEWINDOW);
     DEC(SWP_FRAMECHANGED, SWP_FRAMECHANGED);
+    printf("    }\n\n");
+
+    printf("    export const enum SetWindowPosHwnd {\n");
+    DEC(TOPMOST, HWND_TOPMOST);
+    DEC(NOTOPMOST, HWND_NOTOPMOST);
     printf("    }\n\n");
 
     printf("    export const enum NotifyIconCmd {\n");
@@ -90,6 +96,7 @@ static void print_enums(void) {
     DEC(NCHITTEST, WM_NCHITTEST);
     DEC(NCLBUTTONDOWN, WM_NCLBUTTONDOWN);
     DEC(ERASEBKGND, WM_ERASEBKGND);
+    DEC(CONTEXTMENU, WM_CONTEXTMENU);
     printf("    }\n\n");
 
     printf("    export const enum ScrollBar {\n");
@@ -197,6 +204,11 @@ static void print_enums(void) {
 
     printf("    export const enum TcNotifyCode {\n");
     DEC(SELCHANGE, TCN_SELCHANGE);
+    DEC(SELCHANGING, TCN_SELCHANGING);
+    printf("    }\n\n");
+
+    printf("    export const enum TcItemFlag {\n");
+    DEC(TEXT, TCIF_TEXT);
     printf("    }\n\n");
 
     printf("    export const enum ListViewStyle {\n");
@@ -230,6 +242,31 @@ static void print_enums(void) {
     DEC(ENSUREVISIBLE, LVM_ENSUREVISIBLE);
     DEC(SETCOLUMNWIDTH, LVM_SETCOLUMNWIDTH);
     DEC(DELETECOLUMN, LVM_DELETECOLUMN);
+    DEC(GETHEADER, LVM_GETHEADER);
+    printf("    }\n\n");
+
+    printf("    export const enum LvItemFlag {\n");
+    DEC(TEXT, LVIF_TEXT);
+    DEC(STATE, LVIF_STATE);
+    printf("    }\n\n");
+
+    printf("    export const enum LvItemState {\n");
+    DEC(FOCUSED, LVIS_FOCUSED);
+    DEC(SELECTED, LVIS_SELECTED);
+    printf("    }\n\n");
+
+    printf("    export const enum LvColumnMask {\n");
+    DEC(FORMAT, LVCF_FMT);
+    DEC(WIDTH, LVCF_WIDTH);
+    DEC(TEXT, LVCF_TEXT);
+    printf("    }\n\n");
+
+    printf("    export const enum LvNavFlag {\n");
+    DEC(SELECTED, LVNI_SELECTED);
+    printf("    }\n\n");
+
+    printf("    export const enum HdmMsg {\n");
+    DEC(GETITEMCOUNT, HDM_GETITEMCOUNT);
     printf("    }\n\n");
 
     printf("    export const enum LvNotifyCode {\n");
@@ -335,6 +372,13 @@ static void print_enums(void) {
     DEC(CHECKBOXES, TVS_CHECKBOXES);
     DEC(NOTOOLTIPS, TVS_NOTOOLTIPS);
     DEC(TRACKSELECT, TVS_TRACKSELECT);
+    printf("    }\n\n");
+
+    printf("    export const enum TvInsertAfter {\n");
+    DEC(ROOT, TVI_ROOT);
+    DEC(LAST, TVI_LAST);
+    DEC(FIRST, TVI_FIRST);
+    DEC(SORT, TVI_SORT);
     printf("    }\n\n");
 
     printf("    export const enum TvMsg {\n");
@@ -449,6 +493,17 @@ static void print_enums(void) {
     DEC(ABSOLUTE, TTF_ABSOLUTE);
     DEC(TRANSPARENT, TTF_TRANSPARENT);
     DEC(DI_SETITEM, TTF_DI_SETITEM);
+    printf("    }\n\n");
+
+    printf("    export const enum RasterOp {\n");
+    DEC(WHITENESS, WHITENESS);
+    DEC(BLACKNESS, BLACKNESS);
+    printf("    }\n\n");
+
+    printf("    export const enum OpenFileNameFlag {\n");
+    DEC(OVERWRITEPROMPT, OFN_OVERWRITEPROMPT);
+    DEC(EXPLORER, OFN_EXPLORER);
+    DEC(HIDEREADONLY, OFN_HIDEREADONLY);
     printf("    }\n\n");
 
     printf("}\n\n");

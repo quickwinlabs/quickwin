@@ -10,11 +10,6 @@ export interface TooltipProps {
 
 const TTTOOLINFO_CBSIZE = 64
 
-const HWND_TOPMOST = -1
-const SWP_NOMOVE = 2
-const SWP_NOSIZE = 1
-const SWP_NOACTIVATE = 0x10
-
 function setQword(dv: DataView, offset: number, val: number): void {
   dv.setUint32(offset, val & 0xFFFFFFFF, true)
   dv.setUint32(offset + 4, Math.floor(val / 0x100000000), true)
@@ -55,7 +50,7 @@ function Tooltip({ text, children, balloon }: TooltipProps) {
     if (!hTT) return
     hTTRef.current = hTT
 
-    gui.SetWindowPos(hTT, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+    gui.SetWindowPos(hTT, gui.SetWindowPosHwnd.TOPMOST, 0, 0, 0, 0, gui.SetWindowPosFlag.SWP_NOMOVE | gui.SetWindowPosFlag.SWP_NOSIZE | gui.SetWindowPosFlag.SWP_NOACTIVATE)
 
     const ti = buildToolInfo(hTarget as number, text)
     const tiPtr = ffi.bufferPtr(ti) as number

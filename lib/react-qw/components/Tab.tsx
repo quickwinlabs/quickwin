@@ -39,7 +39,7 @@ export const Tab = forwardRef<gui.HWND, TabProps>(
         const titleBuf = textToUtf16(tabs[i].title)
         const tci = new ArrayBuffer(40)
         const dv = new DataView(tci)
-        dv.setUint32(0, 0x0001, true)
+        dv.setUint32(0, gui.TcItemFlag.TEXT, true)
         dv.setBigUint64(16, BigInt(ffi.bufferPtr(titleBuf)), true)
         dv.setInt32(24, tabs[i].title.length + 1, true)
         const tciPtr = ffi.bufferPtr(tci)
@@ -66,7 +66,7 @@ export const Tab = forwardRef<gui.HWND, TabProps>(
             const code = readI32(e.lParam, 16)
             // SysTabControl32 在 comctl32 v6 下不发标准的 TCN_SELCHANGE (-550),
             // 收到 NM_CLICK (-2) 或 TCN_SELCHANGING (-551) 时读实际选中项
-            if (code === -551 || code === -2) {
+            if (code === gui.TcNotifyCode.SELCHANGING || code === gui.SysLinkNotifyCode.CLICK) {
               const newSel = gui.SendMessage(h, gui.TcMsg.GETCURSEL, 0, 0)
               if (newSel !== sel) {
                 if (!isControlled) setInternalIndex(newSel)

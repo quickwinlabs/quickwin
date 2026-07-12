@@ -20,14 +20,14 @@ function bufPtr(buf: ArrayBuffer): number {
   return ffi.bufferPtr(buf) as number
 }
 
-const LVIF_TEXT = 0x0001
-const LVIF_STATE = 0x0008
-const LVIS_FOCUSED = 0x0001
-const LVIS_SELECTED = 0x0002
-const LVCF_TEXT = 0x0004
-const LVCF_WIDTH = 0x0002
-const LVCF_FMT = 0x0001
-const LVNI_SELECTED = 0x0002
+const LVIF_TEXT = gui.LvItemFlag.TEXT
+const LVIF_STATE = gui.LvItemFlag.STATE
+const LVIS_FOCUSED = gui.LvItemState.FOCUSED
+const LVIS_SELECTED = gui.LvItemState.SELECTED
+const LVCF_TEXT = gui.LvColumnMask.TEXT
+const LVCF_WIDTH = gui.LvColumnMask.WIDTH
+const LVCF_FMT = gui.LvColumnMask.FORMAT
+const LVNI_SELECTED = gui.LvNavFlag.SELECTED
 
 export interface Column<D> {
   name: string
@@ -61,9 +61,9 @@ const ListView = forwardRef(function ListViewInner<D extends Record<string, any>
     if (!h) return
 
     // 从后往前删旧列
-    const hdr = gui.SendMessage(h, 0x101F, 0, 0) as unknown as gui.HWND  // LVM_GETHEADER
+    const hdr = gui.SendMessage(h, gui.LvMsg.GETHEADER, 0, 0) as unknown as gui.HWND
     if (hdr) {
-      let n = gui.SendMessage(hdr, 0x1200, 0, 0)  // HDM_GETITEMCOUNT
+      let n = gui.SendMessage(hdr, gui.HdmMsg.GETITEMCOUNT, 0, 0)
       for (let k = n - 1; k >= 0; k--)
         gui.SendMessage(h, gui.LvMsg.DELETECOLUMN, k, 0)
     }

@@ -19,6 +19,11 @@ declare module "gui" {
         SWP_FRAMECHANGED = 32, // 0x20
     }
 
+    export const enum SetWindowPosHwnd {
+        TOPMOST = -1, // 0xFFFFFFFF
+        NOTOPMOST = -2, // 0xFFFFFFFE
+    }
+
     export const enum NotifyIconCmd {
         ADD = 0, // 0x0
         MODIFY = 1, // 0x1
@@ -78,6 +83,7 @@ declare module "gui" {
         NCHITTEST = 132, // 0x84
         NCLBUTTONDOWN = 161, // 0xA1
         ERASEBKGND = 20, // 0x14
+        CONTEXTMENU = 123, // 0x7B
     }
 
     export const enum ScrollBar {
@@ -185,6 +191,11 @@ declare module "gui" {
 
     export const enum TcNotifyCode {
         SELCHANGE = -551, // 0xFFFFFDD9
+        SELCHANGING = -552, // 0xFFFFFDD8
+    }
+
+    export const enum TcItemFlag {
+        TEXT = 1, // 0x1
     }
 
     export const enum ListViewStyle {
@@ -218,6 +229,31 @@ declare module "gui" {
         ENSUREVISIBLE = 4115, // 0x1013
         SETCOLUMNWIDTH = 4126, // 0x101E
         DELETECOLUMN = 4124, // 0x101C
+        GETHEADER = 4127, // 0x101F
+    }
+
+    export const enum LvItemFlag {
+        TEXT = 1, // 0x1
+        STATE = 8, // 0x8
+    }
+
+    export const enum LvItemState {
+        FOCUSED = 1, // 0x1
+        SELECTED = 2, // 0x2
+    }
+
+    export const enum LvColumnMask {
+        FORMAT = 1, // 0x1
+        WIDTH = 2, // 0x2
+        TEXT = 4, // 0x4
+    }
+
+    export const enum LvNavFlag {
+        SELECTED = 2, // 0x2
+    }
+
+    export const enum HdmMsg {
+        GETITEMCOUNT = 4608, // 0x1200
     }
 
     export const enum LvNotifyCode {
@@ -323,6 +359,13 @@ declare module "gui" {
         CHECKBOXES = 256, // 0x100
         NOTOOLTIPS = 128, // 0x80
         TRACKSELECT = 512, // 0x200
+    }
+
+    export const enum TvInsertAfter {
+        ROOT = -65536, // 0xFFFF0000
+        LAST = -65534, // 0xFFFF0002
+        FIRST = -65535, // 0xFFFF0001
+        SORT = -65533, // 0xFFFF0003
     }
 
     export const enum TvMsg {
@@ -437,6 +480,17 @@ declare module "gui" {
         ABSOLUTE = 128, // 0x80
         TRANSPARENT = 256, // 0x100
         DI_SETITEM = 32768, // 0x8000
+    }
+
+    export const enum RasterOp {
+        WHITENESS = 16711778, // 0xFF0062
+        BLACKNESS = 66, // 0x42
+    }
+
+    export const enum OpenFileNameFlag {
+        OVERWRITEPROMPT = 2, // 0x2
+        EXPLORER = 524288, // 0x80000
+        HIDEREADONLY = 4, // 0x4
     }
 
 }

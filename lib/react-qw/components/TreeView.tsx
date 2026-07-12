@@ -17,8 +17,6 @@ export interface TreeViewProps<D> {
   style?: WStyle
 }
 
-const TVI_ROOT = -65536
-
 function textToUtf16(s: string): ArrayBuffer {
   const buf = new ArrayBuffer((s.length + 1) * 2)
   const dv = new DataView(buf)
@@ -78,7 +76,7 @@ function insertItems(
     const cChildren = node.children && node.children.length > 0 ? 1 : 0
     const textBuf = textToUtf16(node.label)
     const itemBuf = buildTvItem(bufPtr(textBuf), cChildren)
-    const tvins = buildTvInsertStruct(parentHandle, TVI_ROOT, itemBuf)
+    const tvins = buildTvInsertStruct(parentHandle, gui.TvInsertAfter.ROOT, itemBuf)
     const hItem = gui.SendMessage(hTree, gui.TvMsg.INSERTITEMW, 0, bufPtr(tvins))
     hItemMap.set(hItem, node)
     if (node.key) keyMap.set(node.key, hItem)
@@ -92,7 +90,7 @@ function insertItems(
 function deleteAllItems(hTree: gui.HWND): void {
   const n = gui.SendMessage(hTree, gui.TvMsg.GETCOUNT, 0, 0)
   if (n > 0)
-    gui.SendMessage(hTree, gui.TvMsg.DELETEITEM, 1, TVI_ROOT)
+    gui.SendMessage(hTree, gui.TvMsg.DELETEITEM, 1, gui.TvInsertAfter.ROOT)
 }
 
 const TreeView = forwardRef(function TreeViewInner<D>(
@@ -122,7 +120,7 @@ const TreeView = forwardRef(function TreeViewInner<D>(
     hItemMapRef.current.clear()
     keyMapRef.current.clear()
     if (data && data.length > 0)
-      insertItems(h, data, TVI_ROOT, hItemMapRef.current, keyMapRef.current)
+      insertItems(h, data, gui.TvInsertAfter.ROOT, hItemMapRef.current, keyMapRef.current)
   }, [data])
 
   useEffect(() => {

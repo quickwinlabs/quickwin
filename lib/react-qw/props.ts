@@ -29,7 +29,7 @@ export function applyProps(
     gui.EnableWindow(hwnd, !newProps.disabled)
   }
   if ('hidden' in newProps) {
-    gui.ShowWindow(hwnd, newProps.hidden ? 0 : 5)
+    gui.ShowWindow(hwnd, newProps.hidden ? gui.ShowWindowCmd.HIDE : gui.ShowWindowCmd.SHOW)
   }
   if ('visible' in newProps) {
     gui.ShowWindow(hwnd, newProps.visible)
