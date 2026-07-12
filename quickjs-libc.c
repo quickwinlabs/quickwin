@@ -2436,6 +2436,12 @@ static int handle_posted_message(JSRuntime *rt, JSContext *ctx,
 
 #if defined(_WIN32)
 
+static BOOL CALLBACK enum_thread_windows_cb(HWND hwnd, LPARAM lParam) {
+    (void)hwnd;
+    *(BOOL *)lParam = TRUE;
+    return FALSE;
+}
+
 static int js_os_poll(JSContext *ctx)
 {
     JSRuntime *rt = JS_GetRuntime(ctx);
@@ -2457,23 +2463,13 @@ static int js_os_poll(JSContext *ctx)
         if (!main_thread) {
             return -1; /* worker thread: no more events */
         } else {
-            /* main thread: check if current process has any top-level windows */
-            DWORD current_pid = GetCurrentProcessId();
+            /* main thread: check if current thread has any windows */
             BOOL has_window = FALSE;
-            
-            HWND hwnd = GetTopWindow(NULL);
-            while (hwnd) {
-                DWORD pid;
-                GetWindowThreadProcessId(hwnd, &pid);
-                if (pid == current_pid) {
-                    has_window = TRUE;
-                    break;
-                }
-                hwnd = GetNextWindow(hwnd, GW_HWNDNEXT);
-            }
+            EnumThreadWindows(GetCurrentThreadId(),
+                enum_thread_windows_cb, (LPARAM)&has_window);
             
             if (!has_window) {
-                return -1; /* no windows in current process, exit event loop */
+                return -1; /* no windows on main thread, exit event loop */
             }
         }
     }
