@@ -79,7 +79,7 @@ export const Tab = forwardRef<gui.HWND, TabProps>(
         <w
           type="SysTabControl32"
           ws={gui.WindowStyle.VISIBLE | gui.TabStyle.FOCUSNEVER}
-          style={{ height: 32 }}
+          style={{ height: 20 }}
           ref={tabHwnd}
         />
         <w type="STATIC" 
