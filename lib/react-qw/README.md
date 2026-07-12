@@ -34,10 +34,32 @@ function render(element: React.ReactElement, container: gui.HWND | RootWindowCon
 ### createRoot(container)
 
 ```ts
-function createRoot(container: gui.HWND | RootWindowConfig): { render(element: any): void; unmount(): void }
+function createRoot(container: gui.HWND | RootWindowConfig): { hwnd: gui.HWND; render(element: any): void; unmount(): void }
 ```
 
 Config-path windows get DPI scaling, auto `WM_SIZE` → `forceFlexLayout`, and default class registration with cleanup on `WM_DESTROY`.
+
+### 让内容充满窗口
+
+用 `flexGrow: 1` 让子元素填满父容器，无需手动计算宽高：
+
+```tsx
+// 组件根元素用 flexGrow: 1 填满窗口
+function MyPanel() {
+  return (
+    <w type="STATIC" ws={gui.WindowStyle.VISIBLE}
+      style={{ flexDirection: 'column', gap: 8, flexGrow: 1 }}>
+      <Button>Top</Button>
+      <Button>Bottom</Button>
+    </w>
+  )
+}
+
+const root = createRoot({ text: 'My App', width: 400, height: 300 })
+root.render(<MyPanel />)
+```
+
+完整示例见 [`examples/test_root_window.tsx`](../../examples/test_root_window.tsx)。
 
 ---
 

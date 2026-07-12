@@ -69,6 +69,7 @@ export function createRoot(container: gui.HWND | RootWindowConfig) {
   if (typeof container === 'object')
     rootMap.set(hwnd, { root, onEvent: container.onEvent })
   return {
+    hwnd,
     render(element: any) {
       reconciler.updateContainer(element, root, null, noop)
     },
