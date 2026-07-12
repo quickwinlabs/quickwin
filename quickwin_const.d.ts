@@ -483,6 +483,7 @@ declare module "gui" {
     }
 
     export const enum RasterOp {
+        SRCCOPY = 13369376, // 0xCC0020
         WHITENESS = 16711778, // 0xFF0062
         BLACKNESS = 66, // 0x42
     }
@@ -491,6 +492,57 @@ declare module "gui" {
         OVERWRITEPROMPT = 2, // 0x2
         EXPLORER = 524288, // 0x80000
         HIDEREADONLY = 4, // 0x4
+    }
+
+    // Registry
+    export const enum HKey {
+        CURRENT_USER = -2147483647, // 0x80000001
+        LOCAL_MACHINE = -2147483646, // 0x80000002
+    }
+
+    export const enum RegAccess {
+        SET_VALUE = 2, // 0x2
+        READ = 131097, // 0x20019
+    }
+
+    export const enum RegType {
+        SZ = 1, // 0x1
+    }
+
+    // Printer
+    export const enum PrinterEnum {
+        LOCAL = 2, // 0x2
+        CONNECTIONS = 4, // 0x4
+    }
+
+    // DeviceCaps
+    export const enum DeviceCap {
+        HORZRES = 8, // 0x8
+        VERTRES = 10, // 0xA
+        LOGPIXELSX = 88, // 0x58
+        LOGPIXELSY = 90, // 0x5A
+    }
+
+    // Process
+    export const enum ProcessCreationFlag {
+        NO_WINDOW = 134217728, // 0x8000000
+    }
+
+    // Error codes
+    export const enum ErrorCode {
+        ALREADY_EXISTS = 183, // 0xB7
+    }
+
+    // DevMode
+    export const enum DevMode {
+        DUPLEX = 4096, // 0x1000
+        OUT_BUFFER = 2, // 0x2
+    }
+
+    // COM GUIDs
+    export const enum Guid {
+        IID_ISHELLLINKW = '{000214F9-0000-0000-C000-000000000046}',
+        IID_IPERSISTFILE = '{0000010B-0000-0000-C000-000000000046}',
     }
 
 }

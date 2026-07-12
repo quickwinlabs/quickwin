@@ -1,13 +1,23 @@
+#define INITGUID
 #include <winsock2.h>
 #include <windows.h>
 #include <commctrl.h>
 #include <shellapi.h>
 #include <commdlg.h>
+#include <winspool.h>
+#include <shobjidl.h>
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
 #include <stdio.h>
 
 #define DEC(ts, c) printf("        %s = %d, // 0x%X\n", #ts, (int)(c), (unsigned)(c));
+#define DEC_GUID(name, guid) do { \
+    GUID _g = (guid); \
+    printf("        %s = '{%08lX-%04hX-%04hX-%02X%02X-%02X%02X%02X%02X%02X%02X}',\n", \
+        name, _g.Data1, _g.Data2, _g.Data3, \
+        _g.Data4[0], _g.Data4[1], _g.Data4[2], _g.Data4[3], \
+        _g.Data4[4], _g.Data4[5], _g.Data4[6], _g.Data4[7]); \
+} while(0)
 
 static void print_enums(void) {
     /* gui */
@@ -496,6 +506,7 @@ static void print_enums(void) {
     printf("    }\n\n");
 
     printf("    export const enum RasterOp {\n");
+    DEC(SRCCOPY, SRCCOPY);
     DEC(WHITENESS, WHITENESS);
     DEC(BLACKNESS, BLACKNESS);
     printf("    }\n\n");
@@ -504,6 +515,57 @@ static void print_enums(void) {
     DEC(OVERWRITEPROMPT, OFN_OVERWRITEPROMPT);
     DEC(EXPLORER, OFN_EXPLORER);
     DEC(HIDEREADONLY, OFN_HIDEREADONLY);
+    printf("    }\n\n");
+
+    printf("    // Registry\n");
+    printf("    export const enum HKey {\n");
+    DEC(CURRENT_USER, (LONG_PTR)HKEY_CURRENT_USER);
+    DEC(LOCAL_MACHINE, (LONG_PTR)HKEY_LOCAL_MACHINE);
+    printf("    }\n\n");
+
+    printf("    export const enum RegAccess {\n");
+    DEC(SET_VALUE, KEY_SET_VALUE);
+    DEC(READ, KEY_READ);
+    printf("    }\n\n");
+
+    printf("    export const enum RegType {\n");
+    DEC(SZ, REG_SZ);
+    printf("    }\n\n");
+
+    printf("    // Printer\n");
+    printf("    export const enum PrinterEnum {\n");
+    DEC(LOCAL, PRINTER_ENUM_LOCAL);
+    DEC(CONNECTIONS, PRINTER_ENUM_CONNECTIONS);
+    printf("    }\n\n");
+
+    printf("    // DeviceCaps\n");
+    printf("    export const enum DeviceCap {\n");
+    DEC(HORZRES, HORZRES);
+    DEC(VERTRES, VERTRES);
+    DEC(LOGPIXELSX, LOGPIXELSX);
+    DEC(LOGPIXELSY, LOGPIXELSY);
+    printf("    }\n\n");
+
+    printf("    // Process\n");
+    printf("    export const enum ProcessCreationFlag {\n");
+    DEC(NO_WINDOW, CREATE_NO_WINDOW);
+    printf("    }\n\n");
+
+    printf("    // Error codes\n");
+    printf("    export const enum ErrorCode {\n");
+    DEC(ALREADY_EXISTS, ERROR_ALREADY_EXISTS);
+    printf("    }\n\n");
+
+    printf("    // DevMode\n");
+    printf("    export const enum DevMode {\n");
+    DEC(DUPLEX, DM_DUPLEX);
+    DEC(OUT_BUFFER, DM_OUT_BUFFER);
+    printf("    }\n\n");
+
+    printf("    // COM GUIDs\n");
+    printf("    export const enum Guid {\n");
+    DEC_GUID("IID_ISHELLLINKW", IID_IShellLinkW);
+    DEC_GUID("IID_IPERSISTFILE", IID_IPersistFile);
     printf("    }\n\n");
 
     printf("}\n\n");
