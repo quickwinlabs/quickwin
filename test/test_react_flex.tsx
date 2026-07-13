@@ -128,7 +128,7 @@ async function testRowCol(
   const exp = expectedPositions(dir, parentW, parentH, childSizes, justify, align, gap)
 
   root.render(
-    <w type="BUTTON" style={{flexDirection: dir, justifyContent: justify as any, alignItems: align as any, gap, width: parentW, height: parentH, x: 0, y: 0}}>
+    <w type="BUTTON" style={{flexDirection: dir, justifyContent: justify as any, alignItems: align as any, gap, width: parentW, height: parentH}}>
       {childSizes.map((c, i) =>
         <w key={String(i)} type="BUTTON" style={{width: c.w, height: c.h, flexGrow: c.flexGrow ?? 0, alignSelf: c.alignSelf ?? 'auto'}} />
       )}
@@ -221,7 +221,7 @@ async function main() {
   // ── Empty ──
   tester.section('Empty container no crash')
   root.render(
-    <w type="BUTTON" style={{flexDirection:'row', width:400, height:200, x:0, y:0}} />
+    <w type="BUTTON" style={{flexDirection:'row', width:400, height:200}} />
   )
   await flush()
   const outerKids = childrenOf(hwnd)
@@ -237,7 +237,7 @@ async function main() {
   // ── No flex props ──
   tester.section('No flex props - positions unchanged')
   root.render(
-    <w type="BUTTON" style={{width:400, height:200, x:0, y:0}}>
+    <w type="BUTTON" style={{width:400, height:200}}>
       <w type="BUTTON" style={{width:50, height:30}} />
       <w type="BUTTON" style={{width:80, height:40}} />
     </w>
@@ -266,7 +266,7 @@ async function main() {
   // ── Default sizes (no style.width/height on children) ──
   tester.section('Default sizes - 100x30')
   root.render(
-    <w type="BUTTON" style={{flexDirection:'row', alignItems:'flex-start', gap:10, width:400, height:200, x:0, y:0}}>
+      <w type="BUTTON" style={{flexDirection:'row', alignItems:'flex-start', gap:10, width:400, height:200}}>
       <w type="BUTTON" />
       <w type="BUTTON" />
     </w>
@@ -297,7 +297,7 @@ async function main() {
     const [items, setItems] = useState(initialItems)
     globalThis.__setItems = setItems
     return (
-      <w type="BUTTON" style={{flexDirection:'row', justifyContent:'center', gap:10, width:400, height:200, x:0, y:0}}>
+      <w type="BUTTON" style={{flexDirection:'row', justifyContent:'center', gap:10, width:400, height:200}}>
         {items.map((c, i) =>
           <w key={String(i)} type="BUTTON" style={{width:c.w, height:c.h}} />
         )}

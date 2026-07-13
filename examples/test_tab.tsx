@@ -18,7 +18,7 @@ function App() {
   return (
     <w type="STATIC"
       ws={gui.WindowStyle.VISIBLE}
-      style={{ flexDirection: 'column', width: 600, height: 400, x: 10, y: 10 }}
+      style={{ flexDirection: 'column', width: 600, height: 400, padding: 10 }}
     >
       <Tab
         tabs={[
@@ -27,7 +27,7 @@ function App() {
             content: (
               <w type="STATIC" 
               ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN} 
-              style={{ flexDirection: 'column', gap: 10, x: 10, y: 10, width: 580, height: 300 }}>
+               style={{ flexDirection: 'column', gap: 10, padding: 10, width: 580, height: 300 }}>
                 <Button onClick={() => setTabIndex(1)}>Go to Tab 2</Button>
               </w>
             ),
@@ -37,7 +37,7 @@ function App() {
             content: (
               <w type="STATIC"
               ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN} 
-               style={{ flexDirection: 'row', gap: 10, x: 10, y: 10, width: 580, height: 300, alignItems: 'stretch' }}>
+               style={{ flexDirection: 'row', gap: 10, padding: 10, width: 580, height: 300, alignItems: 'stretch' }}>
                 <Button onClick={() => setTabIndex(2)}>Go to Tab 3</Button>
                 <Button onClick={() => setTabIndex(0)} style={{ width: 120 }}>Back</Button>
               </w>
@@ -48,7 +48,7 @@ function App() {
             content: (
               <w type="STATIC"
               ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN} 
-               style={{ flexDirection: 'column', gap: 10, x: 10, y: 10, width: 580, height: 300 }}>
+              style={{ flexDirection: 'column', gap: 10, padding: 10, width: 580, height: 300 }}>
                 <Button onClick={() => setTabIndex(0)}>Back to Tab 1</Button>
                 <Button onClick={() => setTabIndex(1)}>Back to Tab 2</Button>
               </w>

@@ -24,7 +24,7 @@ function Counter() {
       type="BUTTON"
       text={`Count: ${count}`}
       ws={gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE}
-      style={{x:50, y:50, width:200, height:30}}
+      style={{width:200, height:30}}
       onEvent={(e: any) => {
         if (e.msg === WM_LBUTTONUP) {
           setCount(count + 1)

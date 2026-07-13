@@ -26,12 +26,12 @@ function App() {
     os.setTimeout(() => setHidden(false), 2000)
   }, [])
   return (
-    <w type="STATIC" ws={WS_CHILD | WS_VISIBLE} style={{x:0, y:0, width:480, height:360}}>
+    <w type="STATIC" ws={WS_CHILD | WS_VISIBLE} style={{width:480, height:360, flexDirection:'column', padding:10, gap:10}}>
       <w type="STATIC" text="Click to close" ws={WS_CHILD | WS_VISIBLE}
-        style={{x:10, y:10, width:200, height:30}} />
+        style={{width:200, height:30}} />
       <w type="STATIC" text={hidden ? 'HIDDEN' : 'VISIBLE'} ws={WS_CHILD | WS_VISIBLE}
         hidden={hidden}
-        style={{x:10, y:50, width:200, height:100}} />
+        style={{width:200, height:100}} />
     </w>
   )
 }

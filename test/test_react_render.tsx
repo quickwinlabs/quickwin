@@ -15,7 +15,7 @@ gui.RegisterClass('ReactTest', (hwnd, msg, wParam, lParam) => {
 })
 
 function Greeting() {
-  return <w type="BUTTON" text="Hello" ws={WS_CHILD | WS_VISIBLE} style={{x:50, y:50, width:200, height:30}} />
+  return <w type="BUTTON" text="Hello" ws={WS_CHILD | WS_VISIBLE} style={{width:200, height:30}} />
 }
 
 const hwnd = gui.CreateWindow(

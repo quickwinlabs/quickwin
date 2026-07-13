@@ -85,8 +85,8 @@ function App({ svW, svH }: { svW: number; svH: number }) {
   const cbItems = ['Red', 'Green', 'Blue', 'Yellow', 'Purple', 'Orange']
 
   return (
-      <ScrollView style={{width:svW, height:svH, x:0, y:0}} contentHeight={1150}>
-      <w type="STATIC" ws={VISIBLE | CLIPCHILDREN} style={{flexDirection:'column', gap:8, alignSelf:'stretch', flexGrow:1}}>
+      <ScrollView style={{width:svW, height:svH}} contentHeight={1250}>
+      <w type="STATIC" ws={VISIBLE | CLIPCHILDREN | gui.WindowStyle.BORDER} style={{flexDirection:'column', gap:8, alignSelf:'stretch', flexGrow:1, padding:8}}>
       {/* ===== 三列上半区 ===== */}
       <w type="STATIC" ws={VISIBLE} style={{flexDirection:'row', gap:10, height:345}}>
 
