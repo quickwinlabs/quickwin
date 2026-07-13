@@ -8,6 +8,11 @@ interface WStyle {
   alignItems?: 'flex-start' | 'flex-end' | 'center' | 'stretch'
   alignSelf?: 'auto' | 'flex-start' | 'flex-end' | 'center' | 'stretch'
   gap?: number
+  padding?: number
+  paddingTop?: number
+  paddingRight?: number
+  paddingBottom?: number
+  paddingLeft?: number
   flexGrow?: number
 }
 

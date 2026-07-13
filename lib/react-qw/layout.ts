@@ -5,6 +5,11 @@ export interface FlexStyle {
   justifyContent?: JustifyContent
   alignItems?: 'flex-start' | 'flex-end' | 'center' | 'stretch'
   gap?: number
+  padding?: number
+  paddingTop?: number
+  paddingRight?: number
+  paddingBottom?: number
+  paddingLeft?: number
 }
 
 interface ChildInfo {
@@ -37,8 +42,14 @@ export function calculateFlexLayout(
   const crossPos: 'x' | 'y' = isRow ? 'y' : 'x'
   const mainDim: 'width' | 'height' = isRow ? 'width' : 'height'
   const crossDim: 'width' | 'height' = isRow ? 'height' : 'width'
-  const parentMain = isRow ? parentW : parentH
-  const parentCross = isRow ? parentH : parentW
+  const pt = flex.paddingTop ?? flex.padding ?? 0
+  const pr = flex.paddingRight ?? flex.padding ?? 0
+  const pb = flex.paddingBottom ?? flex.padding ?? 0
+  const pl = flex.paddingLeft ?? flex.padding ?? 0
+  const mainPadding = isRow ? pl + pr : pt + pb
+  const crossPadding = isRow ? pt + pb : pl + pr
+  const parentMain = (isRow ? parentW : parentH) - mainPadding
+  const parentCross = (isRow ? parentH : parentW) - crossPadding
 
   const sizes = children.map(c => ({
     w: c.style.width ?? DEFAULT_W,

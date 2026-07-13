@@ -81,13 +81,15 @@ function runFlexLayout(inst: Instance) {
   const ph = (rect.bottom - rect.top) / scaleFactor
   if (pw <= 0 || ph <= 0) { console.log('flex: zero size for', inst.hwnd, inst.type, pw, ph); return }
   const results = calculateFlexLayout(flex, pw, ph, visible.map(c => ({ style: c.props.style || {} })))
+  const pl = flex.paddingLeft ?? flex.padding ?? 0
+  const pt = flex.paddingTop ?? flex.padding ?? 0
   for (let i = 0; i < results.length; i++) {
     const r = results[i]
     const child = visible[i]
     const lr = child.lastRect
     if (lr && lr.x === r.x && lr.y === r.y && lr.w === r.width && lr.h === r.height) continue
     console.log('flex: set', child.type, child.hwnd, 'to', r.x, r.y, r.width, r.height)
-    gui.SetWindowPos(child.hwnd!, 0, r.x * scaleFactor, r.y * scaleFactor, r.width * scaleFactor, r.height * scaleFactor, 0)
+    gui.SetWindowPos(child.hwnd!, 0, (r.x + pl) * scaleFactor, (r.y + pt) * scaleFactor, r.width * scaleFactor, r.height * scaleFactor, 0)
     child.lastRect = { x: r.x, y: r.y, w: r.width, h: r.height }
   }
   for (const c of children) runFlexLayout(c)
