@@ -241,6 +241,26 @@ const hostConfig: QuickWinHostConfig = {
 
   resetTextContent(_instance: Instance) { },
 
+  commitTextUpdate(instance: Instance, _oldText: string, newText: string) {
+    gui.SetWindowText(instance.hwnd!, newText)
+  },
+
+  hideInstance(instance: Instance) {
+    if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, gui.ShowWindowCmd.HIDE)
+  },
+
+  hideTextInstance(instance: Instance) {
+    if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, gui.ShowWindowCmd.HIDE)
+  },
+
+  unhideInstance(instance: Instance, _props: Record<string, any>) {
+    if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, gui.ShowWindowCmd.SHOW)
+  },
+
+  unhideTextInstance(instance: Instance, _text: string) {
+    if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, gui.ShowWindowCmd.SHOW)
+  },
+
   shouldSetTextContent(_type: string, props: Record<string, any>) {
     return typeof props.children === 'string' || typeof props.children === 'number'
   },
