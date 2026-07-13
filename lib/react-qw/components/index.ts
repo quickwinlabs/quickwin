@@ -13,4 +13,5 @@ export { Slider, type SliderProps } from './Slider.js'
 export { Tab, type TabProps } from './Tab.js'
 export { Tooltip, type TooltipProps } from './Tooltip.js'
 export { TreeView, type TreeViewProps, type TreeNode } from './TreeView.js'
+export { PathPicker, type PathPickerProps } from './PathPicker.js'
 

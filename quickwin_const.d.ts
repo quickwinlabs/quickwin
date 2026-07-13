@@ -492,6 +492,11 @@ declare module "gui" {
         OVERWRITEPROMPT = 2, // 0x2
         EXPLORER = 524288, // 0x80000
         HIDEREADONLY = 4, // 0x4
+        NOCHANGEDIR = 8, // 0x8
+        ALLOWMULTISELECT = 512, // 0x200
+        PATHMUSTEXIST = 2048, // 0x800
+        FILEMUSTEXIST = 4096, // 0x1000
+        NOREADONLYRETURN = 32768, // 0x8000
     }
 
     // Registry

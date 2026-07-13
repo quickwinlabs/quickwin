@@ -4,7 +4,7 @@ import { useState } from 'react'
 import {
   render, Button, Input, CheckBox, ProgressBar, ComboBox, Tab,
   ListView, type Column, ListBox, ScrollView, RadioButton, Slider,
-  TreeView, type TreeNode, DateTimePicker, Link, Tooltip,
+  TreeView, type TreeNode, DateTimePicker, Link, Tooltip, PathPicker,
 } from '../lib/react-qw/index.js'
 
 
@@ -66,6 +66,7 @@ function App({ svW, svH }: { svW: number; svH: number }) {
   const [sliderVal, setSliderVal] = useState(50)
   const [treeSel, setTreeSel] = useState<TreeNode | null>(null)
   const [dtDate, setDtDate] = useState<Date | null>(new Date())
+  const [pickerPath, setPickerPath] = useState('')
   const [listData, setListData] = useState<Fruit[]>([
     { name: 'Apple', color: 'Red', origin: 'China' },
     { name: 'Banana', color: 'Yellow', origin: 'Philippines' },
@@ -84,7 +85,7 @@ function App({ svW, svH }: { svW: number; svH: number }) {
   const cbItems = ['Red', 'Green', 'Blue', 'Yellow', 'Purple', 'Orange']
 
   return (
-    <ScrollView style={{width:svW, height:svH, x:0, y:0}} contentHeight={1049}>
+      <ScrollView style={{width:svW, height:svH, x:0, y:0}} contentHeight={1150}>
       <w type="STATIC" ws={VISIBLE | CLIPCHILDREN} style={{flexDirection:'column', gap:8, alignSelf:'stretch', flexGrow:1}}>
       {/* ===== 三列上半区 ===== */}
       <w type="STATIC" ws={VISIBLE} style={{flexDirection:'row', gap:10, height:345}}>
@@ -193,6 +194,15 @@ function App({ svW, svH }: { svW: number; svH: number }) {
           Example Link
         </Link>
         <Link href="https://github.com" onClick={(url) => console.log('Link clicked:', url)} style={{flexGrow:1}} />
+      </w>
+
+      {/* ===== PathPicker ===== */}
+      <w type="STATIC" ws={VISIBLE} text="PathPicker" style={{height:24}} />
+      <w type="STATIC" ws={VISIBLE} style={{flexDirection:'column', gap:6, height:130}}>
+        <PathPicker type="file" title="Select a file" style={{height:28}} />
+        <PathPicker type="folder" title="Select a folder" style={{height:28}} />
+        <PathPicker type="file" value={pickerPath} onChange={setPickerPath} title="Controlled" style={{height:28}} />
+        <w type="STATIC" ws={VISIBLE} text={pickerPath ? `Selected: ${pickerPath}` : '(none)'} style={{height:20}} />
       </w>
 
       {/* ===== 下半区: ListView + ScrollView + TreeView ===== */}
