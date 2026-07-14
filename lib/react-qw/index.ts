@@ -21,16 +21,13 @@ const rootMap = new Map<gui.HWND, { root: any, onEvent?: RootWindowConfig['onEve
 function ensureDefaultClass() {
   if (defaultClassRegistered) return DEFAULT_CLASS
   gui.RegisterClass(DEFAULT_CLASS, (hwnd, msg, wParam, lParam) => {
-    if (msg === gui.WmMsg.DESTROY) {
-      const entry = rootMap.get(hwnd)
-      if (entry) {
-        rootMap.delete(hwnd)
-        reconciler.updateContainer(null, entry.root, null, () => {
-          instancesByHwnd.delete(hwnd)
-        })
-      }
-    }
     const entry = rootMap.get(hwnd)
+    if (msg === gui.WmMsg.DESTROY && entry) {
+      rootMap.delete(hwnd)
+      reconciler.updateContainer(null, entry.root, null, () => {
+        instancesByHwnd.delete(hwnd)
+      })
+    }
     const result = entry?.onEvent?.({ hwnd, msg, wParam, lParam })
     if (typeof result === 'number') return result
     if (msg === gui.WmMsg.SIZE) forceFlexLayout(hwnd)
