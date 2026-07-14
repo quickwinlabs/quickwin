@@ -939,10 +939,12 @@ async function fetch(url: string | Request, init: RequestInit = {}): Promise<Fet
                 response.headers.forEach((value: string, name: string) => {
                     cachedMeta.headers[name] = value
                 })
+                const now = String(Math.floor(Date.now() / 1000))
                 const iniMeta: Record<string, string> = {
                     url: currentUrl,
                     storedAt: String(cachedMeta.storedAt),
                     maxAge: String(cachedMeta.maxAge),
+                    lastAccess: now,
                     status: String(cachedMeta.status),
                     statusText: cachedMeta.statusText,
                 }
@@ -965,10 +967,12 @@ async function fetch(url: string | Request, init: RequestInit = {}): Promise<Fet
             const maxAge = parseMaxAge(cc)
             if (maxAge > 0) {
                 const resHeaders = headersToObj(response.headers)
+                const now = String(Math.floor(Date.now() / 1000))
                 const iniMeta: Record<string, string> = {
                     url: currentUrl,
-                    storedAt: String(Math.floor(Date.now() / 1000)),
+                    storedAt: now,
                     maxAge: String(maxAge),
+                    lastAccess: now,
                     status: String(response.status),
                     statusText: response.statusText,
                 }

@@ -250,9 +250,10 @@ static void write_cache_file(const char* url, int max_age,
         int w = snprintf(meta_buf, sizeof(meta_buf), "[headers]\n%s\n", headers_str);
         off = (w < (int)sizeof(meta_buf)) ? w : (int)sizeof(meta_buf) - 1;
     }
+    long long now = (long long)time(NULL);
     int w = snprintf(meta_buf + off, sizeof(meta_buf) - off,
-                     "[meta]\nurl: %s\nstoredAt: %lld\nmaxAge: %d\n",
-                     url, (long long)time(NULL), max_age);
+                     "[meta]\nurl: %s\nstoredAt: %lld\nmaxAge: %d\nlastAccess: %lld\n",
+                     url, now, max_age, now);
     off += (w < (int)(sizeof(meta_buf) - off)) ? w : (int)(sizeof(meta_buf) - off) - 1;
 
     if (!write_entire_fileW(meta_path, meta_buf, strlen(meta_buf))) return;
@@ -914,7 +915,8 @@ char* js_module_normalize_name(JSContext *ctx,
     if (!result)
         return NULL;
 
-    if (port == 80) {
+    int default_port = is_https_url(base_name) ? 443 : 80;
+    if (port == default_port) {
         snprintf(result, 512 + sizeof(new_path), "%s://%s%s", scheme, h2, new_path);
     } else {
         snprintf(result, 512 + sizeof(new_path), "%s://%s:%d%s", scheme, h2, port, new_path);
