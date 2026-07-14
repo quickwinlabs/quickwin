@@ -16,7 +16,7 @@ export function parseIni(text: string): IniCache {
         if (!section || !trimmed) continue
         const colon = trimmed.indexOf(':')
         if (colon < 0) continue
-        const key = trimmed.slice(0, colon).trim().toLowerCase()
+        const key = trimmed.slice(0, colon).trim()
         const val = trimmed.slice(colon + 1).trim()
         if (section === 'headers') headers[key] = val
         else if (section === 'meta') meta[key] = val

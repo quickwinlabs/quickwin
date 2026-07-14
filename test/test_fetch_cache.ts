@@ -57,8 +57,8 @@ export const suite = {
         assert('meta written', metaStr !== null)
         if (metaStr) {
             const ini = parseIni(metaStr)
-            assert('meta has storedAt', typeof ini.meta.storedat === 'string' && ini.meta.storedat.length > 0)
-            assert('meta has maxAge', ini.meta.maxage === '60')
+            assert('meta has storedAt', typeof ini.meta.storedAt === 'string' && ini.meta.storedAt.length > 0)
+            assert('meta has maxAge', ini.meta.maxAge === '60')
         }
 
         const fullMeta = toIni(
@@ -108,18 +108,18 @@ export const suite = {
         const beforeMeta = __httpCache__.readMeta(laUrl)
         if (beforeMeta) {
             const ini0 = parseIni(beforeMeta)
-            assert('no lastAccess before update', ini0.meta.lastaccess === undefined)
+            assert('no lastAccess before update', ini0.meta.lastAccess === undefined)
         }
         const now = Math.floor(Date.now() / 1000)
         const laMeta = parseIni(__httpCache__.readMeta(laUrl) || '')
-        laMeta.meta.lastaccess = String(now)
+        laMeta.meta.lastAccess = String(now)
         __httpCache__.writeMeta(laUrl, toIni(laMeta.headers, laMeta.meta))
         const afterMeta = __httpCache__.readMeta(laUrl)
         if (afterMeta) {
             const ini1 = parseIni(afterMeta)
-            assert('lastAccess present after update', typeof ini1.meta.lastaccess === 'string' && ini1.meta.lastaccess.length > 0)
-            assert('lastAccess is numeric', /^\d+$/.test(ini1.meta.lastaccess))
-            assert('meta preserved after lastAccess', ini1.meta.maxage === '300')
+            assert('lastAccess present after update', typeof ini1.meta.lastAccess === 'string' && ini1.meta.lastAccess.length > 0)
+            assert('lastAccess is numeric', /^\d+$/.test(ini1.meta.lastAccess))
+            assert('meta preserved after lastAccess', ini1.meta.maxAge === '300')
             assert('no headers leaked', Object.keys(ini1.headers).length === 0)
         }
 
@@ -137,7 +137,7 @@ export const suite = {
         if (cachedMeta) {
             const ini = parseIni(cachedMeta)
             assert('cached status = 200', ini.meta.status === '200')
-            assert('cached maxAge = 60', ini.meta.maxage === '60')
+            assert('cached maxAge = 60', ini.meta.maxAge === '60')
         }
 
         const cachedBody = __httpCache__.readBody(cacheTestUrl)
@@ -155,7 +155,7 @@ export const suite = {
         const afterFetchMeta = __httpCache__.readMeta(cacheTestUrl)
         if (afterFetchMeta) {
             const iniLA = parseIni(afterFetchMeta)
-            assert('lastAccess set after fetch cache hit', typeof iniLA.meta.lastaccess === 'string' && iniLA.meta.lastaccess.length > 0)
+            assert('lastAccess set after fetch cache hit', typeof iniLA.meta.lastAccess === 'string' && iniLA.meta.lastAccess.length > 0)
         }
 
         t.section('timing: network vs cache')

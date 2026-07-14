@@ -873,10 +873,10 @@ async function fetch(url: string | Request, init: RequestInit = {}): Promise<Fet
         if (metaStr) {
             const ini = parseIni(metaStr)
             cachedMeta = {
-                storedAt: parseInt(ini.meta.storedat || '0', 10),
-                maxAge: parseInt(ini.meta.maxage || '0', 10),
+                storedAt: parseInt(ini.meta.storedAt || '0', 10),
+                maxAge: parseInt(ini.meta.maxAge || '0', 10),
                 status: parseInt(ini.meta.status || '200', 10),
-                statusText: ini.meta.statustext || 'OK',
+                statusText: ini.meta.statusText || 'OK',
                 headers: ini.headers,
                 etag: ini.headers['etag'] || undefined,
                 lastModified: ini.headers['last-modified'] || undefined,
@@ -885,7 +885,7 @@ async function fetch(url: string | Request, init: RequestInit = {}): Promise<Fet
             if (cachedMeta.maxAge > 0 && age < cachedMeta.maxAge) {
                 const body = cache.readBody(currentUrl)
                 if (body) {
-                    ini.meta.lastaccess = String(Math.floor(Date.now() / 1000))
+                    ini.meta.lastAccess = String(Math.floor(Date.now() / 1000))
                     cache.writeMeta(currentUrl, toIni(ini.headers, ini.meta))
                     const resp = new FetchResponse(
                         cachedMeta.status, cachedMeta.statusText,

@@ -66,7 +66,7 @@ export const suite = {
                     fp.close()
                     if (metaStr) {
                         const ini = parseIni(metaStr)
-                        std.printf('    storedAt: %s, maxAge: %s\n', ini.meta.storedat || '?', ini.meta.maxage || '?')
+                        std.printf('    storedAt: %s, maxAge: %s\n', ini.meta.storedAt || '?', ini.meta.maxAge || '?')
                     }
                 }
             }
