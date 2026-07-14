@@ -226,14 +226,15 @@ static void* read_body_file(const char* url, size_t* out_len) {
     return read_entire_fileW(path, out_len);
 }
 
-static void write_meta_file(const char* url, const char* json_str) {
+static void write_meta_file(const char* url, const char* ini_str) {
     wchar_t path[MAX_PATH];
     cache_path_for(url, L".meta", path, MAX_PATH);
-    write_entire_fileW(path, json_str, strlen(json_str));
+    write_entire_fileW(path, ini_str, strlen(ini_str));
 }
 
 static void write_cache_file(const char* url, int max_age,
-                             const void* body, size_t body_len) {
+                             const void* body, size_t body_len,
+                             const char* headers_str) {
     wchar_t meta_path[MAX_PATH], body_path[MAX_PATH];
     cache_path_for(url, L".meta", meta_path, MAX_PATH);
     cache_path_for(url, L".body", body_path, MAX_PATH);
@@ -242,13 +243,50 @@ static void write_cache_file(const char* url, int max_age,
     get_cache_dirW(dir, MAX_PATH);
     CreateDirectoryW(dir, NULL);
 
-    char meta_buf[128];
-    snprintf(meta_buf, sizeof(meta_buf), "{\"storedAt\":%lld,\"maxAge\":%d}",
-             (long long)time(NULL), max_age);
+    // INI format: [headers] section + [meta] section
+    char meta_buf[2048];
+    int off = 0;
+    if (headers_str && headers_str[0]) {
+        int w = snprintf(meta_buf, sizeof(meta_buf), "[headers]\n%s\n", headers_str);
+        off = (w < (int)sizeof(meta_buf)) ? w : (int)sizeof(meta_buf) - 1;
+    }
+    int w = snprintf(meta_buf + off, sizeof(meta_buf) - off,
+                     "[meta]\nurl: %s\nstoredAt: %lld\nmaxAge: %d\n",
+                     url, (long long)time(NULL), max_age);
+    off += (w < (int)(sizeof(meta_buf) - off)) ? w : (int)(sizeof(meta_buf) - off) - 1;
 
     if (!write_entire_fileW(meta_path, meta_buf, strlen(meta_buf))) return;
     if (!write_entire_fileW(body_path, body, body_len)) DeleteFileW(meta_path);
 }
+
+static void write_body_only(const char* url, const void* body, size_t body_len) {
+    wchar_t body_path[MAX_PATH];
+    cache_path_for(url, L".body", body_path, MAX_PATH);
+    write_entire_fileW(body_path, body, body_len);
+}
+
+// Find a key in a specific INI section. Returns pointer to value after ": ".
+// section_start marks the beginning of the section content.
+static const char* find_ini_key(const char* section_start, const char* end, const char* key) {
+    size_t klen = strlen(key);
+    const char* p = section_start;
+    while (p < end) {
+        // skip leading whitespace
+        while (p < end && (*p == ' ' || *p == '\t')) p++;
+        if (p + klen + 1 < end && memcmp(p, key, klen) == 0 && p[klen] == ':') {
+            p += klen + 1; // skip "key:"
+            while (p < end && *p == ' ') p++;
+            return p;
+        }
+        // skip to next line
+        const char* nl = memchr(p, '\n', (size_t)(end - p));
+        if (!nl) break;
+        p = nl + 1;
+    }
+    return NULL;
+}
+
+static void update_last_access(const char* url);
 
 static char* read_cache(const char* url) {
     char* meta = read_meta_file(url);
@@ -256,10 +294,21 @@ static char* read_cache(const char* url) {
 
     long long storedAt = 0;
     int maxAge = 0;
-    const char* p = strstr(meta, "\"storedAt\"");
-    if (p) { p = strchr(p, ':'); if (p) storedAt = atoll(p + 1); }
-    p = strstr(meta, "\"maxAge\"");
-    if (p) { p = strchr(p, ':'); if (p) maxAge = atoi(p + 1); }
+
+    // Find [meta] section
+    char* meta_section = strstr(meta, "[meta]");
+    char* end = meta + strlen(meta);
+    if (meta_section) {
+        meta_section += 6; // skip "[meta]"
+        // skip optional newline after [meta]
+        if (*meta_section == '\n') meta_section++;
+
+        const char* p;
+        p = find_ini_key(meta_section, end, "storedAt");
+        if (p) storedAt = atoll(p);
+        p = find_ini_key(meta_section, end, "maxAge");
+        if (p) maxAge = atoi(p);
+    }
     free(meta);
 
     if (maxAge <= 0 || time(NULL) - storedAt >= maxAge) {
@@ -271,8 +320,70 @@ static char* read_cache(const char* url) {
         return NULL;
     }
 
+    update_last_access(url);
     size_t body_len;
     return read_body_file(url, &body_len);
+}
+
+// Update lastAccess field in meta file. Read, skip any existing lastAccess line,
+// append new value, write back.
+static void update_last_access(const char* url) {
+    char* meta = read_meta_file(url);
+    if (!meta) return;
+    char ts[32];
+    snprintf(ts, sizeof(ts), "%lld", (long long)time(NULL));
+    size_t len = strlen(meta);
+    char* buf = malloc(len + 80);
+    if (!buf) { free(meta); return; }
+    int off = 0;
+    const char* p = meta;
+    while (*p) {
+        if (strncmp(p, "lastAccess:", 11) == 0 && (p == meta || *(p-1) == '\n')) {
+            const char* nl = strchr(p, '\n');
+            p = nl ? nl + 1 : p + strlen(p);
+        } else {
+            buf[off++] = *p++;
+        }
+    }
+    off += snprintf(buf + off, 80, "lastAccess: %s\n", ts);
+    write_meta_file(url, buf);
+    free(buf);
+    free(meta);
+}
+
+// Extract response headers as INI-format string: "Key: Value\nKey2: Value2\n"
+// Skips the status line and blank line. Caller must free() the result.
+static char* extract_headers_ini(const char* response) {
+    // Skip status line (first line)
+    const char* p = strstr(response, "\r\n");
+    if (!p) return NULL;
+    p += 2; // skip \r\n
+
+    const char* body = strstr(response, "\r\n\r\n");
+    if (!body) return NULL;
+
+    // Estimate size: each header line + \n
+    size_t cap = (size_t)(body - p) + 1;
+    char* buf = malloc(cap);
+    if (!buf) return NULL;
+    size_t pos = 0;
+
+    while (p < body) {
+        const char* eol = strstr(p, "\r\n");
+        if (!eol) eol = body;
+        size_t len = (size_t)(eol - p);
+        if (len > 0 && pos + len + 1 < cap) {
+            memcpy(buf + pos, p, len);
+            pos += len;
+            buf[pos++] = '\n';
+        }
+        if (eol < body)
+            p = eol + 2;
+        else
+            break;
+    }
+    buf[pos] = '\0';
+    return buf;
 }
 
 static void try_cache_response(const char* url, const char* response, size_t total) {
@@ -288,7 +399,9 @@ static void try_cache_response(const char* url, const char* response, size_t tot
     size_t body_len = total - (body_start - response);
     if (body_len == 0) return;
 
-    write_cache_file(url, max_age, body_start, body_len);
+    char* headers_ini = extract_headers_ini(response);
+    write_cache_file(url, max_age, body_start, body_len, headers_ini);
+    free(headers_ini);
 }
 
 // ── JS-callable cache API (globalThis.__httpCache__) ──
@@ -318,29 +431,27 @@ static JSValue js_cache_readBody(JSContext *ctx, JSValueConst this_val,
     return js_r;
 }
 
-static JSValue js_cache_writeCache(JSContext *ctx, JSValueConst this_val,
-                                   int argc, JSValueConst *argv) {
+static JSValue js_cache_writeBodyOnly(JSContext *ctx, JSValueConst this_val,
+                                      int argc, JSValueConst *argv) {
     const char* url = JS_ToCString(ctx, argv[0]);
     if (!url) return JS_EXCEPTION;
-    int max_age;
-    JS_ToInt32(ctx, &max_age, argv[1]);
     size_t body_len = 0;
     const void* body = NULL;
     uint8_t* ab_body = NULL;
     const char* str_body = NULL;
 
-    if (JS_IsString(argv[2])) {
-        str_body = JS_ToCString(ctx, argv[2]);
+    if (JS_IsString(argv[1])) {
+        str_body = JS_ToCString(ctx, argv[1]);
         if (!str_body) { JS_FreeCString(ctx, url); return JS_EXCEPTION; }
         body = str_body;
         body_len = strlen(str_body);
     } else {
-        ab_body = JS_GetArrayBuffer(ctx, &body_len, argv[2]);
+        ab_body = JS_GetArrayBuffer(ctx, &body_len, argv[1]);
         if (!ab_body) { JS_FreeCString(ctx, url); return JS_EXCEPTION; }
         body = ab_body;
     }
 
-    write_cache_file(url, max_age, body, body_len);
+    write_body_only(url, body, body_len);
 
     if (str_body) JS_FreeCString(ctx, str_body);
     JS_FreeCString(ctx, url);
@@ -351,11 +462,11 @@ static JSValue js_cache_writeMeta(JSContext *ctx, JSValueConst this_val,
                                   int argc, JSValueConst *argv) {
     const char* url = JS_ToCString(ctx, argv[0]);
     if (!url) return JS_EXCEPTION;
-    const char* json_str = JS_ToCString(ctx, argv[1]);
-    if (!json_str) { JS_FreeCString(ctx, url); return JS_EXCEPTION; }
-    write_meta_file(url, json_str);
+    const char* ini_str = JS_ToCString(ctx, argv[1]);
+    if (!ini_str) { JS_FreeCString(ctx, url); return JS_EXCEPTION; }
+    write_meta_file(url, ini_str);
     JS_FreeCString(ctx, url);
-    JS_FreeCString(ctx, json_str);
+    JS_FreeCString(ctx, ini_str);
     return JS_UNDEFINED;
 }
 
@@ -376,8 +487,8 @@ void js_init_http_cache_api(JSContext *ctx) {
         JS_NewCFunction(ctx, js_cache_readMeta, "readMeta", 1));
     JS_SetPropertyStr(ctx, obj, "readBody",
         JS_NewCFunction(ctx, js_cache_readBody, "readBody", 1));
-    JS_SetPropertyStr(ctx, obj, "writeCache",
-        JS_NewCFunction(ctx, js_cache_writeCache, "writeCache", 3));
+    JS_SetPropertyStr(ctx, obj, "writeBodyOnly",
+        JS_NewCFunction(ctx, js_cache_writeBodyOnly, "writeBodyOnly", 2));
     JS_SetPropertyStr(ctx, obj, "writeMeta",
         JS_NewCFunction(ctx, js_cache_writeMeta, "writeMeta", 2));
     JS_SetPropertyStr(ctx, obj, "cacheKey",

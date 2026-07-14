@@ -564,8 +564,8 @@ declare module "wamr" {
 interface HttpCache {
     readMeta(url: string): string | null;
     readBody(url: string): ArrayBuffer | null;
-    writeCache(url: string, maxAge: number, body: string | ArrayBuffer): void;
-    writeMeta(url: string, json: string): void;
+    writeBodyOnly(url: string, body: string | ArrayBuffer): void;
+    writeMeta(url: string, ini: string): void;
     cacheKey(url: string): string;
 }
 

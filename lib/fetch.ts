@@ -3,6 +3,7 @@ import * as sock from 'sock'
 import * as wolfssl from 'wolfssl'
 import * as os from 'os'
 import * as brotli from 'brotli'
+import { parseIni, toIni } from '../lib/cache-utils.js'
 
 const setTimeout = os.setTimeout
 const clearTimeout = os.clearTimeout
@@ -870,11 +871,22 @@ async function fetch(url: string | Request, init: RequestInit = {}): Promise<Fet
     if (cache && method === 'GET') {
         const metaStr = cache.readMeta(currentUrl)
         if (metaStr) {
-            cachedMeta = JSON.parse(metaStr) as CacheMeta
+            const ini = parseIni(metaStr)
+            cachedMeta = {
+                storedAt: parseInt(ini.meta.storedat || '0', 10),
+                maxAge: parseInt(ini.meta.maxage || '0', 10),
+                status: parseInt(ini.meta.status || '200', 10),
+                statusText: ini.meta.statustext || 'OK',
+                headers: ini.headers,
+                etag: ini.headers['etag'] || undefined,
+                lastModified: ini.headers['last-modified'] || undefined,
+            }
             const age = Math.floor(Date.now() / 1000) - cachedMeta.storedAt
             if (cachedMeta.maxAge > 0 && age < cachedMeta.maxAge) {
                 const body = cache.readBody(currentUrl)
                 if (body) {
+                    ini.meta.lastaccess = String(Math.floor(Date.now() / 1000))
+                    cache.writeMeta(currentUrl, toIni(ini.headers, ini.meta))
                     const resp = new FetchResponse(
                         cachedMeta.status, cachedMeta.statusText,
                         new FetchHeaders(cachedMeta.headers || {}),
@@ -927,7 +939,14 @@ async function fetch(url: string | Request, init: RequestInit = {}): Promise<Fet
                 response.headers.forEach((value: string, name: string) => {
                     cachedMeta.headers[name] = value
                 })
-                cache.writeMeta(currentUrl, JSON.stringify(cachedMeta))
+                const iniMeta: Record<string, string> = {
+                    url: currentUrl,
+                    storedAt: String(cachedMeta.storedAt),
+                    maxAge: String(cachedMeta.maxAge),
+                    status: String(cachedMeta.status),
+                    statusText: cachedMeta.statusText,
+                }
+                cache.writeMeta(currentUrl, toIni(cachedMeta.headers, iniMeta))
                 const resp = new FetchResponse(
                     cachedMeta.status, cachedMeta.statusText,
                     new FetchHeaders(cachedMeta.headers),
@@ -945,17 +964,16 @@ async function fetch(url: string | Request, init: RequestInit = {}): Promise<Fet
             const cc = response.headers.get('cache-control') || ''
             const maxAge = parseMaxAge(cc)
             if (maxAge > 0) {
-                cache.writeCache(currentUrl, maxAge, body)
-                const meta = JSON.stringify({
-                    storedAt: Math.floor(Date.now() / 1000),
-                    maxAge,
-                    status: response.status,
+                const resHeaders = headersToObj(response.headers)
+                const iniMeta: Record<string, string> = {
+                    url: currentUrl,
+                    storedAt: String(Math.floor(Date.now() / 1000)),
+                    maxAge: String(maxAge),
+                    status: String(response.status),
                     statusText: response.statusText,
-                    headers: headersToObj(response.headers),
-                    etag: response.headers.get('etag') || undefined,
-                    lastModified: response.headers.get('last-modified') || undefined,
-                })
-                cache.writeMeta(currentUrl, meta)
+                }
+                cache.writeBodyOnly(currentUrl, body)
+                cache.writeMeta(currentUrl, toIni(resHeaders, iniMeta))
             }
             const resp = new FetchResponse(
                 response.status, response.statusText,

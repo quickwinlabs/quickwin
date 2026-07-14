@@ -2,6 +2,7 @@ import '../lib/fetch.js'
 import * as std from 'std'
 import * as os from 'os'
 import { Tester } from './test_helper.js'
+import { parseIni, toIni } from '../lib/cache-utils.js'
 
 function getCacheDir(): string {
     const url = import.meta.url
@@ -32,39 +33,52 @@ export const suite = {
 
         assert('readMeta is function', typeof __httpCache__.readMeta === 'function')
         assert('readBody is function', typeof __httpCache__.readBody === 'function')
-        assert('writeCache is function', typeof __httpCache__.writeCache === 'function')
+        assert('writeBodyOnly is function', typeof __httpCache__.writeBodyOnly === 'function')
         assert('writeMeta is function', typeof __httpCache__.writeMeta === 'function')
         assert('cacheKey is function', typeof __httpCache__.cacheKey === 'function')
 
-        t.section('writeCache + readMeta + readBody')
+        t.section('writeBodyOnly + writeMeta + readMeta + readBody')
         const fakeUrl = 'https://test.local/cache-test'
         trackedUrls.push(fakeUrl)
         const testBody = 'hello cache test!'
-        __httpCache__.writeCache(fakeUrl, 60, testBody)
+        __httpCache__.writeBodyOnly(fakeUrl, testBody)
+        __httpCache__.writeMeta(fakeUrl, toIni(
+            {},
+            {
+                url: fakeUrl,
+                storedAt: String(Math.floor(Date.now() / 1000)),
+                maxAge: '60',
+                status: '200',
+                statusText: 'OK',
+            }
+        ))
 
         const metaStr = __httpCache__.readMeta(fakeUrl)
         assert('meta written', metaStr !== null)
         if (metaStr) {
-            const meta = JSON.parse(metaStr)
-            assert('meta has storedAt', typeof meta.storedAt === 'number')
-            assert('meta has maxAge', meta.maxAge === 60)
+            const ini = parseIni(metaStr)
+            assert('meta has storedAt', typeof ini.meta.storedat === 'string' && ini.meta.storedat.length > 0)
+            assert('meta has maxAge', ini.meta.maxage === '60')
         }
 
-        const fullMeta = JSON.stringify({
-            storedAt: Math.floor(Date.now() / 1000),
-            maxAge: 60,
-            status: 200,
-            statusText: 'OK',
-            headers: { 'content-type': 'text/plain' },
-        })
+        const fullMeta = toIni(
+            { 'content-type': 'text/plain' },
+            {
+                url: fakeUrl,
+                storedAt: String(Math.floor(Date.now() / 1000)),
+                maxAge: '60',
+                status: '200',
+                statusText: 'OK',
+            }
+        )
         __httpCache__.writeMeta(fakeUrl, fullMeta)
 
         const metaStr2 = __httpCache__.readMeta(fakeUrl)
         assert('meta overwritten', metaStr2 !== null)
         if (metaStr2) {
-            const meta2 = JSON.parse(metaStr2)
-            assert('meta has status', meta2.status === 200)
-            assert('meta has headers', meta2.headers['content-type'] === 'text/plain')
+            const ini2 = parseIni(metaStr2)
+            assert('meta has status', ini2.meta.status === '200')
+            assert('meta has headers', ini2.headers['content-type'] === 'text/plain')
         }
 
         const bodyAb = __httpCache__.readBody(fakeUrl)
@@ -80,6 +94,35 @@ export const suite = {
         const key = __httpCache__.cacheKey('https://example.com/test.js')
         assert('cacheKey returns 16 hex chars', /^[0-9a-f]{16}$/.test(key))
 
+        t.section('lastAccess via readMeta/writeMeta')
+        const laUrl = 'https://test.local/lastaccess-test'
+        trackedUrls.push(laUrl)
+        __httpCache__.writeBodyOnly(laUrl, 'test')
+        __httpCache__.writeMeta(laUrl, toIni({}, {
+            url: laUrl,
+            storedAt: String(Math.floor(Date.now() / 1000)),
+            maxAge: '300',
+            status: '200',
+            statusText: 'OK',
+        }))
+        const beforeMeta = __httpCache__.readMeta(laUrl)
+        if (beforeMeta) {
+            const ini0 = parseIni(beforeMeta)
+            assert('no lastAccess before update', ini0.meta.lastaccess === undefined)
+        }
+        const now = Math.floor(Date.now() / 1000)
+        const laMeta = parseIni(__httpCache__.readMeta(laUrl) || '')
+        laMeta.meta.lastaccess = String(now)
+        __httpCache__.writeMeta(laUrl, toIni(laMeta.headers, laMeta.meta))
+        const afterMeta = __httpCache__.readMeta(laUrl)
+        if (afterMeta) {
+            const ini1 = parseIni(afterMeta)
+            assert('lastAccess present after update', typeof ini1.meta.lastaccess === 'string' && ini1.meta.lastaccess.length > 0)
+            assert('lastAccess is numeric', /^\d+$/.test(ini1.meta.lastaccess))
+            assert('meta preserved after lastAccess', ini1.meta.maxage === '300')
+            assert('no headers leaked', Object.keys(ini1.headers).length === 0)
+        }
+
         t.section('fetch with caching')
         const cacheTestUrl = 'http://localhost:18923/cache/60'
         trackedUrls.push(cacheTestUrl)
@@ -92,9 +135,9 @@ export const suite = {
         const cachedMeta = __httpCache__.readMeta(cacheTestUrl)
         assert('cached meta exists', cachedMeta !== null)
         if (cachedMeta) {
-            const m = JSON.parse(cachedMeta)
-            assert('cached status = 200', m.status === 200)
-            assert('cached maxAge = 60', m.maxAge === 60)
+            const ini = parseIni(cachedMeta)
+            assert('cached status = 200', ini.meta.status === '200')
+            assert('cached maxAge = 60', ini.meta.maxage === '60')
         }
 
         const cachedBody = __httpCache__.readBody(cacheTestUrl)
@@ -108,6 +151,12 @@ export const suite = {
         assert('second fetch ok', resp2.ok)
         const body2 = await resp2.text()
         assert('second fetch body same length', body2.length === body1.length)
+
+        const afterFetchMeta = __httpCache__.readMeta(cacheTestUrl)
+        if (afterFetchMeta) {
+            const iniLA = parseIni(afterFetchMeta)
+            assert('lastAccess set after fetch cache hit', typeof iniLA.meta.lastaccess === 'string' && iniLA.meta.lastaccess.length > 0)
+        }
 
         t.section('timing: network vs cache')
         const timingUrl = 'http://localhost:18923/cache/60?t=' + String(Date.now())

@@ -73,12 +73,14 @@ make wat               # 将 WAT 文件编译为 WASM
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ./run.ps1 -Command "make js"
-powershell -ExecutionPolicy Bypass -File ./run.ps1 -Command "./win.exe test/test_wasm_bidirectional.js"
-powershell -ExecutionPolicy Bypass -File ./run.ps1 -Command "make js && ./win.exe test/test_wasm_bidirectional.js"
+powershell -ExecutionPolicy Bypass -File ./run.ps1 -Command "./_build/win.exe test/test_wasm_bidirectional.js"
+powershell -ExecutionPolicy Bypass -File ./run.ps1 -Command "make js && ./_build/win.exe test/test_wasm_bidirectional.js"
 ```
 
 **注意：**
-- 构建前确保 `win.exe` 未运行
+- **`run.ps1` 运行在 MSYS2 bash 环境中，可执行文件在 `_build/win.exe`**（不是根目录的 `win.exe`）
+- `./win.exe`（根目录）可能是旧的或不存在，永远不要直接用它
+- 构建前确保 `win.exe` 未运行：`taskkill /f /im win.exe`
 - 需要 MSYS2 UCRT64 和 Node.js 环境
 - `run.ps1` 用于在 PowerShell 中执行 MSYS2 bash 命令，支持包含 `&&` 的复杂命令
 
