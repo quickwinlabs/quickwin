@@ -1,6 +1,7 @@
 import * as std from 'std'
 import * as os from 'os'
 import { Tester } from './test_helper.js'
+import { parseIni } from '../lib/cache-utils.js'
 
 function getCacheDir(): string {
     // import.meta.url: file:///C:/.../_build/test/file.js
@@ -64,8 +65,8 @@ export const suite = {
                     const metaStr = fp.readAsString()
                     fp.close()
                     if (metaStr) {
-                        const meta = JSON.parse(metaStr)
-                        std.printf('    storedAt: %d, maxAge: %d\n', meta.storedAt, meta.maxAge)
+                        const ini = parseIni(metaStr)
+                        std.printf('    storedAt: %s, maxAge: %s\n', ini.meta.storedat || '?', ini.meta.maxage || '?')
                     }
                 }
             }
