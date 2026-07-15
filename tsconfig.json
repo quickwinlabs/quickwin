@@ -10,6 +10,7 @@
     "allowJs": false,
     "lib": ["ES2020"],
     "types": ["./quickwin.d.ts"],
+    "rootDir": ".",
     "outDir": "_build",
     "jsx": "react-jsx",
     "jsxImportSource": "react",

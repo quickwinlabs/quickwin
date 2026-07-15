@@ -97,7 +97,7 @@ npx quickwin examples/pdf_preview.js   # PDF reader with mupdf
 ### Prerequisites
 
 - MSYS2 UCRT64 or MINGW64
-- Node.js (for TypeScript compilation via tsgo)
+- Node.js (for TypeScript compilation via tsc)
 - Git (for submodules)
 
 ### Build
@@ -120,7 +120,7 @@ cd quickwin
 | `make minimal` | `-Os` + LTO + `-mwindows` + UPX, no console, add `-c` for console |
 | `make release` | `-O2` + LTO + strip, ~2.5MB |
 | `make debug` | debug build with bridge logs |
-| `make js` | compile TypeScript via tsgo |
+| `make js` | compile TypeScript via tsc |
 | `make wasm` | compile WAT → WASM fixtures |
 | `make test` | run all tests |
 | `make test TEST=-net` | skip network tests (fast) |

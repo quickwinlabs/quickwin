@@ -263,8 +263,8 @@ info:
 	@echo "  DEBUG     = $(DEBUG)"
 
 js:
-	@echo "Compiling TypeScript files to JavaScript using tsgo..."
-	@npx tsgo --project tsconfig.json
+	@echo "Compiling TypeScript files to JavaScript using tsc..."
+	@npx tsc --project tsconfig.json
 	@echo "Bundling react entries with esbuild..."
 	@node build.ts
 	@echo "Copying vendor/mupdf-wasm to $(BUILD_DIR)/vendor/mupdf-wasm..."
