@@ -35,7 +35,7 @@ export const CheckBox = forwardRef<gui.HWND, CheckBoxProps>(
         ref={(h: gui.HWND) => {
           cbRef.current = h
           if (typeof ref === 'function') ref(h)
-          else if (ref) (ref as React.RefObject<gui.HWND | null>).current = h
+          else if (ref) ref.current = h
         }}
         onEvent={(e) => {
           if (e.msg === gui.WmMsg.LBUTTONUP) {

@@ -55,7 +55,7 @@ export const Input = forwardRef<gui.HWND, InputProps>(
         ref={(h: gui.HWND) => {
           inputRef.current = h
           if (typeof ref === 'function') ref(h)
-          else if (ref) (ref as React.RefObject<gui.HWND | null>).current = h
+          else if (ref) ref.current = h
         }}
         onEvent={(e) => {
           if (e.msg === gui.WmMsg.CHAR) {

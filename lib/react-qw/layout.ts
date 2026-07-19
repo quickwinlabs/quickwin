@@ -12,8 +12,14 @@ export interface FlexStyle {
   paddingLeft?: number
 }
 
+interface ChildStyle {
+  width?: number; height?: number
+  flexGrow?: number
+  alignSelf?: 'auto' | 'flex-start' | 'flex-end' | 'center' | 'stretch'
+}
+
 interface ChildInfo {
-  style: Record<string, any>
+  style: ChildStyle
 }
 
 export interface LayoutResult {
@@ -63,7 +69,7 @@ export function calculateFlexLayout(
   let freeGrow = parentMain - baseMain - Math.max(0, n - 1) * gap
   if (totalGrow > 0 && freeGrow > 0) {
     for (let i = 0; i < n; i++) {
-      sizes[i][mainSize] += freeGrow * flexGrows[i] / totalGrow
+      sizes[i]![mainSize] += freeGrow * flexGrows[i]! / totalGrow
     }
   }
 
@@ -79,7 +85,7 @@ export function calculateFlexLayout(
   let cursor = offset
   return sizes.map((sz, i) => {
     const childCrossBase = sz[crossSize]
-    const childAlign = children[i].style.alignSelf ?? 'auto'
+    const childAlign = children[i]!.style.alignSelf ?? 'auto'
     const effectiveAlign = childAlign === 'auto' ? align : childAlign
     let childMain = sz[mainSize]
     let childCross = childCrossBase

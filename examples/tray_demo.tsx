@@ -67,7 +67,7 @@ if (text) {
 const hIcon = gui.LoadIcon('APPLICATION')
 if (hIcon) {
     const ok = gui.ShellNotifyIcon(gui.NotifyIconCmd.ADD, {
-        hwnd: hwnd as number, uID: 1,
+        hwnd: hwnd, uID: 1,
         flags: gui.NotifyIconFlag.MESSAGE | gui.NotifyIconFlag.ICON,
         callbackMessage: WM_TRAY,
         hIcon,

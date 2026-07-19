@@ -22,9 +22,8 @@ export const suite = {
         worker1.postMessage({ type: 'done' })
 
         t.section('http-entry')
-        let worker2: any
         try {
-            worker2 = new os.Worker('https://esm.sh/isarray')
+            new os.Worker('https://esm.sh/isarray')
             await new Promise<void>(resolve => os.setTimeout(() => resolve(), 3000))
             t.checkTrue('worker created with http url', true)
         } catch (e) {

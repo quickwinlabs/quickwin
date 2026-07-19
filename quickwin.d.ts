@@ -6,24 +6,26 @@ interface ImportMeta {
 /** Provides the command line arguments. The first argument is the script name. */
 declare var scriptArgs: string[];
 /** Print the arguments separated by spaces and a trailing newline. */
-declare function print(...args: any[]): void;
+declare function print(...args: unknown[]): void;
 /** Same as print(). */
 declare const console: Console
 
 interface Console {
     /** Same as print(). */
-    log: (...args: any) => void
+    log: (...args: unknown[]) => void
 }
 
 
+type UnknownRecord = Record<string, unknown>
+
 declare namespace WebAssembly {
     interface Module { }
-    interface Instance {
-        exports: { [key: string]: any }
+    interface Instance<E extends UnknownRecord = UnknownRecord> {
+        exports: E
     }
     interface Global {
-        value: any
-        valueOf(): any
+        value: unknown
+        valueOf(): unknown
     }
     interface GlobalDescriptor {
         value: 'i32' | 'i64' | 'f32' | 'f64'
@@ -42,8 +44,8 @@ declare namespace WebAssembly {
 declare const WebAssembly: {
     validate(buffer: ArrayBuffer): boolean
     compile(buffer: ArrayBuffer): Promise<WebAssembly.Module>
-    instantiate(buffer: ArrayBuffer, importObject?: any): Promise<{ module: WebAssembly.Module; instance: WebAssembly.Instance }>
-    instantiate(module: WebAssembly.Module, importObject?: any): Promise<WebAssembly.Instance>
+    instantiate<E extends UnknownRecord = UnknownRecord>(buffer: ArrayBuffer, importObject?: unknown): Promise<{ module: WebAssembly.Module; instance: WebAssembly.Instance<E> }>
+    instantiate<E extends UnknownRecord = UnknownRecord>(module: WebAssembly.Module, importObject?: unknown): Promise<WebAssembly.Instance<E>>
     Module: {
         new(buffer: ArrayBuffer): WebAssembly.Module
         exports(module: WebAssembly.Module): { name: string; kind: string }[]
@@ -55,10 +57,10 @@ declare const WebAssembly: {
          * - 导入的 Global 在实例化时会 snapshot 值，之后无法与宿主或其他实例共享
          * - 不支持 mutable imported global 的实时同步
          */
-        new(module: WebAssembly.Module, importObject?: any): WebAssembly.Instance
+        new<E extends UnknownRecord = UnknownRecord>(module: WebAssembly.Module, importObject?: unknown): WebAssembly.Instance<E>
     }
     Global: {
-        new(descriptor: WebAssembly.GlobalDescriptor, value?: any): WebAssembly.Global
+        new(descriptor: WebAssembly.GlobalDescriptor, value?: unknown): WebAssembly.Global
     }
     Memory: {
         new(descriptor: WebAssembly.MemoryDescriptor): WebAssembly.Memory
@@ -71,7 +73,7 @@ interface Event {
 
 interface MessageEvent {
     readonly type: string;
-    readonly data: any;
+    readonly data: unknown;
 }
 
 interface CloseEvent {
@@ -79,18 +81,6 @@ interface CloseEvent {
     readonly code: number;
     readonly reason: string;
     readonly wasClean: boolean;
-}
-
-interface ReadableStreamReader {
-    read(): Promise<{ done: false; value: Uint8Array } | { done: true; value?: undefined }>;
-    cancel(reason?: any): void;
-    releaseLock(): void;
-}
-
-interface ReadableStream {
-    readonly locked: boolean;
-    getReader(): ReadableStreamReader;
-    cancel(reason?: any): void;
 }
 
 declare module "std" {
@@ -105,7 +95,7 @@ declare module "std" {
          * Integer format types (e.g. `%d`) truncate the Numbers or BigInts to 32 bits.
          * Use the `l` modifier (e.g. `%ld`) to truncate to 64 bits.
          */
-        printf(fmt: string, ...args: any[]): void;
+        printf(fmt: string, ...args: unknown[]): void;
         /** Flush the buffered file. */
         flush(): void;
         /** Seek to a give file position (whence is `std.SEEK_*`). `offset` can be a number or a bigint. Return 0 if OK or `-errno` in case of I/O error. */
@@ -117,7 +107,7 @@ declare module "std" {
         /** Return true if end of file. */
         eof(): boolean;
         /** Return the associated OS handle. */
-        fileno(): number;
+        fileno(): import("os").Fd;
         /** Return true if there was an error. */
         error(): boolean;
         /** Clear the error indication. */
@@ -159,9 +149,9 @@ declare module "std" {
     /** Exit the process. */
     function exit(n: number): never;
     /** Evaluate the string `str` as a script (global eval). */
-    function evalScript(str: string, options?: EvalScriptOptions): any;
+    function evalScript(str: string, options?: EvalScriptOptions): unknown;
     /** Evaluate the file `filename` as a script (global eval). */
-    function loadScript(filename: string): any;
+    function loadScript(filename: string): unknown;
     /** Load the file `filename` and return it as a string assuming UTF-8 encoding. Return `null` in case of I/O error. */
     function loadFile(filename: string): string | null;
     /** Open a file (wrapper to the libc `fopen()`). Return the FILE object or `null` in case of I/O error. If `errorObj` is not undefined, set its `errno` property to the error code or to 0 if no error occured. */
@@ -175,9 +165,9 @@ declare module "std" {
     /** Equivalent to `std.out.puts(str)`. */
     function puts(str: string): void;
     /** Equivalent to `std.out.printf(fmt, ...args)`. */
-    function printf(fmt: string, ...args: any[]): void;
+    function printf(fmt: string, ...args: unknown[]): void;
     /** Equivalent to the libc sprintf(). */
-    function sprintf(fmt: string, ...args: any[]): string;
+    function sprintf(fmt: string, ...args: unknown[]): string;
 
     /** Wrappers to the libc file `stdout`. */
     const out: FILE;
@@ -206,8 +196,8 @@ declare module "std" {
      * Parse `str` using a superset of `JSON.parse`. The superset is very close to the JSON5 specification.
      * Extensions: comments, unquoted properties, trailing comma, single quoted strings, hex/octal/binary integers, NaN, Infinity, etc.
      */
-    function parseExtJSON(str: string): any;
-    function __printObject(val: any): void;
+    function parseExtJSON(str: string): unknown;
+    function __printObject(val: unknown): void;
     /** Return a string that describes the error `errno`. */
     function strerror(errno: number): string;
     /** Manually invoke the cycle removal algorithm. The cycle removal algorithm is automatically started when needed, so this function is useful in case of specific memory constraints or for testing. */
@@ -236,6 +226,8 @@ declare module "std" {
 }
 
 declare module "os" {
+    type Fd = number & { readonly __brand: unique symbol };
+
     interface StatResult {
         dev: number;
         ino: number;
@@ -252,21 +244,21 @@ declare module "os" {
     }
 
     /** Open a file. Return a handle or < 0 if error. */
-    function open(filename: string, flags: number, mode?: number): number;
+    function open(filename: string, flags: number, mode?: number): Fd | null;
     /** Close the file handle `fd`. */
-    function close(fd: number): number;
+    function close(fd: Fd): number;
     /** Seek in the file. Use `std.SEEK_*` for `whence`. `offset` is either a number or a bigint. If `offset` is a bigint, a bigint is returned too. */
-    function seek(fd: number, offset: number | bigint, whence: number): number | bigint;
+    function seek(fd: Fd, offset: number | bigint, whence: number): number | bigint;
     /** Read `length` bytes from the file handle `fd` to the ArrayBuffer `buffer` at byte position `offset`. Return the number of read bytes or < 0 if error. */
-    function read(fd: number, buffer: ArrayBuffer, offset: number, length: number): number;
+    function read(fd: Fd, buffer: ArrayBuffer, offset: number, length: number): number;
     /** Write `length` bytes to the file handle `fd` from the ArrayBuffer `buffer` at byte position `offset`. Return the number of written bytes or < 0 if error. */
-    function write(fd: number, buffer: ArrayBuffer, offset: number, length: number): number;
+    function write(fd: Fd, buffer: ArrayBuffer, offset: number, length: number): number;
     /** Return `true` if `fd` is a TTY (terminal) handle. */
-    function isatty(fd: number): boolean;
+    function isatty(fd: Fd): boolean;
     /** Return the TTY size as `[width, height]` or `null` if not available. */
-    function ttyGetWinSize(fd: number): [number, number] | null;
+    function ttyGetWinSize(fd: Fd): [number, number] | null;
     /** Set the TTY in raw mode. */
-    function ttySetRaw(fd: number): void;
+    function ttySetRaw(fd: Fd): void;
     /** Remove a file. Return 0 if OK or `-errno`. */
     function remove(filename: string): number;
     /** Rename a file. Return 0 if OK or `-errno`. */
@@ -286,9 +278,9 @@ declare module "os" {
     /** Return `[array, err]` where `array` is an array of strings containing the filenames of the directory `path`. `err` is the error code. */
     function readdir(path: string): [string[], number];
     /** Add a read handler to the file handle `fd`. `func` is called each time there is data pending for `fd`. A single read handler per file handle is supported. Use `func = null` to remove the handler. */
-    function setReadHandler(fd: number, func: (() => void) | null): void;
+    function setReadHandler(fd: Fd, func: (() => void) | null): void;
     /** Add a write handler to the file handle `fd`. `func` is called each time data can be written to `fd`. A single write handler per file handle is supported. Use `func = null` to remove the handler. */
-    function setWriteHandler(fd: number, func: (() => void) | null): void;
+    function setWriteHandler(fd: Fd, func: (() => void) | null): void;
     /** Call the function `func` when the signal `signal` happens. Only a single handler per signal number is supported. Use `null` to set the default handler or `undefined` to ignore the signal. Signal handlers can only be defined in the main thread. */
     function signal(signal: number, func: (() => void) | null | undefined): void;
     /** Sleep during `delay_ms` milliseconds. */
@@ -297,10 +289,11 @@ declare module "os" {
     function sleepAsync(delay_ms: number): Promise<void>;
     /** Return a timestamp in milliseconds with more precision than `Date.now()`. */
     function now(): number;
+    type TimerId = number & { readonly __brand: unique symbol };
     /** Call the function `func` after `delay` ms. Return a handle to the timer. */
-    function setTimeout(func: () => void, delay: number): number;
+    function setTimeout(func: () => void, delay: number): TimerId;
     /** Cancel a timer. */
-    function clearTimeout(id: number): void;
+    function clearTimeout(id: TimerId): void;
 
     /** POSIX open flags. */
     const O_RDONLY: number;
@@ -335,9 +328,9 @@ declare module "os" {
         /** Constructor to create a new thread (worker) with an API close to the `WebWorkers`. `module_filename` is a string specifying the module filename which is executed in the newly created thread. */
         constructor(module_filename: string);
         /** Send a message to the corresponding worker. `msg` is cloned in the destination worker using an algorithm similar to the `HTML` structured clone algorithm. */
-        postMessage(msg: any): void;
+        postMessage(msg: unknown): void;
         /** Getter and setter. Set a function which is called each time a message is received. The function is called with a single argument. It is an object with a `data` property containing the received message. */
-        onmessage: ((event: { data: any }) => void) | null;
+        onmessage: ((event: { data: unknown }) => void) | null;
         /** In the created worker, `Worker.parent` represents the parent worker and is used to send or receive messages. */
         static parent: Worker;
     }
@@ -347,41 +340,42 @@ declare module "os" {
 }
 
 declare module "sock" {
-    type SockHandle = number;
+    type SockHandle = number & { readonly __brand: unique symbol };
+    type SockFd = number & { readonly __brand: unique symbol };
 
-    function socket(domain?: number, type?: number, protocol?: number): SockHandle;
+    function socket(domain?: AddrFamily, type?: SockType, protocol?: Protocol): SockHandle;
     function connect(sock: SockHandle, addr: string, port: number): number;
     function send(sock: SockHandle, buf: ArrayBuffer, flags?: number): number;
     function recv(sock: SockHandle, size?: number, flags?: number): ArrayBuffer | null;
     function closesocket(sock: SockHandle): void;
-    function shutdown(sock: SockHandle, how: number): number;
+    function shutdown(sock: SockHandle, how: Shutdown): number;
     function set_on_event(sock: SockHandle, callback: (events: { lNetworkEvents: number; iErrorCode: number[] }) => void): void;
-    function get_fd(sock: SockHandle): number;
+    function get_fd(sock: SockHandle): SockFd;
     function resolve(hostname: string): string | null;
 
 }
 
 declare module "wolfssl" {
-    type WOLFSSL = number;
-    type WOLFSSL_CTX = number;
-    type WOLFSSL_METHOD = number;
+    type WOLFSSL = number & { readonly __brand: unique symbol };
+    type WOLFSSL_CTX = number & { readonly __brand: unique symbol };
+    type WOLFSSL_METHOD = number & { readonly __brand: unique symbol };
 
     function wolfSSL_library_init(): number;
     function wolfSSL_CTX_new(method: WOLFSSL_METHOD): WOLFSSL_CTX | null;
     function wolfSSL_CTX_free(ctx: WOLFSSL_CTX): void;
-    function wolfSSL_CTX_set_verify(ctx: WOLFSSL_CTX, mode: number): number;
-    function wolfSSL_CTX_use_certificate_file(ctx: WOLFSSL_CTX, file: string, format?: number): number;
-    function wolfSSL_CTX_use_PrivateKey_file(ctx: WOLFSSL_CTX, file: string, format?: number): number;
+    function wolfSSL_CTX_set_verify(ctx: WOLFSSL_CTX, mode: VerifyMode): number;
+    function wolfSSL_CTX_use_certificate_file(ctx: WOLFSSL_CTX, file: string, format?: FileType): number;
+    function wolfSSL_CTX_use_PrivateKey_file(ctx: WOLFSSL_CTX, file: string, format?: FileType): number;
 
     function wolfSSL_new(ctx: WOLFSSL_CTX): WOLFSSL | null;
     function wolfSSL_free(ssl: WOLFSSL): void;
-    function wolfSSL_set_fd(ssl: WOLFSSL, fd: number): number;
+    function wolfSSL_set_fd(ssl: WOLFSSL, fd: import("sock").SockFd): number;
     function wolfSSL_connect(ssl: WOLFSSL): number;
     function wolfSSL_shutdown(ssl: WOLFSSL): number;
     function wolfSSL_write(ssl: WOLFSSL, buf: ArrayBuffer): number;
     function wolfSSL_read(ssl: WOLFSSL, sz: number): ArrayBuffer | null;
     function wolfSSL_get_error(ssl: WOLFSSL, ret: number): number;
-    function wolfSSL_UseSNI(ssl: WOLFSSL, type: number, name: string, len?: number): number;
+    function wolfSSL_UseSNI(ssl: WOLFSSL, type: SniType, name: string, len?: number): number;
 
     function wolfSSLv23_client_method(): WOLFSSL_METHOD;
     function wolfTLSv1_2_client_method(): WOLFSSL_METHOD;
@@ -403,15 +397,16 @@ declare module "gui" {
     type HWND = number & { readonly __label: unique symbol };
     type HMENU = number & { readonly __label: unique symbol };
     type HFONT = number & { readonly __label: unique symbol };
+    type HICON = number & { readonly __label: unique symbol };
     type WNDPROC = number & { readonly __label: unique symbol };
 
     function RegisterClass(className: string, wndProc?: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): number;
     function CreateWindow(className: string, title: string, style: number, x: number, y: number, width: number, height: number, parent: HWND | null, menu: HMENU | null): HWND | null;
     // 销毁窗口及其所有子窗口，自动清理 WNDPROC 和 JS 引用
     function DestroyWindow(hwnd: HWND): boolean;
-    function GetWindow(hwnd: HWND, cmd: number): HWND;
+    function GetWindow(hwnd: HWND, cmd: GetWindowCmd): HWND;
 
-    function ShowWindow(hwnd: HWND, nCmdShow?: number): void;
+    function ShowWindow(hwnd: HWND, nCmdShow?: ShowWindowCmd): void;
     function SetWindowProc(hwnd: HWND, wndProc: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): void;
     function DefWindowProc(hwnd: HWND, msg: number, wParam: number, lParam: number): number;
     function PostQuitMessage(exitCode: number): void;
@@ -421,34 +416,35 @@ declare module "gui" {
     function GetWindowText(hwnd: HWND): string;
     function GetScaleFactor(): number;
     function CreateSystemDpiFont(): HFONT | null;
-    function GetWindowLongPtr(hwnd: HWND, nIndex: number): number;
-    function SetWindowLongPtr(hwnd: HWND, nIndex: number, newLong: number): number;
+    type GwlpReturnType<T extends Gwlp> = T extends Gwlp.WNDPROC ? WNDPROC : number;
+    function GetWindowLongPtr<T extends Gwlp>(hwnd: HWND, nIndex: T): GwlpReturnType<T>;
+    function SetWindowLongPtr(hwnd: HWND, nIndex: Gwlp, newLong: number): number;
     function UnsetWindowProc(hwnd: HWND): boolean;
     function CallWindowProc(wndProc: WNDPROC, hwnd: HWND, msg: number, wParam: number, lParam: number): number;
     function SetParent(hwnd: HWND, parent: HWND | null): void;
     function EnableWindow(hwnd: HWND, enable: boolean): void;
-    function SetWindowPos(hwnd: HWND, insertAfter: number, x: number, y: number, width: number, height: number, flags: number): void;
+    function SetWindowPos(hwnd: HWND, insertAfter: SetWindowPosHwnd, x: number, y: number, width: number, height: number, flags: number): void;
 
 
 
     interface NotifyIconData {
-        hwnd: number
+        hwnd: HWND
         uID?: number
         flags?: number
         callbackMessage?: number
-        hIcon?: number
+        hIcon?: HICON
         tip?: string
     }
 
-    function ShellNotifyIcon(cmd: number, nid: NotifyIconData): boolean;
-    function LoadIcon(name: string): number | null;
+    function ShellNotifyIcon(cmd: NotifyIconCmd, nid: NotifyIconData): boolean;
+    function LoadIcon(name: string): HICON | null;
 
 
-    function CreatePopupMenu(): number | null;
-    function AppendMenu(menu: number, flags: number, id: number, text: string): boolean;
-    function TrackPopupMenu(menu: number, x: number, y: number, flags?: number, hwnd?: number): number;
-    function DestroyMenu(menu: number): boolean;
-    function SetForegroundWindow(hwnd: number): boolean;
+    function CreatePopupMenu(): HMENU | null;
+    function AppendMenu(menu: HMENU, flags: number, id: number, text: string): boolean;
+    function TrackPopupMenu(menu: HMENU, x: number, y: number, flags?: number, hwnd?: HWND): number;
+    function DestroyMenu(menu: HMENU): boolean;
+    function SetForegroundWindow(hwnd: HWND): boolean;
     /** Returns [x, y] or null */
     function GetCursorPos(): [number, number] | null;
     /** Returns [width, height] of the primary monitor */
@@ -466,13 +462,13 @@ declare module "gui" {
     /** Checks if the window handle is valid */
     function IsWindow(hwnd: HWND): boolean;
     /** Sets scroll info; returns current scroll box position. Signature matches Win32 SetScrollInfo. */
-    function SetScrollInfo(hwnd: HWND, bar: number, info: { pos?: number; page?: number; min?: number; max?: number }, redraw?: boolean): number;
+    function SetScrollInfo(hwnd: HWND, bar: ScrollBar, info: { pos?: number; page?: number; min?: number; max?: number }, redraw?: boolean): number;
 
     /** Gets scroll info. Signature matches Win32 GetScrollInfo. */
-    function GetScrollInfo(hwnd: HWND, bar: number): { pos: number; page: number; min: number; max: number; trackPos: number };
+    function GetScrollInfo(hwnd: HWND, bar: ScrollBar): { pos: number; page: number; min: number; max: number; trackPos: number };
 
     /** Shows or hides a scroll bar. Signature matches Win32 ShowScrollBar. */
-    function ShowScrollBar(hwnd: HWND, bar: number, show: boolean): boolean;
+    function ShowScrollBar(hwnd: HWND, bar: ScrollBar, show: boolean): boolean;
 
 
 

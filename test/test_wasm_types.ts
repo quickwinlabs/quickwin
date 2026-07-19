@@ -6,47 +6,63 @@ export const suite = {
         const buf = readWasmFile('./types.wasm')
         if (!buf) { t.fail++; return }
         const m = new WebAssembly.Module(buf)
-        const i = new WebAssembly.Instance(m)
+        const i = new WebAssembly.Instance<{
+            add_i32: (a: number, b: number) => number
+            add_i64: (a: number, b: number) => number
+            factorial_i64: (n: number) => number
+            add_f32: (a: number, b: number) => number
+            add_f64: (a: number, b: number) => number
+            sqrt_f64: (x: number) => number
+            mixed_args: (a: number, b: number, c: number, d: number) => number
+            write_memory: (offset: number, value: number) => void
+            read_memory: (offset: number) => number
+            read_mut_global: () => number
+            memory: WebAssembly.Memory
+            const_i32: WebAssembly.Global
+            const_f64: WebAssembly.Global
+            mutable_i32: WebAssembly.Global
+        }>(m)
+        const e = i.exports
 
         t.section('i32')
-        t.check('add_i32(10, 20)', 30, i.exports.add_i32(10, 20))
-        t.check('add_i32(-5, 3)', -2, i.exports.add_i32(-5, 3))
+        t.check('add_i32(10, 20)', 30, e.add_i32(10, 20))
+        t.check('add_i32(-5, 3)', -2, e.add_i32(-5, 3))
 
         t.section('i64')
-        t.check('add_i64(100, 200)', 300, i.exports.add_i64(100, 200))
-        t.check('add_i64(10000000000, 20000000000)', 30000000000, i.exports.add_i64(10000000000, 20000000000))
-        t.check('add_i64(-10000000000, 5000000000)', -5000000000, i.exports.add_i64(-10000000000, 5000000000))
-        t.check('factorial_i64(5)', 120, i.exports.factorial_i64(5))
-        t.check('factorial_i64(10)', 3628800, i.exports.factorial_i64(10))
+        t.check('add_i64(100, 200)', 300, e.add_i64(100, 200))
+        t.check('add_i64(10000000000, 20000000000)', 30000000000, e.add_i64(10000000000, 20000000000))
+        t.check('add_i64(-10000000000, 5000000000)', -5000000000, e.add_i64(-10000000000, 5000000000))
+        t.check('factorial_i64(5)', 120, e.factorial_i64(5))
+        t.check('factorial_i64(10)', 3628800, e.factorial_i64(10))
 
         t.section('f32')
-        t.check('add_f32(1.5, 2.5)', 4.0, i.exports.add_f32(1.5, 2.5))
-        t.check('add_f32(-1.0, 1.0)', 0.0, i.exports.add_f32(-1.0, 1.0))
+        t.check('add_f32(1.5, 2.5)', 4.0, e.add_f32(1.5, 2.5))
+        t.check('add_f32(-1.0, 1.0)', 0.0, e.add_f32(-1.0, 1.0))
 
         t.section('f64')
-        t.check('add_f64(3.14, 2.86)', 6.0, i.exports.add_f64(3.14, 2.86))
-        t.check('sqrt_f64(144.0)', 12.0, i.exports.sqrt_f64(144.0))
+        t.check('add_f64(3.14, 2.86)', 6.0, e.add_f64(3.14, 2.86))
+        t.check('sqrt_f64(144.0)', 12.0, e.sqrt_f64(144.0))
 
         t.section('mixed')
-        t.check('mixed_args(1, 2, 3.0, 4.0)', 10.0, i.exports.mixed_args(1, 2, 3.0, 4.0))
+        t.check('mixed_args(1, 2, 3.0, 4.0)', 10.0, e.mixed_args(1, 2, 3.0, 4.0))
 
         t.section('memory')
-        i.exports.write_memory(0, 12345678)
-        t.check('write/read memory', 12345678, i.exports.read_memory(0))
+        e.write_memory(0, 12345678)
+        t.check('write/read memory', 12345678, e.read_memory(0))
 
         t.section('JS-side TypedArray')
-        t.check('Int32Array[0]', 12345678, new Int32Array(i.exports.memory.buffer)[0])
-        i.exports.write_memory(4, 999)
-        t.check('Int32Array[1] after write', 999, new Int32Array(i.exports.memory.buffer)[1])
+        t.check('Int32Array[0]', 12345678, new Int32Array(e.memory.buffer)[0])
+        e.write_memory(4, 999)
+        t.check('Int32Array[1] after write', 999, new Int32Array(e.memory.buffer)[1])
 
         t.section('exported globals')
-        t.check('const_i32.value', 42, i.exports.const_i32.value)
-        t.check('const_f64.value', 3.14, i.exports.const_f64.value)
-        t.check('mutable_i32 is Global', true, i.exports.mutable_i32 instanceof WebAssembly.Global)
-        t.check('mutable_i32.value', 99, i.exports.mutable_i32.value)
-        i.exports.mutable_i32.value = 500
-        t.check('mutable_i32 after set from JS', 500, i.exports.mutable_i32.value)
-        t.check('mutable_i32 after set from WASM', 500, i.exports.read_mut_global())
+        t.check('const_i32.value', 42, e.const_i32.value)
+        t.check('const_f64.value', 3.14, e.const_f64.value)
+        t.check('mutable_i32 is Global', true, e.mutable_i32 instanceof WebAssembly.Global)
+        t.check('mutable_i32.value', 99, e.mutable_i32.value)
+        e.mutable_i32.value = 500
+        t.check('mutable_i32 after set from JS', 500, e.mutable_i32.value)
+        t.check('mutable_i32 after set from WASM', 500, e.read_mut_global())
 
         t.section('Global constructor')
         var g: WebAssembly.Global
@@ -89,8 +105,8 @@ export const suite = {
         t.check('after grow buffer', 196608, mem.buffer.byteLength)
 
         t.section('instance.exports.memory')
-        t.check('memory is Memory', true, i.exports.memory instanceof WebAssembly.Memory)
-        t.check('memory.buffer.byteLength', 65536, i.exports.memory.buffer.byteLength)
+        t.check('memory is Memory', true, e.memory instanceof WebAssembly.Memory)
+        t.check('memory.buffer.byteLength', 65536, e.memory.buffer.byteLength)
 
         t.section('standalone Memory + TypedArray')
         mem = new WebAssembly.Memory({ initial: 1 })

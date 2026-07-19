@@ -35,7 +35,7 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
       scrollXRef.current = Math.max(0, Math.min(scrollXRef.current, natW - svW))
       scrollYRef.current = Math.max(0, Math.min(scrollYRef.current, natH - svH))
 
-      gui.SetWindowPos(content, 0, -scrollXRef.current, -scrollYRef.current, natW, natH,
+      gui.SetWindowPos(content, gui.SetWindowPosHwnd.TOP, -scrollXRef.current, -scrollYRef.current, natW, natH,
         gui.SetWindowPosFlag.SWP_NOZORDER)
       forceFlexLayout(content)
 
@@ -71,7 +71,7 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
       } else {
         scrollXRef.current = newPos
       }
-      gui.SetWindowPos(content, 0, -scrollXRef.current, -scrollYRef.current, 0, 0,
+      gui.SetWindowPos(content, gui.SetWindowPosHwnd.TOP, -scrollXRef.current, -scrollYRef.current, 0, 0,
         gui.SetWindowPosFlag.SWP_NOSIZE | gui.SetWindowPosFlag.SWP_NOZORDER)
       gui.SetScrollInfo(sv, bar, { pos: newPos }, true)
     }
@@ -125,7 +125,7 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
         ref={(h: gui.HWND) => {
           svRef.current = h
           if (typeof ref === 'function') ref(h)
-          else if (ref) (ref as React.RefObject<gui.HWND | null>).current = h
+          else if (ref) ref.current = h
         }}
         onEvent={{
           fn: (e) => {

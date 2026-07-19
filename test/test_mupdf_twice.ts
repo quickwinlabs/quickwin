@@ -55,7 +55,7 @@ export const suite = {
                 const pm2 = page.toPixmap(mupdf.Matrix.scale(1, 1), mupdf.ColorSpace.DeviceRGB, false)
                 console.log('  1: toPixmap #2 done:', pm2.getWidth(), 'x', pm2.getHeight())
                 t.check('toPixmap #2 ok', true, pm2 !== null)
-            } catch (e: any) {
+            } catch (e: unknown) {
                 console.log('  1: ERROR:', e instanceof Error ? e.message : String(e))
             }
 
@@ -69,12 +69,12 @@ export const suite = {
                 const pm3 = page2.toPixmap(mupdf.Matrix.scale(1, 1), mupdf.ColorSpace.DeviceRGB, false)
                 console.log('  2: toPixmap #3 done:', pm3.getWidth(), 'x', pm3.getHeight())
                 t.check('toPixmap #3 ok', true, pm3 !== null)
-            } catch (e: any) {
+            } catch (e: unknown) {
                 console.log('  2: ERROR:', e instanceof Error ? e.message : String(e))
             }
 
             console.log('All mupdf-twice tests done')
-        } catch (e: any) {
+        } catch (e: unknown) {
             console.log('TOP-LEVEL ERROR:', e instanceof Error ? e.message : String(e))
         }
     }

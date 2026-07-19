@@ -27,7 +27,7 @@ function buildToolInfo(hTarget: number, text: string): ArrayBuffer {
   for (let i = 0; i < text.length; i++)
     dv.setUint16(textOff + i * 2, text.charCodeAt(i), true)
   dv.setUint16(textOff + text.length * 2, 0, true)
-  const bufPtr = ffi.bufferPtr(buf) as number
+  const bufPtr = ffi.bufferPtr(buf)
   setQword(dv, 48, bufPtr + textOff)
   return buf
 }
@@ -52,16 +52,16 @@ function Tooltip({ text, children, balloon }: TooltipProps) {
 
     gui.SetWindowPos(hTT, gui.SetWindowPosHwnd.TOPMOST, 0, 0, 0, 0, gui.SetWindowPosFlag.SWP_NOMOVE | gui.SetWindowPosFlag.SWP_NOSIZE | gui.SetWindowPosFlag.SWP_NOACTIVATE)
 
-    const ti = buildToolInfo(hTarget as number, text)
-    const tiPtr = ffi.bufferPtr(ti) as number
+    const ti = buildToolInfo(hTarget, text)
+    const tiPtr = ffi.bufferPtr(ti)
     gui.SendMessage(hTT, gui.TtMsg.ADDTOOLW, 0, tiPtr)
     gui.SendMessage(hTT, gui.TtMsg.SETMAXTIPWIDTH, 0, 400)
     gui.SendMessage(hTT, gui.TtMsg.ACTIVATE, 1, 0)
 
     return () => {
       if (hTT) {
-        const ti2 = buildToolInfo(hTarget as number, text)
-        gui.SendMessage(hTT, gui.TtMsg.DELTOOLW, 0, ffi.bufferPtr(ti2) as number)
+        const ti2 = buildToolInfo(hTarget, text)
+        gui.SendMessage(hTT, gui.TtMsg.DELTOOLW, 0, ffi.bufferPtr(ti2))
         gui.DestroyWindow(hTT)
       }
       hTTRef.current = null
@@ -69,7 +69,7 @@ function Tooltip({ text, children, balloon }: TooltipProps) {
   }, [text, balloon])
 
   const child = Children.only(children)
-  return cloneElement(child as any, { ref: childRef })
+  return cloneElement(child as React.ReactElement<Record<string, unknown>>, { ref: childRef })
 }
 
 export { Tooltip }

@@ -4,8 +4,7 @@ import { useState } from 'react'
 import { createRoot } from '../lib/react-qw/index.js'
 import { Tester } from './test_helper.js'
 
-const WS_CHILD = 0x40000000
-const WS_VISIBLE = 0x10000000
+let __setItems: ((v: any) => void) | null = null
 
 gui.RegisterClass('FlexTest', (hwnd, msg, wParam, lParam) => {
   if (!hwnd) return gui.DefWindowProc(hwnd, msg, wParam, lParam)
@@ -60,7 +59,7 @@ function expectedPositions(
     const freeGrow = parentW - baseW - Math.max(0, n - 1) * gap
     if (totalGrow > 0 && freeGrow > 0) {
       for (let i = 0; i < n; i++) {
-        sizes[i].w += freeGrow * flexGrows[i] / totalGrow
+        sizes[i]!.w += freeGrow * flexGrows[i]! / totalGrow
       }
     }
 
@@ -74,8 +73,8 @@ function expectedPositions(
     else if (justify === 'space-evenly') { extraGap = free / (n + 1); offset = extraGap }
     let cursor = offset
     return sizes.map((sz, i) => {
-      const ca = children[i].alignSelf && children[i].alignSelf !== 'auto' ? children[i].alignSelf : align
-      let ch = ca === 'stretch' ? parentH : children[i].h
+      const ca = children[i]!.alignSelf && children[i]!.alignSelf !== 'auto' ? children[i]!.alignSelf : align
+      let ch = ca === 'stretch' ? parentH : children[i]!.h
       let y = 0
       if (ca === 'flex-end') y = parentH - ch
       else if (ca === 'center') y = Math.max(0, (parentH - ch) / 2)
@@ -88,7 +87,7 @@ function expectedPositions(
   const freeGrow = parentH - baseH - Math.max(0, n - 1) * gap
   if (totalGrow > 0 && freeGrow > 0) {
     for (let i = 0; i < n; i++) {
-      sizes[i].h += freeGrow * flexGrows[i] / totalGrow
+      sizes[i]!.h += freeGrow * flexGrows[i]! / totalGrow
     }
   }
 
@@ -102,8 +101,8 @@ function expectedPositions(
   else if (justify === 'space-evenly') { extraGap = free / (n + 1); offset = extraGap }
   let cursor = offset
   return sizes.map((sz, i) => {
-    const ca = children[i].alignSelf && children[i].alignSelf !== 'auto' ? children[i].alignSelf : align
-    let cw = ca === 'stretch' ? parentW : children[i].w
+    const ca = children[i]!.alignSelf && children[i]!.alignSelf !== 'auto' ? children[i]!.alignSelf : align
+    let cw = ca === 'stretch' ? parentW : children[i]!.w
     let x = 0
     if (ca === 'flex-end') x = parentW - cw
     else if (ca === 'center') x = Math.max(0, (parentW - cw) / 2)
@@ -144,7 +143,7 @@ async function testRowCol(
 
   for (let i = 0; i < Math.min(exp.length, kids.length); i++) {
     const a = getRelativeRect(kids[i], flexHwnd)
-    const e = exp[i]
+    const e = exp[i]!
     tester.check(`child${i} x`, Math.round(e.x), Math.round(a.x))
     tester.check(`child${i} y`, Math.round(e.y), Math.round(a.y))
     tester.check(`child${i} w`, Math.round(e.width), Math.round(a.width))
@@ -294,11 +293,13 @@ async function main() {
   // ── Dynamic add/remove via setState ──
   tester.section('Dynamic add/remove via setState')
   function FlexApp({ initialItems }: { initialItems: any[] }) {
-    const [items, setItems] = useState(initialItems)
-    globalThis.__setItems = setItems
+    const state = useState(initialItems)
+    const items: any[] = state[0]
+    const setItems: (v: any) => void = state[1]
+    __setItems = setItems
     return (
       <w type="BUTTON" style={{flexDirection:'row', justifyContent:'center', gap:10, width:400, height:200}}>
-        {items.map((c, i) =>
+        {items.map((c: any, i: number) =>
           <w key={String(i)} type="BUTTON" style={{width:c.w, height:c.h}} />
         )}
       </w>
@@ -322,13 +323,13 @@ async function main() {
   checkDynamic(outer4, [145, 205])
 
   // add third
-  globalThis.__setItems([{w:50,h:30},{w:50,h:30},{w:50,h:30}])
+  __setItems!([{w:50,h:30},{w:50,h:30},{w:50,h:30}])
   await flush()
   outer4 = childrenOf(hwnd)
   checkDynamic(outer4, [115, 175, 235])
 
   // remove back to one
-  globalThis.__setItems([{w:50,h:30}])
+  __setItems!([{w:50,h:30}])
   await flush()
   outer4 = childrenOf(hwnd)
   checkDynamic(outer4, [175])

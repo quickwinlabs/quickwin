@@ -25,32 +25,33 @@ try {
     const m = new WebAssembly.Module(wasmBuf)
     console.log('imports:', WebAssembly.Module.imports(m))
     console.log('exports:', WebAssembly.Module.exports(m))
-    const inst = new WebAssembly.Instance(m, {
+    const inst = new WebAssembly.Instance<{ run_i32: (x: number) => number; run_i64: (a: number, b: number) => number; run_f32: (x: number) => number; run_f64: (a: number, b: number) => number }>(m, {
         env: {
-            log_i32: (x) => { console.log('  log_i32:', x) },
-            log_i64: (x) => { console.log('  log_i64:', x) },
-            log_f32: (x) => { console.log('  log_f32:', x) },
-            log_f64: (x) => { console.log('  log_f64:', x) },
-            op_i32: (a, b, c) => a * b + c,
+            log_i32: (x: number) => { console.log('  log_i32:', x) },
+            log_i64: (x: number) => { console.log('  log_i64:', x) },
+            log_f32: (x: number) => { console.log('  log_f32:', x) },
+            log_f64: (x: number) => { console.log('  log_f64:', x) },
+            op_i32: (a: number, b: number, c: number) => a * b + c,
         }
     });
+    const exp = inst.exports
 
     console.log('--- i32 ---')
-    let r = inst.exports.run_i32(7)
+    let r = exp.run_i32(7)
     console.log('  run_i32(7) =>', r, '(expected 75)')
 
     console.log('--- i64 ---')
-    r = inst.exports.run_i64(100000, 200000)
+    r = exp.run_i64(100000, 200000)
     console.log('  run_i64(100000, 200000) =>', r, '(expected 300000)')
-    r = inst.exports.run_i64(10000000000, 20000000000)
+    r = exp.run_i64(10000000000, 20000000000)
     console.log('  run_i64(10000000000, 20000000000) =>', r, '(expected 30000000000)')
 
     console.log('--- f32 ---')
-    r = inst.exports.run_f32(3.5)
+    r = exp.run_f32(3.5)
     console.log('  run_f32(3.5) =>', r, '(expected 7.0)')
 
     console.log('--- f64 ---')
-    r = inst.exports.run_f64(2.5, 4.0)
+    r = exp.run_f64(2.5, 4.0)
     console.log('  run_f64(2.5, 4.0) =>', r, '(expected 10.0)')
 
     console.log('--- all done ---')

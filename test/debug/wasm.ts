@@ -43,8 +43,8 @@ if (module) {
     try {
         const exps = WebAssembly.Module.exports(module)
         check('exports count', 1, exps.length)
-        check('export name', 'add', exps[0].name)
-        check('export kind', 'function', exps[0].kind)
+        check('export name', 'add', exps[0]!.name)
+        check('export kind', 'function', exps[0]!.kind)
     } catch (e) {
         std.printf('  FAIL: Module.exports: %s\n', String(e)); fail++
     }
@@ -53,11 +53,12 @@ if (module) {
 std.printf('=== Instance (add.wasm) ===\n')
 if (module) {
     try {
-        const instance = new WebAssembly.Instance(module)
+        const instance = new WebAssembly.Instance<{ add: (a: number, b: number) => number }>(module)
+        const iExp = instance.exports
         check('Instance created', true, instance instanceof WebAssembly.Instance)
-        check('add(1, 2)', 3, instance.exports.add(1, 2))
-        check('add(10, 20)', 30, instance.exports.add(10, 20))
-        check('add(-5, 3)', -2, instance.exports.add(-5, 3))
+        check('add(1, 2)', 3, iExp.add(1, 2))
+        check('add(10, 20)', 30, iExp.add(10, 20))
+        check('add(-5, 3)', -2, iExp.add(-5, 3))
     } catch (e) {
         std.printf('  FAIL: Instance: %s\n', String(e)); fail++
     }
@@ -68,13 +69,14 @@ const complexBuffer = readWasmFile('./complex.wasm')
 if (complexBuffer) {
     try {
         const cmod = new WebAssembly.Module(complexBuffer)
-        const cinst = new WebAssembly.Instance(cmod)
-        check('add(3, 4)', 7, cinst.exports.add(3, 4))
-        check('sub(10, 3)', 7, cinst.exports.sub(10, 3))
-        check('mul(6, 7)', 42, cinst.exports.mul(6, 7))
-        check('factorial(0)', 1, cinst.exports.factorial(0))
-        check('factorial(5)', 120, cinst.exports.factorial(5))
-        check('factorial(10)', 3628800, cinst.exports.factorial(10))
+        const cinst = new WebAssembly.Instance<{ add: (a: number, b: number) => number; sub: (a: number, b: number) => number; mul: (a: number, b: number) => number; factorial: (n: number) => number }>(cmod)
+        const cExp = cinst.exports
+        check('add(3, 4)', 7, cExp.add(3, 4))
+        check('sub(10, 3)', 7, cExp.sub(10, 3))
+        check('mul(6, 7)', 42, cExp.mul(6, 7))
+        check('factorial(0)', 1, cExp.factorial(0))
+        check('factorial(5)', 120, cExp.factorial(5))
+        check('factorial(10)', 3628800, cExp.factorial(10))
     } catch (e) {
         std.printf('  FAIL: complex.wasm: %s\n', String(e)); fail++
     }
@@ -88,10 +90,11 @@ if (importFuncBuffer) {
         const importObject = {
             env: { imported_add: (a: number, b: number) => a + b }
         }
-        const ifinst = new WebAssembly.Instance(ifmod, importObject)
-        check('add_via_import(3, 4)', 7, ifinst.exports.add_via_import(3, 4))
-        check('add_via_import(10, 20)', 30, ifinst.exports.add_via_import(10, 20))
-        check('add_via_import(-5, 3)', -2, ifinst.exports.add_via_import(-5, 3))
+        const ifinst = new WebAssembly.Instance<{ add_via_import: (a: number, b: number) => number }>(ifmod, importObject)
+        const ifExp = ifinst.exports
+        check('add_via_import(3, 4)', 7, ifExp.add_via_import(3, 4))
+        check('add_via_import(10, 20)', 30, ifExp.add_via_import(10, 20))
+        check('add_via_import(-5, 3)', -2, ifExp.add_via_import(-5, 3))
     } catch (e) {
         std.printf('  FAIL: import_func.wasm: %s\n', String(e)); fail++
     }

@@ -54,7 +54,7 @@ export const PdfCanvas = forwardRef<gui.HWND, PdfCanvasProps>(
           else if (ref) (ref as React.RefObject<gui.HWND | null>).current = h
         }}
         onEvent={(e) => {
-          const hwnd = e.hwnd as number
+          const hwnd = e.hwnd
           if (e.msg === 0x14) return 1
           if (e.msg === gui.WmMsg.PAINT) {
             const pm = pixmapRef.current
@@ -75,6 +75,7 @@ export const PdfCanvas = forwardRef<gui.HWND, PdfCanvasProps>(
             }
             return 0
           }
+          return
         }}
       />
     )

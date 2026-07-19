@@ -7,13 +7,14 @@ const { default: isArray } = await import(url)
 const parent = os.Worker.parent
 
 parent.onmessage = (e) => {
-    if (e.data.type === 'start') {
+    const d = e.data as { type: string; [key: string]: unknown }
+    if (d.type === 'start') {
         parent.postMessage({
             type: 'result',
             isArrayWorks: isArray([]) === true,
             isArrayRejects: isArray({}) === false,
         })
-    } else if (e.data.type === 'done') {
+    } else if (d.type === 'done') {
         parent.onmessage = null
     }
 }

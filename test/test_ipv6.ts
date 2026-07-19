@@ -86,7 +86,7 @@ export const suite = {
                 t.ok++
                 ws.send('hello ipv6')
             }
-            ws.onmessage = (evt: { data: string }) => {
+            ws.onmessage = (evt) => {
                 t.ok++
                 assert('WS IPv6 echo matches', evt.data === 'hello ipv6')
                 ws.close()
@@ -111,7 +111,7 @@ export const suite = {
                 t.ok++
                 ws.send('hello wss ipv6')
             }
-            ws.onmessage = (evt: { data: string }) => {
+            ws.onmessage = (evt) => {
                 t.ok++
                 assert('WSS IPv6 echo matches', evt.data === 'hello wss ipv6')
                 ws.close()

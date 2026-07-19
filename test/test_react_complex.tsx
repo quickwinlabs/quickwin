@@ -1,7 +1,7 @@
 import '../lib/polyfill.js'
 import * as gui from 'gui'
 import * as os from 'os'
-import React, { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { render } from '../lib/react-qw/index.js'
 
 // 打印窗口树

@@ -15,7 +15,7 @@ export interface ListBoxProps {
 
 export const ListBox = forwardRef<gui.HWND, ListBoxProps>(
   ({ items, selectedIndex: controlledIndex, defaultSelectedIndex = -1,
-     onChange, style, disabled, sort, scrollToBottom }, ref) => {
+     onChange, style, sort, scrollToBottom }, ref) => {
     const [internalIndex, setInternalIndex] = useState(defaultSelectedIndex)
     const isControlled = controlledIndex !== undefined
     const sel = isControlled ? controlledIndex : internalIndex

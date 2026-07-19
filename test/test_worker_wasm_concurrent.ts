@@ -27,9 +27,10 @@ export const suite = {
         })
 
         const mainMod = new WebAssembly.Module(wasmBuf)
-        const mainInst = new WebAssembly.Instance(mainMod)
-        const mainR1 = mainInst.exports.add(1, 2)
-        const mainR2 = mainInst.exports.add(10, 20)
+        const mainInst = new WebAssembly.Instance<{ add: (a: number, b: number) => number }>(mainMod)
+        const mainExp = mainInst.exports
+        const mainR1 = mainExp.add(1, 2)
+        const mainR2 = mainExp.add(10, 20)
 
         const wr = await workerResult
         t.check('main add(1, 2)', 3, mainR1)

@@ -23,7 +23,7 @@ function readI32(ptr: number, offset: number): number {
 }
 
 function bufPtr(buf: ArrayBuffer): number {
-  return ffi.bufferPtr(buf) as number
+  return ffi.bufferPtr(buf)
 }
 
 function dateToSysTimeBuf(d: Date): ArrayBuffer {

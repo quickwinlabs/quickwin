@@ -48,7 +48,7 @@ function App() {
         selectedIndex={selIndex}
         onChange={(i) => {
           setSelIndex(i)
-          setSelectedText(items[i])
+          setSelectedText(items[i]!)
         }}
         style={{ flexGrow: 1, alignSelf: 'stretch' }}
       />

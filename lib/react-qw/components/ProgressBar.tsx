@@ -31,7 +31,7 @@ export const ProgressBar = forwardRef<gui.HWND, ProgressBarProps>(
         ref={(h: gui.HWND) => {
           pbRef.current = h
           if (typeof ref === 'function') ref(h)
-          else if (ref) (ref as React.RefObject<gui.HWND | null>).current = h
+          else if (ref) ref.current = h
         }}
       />
     )

@@ -1,12 +1,11 @@
 import {
     CallWindowProc, CreateSystemDpiFont, CreateWindow as CreateWindowWithoutScale, DefWindowProc,
-    GetScaleFactor, GetWindowLongPtr, GetWindowText, HWND, WNDPROC,
-    MessageBox, RegisterClass, SendMessage, SetWindowProc, ShowWindow,
+    GetScaleFactor, GetWindowLongPtr, GetWindowText, HWND,
+    RegisterClass, SendMessage, SetWindowProc, ShowWindow,
     WmMsg, WindowStyle, ButtonStyle, Gwlp, LbMsg,
 } from "gui";
 
 import { printf } from 'std'
-import * as os from 'os';
 import  './lib/polyfill.js'
 import  './lib/fetch.js'
 
@@ -29,8 +28,8 @@ function wndProc(hwnd: HWND, msg: number, wParam: number, lParam: number) {
 
         edit = CreateWindow("EDIT", "", WindowStyle.CHILD | WindowStyle.VISIBLE | WindowStyle.BORDER, 10, 10, 100, 20, hwnd, null);
         list = CreateWindow("LISTBOX", "", WindowStyle.CHILD | WindowStyle.VISIBLE | WindowStyle.BORDER, 10, 40, 200, 100, hwnd, null);
-        let group = CreateWindow("BUTTON", "添加", WindowStyle.CHILD | WindowStyle.VISIBLE | ButtonStyle.GROUPBOX, 10, 180, 100, 30, hwnd, null);
-        let check = CreateWindow("BUTTON", "添加到列表", WindowStyle.CHILD | WindowStyle.VISIBLE | ButtonStyle.AUTOCHECKBOX, 10, 280, 100, 30, hwnd, null);
+        CreateWindow("BUTTON", "添加", WindowStyle.CHILD | WindowStyle.VISIBLE | ButtonStyle.GROUPBOX, 10, 180, 100, 30, hwnd, null);
+        CreateWindow("BUTTON", "添加到列表", WindowStyle.CHILD | WindowStyle.VISIBLE | ButtonStyle.AUTOCHECKBOX, 10, 280, 100, 30, hwnd, null);
         if (!btn) return 0
         const oldProc = GetWindowLongPtr(btn, Gwlp.WNDPROC);
         SetWindowProc(btn, (hwnd, msg, wParam, lParam) => {
@@ -50,7 +49,7 @@ function wndProc(hwnd: HWND, msg: number, wParam: number, lParam: number) {
                     })
                 return 0;
             }
-            return CallWindowProc(oldProc as WNDPROC, hwnd, msg, wParam, lParam);
+            return CallWindowProc(oldProc, hwnd, msg, wParam, lParam);
         });
         return 0;
     } else if (msg === WmMsg.COMMAND) {

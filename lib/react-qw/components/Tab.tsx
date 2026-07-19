@@ -36,12 +36,12 @@ export const Tab = forwardRef<gui.HWND, TabProps>(
       if (!h) return
       gui.SendMessage(h, gui.TcMsg.DELETEALLITEMS, 0, 0)
       for (let i = 0; i < tabs.length; i++) {
-        const titleBuf = textToUtf16(tabs[i].title)
+        const titleBuf = textToUtf16(tabs[i]!.title)
         const tci = new ArrayBuffer(40)
         const dv = new DataView(tci)
         dv.setUint32(0, gui.TcItemFlag.TEXT, true)
         dv.setBigUint64(16, BigInt(ffi.bufferPtr(titleBuf)), true)
-        dv.setInt32(24, tabs[i].title.length + 1, true)
+        dv.setInt32(24, tabs[i]!.title.length + 1, true)
         const tciPtr = ffi.bufferPtr(tci)
         gui.SendMessage(h, gui.TcMsg.INSERTITEMW, i, tciPtr)
       }

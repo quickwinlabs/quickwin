@@ -27,7 +27,7 @@ function ensureDlls(): boolean {
 }
 
 function strToWide(s: string): ArrayBuffer {
-  return new TextEncoder('utf-16le').encode(s + '\0').buffer as ArrayBuffer
+  return new TextEncoder('utf-16le').encode(s + '\0').buffer
 }
 
 const _decoder = new TextDecoder('utf-16le')
@@ -128,7 +128,7 @@ export type PathPickerProps = PathPickerBase & (
 
 export const PathPicker = forwardRef<gui.HWND, PathPickerProps>(
   (props, ref) => {
-    const { type = 'file', filter = 'All Files\0*.*\0\0', title, placeholder, disabled, style } = props
+    const { type = 'file', filter = 'All Files\0*.*\0\0', title, disabled, style } = props
     const multiple = props.multiple === true
     const controlledValue = props.value
     const defaultValue = props.defaultValue

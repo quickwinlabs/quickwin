@@ -3,9 +3,6 @@ import * as gui from 'gui'
 import { useState } from 'react'
 import { render } from '../lib/react-qw/index.js'
 
-const WS_CHILD = 0x40000000
-const WS_VISIBLE = 0x10000000
-
 gui.RegisterClass('ReactCounter', (hwnd, msg, wParam, lParam) => {
   if (!hwnd) return gui.DefWindowProc(hwnd, msg, wParam, lParam)
   if (msg === gui.WmMsg.DESTROY) {

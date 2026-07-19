@@ -17,7 +17,7 @@ function readI32(ptr: number, offset: number): number {
 }
 
 function bufPtr(buf: ArrayBuffer): number {
-  return ffi.bufferPtr(buf) as number
+  return ffi.bufferPtr(buf)
 }
 
 const LVIF_TEXT = gui.LvItemFlag.TEXT
@@ -34,7 +34,7 @@ export interface Column<D> {
   dataIndex: keyof D
 }
 
-export interface ListViewProps<D extends Record<string, any>> {
+export interface ListViewProps<D extends object> {
   columns: Column<D>[]
   data: D[]
   selectedIndex?: number
@@ -43,7 +43,7 @@ export interface ListViewProps<D extends Record<string, any>> {
   style?: WStyle
 }
 
-const ListView = forwardRef(function ListViewInner<D extends Record<string, any>>(
+const ListView = forwardRef(function ListViewInner<D extends object>(
   { columns, data, selectedIndex: controlledIndex, defaultSelectedIndex = -1,
     onChange, style }: ListViewProps<D>,
   ref: ForwardedRef<gui.HWND>
@@ -73,7 +73,7 @@ const ListView = forwardRef(function ListViewInner<D extends Record<string, any>
 
     const n = columns.length
     for (let j = 0; j < n; j++) {
-      const titleBuf = textToUtf16(columns[j].name)
+      const titleBuf = textToUtf16(columns[j]!.name)
       const lvc = new ArrayBuffer(52)
       const dv = new DataView(lvc)
       dv.setUint32(0, LVCF_TEXT | LVCF_WIDTH | LVCF_FMT, true)
@@ -92,7 +92,7 @@ const ListView = forwardRef(function ListViewInner<D extends Record<string, any>
     const nCols = columns.length
 
     for (let i = 0; i < data.length; i++) {
-      const col0 = textToUtf16(String(data[i][columns[0].dataIndex]))
+      const col0 = textToUtf16(String(data[i]![columns[0]!.dataIndex]))
       const lvi = new ArrayBuffer(84)
       const dv = new DataView(lvi)
       dv.setUint32(0, LVIF_TEXT, true)
@@ -101,7 +101,7 @@ const ListView = forwardRef(function ListViewInner<D extends Record<string, any>
       gui.SendMessage(h, gui.LvMsg.INSERTITEMW, 0, bufPtr(lvi))
 
       for (let j = 1; j < nCols; j++) {
-        const colJ = textToUtf16(String(data[i][columns[j].dataIndex]))
+        const colJ = textToUtf16(String(data[i]![columns[j]!.dataIndex]))
         const sub = new ArrayBuffer(84)
         const sdv = new DataView(sub)
         sdv.setUint32(0, LVIF_TEXT, true)
@@ -174,7 +174,7 @@ const ListView = forwardRef(function ListViewInner<D extends Record<string, any>
       />
     </w>
   )
-}) as <D extends Record<string, any>>(
+}) as <D extends object>(
   props: ListViewProps<D> & { ref?: React.Ref<gui.HWND> }
 ) => React.ReactElement
 

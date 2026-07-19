@@ -20,7 +20,7 @@ export const Slider = forwardRef<gui.HWND, SliderProps>(
     useEffect(() => {
       const h = sliderRef.current
       if (!h) return
-      const lParam = ((min as number) & 0xFFFF) | (((max as number) & 0xFFFF) << 16)
+      const lParam = (min & 0xFFFF) | ((max & 0xFFFF) << 16)
       gui.SendMessage(h, gui.TbMsg.SETRANGE, 0, lParam)
       gui.SendMessage(h, gui.TbMsg.SETPOS, 1, value)
     }, [min, max])
@@ -43,7 +43,7 @@ export const Slider = forwardRef<gui.HWND, SliderProps>(
         ref={(h: gui.HWND) => {
           wrapperRef.current = h
           if (typeof ref === 'function') ref(h)
-          else if (ref) (ref as React.RefObject<gui.HWND | null>).current = h
+          else if (ref) ref.current = h
         }}
         onEvent={(e) => {
           if (e.msg === gui.WmMsg.NCHITTEST ||
@@ -57,6 +57,7 @@ export const Slider = forwardRef<gui.HWND, SliderProps>(
             onChange?.(pos)
             return 0
           }
+          return
         }}
       >
         <w type="msctls_trackbar32"

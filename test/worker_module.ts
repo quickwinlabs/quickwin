@@ -7,10 +7,11 @@ const parent = os.Worker.parent
 
 parent.onmessage = (e) => {
     console.log(e)
-    if (e.data.type === 'start') {
-        console.log(e.data.type)
+    const d = e.data as { type: string }
+    if (d.type === 'start') {
+        console.log(d.type)
         parent.postMessage({ type: 'result', value })
-    } else if (e.data.type === 'done') {
+    } else if (d.type === 'done') {
         parent.onmessage = null
     }
 }

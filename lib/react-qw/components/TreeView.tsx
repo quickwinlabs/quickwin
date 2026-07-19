@@ -3,7 +3,7 @@ import * as gui from 'gui'
 import * as ffi from 'ffi'
 import type { WStyle } from '../jsx.d.ts'
 
-export interface TreeNode<D = any> {
+export interface TreeNode<D = unknown> {
   key?: string
   label: string
   children?: TreeNode<D>[]
@@ -31,7 +31,7 @@ function readI32(ptr: number, offset: number): number {
 }
 
 function bufPtr(buf: ArrayBuffer): number {
-  return ffi.bufferPtr(buf) as number
+  return ffi.bufferPtr(buf)
 }
 
 function setPtr(dv: DataView, offset: number, ptr: number): void {
@@ -164,7 +164,7 @@ const TreeView = forwardRef(function TreeViewInner<D>(
       />
     </w>
   )
-}) as <D = any>(
+}) as <D = unknown>(
   props: TreeViewProps<D> & { ref?: React.Ref<gui.HWND> }
 ) => React.ReactElement
 

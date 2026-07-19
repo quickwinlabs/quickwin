@@ -269,6 +269,7 @@ js:
 	@node build.ts
 	@echo "Copying vendor/mupdf-wasm to $(BUILD_DIR)/vendor/mupdf-wasm..."
 	@rm -rf $(BUILD_DIR)/vendor/mupdf-wasm && mkdir -p $(BUILD_DIR)/vendor/mupdf-wasm && cp -r vendor/mupdf-wasm/. $(BUILD_DIR)/vendor/mupdf-wasm/
+	@mkdir -p $(BUILD_DIR)/lib/vendor/web-streams && cp lib/vendor/web-streams/ponyfill.mjs $(BUILD_DIR)/lib/vendor/web-streams/
 	@echo "TypeScript compilation complete"
 
 test: nodebug js wasm

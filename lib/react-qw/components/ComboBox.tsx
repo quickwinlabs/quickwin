@@ -13,7 +13,7 @@ export interface ComboBoxProps {
 
 export const ComboBox = forwardRef<gui.HWND, ComboBoxProps>(
   ({ items, selectedIndex: controlledIndex, defaultSelectedIndex = -1,
-     onChange, style, disabled }, ref) => {
+     onChange, style }, ref) => {
     const [internalIndex, setInternalIndex] = useState(defaultSelectedIndex)
     const isControlled = controlledIndex !== undefined
     const sel = isControlled ? controlledIndex : internalIndex

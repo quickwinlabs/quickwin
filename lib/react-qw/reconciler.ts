@@ -5,6 +5,7 @@ import * as gui from 'gui'
 import * as os from 'os'
 import { applyProps } from './props.js'
 import { calculateFlexLayout, type FlexStyle } from './layout.js'
+import type { WIntrinsicProps } from './jsx.js'
 
 // DEBUG 由 esbuild --define 在 bundle 时替换（见 build.ts），生产环境为 false
 declare const DEBUG: boolean
@@ -13,7 +14,7 @@ const dpiFont = gui.CreateSystemDpiFont()
 export const scaleFactor = gui.GetScaleFactor()
 
 type Container = gui.HWND
-type Props = Record<string, any>
+export type Props = WIntrinsicProps
 
 export interface Instance {
   hwnd: gui.HWND | null
@@ -31,7 +32,7 @@ function isDelayedControl(winClass: string): boolean {
 
 function setupWindowProc(instance: Instance, hwnd: gui.HWND) {
   instance.hwnd = hwnd
-  const oldProc = gui.GetWindowLongPtr(hwnd, gui.Gwlp.WNDPROC) as unknown as gui.WNDPROC
+  const oldProc = gui.GetWindowLongPtr(hwnd, gui.Gwlp.WNDPROC)
   instancesByHwnd.set(hwnd, instance)
   gui.SetWindowProc(hwnd, (hwnd: gui.HWND, msg: number, wParam: number, lParam: number) => {
     const ev = instance.props.onEvent
@@ -41,7 +42,7 @@ function setupWindowProc(instance: Instance, hwnd: gui.HWND) {
     }
     const result = gui.CallWindowProc(oldProc, hwnd, msg, wParam, lParam)
     const override = ev({ hwnd, msg, wParam, lParam })
-    return Number.isInteger(override) ? override : result
+    return typeof override === 'number' && Number.isInteger(override) ? override : result
   })
 }
 
@@ -65,7 +66,7 @@ type HostContext = Record<string, never>
 export const instancesByHwnd = new Map<gui.HWND, Instance>()
 
 function runFlexLayout(inst: Instance) {
-  const children = inst.children.filter(c => typeof c === 'object') as Instance[]
+  const children = inst.children
   if (children.length === 0) return
   const s = inst.props.style
   const flex: FlexStyle = s || {}
@@ -80,12 +81,12 @@ function runFlexLayout(inst: Instance) {
   const pl = flex.paddingLeft ?? flex.padding ?? 0
   const pt = flex.paddingTop ?? flex.padding ?? 0
   for (let i = 0; i < results.length; i++) {
-    const r = results[i]
-    const child = visible[i]
+    const r = results[i]!
+    const child = visible[i]!
     const lr = child.lastRect
     if (lr && lr.x === r.x && lr.y === r.y && lr.w === r.width && lr.h === r.height) continue
     console.log('flex: set', child.type, child.hwnd, 'to', r.x, r.y, r.width, r.height)
-    gui.SetWindowPos(child.hwnd!, 0, (r.x + pl) * scaleFactor, (r.y + pt) * scaleFactor, r.width * scaleFactor, r.height * scaleFactor, 0)
+    gui.SetWindowPos(child.hwnd!, gui.SetWindowPosHwnd.TOP, (r.x + pl) * scaleFactor, (r.y + pt) * scaleFactor, r.width * scaleFactor, r.height * scaleFactor, 0)
     child.lastRect = { x: r.x, y: r.y, w: r.width, h: r.height }
   }
   for (const c of children) runFlexLayout(c)
@@ -107,7 +108,7 @@ export function forceFlexLayout(hwnd: gui.HWND): void {
 type QuickWinHostConfig = ReactReconciler.HostConfig<
   string, Props, Container, Instance, Instance,
   never, never, never, gui.HWND,
-  HostContext, never, any, -1, null
+  HostContext, never, number, -1, null
 > & {
   // rendererPackageName/rendererVersion（原类型定义中缺失）
   rendererPackageName: string
@@ -118,19 +119,19 @@ let currentUpdatePriority = NoEventPriority
 
 const hostConfig: QuickWinHostConfig = {
   // Core methods
-  createInstance(type: string, props: Record<string, any>, rootContainer: Container) {
+  createInstance(type: string, props: Props, rootContainer: Container) {
     if (DEBUG) console.log('[reconciler] createInstance called:', type, 'class=' + props.type)
     const winClass = props.type
     if (isDelayedControl(winClass)) {
       if (DEBUG) console.log('[reconciler] delayed control, skipping CreateWindow:', winClass)
-      return { hwnd: null, type: winClass, props, children: [] } as Instance
+      return { hwnd: null, type: winClass, props, children: [] }
     }
     const sty = props.style || {}
     // reconciler 创建的都是子窗口，确保 WS_CHILD 避免定位异常
     const ws = (props.ws ?? 0) | gui.WindowStyle.CHILD
-    if (DEBUG) console.log('[reconciler] CreateWindow args:', winClass, props.text || '', ws, 0, 0, sty.width ?? 100, sty.height ?? 30, rootContainer)
+    if (DEBUG) console.log('[reconciler] CreateWindow args:', winClass, props.text ?? '', ws, 0, 0, sty.width ?? 100, sty.height ?? 30, rootContainer)
     const hwnd = gui.CreateWindow(
-      winClass, props.text || '', ws,
+      winClass, props.text ?? '', ws,
       0, 0,
       (sty.width ?? 100) * scaleFactor, (sty.height ?? 30) * scaleFactor,
       rootContainer, null
@@ -188,7 +189,7 @@ const hostConfig: QuickWinHostConfig = {
     if (idx >= 0) parent.children.splice(idx, 0, child)
   },
 
-  insertInContainerBefore(container: Container, child: Instance, _before: any) {
+  insertInContainerBefore(container: Container, child: Instance, _before: Instance) {
     if (child.hwnd === null) {
       ensureChildWindow(child, container)
     } else {
@@ -220,15 +221,15 @@ const hostConfig: QuickWinHostConfig = {
     }
   },
 
-  commitUpdate(instance: Instance, _type: string, oldProps: Record<string, any>, newProps: Record<string, any>, _internalHandle: any) {
+  commitUpdate(instance: Instance, _type: string, oldProps: Props, newProps: Props, _internalHandle: unknown) {
     applyProps(instance, newProps, oldProps)
   },
 
-  commitMount(_instance: Instance, _type: string, _props: Record<string, any>, _internal: any) { },
+  commitMount(_instance: Instance, _type: string, _props: Props, _internal: unknown) { },
 
-  finalizeInitialChildren(instance: Instance, _type: string, props: Record<string, any>) {
+  finalizeInitialChildren(instance: Instance, type: string, props: Props) {
     if (DEBUG) console.log('[reconciler] finalizeInitialChildren instance:', instance.hwnd, 'props:', JSON.stringify(props))
-    applyProps(instance, props, {})
+    applyProps(instance, props, { type })
     return false
   },
 
@@ -253,7 +254,7 @@ const hostConfig: QuickWinHostConfig = {
     if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, gui.ShowWindowCmd.HIDE)
   },
 
-  unhideInstance(instance: Instance, _props: Record<string, any>) {
+  unhideInstance(instance: Instance, _props: Props) {
     if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, gui.ShowWindowCmd.SHOW)
   },
 
@@ -261,7 +262,7 @@ const hostConfig: QuickWinHostConfig = {
     if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, gui.ShowWindowCmd.SHOW)
   },
 
-  shouldSetTextContent(_type: string, props: Record<string, any>) {
+  shouldSetTextContent(_type: string, props: Props) {
     return typeof props.children === 'string' || typeof props.children === 'number'
   },
 
@@ -273,7 +274,7 @@ const hostConfig: QuickWinHostConfig = {
     return {}
   },
 
-  getChildHostContext(_parentContext: any, _type: string) {
+  getChildHostContext(_parentContext: HostContext, _type: string) {
     return {}
   },
 
@@ -291,7 +292,7 @@ const hostConfig: QuickWinHostConfig = {
     return os.setTimeout(fn, delay)
   },
 
-  cancelTimeout(id: any) {
+  cancelTimeout(id: os.TimerId) {
     os.clearTimeout?.(id)
   },
 
@@ -318,11 +319,11 @@ const hostConfig: QuickWinHostConfig = {
   },
   
   // 添加必需方法
-  getInstanceFromNode(_node: any) { return null },
+  getInstanceFromNode(_node: unknown) { return null },
   beforeActiveInstanceBlur() { },
   afterActiveInstanceBlur() { },
-  prepareScopeUpdate(_scopeInstance: any, _instance: any) { },
-  getInstanceFromScope(_scopeInstance: any) { return null },
+  prepareScopeUpdate(_scopeInstance: unknown, _instance: unknown) { },
+  getInstanceFromScope(_scopeInstance: unknown) { return null },
   
   // Suspense/Concurrent Mode 支持
   maySuspendCommit() { return false },
@@ -335,8 +336,8 @@ const hostConfig: QuickWinHostConfig = {
   rendererVersion: '0.1.0',
   rendererPackageName: 'react-qw',
   NotPendingTransition: null,
-  HostTransitionContext: createContext(null) as any,
-  resetFormInstance(_form: any) { },
+  HostTransitionContext: createContext(null) as unknown as ReactReconciler.ReactContext<null>,
+  resetFormInstance(_form: never) { },
 }
 
 const reconciler = ReactReconciler(hostConfig)

@@ -1,4 +1,5 @@
 import * as gui from 'gui'
+import React from 'react'
 import reconciler, { scaleFactor, instancesByHwnd, forceFlexLayout, type Instance } from './reconciler.js'
 
 const noop = () => { }
@@ -16,7 +17,7 @@ export interface RootWindowConfig {
 
 let defaultClassRegistered = false
 const DEFAULT_CLASS = '_QuickWinDefault'
-const rootMap = new Map<gui.HWND, { root: any, onEvent?: RootWindowConfig['onEvent'] }>()
+const rootMap = new Map<gui.HWND, { root: ReturnType<typeof reconciler.createContainer>, onEvent?: RootWindowConfig['onEvent'] }>()
 
 function ensureDefaultClass() {
   if (defaultClassRegistered) return DEFAULT_CLASS
@@ -61,13 +62,13 @@ export function createRoot(container: gui.HWND | RootWindowConfig) {
     hwnd, 0, null, false, null, '',
     noop, noop, noop, noop,
   )
-  const rootInst: Instance = { hwnd, type: '_root', props: { style: { flexDirection: 'column', alignItems: 'stretch' } }, children: [] }
+  const rootInst: Instance = { hwnd, type: '_root', props: { type: '_root', style: { flexDirection: 'column', alignItems: 'stretch' } }, children: [] }
   instancesByHwnd.set(hwnd, rootInst)
   if (typeof container === 'object')
     rootMap.set(hwnd, { root, onEvent: container.onEvent })
   return {
     hwnd,
-    render(element: any) {
+    render(element: React.ReactNode) {
       reconciler.updateContainer(element, root, null, noop)
     },
     unmount() {
@@ -78,7 +79,7 @@ export function createRoot(container: gui.HWND | RootWindowConfig) {
 
 export * from './components/index.js'
 
-export function render(element: any, containerOrConfig?: gui.HWND | RootWindowConfig | null, callback?: () => void) {
+export function render(element: React.ReactNode, containerOrConfig?: gui.HWND | RootWindowConfig | null, _callback?: () => void) {
   if (containerOrConfig == null) {
     throw new Error('render() requires a window handle or RootWindowConfig as second argument')
   }

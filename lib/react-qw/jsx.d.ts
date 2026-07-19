@@ -22,7 +22,7 @@ interface WOnEventObj {
   fn: (e: WEvent & {callOldWndProc: () => number}) => number
 }
 interface WIntrinsicProps {
-  key?: string | number; type?: string; text?: string; ws?: number
+  key?: string | number; type: string; text?: string; ws?: number
   disabled?: boolean; visible?: boolean; hidden?: boolean; style?: WStyle
   onEvent?: ((e: WEvent) => number | void) | WOnEventObj
   children?: React.ReactNode

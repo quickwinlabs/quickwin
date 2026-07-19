@@ -21,21 +21,21 @@ function setupMupdfModule(wasmPath: string) {
 }
 
 setupMupdfModule('./vendor/mupdf-wasm/mupdf-wasm.wasm')
-const mupdf = await import('../../vendor/mupdf-wasm/mupdf.js')
+await import('../../vendor/mupdf-wasm/mupdf.js')
 
 // Debug the instance exports
-const inst = globalThis["$wasm_inst"]
-const mod = globalThis["$wasm_mod"]
+const inst = (globalThis as any)["$wasm_inst"]
+const mod = (globalThis as any)["$wasm_mod"]
 console.log('=== WASM Module exports (first 30) ===')
 const modExports = WebAssembly.Module.exports(mod)
 for (let i = 0; i < 30 && i < modExports.length; i++)
-    console.log(`  ${i}: ${modExports[i].name} (${modExports[i].kind})`)
+    console.log(`  ${i}: ${modExports[i]!.name} (${modExports[i]!.kind})`)
 
 // Find Sf and Tf indices
 let sf_idx = -1, tf_idx = -1
 for (let i = 0; i < modExports.length; i++) {
-    if (modExports[i].name === 'Sf') sf_idx = i
-    if (modExports[i].name === 'Tf') tf_idx = i
+    if (modExports[i]!.name === 'Sf') sf_idx = i
+    if (modExports[i]!.name === 'Tf') tf_idx = i
 }
 console.log('Sf index:', sf_idx, 'Tf index:', tf_idx)
 console.log('instance exports Sf:', typeof inst.exports['Sf'])
@@ -64,7 +64,7 @@ const bufPtr = lib._wasm_malloc(size)
 console.log('malloc buffer pointer:', bufPtr)
 // Write PDF data into WASM memory at bufPtr...
 const mem8 = new Uint8Array(wasmMemory.buffer)
-for (let i = 0; i < size; i++) mem8[bufPtr + i] = (new Uint8Array(buf))[i]
+for (let i = 0; i < size; i++) mem8[bufPtr + i] = (new Uint8Array(buf))[i]!
 console.log('wrote pdf data to WASM memory at', bufPtr)
 
 // Try opening document directly with _wasm_open_document_with_buffer
@@ -94,10 +94,10 @@ if (fz_ptr && typeof fz_ptr === 'number') {
     // Get bounds
     // _wasm_bound_page(Sf?) - need to find this export
     for (let i = 0; i < modExports.length; i++) {
-        if (modExports[i].name.startsWith('Uf')) {
+        if (modExports[i]!.name.startsWith('Uf')) {
             console.log('Uf at index', i, '- likely _wasm_pdf_page_from_fz_page')
         }
-        if (modExports[i].name.startsWith('Vf')) {
+        if (modExports[i]!.name.startsWith('Vf')) {
             console.log('Vf at index', i)
         }
     }

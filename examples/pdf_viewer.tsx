@@ -3,6 +3,7 @@ import * as std from 'std'
 import * as gui from 'gui'
 import * as win from 'win'
 import * as ffi from 'ffi'
+import type { Document, Page, Pixmap } from '../vendor/mupdf-wasm/mupdf.js'
 import { useState } from 'react'
 import { render, Button, Input, ScrollView } from '../lib/react-qw/index.js'
 import { PdfCanvas } from './PdfCanvas.js'
@@ -103,7 +104,7 @@ interface PixmapInfo {
 }
 
 let cachedPath = ''
-let cachedDoc: any = null
+let cachedDoc: Document | null = null
 let cachedTotalPages = 0
 
 function renderPdfPage(mupdf: MuPdf, filePath: string, pageIndex: number): PixmapInfo & { totalPages: number } | null {
@@ -139,8 +140,8 @@ function renderPdfPage(mupdf: MuPdf, filePath: string, pageIndex: number): Pixma
   if (!cachedDoc) return null
   if (pageIndex >= cachedTotalPages) return null
 
-  let page: any = null
-  let pixmap: any = null
+  let page: Page | null = null
+  let pixmap: Pixmap | null = null
   try {
     page = cachedDoc.loadPage(pageIndex)
     const scale = 1.5
@@ -167,9 +168,9 @@ function renderPdfPage(mupdf: MuPdf, filePath: string, pageIndex: number): Pixma
       for (let x = 0; x < w; x++) {
         const sx = srcOff + x * 3
         const dx = dstOff + x * 3
-        dib[dx] = srcPixels[sx + 2]
-        dib[dx + 1] = srcPixels[sx + 1]
-        dib[dx + 2] = srcPixels[sx]
+        dib[dx] = srcPixels[sx + 2]!
+        dib[dx + 1] = srcPixels[sx + 1]!
+        dib[dx + 2] = srcPixels[sx]!
       }
     }
 
@@ -270,7 +271,7 @@ async function main() {
   )
 
   if (hwnd) {
-    render(<App mupdf={mupdf} mainHwnd={hwnd as number} />, hwnd)
+    render(<App mupdf={mupdf} mainHwnd={hwnd} />, hwnd)
     setTimeout(() => gui.ShowWindow(hwnd), 0)
   }
 }

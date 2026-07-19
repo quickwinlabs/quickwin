@@ -78,25 +78,20 @@ function createFrame(opcode: number, payload: Uint8Array): ArrayBuffer {
         view[off++] = lo & 0xFF
     }
 
-    view[off++] = maskingKey[0]
-    view[off++] = maskingKey[1]
-    view[off++] = maskingKey[2]
-    view[off++] = maskingKey[3]
+    view[off++] = maskingKey[0]!
+    view[off++] = maskingKey[1]!
+    view[off++] = maskingKey[2]!
+    view[off++] = maskingKey[3]!
 
     for (let i = 0; i < payload.length; i++) {
-        view[off++] = payload[i] ^ maskingKey[i % 4]
+        view[off++] = payload[i]! ^ maskingKey[i % 4]!
     }
 
     return buf
 }
 
 function createCloseFrame(code: number, reason: string): ArrayBuffer {
-    const reasonBytes = new Uint8Array(reason.length + 2)
-    reasonBytes[0] = (code >> 8) & 0xFF
-    reasonBytes[1] = code & 0xFF
-    for (let i = 0; i < reason.length; i++) {
-        reasonBytes[i + 2] = reason.charCodeAt(i) & 0xFF
-    }
+    const reasonBytes = new Uint8Array([(code >> 8) & 0xFF, code & 0xFF, ...new TextEncoder().encode(reason)])
     return createFrame(Opcode.CLOSE, reasonBytes)
 }
 
@@ -112,8 +107,8 @@ interface ParsedFrame {
 function tryParseFrame(buffer: Uint8Array): ParsedFrame | null {
     if (buffer.length < 2) return null
 
-    const b0 = buffer[0]
-    const b1 = buffer[1]
+    const b0 = buffer[0]!
+    const b1 = buffer[1]!
     const fin = (b0 & 0x80) !== 0
     const opcode = b0 & 0x0F
     const masked = (b1 & 0x80) !== 0
@@ -122,13 +117,13 @@ function tryParseFrame(buffer: Uint8Array): ParsedFrame | null {
 
     if (payloadLen === 126) {
         if (buffer.length < 4) return null
-        payloadLen = (buffer[2] << 8) | buffer[3]
+        payloadLen = (buffer[2]! << 8) | buffer[3]!
         offset = 4
     } else if (payloadLen === 127) {
         if (buffer.length < 10) return null
         let hi = 0, lo = 0
-        for (let i = 0; i < 4; i++) hi = (hi * 256 + buffer[offset + i]) >>> 0
-        for (let i = 4; i < 8; i++) lo = (lo * 256 + buffer[offset + i]) >>> 0
+        for (let i = 0; i < 4; i++) hi = (hi * 256 + buffer[offset + i]!) >>> 0
+        for (let i = 4; i < 8; i++) lo = (lo * 256 + buffer[offset + i]!) >>> 0
         payloadLen = hi * 0x100000000 + lo
         offset = 10
     }
@@ -143,7 +138,7 @@ function tryParseFrame(buffer: Uint8Array): ParsedFrame | null {
         const maskKey = buffer.slice(offset - 4, offset)
         payload = new Uint8Array(payloadLen)
         for (let i = 0; i < payloadLen; i++) {
-            payload[i] = buffer[offset + i] ^ maskKey[i % 4]
+            payload[i] = buffer[offset + i]! ^ maskKey[i % 4]!
         }
     } else {
         payload = buffer.slice(offset, offset + payloadLen)
@@ -158,28 +153,22 @@ interface WebSocketOptions {
     headers?: Record<string, string>
 }
 
-interface WSEventMap {
-    open: Event
-    message: MessageEvent
-    close: CloseEvent
-    error: Event
-}
 
-class WebSocket {
+
+class WebSocketImpl {
     readonly url: string
-    readyState: number = State.CONNECTING
+    readyState: State = State.CONNECTING
     onopen: ((event: Event) => void) | null = null
     onclose: ((event: CloseEvent) => void) | null = null
     onerror: ((event: Event) => void) | null = null
     onmessage: ((event: MessageEvent) => void) | null = null
 
     private _options: WebSocketOptions
-    private _sock: number | null = null
-    private _ssl: number | null = null
-    private _ctx: number | null = null
+    private _sock: sock.SockHandle | null = null
+    private _ssl: wolfssl.WOLFSSL | null = null
+    private _ctx: wolfssl.WOLFSSL_CTX | null = null
     private _readBuffer: Uint8Array = new Uint8Array(0)
     private _state: State = State.CONNECTING
-    private _resolveOpen: (() => void) | null = null
     private _processingHandshake: boolean = false
     static readonly CONNECTING = State.CONNECTING
     static readonly OPEN = State.OPEN
@@ -188,7 +177,6 @@ class WebSocket {
 
     private _closeCode: number = 1005
     private _closeReason: string = ''
-    private _requestKey: string = ''
 
     constructor(url: string, options?: WebSocketOptions) {
         this.url = url
@@ -201,18 +189,7 @@ class WebSocket {
 
         let payload: Uint8Array
         if (typeof data === 'string') {
-            const bytes: number[] = []
-            for (let i = 0; i < data.length; i++) {
-                const c = data.charCodeAt(i)
-                if (c < 0x80) {
-                    bytes.push(c)
-                } else if (c < 0x800) {
-                    bytes.push(0xC0 | (c >> 6), 0x80 | (c & 0x3F))
-                } else {
-                    bytes.push(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 0x3F), 0x80 | (c & 0x3F))
-                }
-            }
-            payload = new Uint8Array(bytes)
+            payload = new TextEncoder().encode(data)
             const frame = createFrame(Opcode.TEXT, payload)
             this._sendRaw(frame)
         } else if (data instanceof ArrayBuffer) {
@@ -257,7 +234,6 @@ class WebSocket {
         const path = url.pathname + (url.search || '')
 
         const requestKey = generateKey()
-        this._requestKey = requestKey
 
         let customHeaders = ''
         if (this._options.headers) {
@@ -372,9 +348,13 @@ class WebSocket {
                         if (headerEnd >= 0) {
                             const headerPart = headerBuffer.slice(0, headerEnd)
                             const lines = headerPart.split('\r\n')
-                            const statusLine = lines[0]
+                            const statusLine = lines[0]!
                             const statusParts = statusLine.split(' ')
-                            const statusCode = parseInt(statusParts[1], 10)
+                            if (statusParts.length < 2) {
+                                doError(new Error('Invalid HTTP status line: ' + statusLine))
+                                return
+                            }
+                            const statusCode = parseInt(statusParts[1]!, 10)
                             if (statusCode !== 101) {
                                 doError(new Error('WebSocket handshake failed: HTTP ' + statusCode))
                                 return
@@ -382,7 +362,7 @@ class WebSocket {
 
                             let acceptHeader = ''
                             for (let i = 1; i < lines.length; i++) {
-                                const line = lines[i]
+                                const line = lines[i]!
                                 const colonIdx2 = line.indexOf(':')
                                 if (colonIdx2 >= 0) {
                                     const name = line.slice(0, colonIdx2).toLowerCase().trim()
@@ -480,7 +460,7 @@ class WebSocket {
                 } else if (frame.opcode === Opcode.PONG) {
                 } else if (frame.opcode === Opcode.CLOSE) {
                     if (frame.payload.length >= 2) {
-                        this._closeCode = (frame.payload[0] << 8) | frame.payload[1]
+                        this._closeCode = (frame.payload[0]! << 8) | frame.payload[1]!
                         this._closeReason = _ab2str(frame.payload.slice(2).buffer)
                     }
                     this._cleanup()
@@ -512,6 +492,7 @@ class WebSocket {
     }
 
     private _fireError(err: Error): void {
+        console.error('WebSocket error:', err.message)
         this._dispatchEvent('error', new Event('error'))
     }
 
@@ -526,13 +507,13 @@ class WebSocket {
 
 class Event {
     readonly type: string
-    constructor(type: string, _init?: any) { this.type = type }
+    constructor(type: string, _init?: unknown) { this.type = type }
 }
 
 class MessageEvent {
     readonly type: string
-    readonly data: any
-    constructor(type: string, init: { data: any }) {
+    readonly data: unknown
+    constructor(type: string, init: { data: unknown }) {
         this.type = type
         this.data = init.data
     }
@@ -554,35 +535,16 @@ class CloseEvent {
 // ── Utility ──
 
 function _ab2str(buf: ArrayBuffer): string {
-    const view = new Uint8Array(buf)
-    let str = ''
-    for (let i = 0; i < view.length; i++) str += String.fromCharCode(view[i])
-    return str
+    return new TextDecoder('utf-8').decode(buf)
 }
 
 // ── Global declarations ──
 
 declare global {
-    interface WebSocket {
-        url: string
-        readyState: number
-        onopen: ((event: Event) => void) | null
-        onclose: ((event: CloseEvent) => void) | null
-        onerror: ((event: Event) => void) | null
-        onmessage: ((event: MessageEvent) => void) | null
-        send(data: string | ArrayBuffer | Uint8Array): void
-        close(code?: number, reason?: string): void
-    }
-
-    var WebSocket: {
-        new(url: string, options?: WebSocketOptions): WebSocket
-        readonly CONNECTING: number
-        readonly OPEN: number
-        readonly CLOSING: number
-        readonly CLOSED: number
-    }
+    interface WebSocket extends WebSocketImpl {}
+    var WebSocket: typeof WebSocketImpl
 }
 
 // ── Register globals ──
 
-globalThis.WebSocket = WebSocket
+globalThis.WebSocket = WebSocketImpl

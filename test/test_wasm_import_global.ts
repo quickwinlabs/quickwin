@@ -1,5 +1,11 @@
 import { Tester, readWasmFile } from './test_helper.js'
 
+type GlobalImportsExports = {
+    get_offset: () => number
+    compute: (x: number) => number
+    run: (x: number) => number
+}
+
 export const suite = {
     name: 'wasm-import-global',
     run: (t: Tester) => {
@@ -8,13 +14,13 @@ export const suite = {
         const giMod = new WebAssembly.Module(giBuf)
 
         t.section('import globals')
-        var giInst: WebAssembly.Instance
+        var giInst: WebAssembly.Instance<GlobalImportsExports>
         try {
-            giInst = new WebAssembly.Instance(giMod, {
+            giInst = new WebAssembly.Instance<GlobalImportsExports>(giMod, {
                 env: {
                     offset: new WebAssembly.Global({ value: 'i32', mutable: false }, 42),
                     factor: new WebAssembly.Global({ value: 'f64', mutable: false }, 3.14),
-                    log: function (x: number) { /* noop */ }
+                    log: function (_x: number) { /* noop */ }
                 }
             })
         } catch (e) {
@@ -25,11 +31,11 @@ export const suite = {
         t.check('run(8)', 50, giInst.exports.run(8))
 
         t.section('second instance')
-        var giInst2 = new WebAssembly.Instance(giMod, {
+        var giInst2 = new WebAssembly.Instance<GlobalImportsExports>(giMod, {
             env: {
                 offset: new WebAssembly.Global({ value: 'i32', mutable: false }, 100),
                 factor: new WebAssembly.Global({ value: 'f64', mutable: false }, 2.0),
-                log: function (x: number) { /* noop */ }
+                log: function (_x: number) { /* noop */ }
             }
         })
         t.check('instance2 get_offset()', 100, giInst2.exports.get_offset())

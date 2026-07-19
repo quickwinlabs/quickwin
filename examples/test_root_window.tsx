@@ -1,6 +1,6 @@
 import '../lib/polyfill.js'
 import { useState } from 'react'
-import { render, Button, Input, createRoot } from '../lib/react-qw/index.js'
+import { Button, Input, createRoot } from '../lib/react-qw/index.js'
 import * as gui from 'gui'
 
 function Counter() {

@@ -1,49 +1,10 @@
 export {} // make this a module so declare global works
 
 declare global {
-    interface URLSearchParams {
-        append(key: string, value: string): void
-        delete(key: string): void
-        get(key: string): string | null
-        getAll(key: string): string[]
-        has(key: string): boolean
-        set(key: string, value: string): void
-        sort(): void
-        forEach(fn: (value: string, key: string) => void): void
-        keys(): IterableIterator<string>
-        values(): IterableIterator<string>
-        entries(): IterableIterator<[string, string]>
-        toString(): string
-        readonly size: number
-        [Symbol.iterator](): IterableIterator<[string, string]>
-    }
-
-    var URLSearchParams: {
-        new(init?: string | [string, string][] | Record<string, string>): URLSearchParams
-        prototype: URLSearchParams
-    }
-
-    interface URL {
-        href: string
-        protocol: string
-        hostname: string
-        port: string
-        pathname: string
-        search: string
-        hash: string
-        host: string
-        origin: string
-        username: string
-        password: string
-        searchParams: URLSearchParams
-        toString(): string
-        toJSON(): string
-    }
-
-    var URL: {
-        new(url: string, base?: string): URL
-        prototype: URL
-    }
+    interface URLSearchParams extends URLSearchParamsImpl {}
+    var URLSearchParams: typeof URLSearchParamsImpl
+    interface URL extends URLImpl {}
+    var URL: typeof URLImpl
 }
 
 function _encode(s: string): string { return encodeURIComponent(s) }
@@ -80,7 +41,7 @@ function _parseURL(url: string): { scheme: string; user: string; pass: string; h
     const qi = url.indexOf('?')
     if (qi >= 0) { r.query = url.slice(qi + 1); url = url.slice(0, qi) }
     const sm = url.match(/^([a-zA-Z][a-zA-Z0-9+\-.]*):(.*)$/)
-    if (sm) { r.scheme = sm[1].toLowerCase(); url = sm[2] }
+    if (sm) { r.scheme = sm[1]!.toLowerCase(); url = sm[2]! }
     if (url.startsWith('//')) {
         url = url.slice(2)
         const si = url.indexOf('/')
@@ -135,7 +96,7 @@ class URLSearchParamsImpl {
     set(key: string, value: string): void {
         let f = false
         for (let i = 0; i < this._list.length; i++) {
-            if (this._list[i][0] === key) { if (!f) { this._list[i][1] = value; f = true } else { this._list.splice(i, 1); i-- } }
+            if (this._list[i]![0] === key) { if (!f) { this._list[i]![1] = value; f = true } else { this._list.splice(i, 1); i-- } }
         }
         if (!f) this._list.push([key, value])
     }
@@ -152,7 +113,7 @@ class URLSearchParamsImpl {
 }
 
 if (typeof globalThis.URLSearchParams === 'undefined') {
-    globalThis.URLSearchParams = URLSearchParamsImpl as any
+    globalThis.URLSearchParams = URLSearchParamsImpl
 }
 
 class URLImpl {
@@ -235,7 +196,6 @@ class URLImpl {
 
     toJSON(): string { return this.toString() }
 }
-
 if (typeof globalThis.URL === 'undefined') {
-    globalThis.URL = URLImpl as any
+    globalThis.URL = URLImpl
 }

@@ -35,17 +35,17 @@ export const suite = {
 
         function tryParseFrameLen(data: Uint8Array): number | null {
             if (data.length < 2) return null
-            const b1 = data[1]
+            const b1 = data[1]!
             let payloadLen = b1 & 0x7F
             let offset = 2
             if (payloadLen === 126) {
                 if (data.length < 4) return null
-                payloadLen = (data[2] << 8) | data[3]
+                payloadLen = (data[2]! << 8) | data[3]!
             } else if (payloadLen === 127) {
                 if (data.length < 10) return null
                 let hi = 0, lo = 0
-                for (let i = 0; i < 4; i++) hi = (hi * 256 + data[offset + i]) >>> 0
-                for (let i = 4; i < 8; i++) lo = (lo * 256 + data[offset + i]) >>> 0
+                for (let i = 0; i < 4; i++) hi = (hi * 256 + data[offset + i]!) >>> 0
+                for (let i = 4; i < 8; i++) lo = (lo * 256 + data[offset + i]!) >>> 0
                 payloadLen = hi * 0x100000000 + lo
             }
             return payloadLen

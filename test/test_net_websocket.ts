@@ -85,7 +85,7 @@ export const suite = {
         let largeOk = false, closed2 = false
         const largeStr = "A".repeat(1000)
         ws2.onopen = () => { ws2.send(largeStr) }
-        ws2.onmessage = (e) => { largeOk = e.data.length === 1000; ws2.close(1000, "done") }
+        ws2.onmessage = (e) => { largeOk = (e.data as string).length === 1000; ws2.close(1000, "done") }
         ws2.onclose = () => { closed2 = true; assert('large msg echo 1000 bytes', largeOk); finishTest(p2.id) }
         ws2.onerror = () => { assert('no error', false); finishTest(p2.id) }
         const timer2 = os.setTimeout(() => { if (!closed2) { assert('large msg no timeout', false); finishTest(p2.id) } }, 15000)

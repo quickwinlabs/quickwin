@@ -1,6 +1,5 @@
 import { Tester } from './test_helper.js'
 import * as os from 'os'
-import * as std from 'std'
 
 export const suite = {
     name: 'worker',

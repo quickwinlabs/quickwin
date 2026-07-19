@@ -35,7 +35,7 @@ export const RadioButton = forwardRef<gui.HWND, RadioButtonProps>(
         ref={(h: gui.HWND) => {
           rbRef.current = h
           if (typeof ref === 'function') ref(h)
-          else if (ref) (ref as React.RefObject<gui.HWND | null>).current = h
+          else if (ref) ref.current = h
         }}
         onEvent={(e) => {
           if (e.msg === gui.WmMsg.LBUTTONUP) {

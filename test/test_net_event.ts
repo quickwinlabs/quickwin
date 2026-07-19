@@ -1,5 +1,4 @@
 import * as sock from "sock"
-import * as std from "std"
 import * as os from "os"
 import { Tester } from './test_helper.js'
 

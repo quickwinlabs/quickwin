@@ -4,6 +4,7 @@ import * as gui from 'gui'
 import * as win from 'win'
 import * as ffi from 'ffi'
 import type { Document, Page, Pixmap } from '../vendor/mupdf-wasm/mupdf.js'
+import { assertNonNullable } from '../lib/assert.js'
 
 const FFI_PTR = ffi.FFI_TYPE_POINTER
 const FFI_U32 = ffi.FFI_TYPE_UINT32
@@ -41,7 +42,7 @@ function makeBitmapInfo(w: number, h: number): ArrayBuffer {
 }
 
 function strToWide(str: string): ArrayBuffer {
-    return new TextEncoder('utf-16le').encode(str + '\0').buffer as ArrayBuffer
+    return new TextEncoder('utf-16le').encode(str + '\0').buffer
 }
 
 function wideToStr(buf: ArrayBuffer): string {
@@ -63,10 +64,10 @@ interface PixmapInfo {
     data: ArrayBuffer; w: number; h: number
 }
 
-let hwndMain: gui.HWND = null as unknown as gui.HWND
-let hwndEdit: gui.HWND = null as unknown as gui.HWND
-let hwndCanvas: gui.HWND = null as unknown as gui.HWND
-let hwndContent: gui.HWND = null as unknown as gui.HWND
+let hwndMain: gui.HWND | null = null
+let hwndEdit: gui.HWND | null = null
+let hwndCanvas: gui.HWND | null = null
+let hwndContent: gui.HWND | null = null
 let currentPixmap: PixmapInfo | null = null
 let currentPage = 0, totalPages = 0
 let scrollX = 0, scrollY = 0
@@ -121,7 +122,7 @@ function renderPdfPage(mupdf: MuPdf, filePath: string, pageIndex: number): Pixma
             const srcOff = y * srcStride, dstOff = y * dibStride
             for (let x = 0; x < w; x++) {
                 const sx = srcOff + x * 3, dx = dstOff + x * 3
-                dib[dx] = srcPixels[sx + 2]; dib[dx + 1] = srcPixels[sx + 1]; dib[dx + 2] = srcPixels[sx]
+                dib[dx] = srcPixels[sx + 2]!; dib[dx + 1] = srcPixels[sx + 1]!; dib[dx + 2] = srcPixels[sx]!
             }
         }
         const totalPages = cachedDoc.countPages()
@@ -131,12 +132,13 @@ function renderPdfPage(mupdf: MuPdf, filePath: string, pageIndex: number): Pixma
 }
 
 function openPdfFileDialog(): string | null {
+    assertNonNullable(hwndMain)
     const structBuf = new ArrayBuffer(152), sv = new DataView(structBuf)
     const fileBuf = new ArrayBuffer(260 * 2)
     const filterWide = strToWide('PDF Files\0*.pdf\0All Files\0*.*\0\0')
     sv.setUint32(0, 152, true)
-    sv.setUint32(8, hwndMain as unknown as number & 0xFFFFFFFF, true)
-    sv.setUint32(12, Math.floor(hwndMain as unknown as number / 0x100000000), true)
+    sv.setUint32(8, hwndMain & 0xFFFFFFFF, true)
+    sv.setUint32(12, Math.floor(hwndMain / 0x100000000), true)
     setPtr(sv, 24, ffi.bufferPtr(filterWide))
     setPtr(sv, 48, ffi.bufferPtr(fileBuf))
     sv.setUint32(56, 260, true)
@@ -146,6 +148,7 @@ function openPdfFileDialog(): string | null {
 }
 
 function updateScrollRange(): void {
+    assertNonNullable(hwndCanvas); assertNonNullable(hwndContent)
     if (!currentPixmap) return
     const cr = gui.GetClientRect(hwndCanvas)
     if (!cr) return
@@ -158,7 +161,7 @@ function updateScrollRange(): void {
         const style = gui.GetWindowLongPtr(hwndCanvas, gui.Gwlp.STYLE) | 0
         if (!(style & gui.WindowStyle.HSCROLL)) {
             gui.SetWindowLongPtr(hwndCanvas, gui.Gwlp.STYLE, style | gui.WindowStyle.HSCROLL)
-            gui.SetWindowPos(hwndCanvas, 0, 0, 0, 0, 0,
+            gui.SetWindowPos(hwndCanvas, gui.SetWindowPosHwnd.TOP, 0, 0, 0, 0,
                 gui.SetWindowPosFlag.SWP_NOMOVE | gui.SetWindowPosFlag.SWP_NOSIZE |
                 gui.SetWindowPosFlag.SWP_NOZORDER | gui.SetWindowPosFlag.SWP_FRAMECHANGED)
         }
@@ -169,7 +172,7 @@ function updateScrollRange(): void {
         const style = gui.GetWindowLongPtr(hwndCanvas, gui.Gwlp.STYLE) | 0
         if (style & gui.WindowStyle.HSCROLL) {
             gui.SetWindowLongPtr(hwndCanvas, gui.Gwlp.STYLE, style & ~gui.WindowStyle.HSCROLL)
-            gui.SetWindowPos(hwndCanvas, 0, 0, 0, 0, 0,
+            gui.SetWindowPos(hwndCanvas, gui.SetWindowPosHwnd.TOP, 0, 0, 0, 0,
                 gui.SetWindowPosFlag.SWP_NOMOVE | gui.SetWindowPosFlag.SWP_NOSIZE |
                 gui.SetWindowPosFlag.SWP_NOZORDER | gui.SetWindowPosFlag.SWP_FRAMECHANGED)
         }
@@ -179,23 +182,25 @@ function updateScrollRange(): void {
         gui.SetScrollInfo(hwndCanvas, gui.ScrollBar.VERT, { min: 0, max: currentPixmap.h - 1, page: ch, pos: scrollY }, true)
         gui.ShowScrollBar(hwndCanvas, gui.ScrollBar.VERT, true)
     } else { scrollY = 0; gui.ShowScrollBar(hwndCanvas, gui.ScrollBar.VERT, false) }
-    gui.SetWindowPos(hwndContent, 0, -scrollX, -scrollY, 0, 0,
+    gui.SetWindowPos(hwndContent, gui.SetWindowPosHwnd.TOP, -scrollX, -scrollY, 0, 0,
         gui.SetWindowPosFlag.SWP_NOSIZE | gui.SetWindowPosFlag.SWP_NOZORDER)
 }
 
 function showPdf(mupdf: MuPdf, path: string, pageIdx: number): void {
+    assertNonNullable(hwndMain); assertNonNullable(hwndContent)
     const pix = renderPdfPage(mupdf, path, pageIdx)
     if (!pix) { gui.MessageBox('渲染 PDF 失败'); return }
     currentPixmap = pix; currentPage = pageIdx; totalPages = pix.totalPages
     gui.SetWindowText(hwndMain, 'PDF 预览 - 第 ' + (pageIdx + 1) + '/' + totalPages + ' 页')
     scrollX = 0; scrollY = 0
-    gui.SetWindowPos(hwndContent, 0, 0, 0, pix.w, pix.h,
+    gui.SetWindowPos(hwndContent, gui.SetWindowPosHwnd.TOP, 0, 0, pix.w, pix.h,
         gui.SetWindowPosFlag.SWP_NOZORDER | gui.SetWindowPosFlag.SWP_NOMOVE)
     updateScrollRange()
     gui.InvalidateRect(hwndContent, null, true)
 }
 
 function doScroll(dx: number, dy: number): void {
+    assertNonNullable(hwndCanvas); assertNonNullable(hwndContent)
     const cr = gui.GetClientRect(hwndCanvas)
     if (!cr || !currentPixmap) return
     const cw = cr.right - cr.left, ch = cr.bottom - cr.top
@@ -203,7 +208,7 @@ function doScroll(dx: number, dy: number): void {
     const maxY = Math.max(0, currentPixmap.h - ch)
     scrollX = Math.max(0, Math.min(maxX, scrollX + dx))
     scrollY = Math.max(0, Math.min(maxY, scrollY + dy))
-    gui.SetWindowPos(hwndContent, 0, -scrollX, -scrollY, 0, 0,
+    gui.SetWindowPos(hwndContent, gui.SetWindowPosHwnd.TOP, -scrollX, -scrollY, 0, 0,
         gui.SetWindowPosFlag.SWP_NOSIZE | gui.SetWindowPosFlag.SWP_NOZORDER)
     gui.SetScrollInfo(hwndCanvas, gui.ScrollBar.HORZ, { pos: scrollX }, true)
     gui.SetScrollInfo(hwndCanvas, gui.ScrollBar.VERT, { pos: scrollY }, true)
@@ -218,18 +223,19 @@ async function main(): Promise<void> {
     const WS_BORDER = gui.WindowStyle.BORDER
     const ctrlY = 12, ctrlH = 26, gap = 4, btnW = 80, btnPageW = 72
 
-    let hwndBtnOpen: gui.HWND = null as unknown as gui.HWND
-    let hwndBtnPrev: gui.HWND = null as unknown as gui.HWND
-    let hwndBtnNext: gui.HWND = null as unknown as gui.HWND
+let hwndBtnOpen: gui.HWND | null = null
+let hwndBtnPrev: gui.HWND | null = null
+let hwndBtnNext: gui.HWND | null = null
 
     gui.RegisterClass('PdfViewer2', (hwnd, msg, wParam, lParam) => {
+        assertNonNullable(hwndCanvas); assertNonNullable(hwndEdit); assertNonNullable(hwndBtnOpen); assertNonNullable(hwndBtnPrev); assertNonNullable(hwndBtnNext)
         if (msg === gui.WmMsg.DESTROY) { gui.PostQuitMessage(0); return 0 }
         if (msg === gui.WmMsg.SIZE) {
             const cr = gui.GetClientRect(hwnd)
             if (cr) {
                 const cw = cr.right - cr.left, ch = cr.bottom - cr.top
-                gui.SetWindowPos(hwndCanvas, 0, 0, 50, cw, Math.max(1, ch - 50), gui.SetWindowPosFlag.SWP_NOZORDER)
-                gui.SetWindowPos(hwndEdit, 0, 0, 0, Math.max(100, cw - 320), 0,
+                gui.SetWindowPos(hwndCanvas, gui.SetWindowPosHwnd.TOP, 0, 50, cw, Math.max(1, ch - 50), gui.SetWindowPosFlag.SWP_NOZORDER)
+                gui.SetWindowPos(hwndEdit, gui.SetWindowPosHwnd.TOP, 0, 0, Math.max(100, cw - 320), 0,
                     gui.SetWindowPosFlag.SWP_NOMOVE | gui.SetWindowPosFlag.SWP_NOZORDER)
             }
             return gui.DefWindowProc(hwnd, msg, wParam, lParam)
@@ -278,6 +284,14 @@ async function main(): Promise<void> {
     hwndContent = gui.CreateWindow('STATIC', '',
         WS_CHILD | WS_VIS, 0, 0, 100, 100, hwndCanvas, null)!
 
+    assertNonNullable(hwndMain)
+    assertNonNullable(hwndEdit)
+    assertNonNullable(hwndCanvas)
+    assertNonNullable(hwndContent)
+    assertNonNullable(hwndBtnOpen)
+    assertNonNullable(hwndBtnPrev)
+    assertNonNullable(hwndBtnNext)
+
     // 内容窗口 PAINT
     gui.SetWindowProc(hwndContent, (hwnd: gui.HWND, msg: number, wParam: number, lParam: number): number => {
         if (msg === gui.WmMsg.ERASEBKGND) return 1
@@ -285,7 +299,7 @@ async function main(): Promise<void> {
             gui.DefWindowProc(hwnd, msg, wParam, lParam)
             const pm = currentPixmap
             if (!pm) return 0
-            const hdc = ffi.ffiCall(GetDC, [ffi.FFI_TYPE_UINT64], [hwnd as unknown as number], ffi.FFI_TYPE_UINT64)
+            const hdc = ffi.ffiCall(GetDC, [ffi.FFI_TYPE_UINT64], [hwnd], ffi.FFI_TYPE_UINT64)
             if (hdc) {
                 const bmi = makeBitmapInfo(pm.w, pm.h)
                 ffi.ffiCall(SetDIBitsToDevice, [
@@ -293,7 +307,7 @@ async function main(): Promise<void> {
                     FFI_S32, FFI_S32, FFI_U32, FFI_U32,
                     FFI_PTR, FFI_PTR, FFI_U32
                 ], [hdc, 0, 0, pm.w, pm.h, 0, 0, 0, pm.h, pm.data, bmi, 0], FFI_S32)
-                ffi.ffiCall(ReleaseDC, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64], [hwnd as unknown as number, hdc], FFI_S32)
+                ffi.ffiCall(ReleaseDC, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64], [hwnd, hdc], FFI_S32)
             }
             return 0
         }
@@ -307,11 +321,11 @@ async function main(): Promise<void> {
             const cr = gui.GetClientRect(hwnd)
             if (cr) {
                 const cw = cr.right - cr.left, ch = cr.bottom - cr.top
-                const hdc = ffi.ffiCall(GetDC, [ffi.FFI_TYPE_UINT64], [hwnd as unknown as number], ffi.FFI_TYPE_UINT64)
+            const hdc = ffi.ffiCall(GetDC, [ffi.FFI_TYPE_UINT64], [hwnd], ffi.FFI_TYPE_UINT64)
                 if (hdc) {
                     ffi.ffiCall(PatBlt, [ffi.FFI_TYPE_UINT64, FFI_S32, FFI_S32, FFI_S32, FFI_S32, FFI_U32],
                         [hdc, 0, 0, cw, ch, WHITENESS], FFI_U32)
-                    ffi.ffiCall(ReleaseDC, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64], [hwnd as unknown as number, hdc], FFI_S32)
+                    ffi.ffiCall(ReleaseDC, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64], [hwnd, hdc], FFI_S32)
                 }
             }
             gui.DefWindowProc(hwnd, msg, wParam, lParam)

@@ -8,8 +8,8 @@ function decodeWideAtPtr(ptr: number): string {
     const chars: number[] = []
     let pos = ptr
     while (true) {
-        const low = ffi.readByte(pos) as number
-        const high = ffi.readByte(pos + 1) as number
+        const low = ffi.readByte(pos)
+        const high = ffi.readByte(pos + 1)
         const ch = low + high * 256
         if (ch === 0) break
         chars.push(ch)
@@ -103,10 +103,10 @@ export const suite = {
             ffi.FFI_TYPE_SINT32
         )
         std.printf('  first call: ret=%d needed=%d returned=%d\n', ret1, neededBuf[0], returnedBuf[0])
-        t.checkTrue('pcbNeeded > 0', neededBuf[0] > 0)
-        if (neededBuf[0] <= 0) return
+        t.checkTrue('pcbNeeded > 0', neededBuf[0]! > 0)
+        if (neededBuf[0]! <= 0) return
 
-        const printerBuf = new ArrayBuffer(neededBuf[0])
+        const printerBuf = new ArrayBuffer(neededBuf[0]!)
         const ret2 = ffi.ffiCall(
             enumPrinters,
             [
@@ -123,7 +123,7 @@ export const suite = {
                 null,
                 level,
                 printerBuf,
-                neededBuf[0],
+                neededBuf[0]!,
                 neededBuf.buffer,
                 returnedBuf.buffer,
             ],
@@ -134,11 +134,11 @@ export const suite = {
 
         std.printf('  printers found: %d\n', returnedBuf[0])
 
-        if (returnedBuf[0] > 0) {
+        if (returnedBuf[0]! > 0) {
             const dv = new DataView(printerBuf)
             const structSize = 136
 
-            for (let i = 0; i < returnedBuf[0] && i < 20; i++) {
+            for (let i = 0; i < returnedBuf[0]! && i < 20; i++) {
                 const off = i * structSize
                 const name = decodeWideAtPtr(readPtr(dv, off + 8))
                 const port = decodeWideAtPtr(readPtr(dv, off + 24))

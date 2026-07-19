@@ -4,9 +4,10 @@ import { value } from './worker_helper.js'
 const parent = os.Worker.parent
 
 parent.onmessage = (e) => {
-    if (e.data.type === 'start') {
+    const d = e.data as { type: string }
+    if (d.type === 'start') {
         parent.postMessage({ type: 'result', value })
-    } else if (e.data.type === 'done') {
+    } else if (d.type === 'done') {
         parent.onmessage = null
     }
 }

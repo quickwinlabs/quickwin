@@ -36,7 +36,6 @@ export const suite = {
         if (err !== 0) {
             std.printf('  cache dir: %s (error %d, will be created on first request)\n', cacheDir, err)
         }
-        const beforeCount = err === 0 ? before.length : 0
 
         t.section('import module')
         let mod: any

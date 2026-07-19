@@ -61,7 +61,7 @@ export const suite = {
             assert('Request.url', r.url === 'https://httpbun.com/any?x=1&y=2')
             assert('Request.method', r.method === 'POST')
             assert('Request.headers get', r.headers.get('x-test') === 'val')
-            assert('Request.body', r.body === 'hello')
+            assert('Request.body is ReadableStream', r.body !== null && typeof r.body.getReader === 'function')
         }
         {
             const r1 = new Request('https://example.com/path')

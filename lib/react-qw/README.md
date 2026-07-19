@@ -86,7 +86,6 @@ The only intrinsic element. Maps to a Win32 window of the class specified by `ty
 
 ```ts
 interface WStyle {
-  x?: number; y?: number                     // absolute position
   width?: number; height?: number            // size
   flexDirection?: 'row' | 'column'           // flexbox direction
   justifyContent?: 'flex-start' | 'flex-end' | 'center' | 'space-between' | 'space-around' | 'space-evenly'
@@ -97,7 +96,7 @@ interface WStyle {
 }
 ```
 
-When `x`/`y`/`width`/`height` are set, the window is positioned absolutely relative to its parent. Otherwise flexbox layout is used when the parent has flexbox properties.
+All positioning and sizing is handled by the flex layout system. Parent elements with flex properties (`flexDirection`, etc.) will automatically position their children.
 
 ### WEvent
 

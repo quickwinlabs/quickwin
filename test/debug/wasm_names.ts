@@ -43,4 +43,4 @@ console.log('total imports:', imports.length)
 
 // List first 30 export names
 for (let i = 0; i < 30 && i < exports.length; i++)
-    console.log('  export', i, '=', exports[i].name)
+    console.log('  export', i, '=', exports[i]!.name)

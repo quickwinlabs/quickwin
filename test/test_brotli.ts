@@ -4,7 +4,7 @@ import { Tester } from './test_helper.js'
 function abToString(buf: ArrayBuffer): string {
     const bytes = new Uint8Array(buf)
     let s = ''
-    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i])
+    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]!)
     return s
 }
 
