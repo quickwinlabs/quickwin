@@ -279,8 +279,7 @@ npm-pkg: js wasm
 	rm -rf $(NPM_PKG_DIR)
 	mkdir -p $(NPM_PKG_DIR)
 	cp -r $(BUILD_DIR)/lib $(BUILD_DIR)/test $(BUILD_DIR)/examples $(BUILD_DIR)/vendor $(NPM_PKG_DIR)/
-	cp lib/*.ts $(NPM_PKG_DIR)/lib/
-	cp -r lib/react-qw $(NPM_PKG_DIR)/lib/
+	find lib \( -name '*.ts' -o -name '*.mts' \) -exec cp --parents {} $(NPM_PKG_DIR)/ \;
 	cp test/*.ts $(NPM_PKG_DIR)/test/
 	cp examples/*.ts examples/*.tsx $(NPM_PKG_DIR)/examples/
 	cp quickwin.d.ts quickwin_const.d.ts tsconfig.json package.json README.md $(NPM_PKG_DIR)/
