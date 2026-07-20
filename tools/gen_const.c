@@ -289,7 +289,16 @@ static void print_enums(void) {
     printf("    export const enum ShowWindowCmd {\n");
     DEC(HIDE, SW_HIDE);
     DEC(SHOWNORMAL, SW_SHOWNORMAL);
+    DEC(SHOWMINIMIZED, SW_SHOWMINIMIZED);
+    DEC(SHOWMAXIMIZED, SW_SHOWMAXIMIZED);
+    DEC(SHOWNOACTIVATE, SW_SHOWNOACTIVATE);
     DEC(SHOW, SW_SHOW);
+    DEC(MINIMIZE, SW_MINIMIZE);
+    DEC(SHOWMINNOACTIVE, SW_SHOWMINNOACTIVE);
+    DEC(SHOWNA, SW_SHOWNA);
+    DEC(RESTORE, SW_RESTORE);
+    DEC(SHOWDEFAULT, SW_SHOWDEFAULT);
+    DEC(FORCEMINIMIZE, SW_FORCEMINIMIZE);
     printf("    }\n\n");
 
     printf("    export const enum ButtonMsg {\n");

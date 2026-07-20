@@ -267,7 +267,16 @@ declare module "gui" {
     export const enum ShowWindowCmd {
         HIDE = 0, // 0x0
         SHOWNORMAL = 1, // 0x1
+        SHOWMINIMIZED = 2, // 0x2
+        SHOWMAXIMIZED = 3, // 0x3
+        SHOWNOACTIVATE = 4, // 0x4
         SHOW = 5, // 0x5
+        MINIMIZE = 6, // 0x6
+        SHOWMINNOACTIVE = 7, // 0x7
+        SHOWNA = 8, // 0x8
+        RESTORE = 9, // 0x9
+        SHOWDEFAULT = 10, // 0xA
+        FORCEMINIMIZE = 11, // 0xB
     }
 
     export const enum ButtonMsg {
