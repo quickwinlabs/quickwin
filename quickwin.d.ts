@@ -529,33 +529,7 @@ declare module "ffi" {
     function readByte(ptr: number): number;
 }
 
-declare module "wamr" {
-    interface WAMRExport {
-        name: string;
-        kind: 'function' | 'table' | 'memory' | 'global';
-    }
 
-    interface WAMRImport {
-        module: string;
-        name: string;
-        kind: 'function' | 'table' | 'memory' | 'global';
-    }
-
-    interface WAMRModule {
-        delete(): void;
-        exports(): WAMRExport[];
-        imports(): WAMRImport[];
-        instantiate(imports?: { [moduleName: string]: { [funcName: string]: Function } }): WAMRInstance;
-    }
-
-    interface WAMRInstance {
-        delete(): void;
-        exports(): { [funcName: string]: (...args: number[]) => number };
-    }
-
-    function validate(buffer: ArrayBuffer): boolean;
-    function compile(buffer: ArrayBuffer): WAMRModule;
-}
 
 interface HttpCache {
     readMeta(url: string): string | null;
