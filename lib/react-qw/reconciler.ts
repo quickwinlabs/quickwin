@@ -49,7 +49,7 @@ function setupWindowProc(instance: Instance, hwnd: gui.HWND) {
 function ensureChildWindow(child: Instance, parentHwnd: gui.HWND): gui.HWND {
   if (child.hwnd !== null) return child.hwnd
   const sty = child.props.style || {}
-  const ws = (child.props.ws ?? 0) | gui.WindowStyle.CHILD
+  const ws = ((child.props.ws ?? 0) | gui.WindowStyle.CHILD) & ~gui.WindowStyle.VISIBLE
   const hwnd = gui.CreateWindow(
     child.type, child.props.text || '', ws,
     0, 0,
@@ -86,7 +86,7 @@ function runFlexLayout(inst: Instance) {
     const lr = child.lastRect
     if (lr && lr.x === r.x && lr.y === r.y && lr.w === r.width && lr.h === r.height) continue
     console.log('flex: set', child.type, child.hwnd, 'to', r.x, r.y, r.width, r.height)
-    gui.SetWindowPos(child.hwnd!, gui.SetWindowPosHwnd.TOP, (r.x + pl) * scaleFactor, (r.y + pt) * scaleFactor, r.width * scaleFactor, r.height * scaleFactor, 0)
+    gui.SetWindowPos(child.hwnd!, gui.SetWindowPosHwnd.TOP, (r.x + pl) * scaleFactor, (r.y + pt) * scaleFactor, r.width * scaleFactor, r.height * scaleFactor, gui.SetWindowPosFlag.SWP_SHOWWINDOW)
     child.lastRect = { x: r.x, y: r.y, w: r.width, h: r.height }
   }
   for (const c of children) runFlexLayout(c)
@@ -127,8 +127,8 @@ const hostConfig: QuickWinHostConfig = {
       return { hwnd: null, type: winClass, props, children: [] }
     }
     const sty = props.style || {}
-    // reconciler 创建的都是子窗口，确保 WS_CHILD 避免定位异常
-    const ws = (props.ws ?? 0) | gui.WindowStyle.CHILD
+    // reconciler 创建的都是子窗口，确保 WS_CHILD 避免定位异常；创建时不带 WS_VISIBLE 防止 (0,0) 闪烁
+    const ws = ((props.ws ?? 0) | gui.WindowStyle.CHILD) & ~gui.WindowStyle.VISIBLE
     if (DEBUG) console.log('[reconciler] CreateWindow args:', winClass, props.text ?? '', ws, 0, 0, sty.width ?? 100, sty.height ?? 30, rootContainer)
     const hwnd = gui.CreateWindow(
       winClass, props.text ?? '', ws,
