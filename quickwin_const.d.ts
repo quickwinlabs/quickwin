@@ -63,31 +63,132 @@ declare module "gui" {
     }
 
     export const enum WmMsg {
+        NULL = 0, // 0x0
         CREATE = 1, // 0x1
         DESTROY = 2, // 0x2
-        CLOSE = 16, // 0x10
-        QUIT = 18, // 0x12
-        PAINT = 15, // 0xF
-        COMMAND = 273, // 0x111
+        MOVE = 3, // 0x3
         SIZE = 5, // 0x5
-        CHAR = 258, // 0x102
-        KEYDOWN = 256, // 0x100
-        KEYUP = 257, // 0x101
+        ACTIVATE = 6, // 0x6
+        SETFOCUS = 7, // 0x7
+        KILLFOCUS = 8, // 0x8
+        ENABLE = 10, // 0xA
+        SETREDRAW = 11, // 0xB
+        SETTEXT = 12, // 0xC
+        GETTEXT = 13, // 0xD
+        GETTEXTLENGTH = 14, // 0xE
+        PAINT = 15, // 0xF
+        CLOSE = 16, // 0x10
+        QUERYENDSESSION = 17, // 0x11
+        QUIT = 18, // 0x12
+        WINDOWPOSCHANGING = 70, // 0x46
+        WINDOWPOSCHANGED = 71, // 0x47
+        SYSCOMMAND = 274, // 0x112
+        TIMER = 275, // 0x113
+        HSCROLL = 276, // 0x114
+        VSCROLL = 277, // 0x115
+        INITMENU = 278, // 0x116
+        INITMENUPOPUP = 279, // 0x117
+        MOUSEWHEEL = 522, // 0x20A
         MOUSEMOVE = 512, // 0x200
         LBUTTONDOWN = 513, // 0x201
         LBUTTONUP = 514, // 0x202
         LBUTTONDBLCLK = 515, // 0x203
         RBUTTONDOWN = 516, // 0x204
         RBUTTONUP = 517, // 0x205
+        RBUTTONDBLCLK = 518, // 0x206
+        MBUTTONDOWN = 519, // 0x207
+        MBUTTONUP = 520, // 0x208
+        MBUTTONDBLCLK = 521, // 0x209
+        MOUSEHOVER = 673, // 0x2A1
+        MOUSELEAVE = 675, // 0x2A3
+        KEYDOWN = 256, // 0x100
+        KEYUP = 257, // 0x101
+        CHAR = 258, // 0x102
+        DEADCHAR = 259, // 0x103
+        SYSKEYDOWN = 260, // 0x104
+        SYSKEYUP = 261, // 0x105
+        SYSCHAR = 262, // 0x106
+        SYSDEADCHAR = 263, // 0x107
+        UNICHAR = 265, // 0x109
+        COMMAND = 273, // 0x111
+        MENUSELECT = 287, // 0x11F
+        MENUCHAR = 288, // 0x120
+        ENTERIDLE = 289, // 0x121
+        MENURBUTTONUP = 290, // 0x122
+        MENUCOMMAND = 294, // 0x126
+        UNINITMENUPOPUP = 293, // 0x125
+        ENTERMENULOOP = 529, // 0x211
+        EXITMENULOOP = 530, // 0x212
         SETFONT = 48, // 0x30
-        HSCROLL = 276, // 0x114
-        VSCROLL = 277, // 0x115
-        MOUSEWHEEL = 522, // 0x20A
-        NOTIFY = 78, // 0x4E
+        GETFONT = 49, // 0x31
+        SETHOTKEY = 50, // 0x32
+        GETHOTKEY = 51, // 0x33
+        DRAWITEM = 43, // 0x2B
+        MEASUREITEM = 44, // 0x2C
+        DELETEITEM = 45, // 0x2D
+        COMPAREITEM = 57, // 0x39
+        NCCREATE = 129, // 0x81
+        NCDESTROY = 130, // 0x82
+        NCCALCSIZE = 131, // 0x83
         NCHITTEST = 132, // 0x84
+        NCPAINT = 133, // 0x85
+        NCACTIVATE = 134, // 0x86
+        NCMOUSEMOVE = 160, // 0xA0
         NCLBUTTONDOWN = 161, // 0xA1
+        NCLBUTTONUP = 162, // 0xA2
+        NCLBUTTONDBLCLK = 163, // 0xA3
+        NCRBUTTONDOWN = 164, // 0xA4
+        NCRBUTTONUP = 165, // 0xA5
+        NCRBUTTONDBLCLK = 166, // 0xA6
+        NCMBUTTONDOWN = 167, // 0xA7
+        NCMBUTTONUP = 168, // 0xA8
+        NCMBUTTONDBLCLK = 169, // 0xA9
+        NCXBUTTONDOWN = 171, // 0xAB
+        NCXBUTTONUP = 172, // 0xAC
+        NCXBUTTONDBLCLK = 173, // 0xAD
+        NCMOUSELEAVE = 674, // 0x2A2
+        GETDLGCODE = 135, // 0x87
+        SETCURSOR = 32, // 0x20
+        MOUSEACTIVATE = 33, // 0x21
+        CHILDACTIVATE = 34, // 0x22
+        GETMINMAXINFO = 36, // 0x24
+        DROPFILES = 563, // 0x233
+        ENTERSIZEMOVE = 561, // 0x231
+        EXITSIZEMOVE = 562, // 0x232
+        SIZING = 532, // 0x214
+        MOVING = 534, // 0x216
+        CAPTURECHANGED = 533, // 0x215
+        GETICON = 127, // 0x7F
+        SETICON = 128, // 0x80
         ERASEBKGND = 20, // 0x14
+        SYSCOLORCHANGE = 21, // 0x15
+        HSCROLLCLIPBOARD = 782, // 0x30E
+        VSCROLLCLIPBOARD = 778, // 0x30A
+        QUERYUISTATE = 297, // 0x129
         CONTEXTMENU = 123, // 0x7B
+        NOTIFY = 78, // 0x4E
+        STYLECHANGING = 124, // 0x7C
+        STYLECHANGED = 125, // 0x7D
+        SHOWWINDOW = 24, // 0x18
+        FONTCHANGE = 29, // 0x1D
+        POWERBROADCAST = 536, // 0x218
+        IME_STARTCOMPOSITION = 269, // 0x10D
+        IME_ENDCOMPOSITION = 270, // 0x10E
+        IME_COMPOSITION = 271, // 0x10F
+        IME_SETCONTEXT = 641, // 0x281
+        IME_NOTIFY = 642, // 0x282
+        IME_CONTROL = 643, // 0x283
+        IME_COMPOSITIONFULL = 644, // 0x284
+        IME_SELECT = 645, // 0x285
+        IME_CHAR = 646, // 0x286
+        IME_REQUEST = 648, // 0x288
+        IME_KEYDOWN = 656, // 0x290
+        IME_KEYUP = 657, // 0x291
+        TOUCH = 576, // 0x240
+        DISPLAYCHANGE = 126, // 0x7E
+        THEMECHANGED = 794, // 0x31A
+        DWMCOLORIZATIONCOLORCHANGED = 800, // 0x320
+        USER = 1024, // 0x400
     }
 
     export const enum ScrollBar {
@@ -542,6 +643,48 @@ declare module "gui" {
         LOGPIXELSY = 90, // 0x5A
     }
 
+    // Static controls
+    export const enum StaticMsg {
+        SETICON = 368, // 0x170
+        SETIMAGE = 370, // 0x172
+        GETICON = 369, // 0x171
+        GETIMAGE = 371, // 0x173
+    }
+
+    export const enum StaticStyleEx {
+        LEFT = 0, // 0x0
+        CENTER = 1, // 0x1
+        RIGHT = 2, // 0x2
+        ICON = 3, // 0x3
+        BLACKRECT = 4, // 0x4
+        GRAYRECT = 5, // 0x5
+        WHITERECT = 6, // 0x6
+        BLACKFRAME = 7, // 0x7
+        GRAYFRAME = 8, // 0x8
+        WHITEFRAME = 9, // 0x9
+        SIMPLE = 11, // 0xB
+        LEFTNOWORDWRAP = 12, // 0xC
+        OWNERDRAW = 13, // 0xD
+        BITMAP = 14, // 0xE
+        ETCHEDHORZ = 16, // 0x10
+        ETCHEDVERT = 17, // 0x11
+        ETCHEDFRAME = 18, // 0x12
+        NOTIFY = 256, // 0x100
+        CENTERIMAGE = 512, // 0x200
+        RIGHTJUST = 1024, // 0x400
+        SUNKEN = 4096, // 0x1000
+        ENDELLIPSIS = 16384, // 0x4000
+        PATHELLIPSIS = 32768, // 0x8000
+        WORDELLIPSIS = 49152, // 0xC000
+        REALSIZEIMAGE = 2048, // 0x800
+    }
+
+    export const enum ImageType {
+        BITMAP = 0, // 0x0
+        ICON = 1, // 0x1
+        CURSOR = 2, // 0x2
+    }
+
     // Process
     export const enum ProcessCreationFlag {
         NO_WINDOW = 134217728, // 0x8000000
@@ -549,7 +692,34 @@ declare module "gui" {
 
     // Error codes
     export const enum ErrorCode {
+        FILE_NOT_FOUND = 2, // 0x2
+        PATH_NOT_FOUND = 3, // 0x3
+        ACCESS_DENIED = 5, // 0x5
+        INVALID_HANDLE = 6, // 0x6
+        NOT_ENOUGH_MEMORY = 8, // 0x8
+        OUTOFMEMORY = 14, // 0xE
+        INVALID_PARAMETER = 87, // 0x57
         ALREADY_EXISTS = 183, // 0xB7
+        INSUFFICIENT_BUFFER = 122, // 0x7A
+        MORE_DATA = 234, // 0xEA
+        NO_DATA = 232, // 0xE8
+    }
+
+    // Power management
+    export const enum PowerBroadcast {
+        APMQUERYSUSPEND = 0, // 0x0
+        APMQUERYSTANDBY = 1, // 0x1
+        APMQUERYSUSPENDFAILED = 2, // 0x2
+        APMQUERYSTANDBYFAILED = 3, // 0x3
+        APMSUSPEND = 4, // 0x4
+        APMSTANDBY = 5, // 0x5
+        APMRESUMECRITICAL = 6, // 0x6
+        APMRESUMESUSPEND = 7, // 0x7
+        APMRESUMEAUTOMATIC = 18, // 0x12
+        APMBATTERYLOW = 9, // 0x9
+        APMPOWERSTATUSCHANGE = 10, // 0xA
+        APMOEMEVENT = 11, // 0xB
+        POWERSETTINGCHANGE = 32787, // 0x8013
     }
 
     // DevMode
