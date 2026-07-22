@@ -19,11 +19,12 @@ const _labelMap = {
 
 type _Label = keyof typeof _labelMap
 type _Encoding = typeof _labelMap[_Label]
+type _Result<T> = T extends _Label ? typeof _labelMap[T] : 'utf-8'
 
-function _normalizeLabel<T extends _Label | undefined>(label: T): T extends _Label ? typeof _labelMap[T] : 'utf-8' {
-    if (!label) return 'utf-8' as any // conditional type requires cast
+function _normalizeLabel<T extends _Label | undefined>(label: T): _Result<T> {
+    if (!label) return 'utf-8' as _Result<T>
     const result = _labelMap[label.trim().toLowerCase() as _Label]
-    if (result) return result as any // conditional type requires cast
+    if (result) return result as _Result<T>
     throw new RangeError(`The encoding label "${label}" is not supported`)
 }
 
@@ -99,7 +100,7 @@ class TextDecoderImpl<T extends _Label | undefined = _Label | undefined> {
         this._ignoreBOM = options?.ignoreBOM ?? false
     }
 
-    get encoding(): T extends _Label ? typeof _labelMap[T] : 'utf-8' { return this._encoding as any }
+    get encoding(): _Result<T> { return this._encoding as _Result<T> }
     get fatal(): boolean { return this._fatal }
     get ignoreBOM(): boolean { return this._ignoreBOM }
 
@@ -136,7 +137,7 @@ class TextEncoderImpl<T extends _Label | undefined = _Label | undefined> {
         this._encoding = _normalizeLabel(label)
     }
 
-    get encoding(): T extends _Label ? typeof _labelMap[T] : 'utf-8' { return this._encoding as any }
+    get encoding(): _Result<T> { return this._encoding as _Result<T> }
 
     encode(input?: string): Uint8Array<ArrayBuffer> {
         if (!input) return new Uint8Array(0)

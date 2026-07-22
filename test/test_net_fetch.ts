@@ -173,7 +173,7 @@ export const suite = {
         const r8 = await safeFetch(BASE + '/anything')
         if (r8) {
             assert('chunked status 200', r8.status === 200)
-            const body = await r8.json()
+            const body = await r8.json<{ url: string }>()
             assert('chunked json has url', typeof body.url === 'string' && body.url.length > 0)
         } else {
             assert('local server reachable', false)

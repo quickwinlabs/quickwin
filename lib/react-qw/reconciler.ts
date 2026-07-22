@@ -336,6 +336,8 @@ const hostConfig: QuickWinHostConfig = {
   rendererVersion: '0.1.0',
   rendererPackageName: 'react-qw',
   NotPendingTransition: null,
+  // @types/react.Context<T> 与 @types/react-reconciler.ReactContext<T> 是同一运行时对象
+  // 的两个不兼容类型定义（ReactContext 多 _currentValue 等字段），此 cast 不可避免
   HostTransitionContext: createContext(null) as unknown as ReactReconciler.ReactContext<null>,
   resetFormInstance(_form: never) { },
 }

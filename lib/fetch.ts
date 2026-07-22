@@ -232,7 +232,7 @@ class RequestImpl {
         return bytes.buffer
     }
 
-    async json(): Promise<any> {
+    async json<T = unknown>(): Promise<T> {
         return JSON.parse(await this.text())
     }
 
@@ -310,7 +310,7 @@ class ResponseImpl {
         return new TextDecoder('utf-8').decode(bytes)
     }
 
-    async json(): Promise<any> {
+    async json<T = unknown>(): Promise<T> {
         return JSON.parse(await this.text())
     }
 
