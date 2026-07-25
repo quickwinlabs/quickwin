@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "quickjs.h"
+#include "quickjs-libc.h"
 #include "quickjs-sock.h"
 #include "quickjs/cutils.h"
 
@@ -121,6 +122,8 @@ int js_sock_handle_event(JSRuntime *rt, HANDLE triggered)
             WSANETWORKEVENTS events;
             memset(&events, 0, sizeof(events));
             if (WSAEnumNetworkEvents(s->fd, s->event, &events) != SOCKET_ERROR) {
+                loop_log("[loop] sock fd=%d slot=%d events=0x%08lX",
+                         s->fd, i, (unsigned long)events.lNetworkEvents);
                 if (!JS_IsUndefined(s->on_event)) {
                     JSContext *ctx = s->js_ctx;
                     JSValue callback = JS_DupValue(ctx, s->on_event);
@@ -144,9 +147,9 @@ int js_sock_handle_event(JSRuntime *rt, HANDLE triggered)
                     JS_FreeValue(ctx, event_obj);
                 }
             } else {
-                /* WSAEnumNetworkEvents failed: socket is dead but event stays
-                   signaled.  Clean up the slot so MsgWaitForMultipleObjects
-                   stops returning immediately (would cause a tight CPU loop). */
+                int err = WSAGetLastError();
+                loop_log("[loop] sock fd=%d slot=%d WSAEnumNetworkEvents FAILED err=%d — cleaning up",
+                         s->fd, i, err);
                 WSAEventSelect(s->fd, s->event, 0);
                 closesocket(s->fd);
                 s->fd = -1;

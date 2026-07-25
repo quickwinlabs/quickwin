@@ -60,6 +60,9 @@ void js_std_promise_rejection_tracker(JSContext *ctx, JSValueConst promise,
 void js_std_set_worker_new_context_func(JSContext *(*func)(JSRuntime *rt));
 void js_std_set_worker_free_rt_func(void (*func)(JSRuntime *rt));
 
+extern int loop_debug;
+void loop_log(const char *fmt, ...);
+
 #ifdef __cplusplus
 } /* extern "C" { */
 #endif

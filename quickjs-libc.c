@@ -46,6 +46,21 @@
 #include "quickjs-sock.h"
 #include "quickjs-async-task.h"
 
+int loop_debug = 0;
+
+void loop_log(const char *fmt, ...) {
+    if (!loop_debug) return;
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    fprintf(stderr, "%02d:%02d:%02d.%03d ",
+            st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    fputc('\n', stderr);
+}
+
 #if defined(_WIN32)
 static FILE *fopen_utf8(const char *filename, const char *mode)
 {
@@ -2456,11 +2471,17 @@ static int js_os_poll(JSContext *ctx)
 
     /* XXX: handle signals if useful */
 
+    loop_log("[loop] enter: rw=%d timers=%d ports=%d socks=%d async=%d main=%d",
+             !list_empty(&ts->os_rw_handlers), !list_empty(&ts->os_timers),
+             !list_empty(&ts->port_list), js_sock_slot_count(rt),
+             js_async_task_slot_count(rt), main_thread);
+
     /* check if there are any events to wait for */
     if (list_empty(&ts->os_rw_handlers) && list_empty(&ts->os_timers) &&
         list_empty(&ts->port_list) && js_sock_slot_count(rt) == 0 &&
         js_async_task_slot_count(rt) == 0) {
         if (!main_thread) {
+            loop_log("[loop] no events — worker exiting");
             return -1; /* worker thread: no more events */
         } else {
             /* main thread: check if current thread has any windows */
@@ -2469,6 +2490,7 @@ static int js_os_poll(JSContext *ctx)
                 enum_thread_windows_cb, (LPARAM)&has_window);
             
             if (!has_window) {
+                loop_log("[loop] no events, no windows — exiting");
                 return -1; /* no windows on main thread, exit event loop */
             }
         }
@@ -2489,6 +2511,8 @@ static int js_os_poll(JSContext *ctx)
             }
         }
     }
+
+    loop_log("[loop] min_delay=%" PRId64 "ms", min_delay == INFINITE ? (int64_t)-1 : min_delay);
 
     /* collect handles */
     count = 0;
@@ -2522,8 +2546,13 @@ static int js_os_poll(JSContext *ctx)
 
     /* wait for events */
     timeout = (min_delay > INFINITE) ? INFINITE : (DWORD)min_delay;
+    if (timeout == INFINITE)
+        loop_log("[loop] wait: handles=%d timeout=INF", count);
+    else
+        loop_log("[loop] wait: handles=%d timeout=%lums", count, (unsigned long)timeout);
     ret = MsgWaitForMultipleObjects(count, handles, FALSE, timeout,
                                     main_thread ? QS_ALLINPUT : 0);
+    loop_log("[loop] wait returned=%lu", (unsigned long)ret);
 
     /* handle events */
     if (ret == WAIT_TIMEOUT) {
@@ -2532,6 +2561,7 @@ static int js_os_poll(JSContext *ctx)
         list_for_each(el, &ts->os_timers) {
             JSOSTimer *th = list_entry(el, JSOSTimer, link);
             if (th->timeout <= cur_time) {
+                loop_log("[loop] timer fired id=%d", th->timer_id);
                 JSValue func = th->func;
                 th->func = JS_UNDEFINED;
                 free_timer(rt, th);
@@ -2545,12 +2575,15 @@ static int js_os_poll(JSContext *ctx)
         HANDLE triggered_handle = handles[ret];
         
         /* check if it's a socket event */
-        if (js_sock_handle_event(rt, triggered_handle))
+        if (js_sock_handle_event(rt, triggered_handle)) {
+            loop_log("[loop] sock event handle=%p", (void *)triggered_handle);
             return 0;
+        }
         
         list_for_each(el, &ts->os_rw_handlers) {
             rh = list_entry(el, JSOSRWHandler, link);
             if (rh->fd == 0 && !JS_IsNull(rh->rw_func[0])) {
+                loop_log("[loop] stdin event");
                 call_handler(ctx, rh->rw_func[0]);
                 return 0;
             }
@@ -2560,6 +2593,7 @@ static int js_os_poll(JSContext *ctx)
             if (!JS_IsNull(port->on_message_func)) {
                 JSWorkerMessagePipe *ps = port->recv_pipe;
                 if (ps->waker.handle == handles[ret]) {
+                    loop_log("[loop] worker message");
                     handle_posted_message(rt, ctx, port);
                     return 0;
                 }
@@ -2569,6 +2603,7 @@ static int js_os_poll(JSContext *ctx)
         {
             HANDLE async_ev = js_async_task_get_event(rt);
             if (async_ev && triggered_handle == async_ev) {
+                loop_log("[loop] async task done");
                 js_async_task_process(ctx);
                 return 0;
             }
@@ -2588,12 +2623,18 @@ static int js_os_poll(JSContext *ctx)
          *  - WM_QUIT 已在内联 return 保护
          */
         MSG msg;
+        int wm_count = 0;
         while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
+            loop_log("[loop] WM_%04X hwnd=%p", msg.message, (void *)msg.hwnd);
+            wm_count++;
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
-            if (msg.message == WM_QUIT)
+            if (msg.message == WM_QUIT) {
+                loop_log("[loop] WM_QUIT — exiting");
                 return 1;
+            }
         }
+        loop_log("[loop] WM drained: %d messages", wm_count);
     }
 
     return 0;
@@ -4358,8 +4399,10 @@ static void js_std_promise_rejection_check(JSContext *ctx)
 void js_std_loop(JSContext *ctx)
 {
     int err;
+    static int loop_iter = 0;
 
     for(;;) {
+        loop_log("[loop] === iter %d ===", loop_iter++);
         /* execute the pending jobs */
         for(;;) {
             err = JS_ExecutePendingJob(JS_GetRuntime(ctx), NULL);
@@ -4373,6 +4416,7 @@ void js_std_loop(JSContext *ctx)
         js_std_promise_rejection_check(ctx);
         
         int ret = os_poll_func(ctx);
+        loop_log("[loop] poll returned=%d", ret);
         if (!os_poll_func || ret)
             break;
     }

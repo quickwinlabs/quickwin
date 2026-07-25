@@ -175,6 +175,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         }
         if (strcmp(arg, "-d") == 0) {
             http_debug = 1;
+            loop_debug = 1;
             optind++;
             continue;
         }
