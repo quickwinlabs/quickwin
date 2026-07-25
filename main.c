@@ -122,17 +122,41 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         cmd_argv[cmd_argc] = NULL;
         LocalFree(wargv);
     }
-    int need_console = 0;
+    char *output_target = NULL;
+
+    char auto_log[MAX_PATH] = {0};
     for (int i = 1; i < cmd_argc; i++) {
-        if (strcmp(cmd_argv[i], "-c") == 0) {
-            need_console = 1;
+        if (strcmp(cmd_argv[i], "-o") == 0 && i + 1 < cmd_argc) {
+            output_target = cmd_argv[i + 1];
+            if (strcmp(output_target, "LOG") == 0) {
+                wchar_t wdir[MAX_PATH];
+                GetModuleFileNameW(NULL, wdir, MAX_PATH);
+                wchar_t *slash = wcsrchr(wdir, L'\\');
+                if (slash) *(slash + 1) = L'\0';
+                SYSTEMTIME st;
+                GetLocalTime(&st);
+                snprintf(auto_log, sizeof(auto_log),
+                    "%lslog_%04d_%02d_%02d_%02d_%02d_%02d.txt",
+                    wdir,
+                    st.wYear, st.wMonth, st.wDay,
+                    st.wHour, st.wMinute, st.wSecond);
+                output_target = auto_log;
+
+            }
             break;
         }
     }
-    if (need_console) {
-        AllocConsole();
-        freopen("CONOUT$", "w", stdout);
-        freopen("CONOUT$", "w", stderr);
+    if (output_target) {
+        if (strcmp(output_target, "CON") == 0) {
+            AllocConsole();
+            freopen("CONOUT$", "w", stdout);
+            freopen("CONOUT$", "w", stderr);
+        } else {
+            freopen(output_target, "w", stdout);
+            freopen(output_target, "w", stderr);
+            setvbuf(stdout, NULL, _IONBF, 0);
+            setvbuf(stderr, NULL, _IONBF, 0);
+        }
     }
 
     int optind = 1;
@@ -154,8 +178,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             optind++;
             continue;
         }
-        if (strcmp(arg, "-c") == 0) {
-            optind++;
+        if (strcmp(arg, "-o") == 0) {
+            optind += 2;  /* skip -o <target> */
             continue;
         }
         break;

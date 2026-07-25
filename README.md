@@ -23,7 +23,8 @@ quickwin script.js
 
 ```bash
 quickwin script.js                  # run a script
-quickwin -c script.js               # run with console (AllocConsole)
+quickwin -o CON script.js           # run with console (AllocConsole)
+quickwin -o LOG script.js           # run with auto-generated log file
 quickwin -e "console.log('hi')"     # execute expression
 quickwin -- script.js --flag        # -- stops option parsing
 ```
@@ -33,7 +34,9 @@ quickwin -- script.js --flag        # -- stops option parsing
 | Flag | Description |
 |------|-------------|
 | `-e <expr>` | Execute expression instead of a file |
-| `-c` | Allocate console (`AllocConsole`); only needed for GUI-subsystem builds |
+| `-o CON` | Allocate console (`AllocConsole`); only needed for GUI-subsystem builds |
+| `-o LOG` | Redirect stdout+stderr to `log_YYYY_MM_DD_HH_MM_SS.txt` (exe directory) |
+| `-o <file>` | Redirect stdout+stderr to specified file |
 | `-d` | Enable HTTP debug logging |
 | `--` | Stop option parsing, remaining args passed to script |
 
@@ -117,7 +120,7 @@ cd quickwin
 | Target | Description |
 |--------|-------------|
 | `make` / `make nodebug` | fast build |
-| `make minimal` | `-Os` + LTO + `-mwindows` + UPX, no console, add `-c` for console |
+| `make minimal` | `-Os` + LTO + `-mwindows` + UPX, no console, add `-o CON` for console |
 | `make release` | `-O2` + LTO + strip, ~2.5MB |
 | `make debug` | debug build with bridge logs |
 | `make js` | compile TypeScript via tsc |

@@ -84,6 +84,33 @@ powershell -ExecutionPolicy Bypass -File ./run.ps1 -Command "make js && ./_build
 - 需要 MSYS2 UCRT64 和 Node.js 环境
 - `run.ps1` 用于在 PowerShell 中执行 MSYS2 bash 命令，支持包含 `&&` 的复杂命令
 
+### CLI 参数
+
+```
+win.exe [options] [script.js]    # 运行 JS 脚本
+win.exe -e <expression>         # 运行表达式
+win.exe [options]               # 无参数时加载 main.js 或内嵌 JS
+```
+
+| 参数 | 说明 |
+|------|------|
+| `-e <expr>` | 运行 JS 表达式（优先于脚本文件） |
+| `-d` | 开启 HTTP 调试日志（输出到 stderr） |
+| `-o CON` | 输出重定向到控制台（AllocConsole） |
+| `-o LOG` | 输出重定向到自动生成的日志文件 `log_YYYY_MM_DD_HH_MM_SS.txt`（exe 同目录） |
+| `-o <file>` | 输出重定向到指定文件（stdout + stderr） |
+| `--` | 结束选项解析，后续参数作为脚本文件 |
+
+**示例：**
+```bash
+./_build/win.exe -o LOG main.js              # 运行 main.js，输出到日志文件
+./_build/win.exe -o CON -e 'console.log(42)' # 控制台输出
+./_build/win.exe -d -o http.log https.js      # HTTP 调试日志到文件
+./_build/win.exe -- -e 'code'                 # 不会被 -e 捕获
+```
+
+**注意：** `-o LOG` 生成的日志文件在 exe 所在目录（`_build/`），不是当前工作目录。
+
 ## 2. Event Loop Assistant (事件循环助手)
 
 **功能：** 管理事件循环、处理定时器和异步操作
