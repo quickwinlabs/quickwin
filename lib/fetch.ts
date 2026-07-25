@@ -623,6 +623,10 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                     _controller!.close()
                     stream = null
                     state = ST_DONE
+                } else {
+                    // ST_CONNECTING or ST_HANDSHAKE — socket died early,
+                    // reject so the Promise doesn't hang forever
+                    doReject(new Error('Connection closed'))
                 }
             }
         })

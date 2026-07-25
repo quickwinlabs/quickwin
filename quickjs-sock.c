@@ -143,6 +143,23 @@ int js_sock_handle_event(JSRuntime *rt, HANDLE triggered)
                     JS_FreeValue(ctx, callback);
                     JS_FreeValue(ctx, event_obj);
                 }
+            } else {
+                /* WSAEnumNetworkEvents failed: socket is dead but event stays
+                   signaled.  Clean up the slot so MsgWaitForMultipleObjects
+                   stops returning immediately (would cause a tight CPU loop). */
+                WSAEventSelect(s->fd, s->event, 0);
+                closesocket(s->fd);
+                s->fd = -1;
+                if (s->event != WSA_INVALID_EVENT) {
+                    WSAResetEvent(s->event);
+                    WSACloseEvent(s->event);
+                    s->event = WSA_INVALID_EVENT;
+                }
+                if (!JS_IsUndefined(s->on_event)) {
+                    JS_FreeValueRT(rt, s->on_event);
+                    s->on_event = JS_UNDEFINED;
+                }
+                r->slot_count--;
             }
             return 1;
         }
