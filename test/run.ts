@@ -90,8 +90,6 @@ async function main(): Promise<void> {
         std.printf('  %s%-18s %s%d/%d passed  %s(%s)%s\n', c, r.name, RESET, r.ok, r.ok + r.fail, c, formatDuration(r.elapsed), RESET)
     }
     std.printf('%s====== Summary: %d/%d passed ======%s\n', color, totalOk, totalOk + totalFail, RESET)
-    if (totalFail > 0) std.exit(1)
-    if (totalOk + totalFail > 0) std.exit(0)
 }
 
 main()

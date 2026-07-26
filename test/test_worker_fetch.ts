@@ -22,5 +22,6 @@ export const suite = {
             t.checkTrue('worker fetch failed: ' + result.msg, false)
         }
         worker.postMessage({ type: 'done' })
+        worker.onmessage = null
     }
 }

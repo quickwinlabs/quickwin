@@ -20,6 +20,7 @@ export const suite = {
         t.checkTrue('isArray({}) rejects', r1.isArrayRejects)
 
         worker1.postMessage({ type: 'done' })
+        worker1.onmessage = null
 
         t.section('http-entry')
         try {
@@ -45,6 +46,7 @@ export const suite = {
             t.check('npm worker message type', 'result', r3.type)
             t.check('npm worker imported value', 42, r3.value)
             worker3.postMessage({ type: 'done' })
+            worker3.onmessage = null
         } catch (e) {
             t.checkTrue('npm worker failed: ' + e, false)
         }

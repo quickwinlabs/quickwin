@@ -40,5 +40,6 @@ export const suite = {
         t.check('worker add(10, 20)', 30, wr.results[1])
 
         worker.postMessage({ type: 'done' })
+        worker.onmessage = null
     }
 }

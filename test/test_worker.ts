@@ -19,5 +19,6 @@ export const suite = {
         t.check('imported value', 42, result.value)
 
         worker.postMessage({ type: 'done' })
+        worker.onmessage = null
     }
 }
