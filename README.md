@@ -87,6 +87,55 @@ When run without a script file argument, `win.exe` checks for embedded JS at the
 | `preact` | `lib/preact/...` | JSX → Win32 renderer (`render`, `useState`, `useEffect`) |
 | `react-qw` | `lib/react-qw/` | React Custom Renderer for Win32 GUI ([docs](lib/react-qw/)) |
 
+## Worker
+
+Spawn background threads for CPU-bound or I/O-bound work. Workers run in separate QuickJS runtimes with their own event loops.
+
+### Main Thread
+
+```js
+import * as os from 'os'
+
+const worker = new os.Worker('./worker.js')
+
+worker.onmessage = (e) => {
+    console.log('received:', e.data)
+    worker.onmessage = null  // clean up when done
+}
+
+worker.postMessage({ type: 'start', value: 42 })
+```
+
+### Worker Thread
+
+```js
+// worker.js
+import * as os from 'os'
+
+const parent = os.Worker.parent
+
+parent.onmessage = (e) => {
+    if (e.data.type === 'start') {
+        parent.postMessage({ type: 'result', value: e.data.value * 2 })
+    } else if (e.data.type === 'done') {
+        parent.onmessage = null  // clean up to allow event loop exit
+    }
+}
+```
+
+### API
+
+| API | Description |
+|-----|-------------|
+| `new os.Worker(specifier)` | Create worker. `specifier` is a file path or URL (supports `https://` for ESM imports) |
+| `worker.postMessage(data)` | Send message (JSON-serializable) to worker |
+| `worker.onmessage = fn` | Set callback for messages from worker. Set to `null` when done to release the message port |
+| `os.Worker.parent` | (Worker side) reference to the parent thread |
+
+### Cleanup
+
+Both sides must set `onmessage = null` when communication is complete. This releases the message port so the event loop can exit cleanly. Forgetting to do so will cause the process to hang.
+
 ## Examples
 
 ```bash
