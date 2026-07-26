@@ -404,6 +404,7 @@ class WebSocketImpl {
 
         const ip = sock.resolve(host)
         if (!ip) {
+            cleanup()
             const self = this
             os.setTimeout(() => {
                 self._fireError(new Error('DNS resolution failed for: ' + host))
