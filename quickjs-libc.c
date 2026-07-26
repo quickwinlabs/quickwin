@@ -2554,6 +2554,11 @@ static int js_os_poll(JSContext *ctx)
                                     main_thread ? QS_ALLINPUT : 0);
     loop_log("[loop] wait returned=%lu", (unsigned long)ret);
 
+    if (ret == WAIT_FAILED) {
+        loop_log("[loop] WAIT_FAILED err=%lu — breaking loop", (unsigned long)GetLastError());
+        return 1;
+    }
+
     /* handle events */
     if (ret == WAIT_TIMEOUT) {
         /* timer expired */

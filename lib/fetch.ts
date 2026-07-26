@@ -541,12 +541,15 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                                         _controller!.enqueue(decoded)
                                         _controller!.close()
                                         state = ST_DONE
+                                        cleanupSocket()
                                     }
                                 } else {
                                     receivedBytes += trailingBodyBytes.length
                                     _controller!.enqueue(trailingBodyBytes)
                                     if (contentLength > 0 && receivedBytes >= contentLength) {
                                         _controller!.close()
+                                        state = ST_DONE
+                                        cleanupSocket()
                                     }
                                 }
                             }
@@ -583,6 +586,7 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                                 _controller!.close()
                                 stream = null
                                 state = ST_DONE
+                                cleanupSocket()
                                 break
                             }
                         } else {
@@ -590,6 +594,8 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                             _controller!.enqueue(new Uint8Array(data))
                             if (contentLength > 0 && receivedBytes >= contentLength) {
                                 _controller!.close()
+                                state = ST_DONE
+                                cleanupSocket()
                             }
                         }
                     }
@@ -623,6 +629,7 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                     _controller!.close()
                     stream = null
                     state = ST_DONE
+                    cleanupSocket()
                 } else {
                     // ST_CONNECTING or ST_HANDSHAKE — socket died early,
                     // reject so the Promise doesn't hang forever
