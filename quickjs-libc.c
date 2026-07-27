@@ -2630,7 +2630,8 @@ static int js_os_poll(JSContext *ctx)
         MSG msg;
         int wm_count = 0;
         while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
-            loop_log("[loop] WM_%04X hwnd=%p", msg.message, (void *)msg.hwnd);
+            loop_log("[loop] WM_%04X hwnd=%p w=%lu l=%ld", msg.message, (void *)msg.hwnd,
+                     (unsigned long)msg.wParam, (long)msg.lParam);
             wm_count++;
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
