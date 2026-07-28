@@ -126,6 +126,9 @@ const hostConfig: QuickWinHostConfig = {
       if (DEBUG) console.log('[reconciler] delayed control, skipping CreateWindow:', winClass)
       return { hwnd: null, type: winClass, props, children: [] }
     }
+    if (winClass === 'STATIC' && props.text !== undefined && props.children !== undefined && props.children !== null) {
+      throw new Error('[STATIC] text and children are mutually exclusive')
+    }
     const sty = props.style || {}
     // reconciler 创建的都是子窗口，确保 WS_CHILD 避免定位异常；创建时不带 WS_VISIBLE 防止 (0,0) 闪烁
     const ws = ((props.ws ?? 0) | gui.WindowStyle.CHILD) & ~gui.WindowStyle.VISIBLE
