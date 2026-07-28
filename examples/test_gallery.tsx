@@ -85,7 +85,7 @@ function App({ svW, svH }: { svW: number; svH: number }) {
   const cbItems = ['Red', 'Green', 'Blue', 'Yellow', 'Purple', 'Orange']
 
   return (
-      <ScrollView style={{width:svW, height:svH}} contentHeight={1250}>
+      <ScrollView style={{width:svW, height:svH}} contentHeight={1600}>
       <w type="STATIC" ws={VISIBLE | CLIPCHILDREN | gui.WindowStyle.BORDER} style={{flexDirection:'column', gap:8, alignSelf:'stretch', flexGrow:1, padding:8}}>
       {/* ===== 三列上半区 ===== */}
       <w type="STATIC" ws={VISIBLE} style={{flexDirection:'row', gap:10, height:345}}>
@@ -156,6 +156,27 @@ function App({ svW, svH }: { svW: number; svH: number }) {
           <w type="STATIC" ws={VISIBLE}
             text={cbSel >= 0 ? `Selected: ${cbItems[cbSel]}` : '(none selected)'}
             style={{height:24}} />
+        </w>
+      </w>
+
+      {/* ===== Auto-Size ===== */}
+      <w type="STATIC" ws={VISIBLE} text="Auto-Size" style={{height:24}} />
+      <w type="STATIC" ws={VISIBLE | CLIPCHILDREN | gui.WindowStyle.BORDER} style={{flexDirection:'column', gap:6, alignSelf:'stretch', flexGrow:1}}>
+        <w type="STATIC" ws={VISIBLE} text="Buttons (auto width)" style={{height:24}} />
+        <w type="STATIC" ws={VISIBLE} style={{flexDirection:'row', gap:8, alignItems:'stretch', height:30}}>
+          <Button style={{width:'auto', height:30}}>OK</Button>
+          <Button style={{width:'auto', height:30}}>Cancel</Button>
+          <Button style={{width:'auto', height:30}}>A very long button text</Button>
+        </w>
+        <w type="STATIC" ws={VISIBLE} text="Statics (auto width)" style={{height:24}} />
+        <w type="STATIC" ws={VISIBLE} style={{flexDirection:'row', gap:8, alignItems:'stretch', height:24}}>
+          <w type="STATIC" ws={VISIBLE | gui.WindowStyle.BORDER} text="Short" style={{width:'auto', height:24}} />
+          <w type="STATIC" ws={VISIBLE | gui.WindowStyle.BORDER} text="A much longer label" style={{width:'auto', height:24}} />
+        </w>
+        <w type="STATIC" ws={VISIBLE} text="Mixed auto + fixed" style={{height:24}} />
+        <w type="STATIC" ws={VISIBLE} style={{flexDirection:'row', gap:8, alignItems:'stretch', height:30}}>
+          <Button style={{width:150, height:30}}>Fixed 150</Button>
+          <Button style={{width:'auto', height:30}}>Auto</Button>
         </w>
       </w>
 

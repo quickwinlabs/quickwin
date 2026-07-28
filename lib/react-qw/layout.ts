@@ -13,7 +13,7 @@ export interface FlexStyle {
 }
 
 interface ChildStyle {
-  width?: number; height?: number
+  width?: number | 'auto'; height?: number | 'auto'
   flexGrow?: number
   alignSelf?: 'auto' | 'flex-start' | 'flex-end' | 'center' | 'stretch'
 }
@@ -58,8 +58,8 @@ export function calculateFlexLayout(
   const parentCross = (isRow ? parentH : parentW) - crossPadding
 
   const sizes = children.map(c => ({
-    w: c.style.width ?? DEFAULT_W,
-    h: c.style.height ?? DEFAULT_H,
+    w: typeof c.style.width === 'number' ? c.style.width : DEFAULT_W,
+    h: typeof c.style.height === 'number' ? c.style.height : DEFAULT_H,
   }))
 
   const flexGrows = children.map(c => c.style.flexGrow ?? 0)
@@ -95,8 +95,11 @@ export function calculateFlexLayout(
     res[mainDim] = childMain
     res[crossDim] = childCross
     if (effectiveAlign === 'stretch') {
-      res[crossDim] = parentCross
-      res[crossPos] = 0
+      const hasExplicitCross = typeof children[i]!.style[crossDim] === 'number'
+      if (!hasExplicitCross) {
+        res[crossDim] = parentCross
+        res[crossPos] = 0
+      }
     } else if (effectiveAlign === 'flex-end') {
       res[crossPos] = parentCross - childCross
     } else if (effectiveAlign === 'center') {

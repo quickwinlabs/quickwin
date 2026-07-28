@@ -5,6 +5,7 @@ import * as gui from 'gui'
 import * as os from 'os'
 import { applyProps } from './props.js'
 import { calculateFlexLayout, type FlexStyle } from './layout.js'
+import { getButtonIdealSize, measureTextForHwnd } from '../text-measure.js'
 import type { WIntrinsicProps } from './jsx.js'
 
 // DEBUG 由 esbuild --define 在 bundle 时替换（见 build.ts），生产环境为 false
@@ -53,7 +54,7 @@ function ensureChildWindow(child: Instance, parentHwnd: gui.HWND): gui.HWND {
   const hwnd = gui.CreateWindow(
     child.type, child.props.text || '', ws,
     0, 0,
-    (sty.width ?? 100) * scaleFactor, (sty.height ?? 30) * scaleFactor,
+    (typeof sty.width === 'number' ? sty.width : 100) * scaleFactor, (typeof sty.height === 'number' ? sty.height : 30) * scaleFactor,
     parentHwnd, null
   )!
   if (dpiFont) gui.SendMessage(hwnd, gui.WmMsg.SETFONT, dpiFont, 1)
@@ -77,7 +78,29 @@ function runFlexLayout(inst: Instance) {
   const pw = (rect.right - rect.left) / scaleFactor
   const ph = (rect.bottom - rect.top) / scaleFactor
   if (pw <= 0 || ph <= 0) { console.log('flex: zero size for', inst.hwnd, inst.type, pw, ph); return }
-  const results = calculateFlexLayout(flex, pw, ph, visible.map(c => ({ style: c.props.style || {} })))
+  const autoSizes = new Map<Instance, { w: number; h: number }>()
+  for (const child of visible) {
+    const sty = child.props.style || {}
+    if (!child.hwnd) continue
+    if (child.type === 'BUTTON' && (sty.width === 'auto' || sty.height === 'auto')) {
+      const ideal = getButtonIdealSize(child.hwnd)
+      autoSizes.set(child, { w: ideal.width / scaleFactor, h: ideal.height / scaleFactor })
+    } else if (child.type === 'STATIC' && (sty.width === 'auto' || sty.height === 'auto') && child.props.text) {
+      const measured = measureTextForHwnd(child.hwnd, child.props.text!)
+      autoSizes.set(child, { w: measured.width / scaleFactor, h: measured.height / scaleFactor })
+    }
+  }
+  const results = calculateFlexLayout(flex, pw, ph, visible.map(c => {
+    const sty = c.props.style || {}
+    const auto = autoSizes.get(c)
+    return {
+      style: {
+        ...sty,
+        width: auto ? (sty.width === 'auto' ? auto.w : sty.width) : sty.width,
+        height: auto ? (sty.height === 'auto' ? auto.h : sty.height) : sty.height,
+      }
+    }
+  }))
   const pl = flex.paddingLeft ?? flex.padding ?? 0
   const pt = flex.paddingTop ?? flex.padding ?? 0
   for (let i = 0; i < results.length; i++) {
@@ -136,7 +159,7 @@ const hostConfig: QuickWinHostConfig = {
     const hwnd = gui.CreateWindow(
       winClass, props.text ?? '', ws,
       0, 0,
-      (sty.width ?? 100) * scaleFactor, (sty.height ?? 30) * scaleFactor,
+      (typeof sty.width === 'number' ? sty.width : 100) * scaleFactor, (typeof sty.height === 'number' ? sty.height : 30) * scaleFactor,
       rootContainer, null
     )!
     if (dpiFont) gui.SendMessage(hwnd, gui.WmMsg.SETFONT, dpiFont, 1)

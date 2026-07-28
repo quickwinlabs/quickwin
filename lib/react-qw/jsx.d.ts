@@ -1,7 +1,7 @@
 import type { HWND } from 'gui'
 
 interface WStyle {
-  width?: number; height?: number
+  width?: number | 'auto'; height?: number | 'auto'
   flexDirection?: 'row' | 'column'
   justifyContent?: 'flex-start' | 'flex-end' | 'center' | 'space-between' | 'space-around' | 'space-evenly'
   alignItems?: 'flex-start' | 'flex-end' | 'center' | 'stretch'

@@ -390,6 +390,10 @@ declare module "gui" {
         CHECKED = 1, // 0x1
     }
 
+    export const enum ButtonExtMsg {
+        GETIDEALSIZE = 5633, // 0x1601
+    }
+
     export const enum EditMsg {
         GETSEL = 176, // 0xB0
         SETSEL = 177, // 0xB1
@@ -683,6 +687,10 @@ declare module "gui" {
         BITMAP = 0, // 0x0
         ICON = 1, // 0x1
         CURSOR = 2, // 0x2
+    }
+
+    export const enum DrawTextFlag {
+        CALCRECT = 1024, // 0x400
     }
 
     // Process

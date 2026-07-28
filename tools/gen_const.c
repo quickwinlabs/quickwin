@@ -412,6 +412,10 @@ static void print_enums(void) {
     DEC(CHECKED, BST_CHECKED);
     printf("    }\n\n");
 
+    printf("    export const enum ButtonExtMsg {\n");
+    DEC(GETIDEALSIZE, BCM_GETIDEALSIZE);
+    printf("    }\n\n");
+
     printf("    export const enum EditMsg {\n");
     DEC(GETSEL, EM_GETSEL);
     DEC(SETSEL, EM_SETSEL);
@@ -705,6 +709,10 @@ static void print_enums(void) {
     DEC(BITMAP, IMAGE_BITMAP);
     DEC(ICON, IMAGE_ICON);
     DEC(CURSOR, IMAGE_CURSOR);
+    printf("    }\n\n");
+
+    printf("    export const enum DrawTextFlag {\n");
+    DEC(CALCRECT, DT_CALCRECT);
     printf("    }\n\n");
 
     printf("    // Process\n");
