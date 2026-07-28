@@ -45,6 +45,7 @@
 #include "quickjs-http.h"
 #include "quickjs-sock.h"
 #include "quickjs-async-task.h"
+#include "version.h"
 
 int loop_debug = 0;
 
@@ -4214,7 +4215,7 @@ static JSValue js_console_log(JSContext *ctx, JSValueConst this_val,
 
 void js_std_add_helpers(JSContext *ctx, int argc, char **argv)
 {
-    JSValue global_obj, console, args, performance;
+    JSValue global_obj, console, args, performance, navigator;
     int i;
 
     /* XXX: should these global definitions be enumerable? */
@@ -4229,6 +4230,13 @@ void js_std_add_helpers(JSContext *ctx, int argc, char **argv)
     JS_SetPropertyStr(ctx, performance, "now",
                       JS_NewCFunction(ctx, js_os_now, "now", 0));
     JS_SetPropertyStr(ctx, global_obj, "performance", performance);
+
+    navigator = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, navigator, "appVersion",
+                      JS_NewString(ctx, QUICKWIN_VERSION));
+    JS_SetPropertyStr(ctx, navigator, "userAgent",
+                      JS_NewString(ctx, QUICKWIN_USER_AGENT));
+    JS_SetPropertyStr(ctx, global_obj, "navigator", navigator);
 
     /* same methods as the mozilla JS shell */
     if (argc >= 0) {

@@ -235,13 +235,16 @@ class WebSocketImpl {
 
         const requestKey = generateKey()
 
-        let customHeaders = ''
+        const customHeadersList: string[] = []
+        let hasUserAgent = false
         if (this._options.headers) {
             for (const name in this._options.headers) {
                 const value = this._options.headers[name]
-                customHeaders += name + ': ' + value + '\r\n'
+                customHeadersList.push(name + ': ' + value + '\r\n')
+                if (name.toLowerCase() === 'user-agent') hasUserAgent = true
             }
         }
+        const customHeaders = customHeadersList.join('')
 
         const request = (
             'GET ' + path + ' HTTP/1.1\r\n' +
@@ -250,6 +253,7 @@ class WebSocketImpl {
             'Connection: Upgrade\r\n' +
             'Sec-WebSocket-Key: ' + requestKey + '\r\n' +
             'Sec-WebSocket-Version: 13\r\n' +
+            (hasUserAgent ? '' : 'User-Agent: ' + navigator.userAgent + '\r\n') +
             customHeaders +
             '\r\n'
         )

@@ -142,6 +142,9 @@ $(BUILD_DIR)/%.o: %.c | $(WOLFSSL_LIB_STATIC)
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+# version.h is included by quickjs-libc.c; explicit dep ensures rebuild on change
+$(BUILD_DIR)/quickjs-libc.o: version.h
+
 $(BUILD_DIR)/%.d: %.c
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -MM -MT '$(BUILD_DIR)/$*.o' $< > $@

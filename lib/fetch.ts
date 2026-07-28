@@ -398,7 +398,7 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
         ? hostname + ':' + parsedUrl.port
         : hostname
     if (!headers.has('host')) headers.set('Host', hostHeader)
-    if (!headers.has('user-agent')) headers.set('User-Agent', 'QuickJS/1.0')
+    if (!headers.has('user-agent')) headers.set('User-Agent', navigator.userAgent)
     if (!headers.has('connection')) headers.set('Connection', 'close')
     if (!headers.has('accept-encoding')) headers.set('Accept-Encoding', 'br')
     let bodyBytes: Uint8Array | null = null

@@ -10,6 +10,11 @@ declare function print(...args: unknown[]): void;
 /** Same as print(). */
 declare const console: Console
 
+declare const navigator: {
+    appVersion: string
+    userAgent: string
+}
+
 interface Console {
     /** Same as print(). */
     log: (...args: unknown[]) => void
