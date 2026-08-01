@@ -11,11 +11,10 @@
 #include "quickjs-http.h"
 #include "quickjs.h"
 #include "cutils.h"
+#include "quickjs-brotli.h"
 
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
-
-#include <brotli/decode.h>
 
 int http_debug = 0;
 
@@ -517,44 +516,21 @@ static int decompress_brotli_body(char **response, size_t *total) {
     size_t body_len = *total - header_len;
     if (body_len == 0) return 0;
 
-    BrotliDecoderState *state = BrotliDecoderCreateInstance(NULL, NULL, NULL);
-    if (!state) return 0;
+    uint8_t *out;
+    size_t out_len;
+    if (JS_BrotliDecompress((uint8_t *)body, body_len, &out, &out_len) != 0)
+        return 0;
 
-    size_t available_in = body_len;
-    const uint8_t *next_in = (uint8_t *)body;
-    size_t buf_cap = body_len * 2 + 1024;
-    uint8_t *buf = malloc(buf_cap);
-    if (!buf) { BrotliDecoderDestroyInstance(state); return 0; }
-    size_t total_out = 0;
-
-    BrotliDecoderResult result;
-    do {
-        size_t available_out = buf_cap - total_out;
-        uint8_t *next_out = buf + total_out;
-        result = BrotliDecoderDecompressStream(state, &available_in, &next_in,
-                                               &available_out, &next_out, &total_out);
-        if (result == BROTLI_DECODER_RESULT_NEEDS_MORE_OUTPUT) {
-            buf_cap *= 2;
-            uint8_t *new_buf = realloc(buf, buf_cap);
-            if (!new_buf) { free(buf); BrotliDecoderDestroyInstance(state); return 0; }
-            buf = new_buf;
-        }
-    } while (result == BROTLI_DECODER_RESULT_NEEDS_MORE_OUTPUT);
-
-    BrotliDecoderDestroyInstance(state);
-
-    if (result != BROTLI_DECODER_RESULT_SUCCESS) { free(buf); return 0; }
-
-    size_t new_total = header_len + total_out;
+    size_t new_total = header_len + out_len;
     char *new_response = realloc(*response, new_total + 1);
-    if (!new_response) { free(buf); return 0; }
+    if (!new_response) { free(out); return 0; }
     *response = new_response;
 
-    memcpy(*response + header_len, buf, total_out);
+    memcpy(*response + header_len, out, out_len);
     (*response)[new_total] = '\0';
     *total = new_total;
 
-    free(buf);
+    free(out);
     return 1;
 }
 

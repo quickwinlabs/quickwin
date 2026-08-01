@@ -5,18 +5,10 @@
 #include "quickjs-brotli.h"
 #include <brotli/decode.h>
 
-static JSValue js_brotli_decompress(JSContext *ctx, JSValueConst this_val,
-                                     int argc, JSValueConst *argv) {
-    size_t src_len;
-    uint8_t *src = JS_GetArrayBuffer(ctx, &src_len, argv[0]);
-    if (!src) {
-        return JS_ThrowTypeError(ctx, "expected ArrayBuffer");
-    }
-
+int JS_BrotliDecompress(const uint8_t *src, size_t src_len,
+                        uint8_t **out, size_t *out_len) {
     BrotliDecoderState *state = BrotliDecoderCreateInstance(NULL, NULL, NULL);
-    if (!state) {
-        return JS_ThrowTypeError(ctx, "failed to create brotli decoder");
-    }
+    if (!state) return -1;
 
     size_t available_in = src_len;
     const uint8_t *next_in = src;
@@ -24,7 +16,7 @@ static JSValue js_brotli_decompress(JSContext *ctx, JSValueConst this_val,
     uint8_t *buf = malloc(buf_cap);
     if (!buf) {
         BrotliDecoderDestroyInstance(state);
-        return JS_ThrowOutOfMemory(ctx);
+        return -1;
     }
     size_t total_out = 0;
 
@@ -40,7 +32,7 @@ static JSValue js_brotli_decompress(JSContext *ctx, JSValueConst this_val,
             if (!new_buf) {
                 free(buf);
                 BrotliDecoderDestroyInstance(state);
-                return JS_ThrowOutOfMemory(ctx);
+                return -1;
             }
             buf = new_buf;
         }
@@ -50,11 +42,30 @@ static JSValue js_brotli_decompress(JSContext *ctx, JSValueConst this_val,
 
     if (result != BROTLI_DECODER_RESULT_SUCCESS) {
         free(buf);
+        return -1;
+    }
+
+    *out = buf;
+    *out_len = total_out;
+    return 0;
+}
+
+static JSValue js_brotli_decompress(JSContext *ctx, JSValueConst this_val,
+                                     int argc, JSValueConst *argv) {
+    size_t src_len;
+    uint8_t *src = JS_GetArrayBuffer(ctx, &src_len, argv[0]);
+    if (!src) {
+        return JS_ThrowTypeError(ctx, "expected ArrayBuffer");
+    }
+
+    uint8_t *out;
+    size_t out_len;
+    if (JS_BrotliDecompress(src, src_len, &out, &out_len) != 0) {
         return JS_ThrowTypeError(ctx, "brotli decompression failed");
     }
 
-    JSValue js_r = JS_NewArrayBufferCopy(ctx, buf, total_out);
-    free(buf);
+    JSValue js_r = JS_NewArrayBufferCopy(ctx, out, out_len);
+    free(out);
     return js_r;
 }
 
