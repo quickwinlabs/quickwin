@@ -94,7 +94,7 @@ endif
 OBJS = $(SRCS:%.c=$(BUILD_DIR)/%.o) $(BUILD_DIR)/app.o
 DEPS = $(SRCS:%.c=$(BUILD_DIR)/%.d)
 
-.PHONY: all clean debug nodebug release small minimal nowasm wolfsmin test wamr wasm js npm-pkg embed-js info help
+.PHONY: all clean debug nodebug release small minimal nowasm wolfsmin test wamr wasm js npm-pkg embed-js embed-js-br info help
 
 all: nodebug
 
@@ -313,6 +313,9 @@ npm-pkg: js wasm
 embed-js: $(TARGET)
 	powershell -ExecutionPolicy Bypass -File scripts/embed-js.ps1 -ExePath $(TARGET) -JsFile $(JS_EMBED)
 
+embed-js-br: $(TARGET)
+	powershell -ExecutionPolicy Bypass -File scripts/embed-js.ps1 -ExePath $(TARGET) -JsFile $(JS_EMBED) -Compress
+
 help:
 	@echo "Available targets:"
 	@echo "  all       - Build nodebug version (default, custom wolfSSL)"
@@ -331,6 +334,7 @@ help:
 	@echo "  test      - Exclude by tag: make test TEST=-net"
 	@echo "  wasm      - Convert WAT files to WASM (requires wabt)"
 	@echo "  embed-js  - Embed JS_EMBED (default: embed.js) into exe: make embed-js JS_EMBED=script.js"
+	@echo "  embed-js-br - Embed brotli-compressed JS into exe: make embed-js-br JS_EMBED=script.js"
 	@echo "  npm-pkg   - Package distributable into $(NPM_PKG_DIR)"
 	@echo "  wolfsmin  - Build custom minimal wolfSSL static library"
 	@echo "  help      - Show this help message"

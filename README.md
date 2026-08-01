@@ -62,11 +62,14 @@ powershell -ExecutionPolicy Bypass -File scripts/embed-js.ps1 -ExePath _build/wi
 # Or via make
 make embed-js JS_EMBED=script.js
 
+# Embed a script brotli-compressed (smaller exe, decompressed at runtime)
+make embed-js-br JS_EMBED=script.js
+
 # Run it (no file argument needed)
 win.exe
 ```
 
-When run without a script file argument, `win.exe` checks for embedded JS at the end of itself. If found, it executes the embedded code. If not, it falls back to `main.js`.
+When run without a script file argument, `win.exe` checks for embedded JS at the end of itself. If found, it executes the embedded code. If not, it falls back to `main.js`. Both raw (`QWJS`) and brotli-compressed (`QWBR`) embedded payloads are supported; the compressed form is decompressed at startup.
 
 ## Modules
 
@@ -183,6 +186,7 @@ cd quickwin
 | `make test TEST=wasm` | run WASM tests only |
 | `make wamr` | rebuild WAMR library |
 | `make embed-js` | embed `embed.js` into exe (use `JS_EMBED=file.js`) |
+| `make embed-js-br` | embed brotli-compressed JS into exe |
 | `make npm-pkg` | package into `dist/quickwin/` |
 | `make clean` | clean build artifacts |
 

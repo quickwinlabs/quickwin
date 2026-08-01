@@ -36,7 +36,9 @@ static void showError(JSContext *ctx, const char *err_str)
 }
 
 // Try to load JS code embedded at the end of the exe (appended data).
-// Format: [JS bytes (N)] [N: uint32 LE] [magic "QWJS"]
+// Format: [JS bytes (N)] [N: uint32 LE] [magic]
+//   magic "QWJS" -> raw JS text
+//   magic "QWBR" -> brotli-compressed JS text
 static uint8_t *load_embedded_js(JSContext *ctx, size_t *psize)
 {
     wchar_t wpath[MAX_PATH];
@@ -48,24 +50,61 @@ static uint8_t *load_embedded_js(JSContext *ctx, size_t *psize)
     char magic[4];
     if (fseek(fp, -4, SEEK_END) != 0) { fclose(fp); return NULL; }
     if (fread(magic, 1, 4, fp) != 4) { fclose(fp); return NULL; }
-    if (memcmp(magic, "QWJS", 4) != 0) { fclose(fp); return NULL; }
+    int compressed;
+    if (memcmp(magic, "QWJS", 4) == 0) {
+        compressed = 0;
+    } else if (memcmp(magic, "QWBR", 4) == 0) {
+        compressed = 1;
+    } else {
+        fclose(fp);
+        return NULL;
+    }
 
     uint32_t len;
     if (fseek(fp, -8, SEEK_END) != 0) { fclose(fp); return NULL; }
     if (fread(&len, 1, 4, fp) != 4) { fclose(fp); return NULL; }
 
     if (fseek(fp, -(8 + len), SEEK_END) != 0) { fclose(fp); return NULL; }
-    uint8_t *buf = js_malloc(ctx, len + 1);
-    if (!buf) { fclose(fp); return NULL; }
-    if (fread(buf, 1, len, fp) != len) {
-        js_free(ctx, buf);
+    uint8_t *raw = malloc(len + 1);
+    if (!raw) { fclose(fp); return NULL; }
+    if (fread(raw, 1, len, fp) != len) {
+        free(raw);
         fclose(fp);
         return NULL;
     }
-    buf[len] = '\0';
+    raw[len] = '\0';
     fclose(fp);
 
-    *psize = len;
+    uint8_t *buf;
+    size_t out_len;
+    if (compressed) {
+        uint8_t *out;
+        if (JS_BrotliDecompress(raw, len, &out, &out_len) != 0) {
+            free(raw);
+            return NULL;
+        }
+        buf = js_malloc(ctx, out_len + 1);
+        if (!buf) {
+            free(out);
+            free(raw);
+            return NULL;
+        }
+        memcpy(buf, out, out_len);
+        buf[out_len] = '\0';
+        free(out);
+    } else {
+        buf = js_malloc(ctx, len + 1);
+        if (!buf) {
+            free(raw);
+            return NULL;
+        }
+        memcpy(buf, raw, len);
+        buf[len] = '\0';
+        out_len = len;
+    }
+    free(raw);
+
+    *psize = out_len;
     return buf;
 }
 
