@@ -33,7 +33,9 @@ jobs:
         id: cache-exe
         uses: actions/cache@v4
         with:
-          path: _build/win.exe
+          path: |
+            _build/win.exe
+            _build/win-nowasm.exe
           key: exe-${{ matrix.msystem }}-${{ hashFiles('*.c', '*.h', 'Makefile', 'app.rc') }}-wamr-${{ steps.submodules.outputs.wamr }}-qjs-${{ steps.submodules.outputs.qjs }}-wolfssl-${{ steps.submodules.outputs.wolfssl }}
 
       - uses: msys2/setup-msys2@v2
@@ -60,14 +62,25 @@ jobs:
         env:
           MSYS2_PREFIX: C:/msys64/${{ matrix.msystem == 'UCRT64' && 'ucrt64' || 'mingw64' }}
 
+      - name: Build nowasm exe
+        if: steps.cache-exe.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: make nowasm
+        env:
+          MSYS2_PREFIX: C:/msys64/${{ matrix.msystem == 'UCRT64' && 'ucrt64' || 'mingw64' }}
+
       - name: Rename
         shell: bash
-        run: cp _build/win.exe _build/win-${{ matrix.msystem }}.exe
+        run: |
+          cp _build/win.exe _build/win-${{ matrix.msystem }}.exe
+          cp _build/win-nowasm.exe _build/win-nowasm-${{ matrix.msystem }}.exe
 
       - uses: actions/upload-artifact@v4
         with:
           name: quickwin-${{ matrix.msystem }}-${{ github.sha }}
-          path: _build/win-${{ matrix.msystem }}.exe
+          path: |
+            _build/win-${{ matrix.msystem }}.exe
+            _build/win-nowasm-${{ matrix.msystem }}.exe
 
   test:
     name: test

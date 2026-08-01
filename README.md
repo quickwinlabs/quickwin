@@ -164,12 +164,16 @@ cd quickwin
 .\run.ps1 "make test"       # run all tests
 ```
 
+`make nowasm` produces a smaller `_build/win-nowasm.exe` without WASM/WAMR
+(no `WebAssembly` global); run `make test TEST=-wasm` to skip WASM tests on it.
+
 ### Build Targets
 
 | Target | Description |
 |--------|-------------|
 | `make` / `make nodebug` | fast build |
 | `make minimal` | `-Os` + LTO + `-mwindows` + UPX, no console, add `-o CON` for console |
+| `make nowasm` | no WASM/WAMR build → `_build/win-nowasm.exe` (~1.2MB, no `WebAssembly` global) |
 | `make release` | `-O2` + LTO + strip, ~2.5MB |
 | `make debug` | debug build with bridge logs |
 | `make js` | compile TypeScript via tsc |

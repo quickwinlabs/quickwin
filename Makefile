@@ -3,6 +3,7 @@ WINDRES = windres
 
 DEBUG = 0
 MINIMAL = 0
+NO_WASM = 0
 OPT = -Os
 BUILD_DIR = _build
 MSYS2_PREFIX ?= C:/msys64/ucrt64
@@ -54,8 +55,12 @@ WOLFSSL_LIB ?= $(WOLFSSL_LIB_STATIC)
 WAT_SRCS = $(wildcard test/*.wat)
 WASM_OBJS = $(WAT_SRCS:test/%.wat=$(BUILD_DIR)/test/%.wasm)
 
-CFLAGS += $(WAMR_INC)
-CFLAGS += $(WAMR_DEFS)
+ifeq ($(NO_WASM), 1)
+    CFLAGS += -DNO_WASM
+else
+    CFLAGS += $(WAMR_INC)
+    CFLAGS += $(WAMR_DEFS)
+endif
 CFLAGS += $(WOLFSSL_INC)
 
 LDFLAGS = -L$(MSYS2_PREFIX)/lib -static
@@ -66,7 +71,8 @@ ifeq ($(MINIMAL), 1)
     LDFLAGS += -flto -Wl,--gc-sections -mwindows
 endif
 
-TARGET = $(BUILD_DIR)/win.exe
+TARGET_NAME ?= win.exe
+TARGET = $(BUILD_DIR)/$(TARGET_NAME)
 NPM_PKG_DIR = dist/quickwin
 QUICKJS_LIB = $(BUILD_DIR)/libquickjs.a
 
@@ -79,13 +85,16 @@ SRCS = main.c \
        quickjs-wolfssl.c \
        quickjs-http.c \
        quickjs-libc.c \
-       quickjs-wamr.c \
        quickjs-async-task.c
+
+ifeq ($(NO_WASM), 0)
+SRCS += quickjs-wamr.c
+endif
 
 OBJS = $(SRCS:%.c=$(BUILD_DIR)/%.o) $(BUILD_DIR)/app.o
 DEPS = $(SRCS:%.c=$(BUILD_DIR)/%.d)
 
-.PHONY: all clean debug nodebug release small minimal wolfsmin test wamr wasm js npm-pkg embed-js info help
+.PHONY: all clean debug nodebug release small minimal nowasm wolfsmin test wamr wasm js npm-pkg embed-js info help
 
 all: nodebug
 
@@ -110,6 +119,12 @@ minimal:
 	@if command -v upx >/dev/null 2>&1; then upx --best $(TARGET); fi
 	@echo "Build complete: $(TARGET) (-Os, LTO, stripped, UPXed)"
 
+nowasm:
+	rm -f $(OBJS) $(DEPS) $(QUICKJS_LIB)
+	rm -f $(BUILD_DIR)/win-nowasm.exe
+	@$(MAKE) NO_WASM=1 TARGET_NAME=win-nowasm.exe OPT=-Os MINIMAL=1 nodebug
+	@echo "Build complete: $(BUILD_DIR)/win-nowasm.exe (no WASM, -Os, LTO, stripped)"
+
 
 
 QJ_DEFINES = -D_GNU_SOURCE -DCONFIG_WIN32 -DCONFIG_VERSION=\"2025-09-13\"
@@ -128,10 +143,16 @@ $(QUICKJS_LIB):
 
 $(WOLFSSL_LIB_STATIC): wolfsmin
 
-$(TARGET): $(OBJS) $(QUICKJS_LIB) $(WAMR_LIB) $(WOLFSSL_LIB_STATIC)
+ifeq ($(NO_WASM), 1)
+WAMR_LINK =
+else
+WAMR_LINK = $(WAMR_LIB)
+endif
+
+$(TARGET): $(OBJS) $(QUICKJS_LIB) $(WAMR_LINK) $(WOLFSSL_LIB_STATIC)
 	@echo "Linking $@..."
 	mkdir -p $(BUILD_DIR)
-	$(CC) -o $@ $(OBJS) $(QUICKJS_LIB) $(WAMR_LIB) $(LDFLAGS) $(LIBS)
+	$(CC) -o $@ $(OBJS) $(QUICKJS_LIB) $(WAMR_LINK) $(LDFLAGS) $(LIBS)
 ifeq ($(MINIMAL), 1)
 	strip $@
 endif
@@ -264,6 +285,7 @@ info:
 	@echo "  TARGET    = $(TARGET)"
 	@echo "  BUILD_DIR = $(BUILD_DIR)"
 	@echo "  DEBUG     = $(DEBUG)"
+	@echo "  NO_WASM   = $(NO_WASM)"
 
 js:
 	@echo "Compiling TypeScript files to JavaScript using tsc..."
@@ -297,6 +319,7 @@ help:
 	@echo "  release   - Build with -O2 + LTO + stripped + custom wolfSSL"
 	@echo "  small     - Build with -Os + LTO + stripped + custom wolfSSL"
 	@echo "  minimal   - Build with -Os + LTO + stripped + UPX + custom wolfSSL"
+	@echo "  nowasm    - Build without WASM/WAMR -> $(BUILD_DIR)/win-nowasm.exe (-Os, LTO, stripped)"
 	@echo "  debug     - Build debug version (-g -O0, always has DUMP_GC/DUMP_LEAKS)"
 	@echo "  clean     - Remove built files and JS files"
 	@echo "  distclean - Remove all generated files"

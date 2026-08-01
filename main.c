@@ -15,7 +15,9 @@
 #include "quickjs-http.h"
 #include "quickjs-wolfssl.h"
 #include "quickjs-gui.h"
+#ifndef NO_WASM
 #include "quickjs-wamr.h"
+#endif
 #include "quickjs-async-task.h"
 
 #include <wolfssl/options.h>
@@ -83,7 +85,9 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
     js_init_module_brotli(ctx);
     js_init_module_sock(ctx);
     js_init_module_wolfssl(ctx);
+#ifndef NO_WASM
     js_init_module_wamr(ctx);
+#endif
     js_init_http_cache_api(ctx);
     return ctx;
 }
@@ -93,7 +97,9 @@ static void JS_FreeCustomRuntime(JSRuntime *rt)
     js_async_task_destroy(rt);
     js_sock_free_handles(rt);
     js_sock_remove_runtime(rt);
+#ifndef NO_WASM
     js_wamr_cleanup(rt);
+#endif
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
