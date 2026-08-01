@@ -113,7 +113,10 @@ jobs:
           merge-multiple: true
 
       - name: Place exe
-        run: mkdir -p _build && mv win-MINGW64.exe _build/win.exe
+        run: |
+          mkdir -p _build
+          mv win-MINGW64.exe _build/win.exe
+          mv win-nowasm-MINGW64.exe _build/win-nowasm.exe
 
       - name: Cache npm
         id: cache-npm
@@ -145,7 +148,9 @@ jobs:
 
       - name: Place exe for publish
         if: github.ref == 'refs/heads/main'
-        run: cp _build/win.exe dist/quickwin/win-mingw64.exe
+        run: |
+          cp _build/win.exe dist/quickwin/win-mingw64.exe
+          cp _build/win-nowasm.exe dist/quickwin/win-nowasm-mingw64.exe
 
       - name: Set version (UTC+8)
         if: github.ref == 'refs/heads/main'
