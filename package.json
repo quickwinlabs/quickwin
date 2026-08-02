@@ -19,12 +19,6 @@
     "tsconfig.json",
     "README.md"
   ],
-  "os": [
-    "win32"
-  ],
-  "cpu": [
-    "x64"
-  ],
   "license": "MIT",
   "repository": {
     "type": "git",
