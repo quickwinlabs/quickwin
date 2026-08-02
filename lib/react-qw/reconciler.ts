@@ -110,6 +110,7 @@ function runFlexLayout(inst: Instance) {
     if (lr && lr.x === r.x && lr.y === r.y && lr.w === r.width && lr.h === r.height) continue
     console.log('flex: set', child.type, child.hwnd, 'to', r.x, r.y, r.width, r.height)
     gui.SetWindowPos(child.hwnd!, gui.SetWindowPosHwnd.TOP, (r.x + pl) * scaleFactor, (r.y + pt) * scaleFactor, r.width * scaleFactor, r.height * scaleFactor, gui.SetWindowPosFlag.SWP_SHOWWINDOW)
+    gui.InvalidateRect(child.hwnd!, null, true)
     child.lastRect = { x: r.x, y: r.y, w: r.width, h: r.height }
   }
   for (const c of children) runFlexLayout(c)
