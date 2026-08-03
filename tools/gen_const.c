@@ -375,8 +375,24 @@ static void print_enums(void) {
     DEC(TEXT, LVCF_TEXT);
     printf("    }\n\n");
 
+    printf("    export const enum LvColumnFormat {\n");
+    DEC(LEFT, LVCFMT_LEFT);
+    DEC(CENTER, LVCFMT_CENTER);
+    DEC(RIGHT, LVCFMT_RIGHT);
+    printf("    }\n\n");
+
+    printf("    export const enum FontWeight {\n");
+    DEC(NORMAL, FW_NORMAL);
+    DEC(BOLD, FW_BOLD);
+    printf("    }\n\n");
+
     printf("    export const enum LvNavFlag {\n");
     DEC(SELECTED, LVNI_SELECTED);
+    printf("    }\n\n");
+
+    printf("    export const enum LvColumnWidthCmd {\n");
+    DEC(AUTOSIZE, LVSCW_AUTOSIZE);
+    DEC(AUTOSIZE_USEHEADER, LVSCW_AUTOSIZE_USEHEADER);
     printf("    }\n\n");
 
     printf("    export const enum HdmMsg {\n");
@@ -385,6 +401,23 @@ static void print_enums(void) {
 
     printf("    export const enum LvNotifyCode {\n");
     DEC(ITEMCHANGED, LVN_ITEMCHANGED);
+    DEC(CLICK, NM_CLICK);
+    DEC(CUSTOMDRAW, NM_CUSTOMDRAW);
+    printf("    }\n\n");
+
+    printf("    export const enum CustomDrawStage {\n");
+    DEC(PREPAINT, CDDS_PREPAINT);
+    DEC(ITEM, CDDS_ITEM);
+    DEC(SUBITEM, CDDS_SUBITEM);
+    DEC(ITEMPREPAINT, CDDS_ITEMPREPAINT);
+    DEC(SUBITEMPREPAINT, CDDS_ITEMPREPAINT | CDDS_SUBITEM);
+    printf("    }\n\n");
+
+    printf("    export const enum CustomDrawFlag {\n");
+    DEC(DODEFAULT, CDRF_DODEFAULT);
+    DEC(NEWFONT, CDRF_NEWFONT);
+    DEC(NOTIFYITEMDRAW, CDRF_NOTIFYITEMDRAW);
+    DEC(NOTIFYSUBITEMDRAW, CDRF_NOTIFYSUBITEMDRAW);
     printf("    }\n\n");
 
     printf("    export const enum ShowWindowCmd {\n");

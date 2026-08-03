@@ -1,6 +1,8 @@
 import { forwardRef, useRef, useEffect, useState, type ForwardedRef } from 'react'
 import * as gui from 'gui'
+import { LvItemFlag, LvItemState, LvColumnMask, LvNavFlag } from 'gui'
 import * as ffi from 'ffi'
+import * as win from 'win'
 import type { WStyle } from '../jsx.d.ts'
 
 function textToUtf16(s: string): ArrayBuffer {
@@ -16,22 +18,131 @@ function readI32(ptr: number, offset: number): number {
     (ffi.readByte(ptr + offset + 2) << 16) | (ffi.readByte(ptr + offset + 3) << 24)
 }
 
+function readU32(ptr: number, offset: number): number {
+  return ffi.readByte(ptr + offset) | (ffi.readByte(ptr + offset + 1) << 8) |
+    (ffi.readByte(ptr + offset + 2) << 16) | (ffi.readByte(ptr + offset + 3) << 24) >>> 0
+}
+
+function readU64(ptr: number, offset: number): number {
+  const lo = readU32(ptr, offset)
+  const hi = readU32(ptr, offset + 4)
+  return lo + hi * 0x100000000
+}
+
+function writeU32(ptr: number, offset: number, v: number): void {
+  ffi.writeByte(ptr + offset, v & 0xFF)
+  ffi.writeByte(ptr + offset + 1, (v >> 8) & 0xFF)
+  ffi.writeByte(ptr + offset + 2, (v >> 16) & 0xFF)
+  ffi.writeByte(ptr + offset + 3, (v >> 24) & 0xFF)
+}
+
 function bufPtr(buf: ArrayBuffer): number {
   return ffi.bufferPtr(buf)
 }
 
-const LVIF_TEXT = gui.LvItemFlag.TEXT
-const LVIF_STATE = gui.LvItemFlag.STATE
-const LVIS_FOCUSED = gui.LvItemState.FOCUSED
-const LVIS_SELECTED = gui.LvItemState.SELECTED
-const LVCF_TEXT = gui.LvColumnMask.TEXT
-const LVCF_WIDTH = gui.LvColumnMask.WIDTH
-const LVCF_FMT = gui.LvColumnMask.FORMAT
-const LVNI_SELECTED = gui.LvNavFlag.SELECTED
+const LV_WS = gui.WindowStyle.VISIBLE | gui.WindowStyle.BORDER | gui.WindowStyle.VSCROLL | gui.WindowStyle.HSCROLL
+  | gui.ListViewStyle.REPORT | gui.ListViewStyle.SINGLESEL | gui.ListViewStyle.SHOWSELALWAYS
+
+// x64 结构体偏移（NMHDR 为 24 字节）
+const CD_STAGE = 24     // NMCUSTOMDRAW.dwDrawStage
+const CD_HDC = 32       // NMCUSTOMDRAW.hdc
+const CD_ITEM = 56      // NMCUSTOMDRAW.dwItemSpec（行索引）
+const CD_CLRTEXT = 80   // NMLVCUSTOMDRAW.clrText
+const CD_CLRTEXTBK = 84 // NMLVCUSTOMDRAW.clrTextBk
+const CD_SUBITEM = 88   // NMLVCUSTOMDRAW.iSubItem
+const NMIA_ITEM = 24    // NMITEMACTIVATE.iItem
+const NMIA_SUBITEM = 28 // NMITEMACTIVATE.iSubItem
+const NM_CODE = 16      // NMHDR.code
+
+const fontCache = new Map<string, number>()
+
+let gdi32: win.HMODULE | null = null
+let createFontIndirectW: number | null = null
+let selectObjectFn: number | null = null
+let getObjectW: number | null = null
+
+function ensureGdi(): void {
+  if (gdi32 !== null) return
+  gdi32 = win.LoadLibrary('gdi32.dll')
+  if (!gdi32) return
+  createFontIndirectW = win.GetProcAddress(gdi32, 'CreateFontIndirectW')
+  selectObjectFn = win.GetProcAddress(gdi32, 'SelectObject')
+  getObjectW = win.GetProcAddress(gdi32, 'GetObjectW')
+}
+
+function getCellFont(hwnd: gui.HWND, style: CellStyle): number | null {
+  const key = (style.bold ? 'b' : '') + (style.italic ? 'i' : '') + (style.underline ? 'u' : '')
+  if (key === '') return null
+  const cached = fontCache.get(key)
+  if (cached !== undefined) return cached === 0 ? null : cached
+
+  ensureGdi()
+  if (!createFontIndirectW || !getObjectW || !hwnd) return null
+  const lf = new ArrayBuffer(92)
+  const dv = new DataView(lf)
+  const cur = gui.SendMessage(hwnd, gui.WmMsg.GETFONT, 0, 0)
+  if (cur) {
+    const got = ffi.ffiCall(getObjectW, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_SINT32, ffi.FFI_TYPE_POINTER],
+      [cur, 92, lf], ffi.FFI_TYPE_SINT32)
+    if (!got) return null
+  } else {
+    dv.setInt32(0, -13, true)
+  }
+  if (style.bold) dv.setInt32(16, gui.FontWeight.BOLD, true)
+  if (style.italic) dv.setUint8(20, 1)
+  if (style.underline) dv.setUint8(21, 1)
+  const h = ffi.ffiCall(createFontIndirectW, [ffi.FFI_TYPE_POINTER], [lf], ffi.FFI_TYPE_UINT64)
+  fontCache.set(key, h === 0 ? 0 : h)
+  return h === 0 ? null : h
+}
+
+function handleCustomDraw<D>(lParam: number, columns: Column<D>[], data: D[], hwnd: gui.HWND | null): number {
+  const stage = readU32(lParam, CD_STAGE)
+  if (stage === gui.CustomDrawStage.PREPAINT) return gui.CustomDrawFlag.NOTIFYITEMDRAW
+  if (stage === gui.CustomDrawStage.ITEMPREPAINT) return gui.CustomDrawFlag.NOTIFYSUBITEMDRAW
+  if (stage === gui.CustomDrawStage.SUBITEMPREPAINT) {
+    const colIndex = readI32(lParam, CD_SUBITEM)
+    const col = columns[colIndex]
+    if (!col || !col.cellStyle) return gui.CustomDrawFlag.DODEFAULT
+    const row = readI32(lParam, CD_ITEM)
+    const record = data[row]
+    if (record === undefined) return gui.CustomDrawFlag.DODEFAULT
+    const style = typeof col.cellStyle === 'function' ? col.cellStyle(record, row) : col.cellStyle
+    if (!style) return gui.CustomDrawFlag.DODEFAULT
+
+    if (style.color !== undefined) writeU32(lParam, CD_CLRTEXT, style.color)
+    if (style.background !== undefined) writeU32(lParam, CD_CLRTEXTBK, style.background)
+
+    const hfont = getCellFont(hwnd!, style)
+    if (hfont && selectObjectFn) {
+      const hdc = readU64(lParam, CD_HDC)
+      if (hdc) {
+        ffi.ffiCall(selectObjectFn, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64], [hdc, hfont], ffi.FFI_TYPE_UINT64)
+        return gui.CustomDrawFlag.NEWFONT
+      }
+    }
+  }
+  return gui.CustomDrawFlag.DODEFAULT
+}
+
+export type Align = 'left' | 'center' | 'right'
+
+export interface CellStyle {
+  color?: number
+  background?: number
+  bold?: boolean
+  underline?: boolean
+  italic?: boolean
+}
 
 export interface Column<D> {
   name: string
-  dataIndex: keyof D
+  dataIndex?: keyof D
+  width?: number
+  align?: Align
+  render?: (record: D, index: number) => string
+  cellStyle?: CellStyle | ((record: D, index: number) => CellStyle)
+  onCellClick?: (record: D, index: number) => void
 }
 
 export interface ListViewProps<D extends object> {
@@ -41,6 +152,40 @@ export interface ListViewProps<D extends object> {
   defaultSelectedIndex?: number
   onChange?: (index: number) => void
   style?: WStyle
+}
+
+function alignToFmt(align: Align | undefined): number {
+  if (align === 'center') return gui.LvColumnFormat.CENTER
+  if (align === 'right') return gui.LvColumnFormat.RIGHT
+  return gui.LvColumnFormat.LEFT
+}
+
+function cellText<D>(record: D, col: Column<D>, index: number): string {
+  if (col.render) return col.render(record, index)
+  if (col.dataIndex === undefined) return ''
+  const v = record[col.dataIndex!]
+  return v == null ? '' : String(v)
+}
+
+function makeLVItem(i: number, sub: number, v: { text: string } | { state: number }): ArrayBuffer {
+  const b = new ArrayBuffer(84)
+  const dv = new DataView(b)
+  dv.setInt32(4, i, true)
+  dv.setInt32(8, sub, true)
+  if ('text' in v) {
+    dv.setUint32(0, LvItemFlag.TEXT, true)
+    dv.setBigUint64(24, BigInt(bufPtr(textToUtf16(v.text))), true)
+  } else {
+    dv.setUint32(0, LvItemFlag.STATE, true)
+    dv.setUint32(12, v.state, true)
+    dv.setUint32(16, v.state, true)
+  }
+  return b
+}
+
+function setSelection(h: gui.HWND, sel: number): void {
+  if (sel < 0) return
+  gui.SendMessage(h, gui.LvMsg.SETITEMSTATE, sel, bufPtr(makeLVItem(sel, 0, { state: LvItemState.SELECTED | LvItemState.FOCUSED })))
 }
 
 const ListView = forwardRef(function ListViewInner<D extends object>(
@@ -53,15 +198,12 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
   const sel = isControlled ? controlledIndex : internalIndex
   const lvRef = useRef<gui.HWND>(null)
 
-  const lvWs = gui.WindowStyle.VISIBLE | gui.WindowStyle.BORDER | gui.WindowStyle.VSCROLL
-    | gui.ListViewStyle.REPORT | gui.ListViewStyle.SINGLESEL | gui.ListViewStyle.SHOWSELALWAYS
-
   useEffect(() => {
     const h = lvRef.current
     if (!h) return
 
     // 从后往前删旧列
-    const hdr = gui.SendMessage(h, gui.LvMsg.GETHEADER, 0, 0) as unknown as gui.HWND
+    const hdr = gui.SendMessage(h, gui.LvMsg.GETHEADER, 0, 0) as gui.HWND
     if (hdr) {
       let n = gui.SendMessage(hdr, gui.HdmMsg.GETITEMCOUNT, 0, 0)
       for (let k = n - 1; k >= 0; k--)
@@ -76,8 +218,9 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
       const titleBuf = textToUtf16(columns[j]!.name)
       const lvc = new ArrayBuffer(52)
       const dv = new DataView(lvc)
-      dv.setUint32(0, LVCF_TEXT | LVCF_WIDTH | LVCF_FMT, true)
-      dv.setInt32(8, 100, true)
+      dv.setUint32(0, LvColumnMask.TEXT | LvColumnMask.WIDTH | LvColumnMask.FORMAT, true)
+      dv.setInt32(4, alignToFmt(columns[j]!.align), true)
+      dv.setInt32(8, columns[j]!.width ?? 100, true)
       dv.setBigUint64(16, BigInt(bufPtr(titleBuf)), true)
       dv.setInt32(28, j, true)
       gui.SendMessage(h, gui.LvMsg.INSERTCOLUMNW, j, bufPtr(lvc))
@@ -92,33 +235,20 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
     const nCols = columns.length
 
     for (let i = 0; i < data.length; i++) {
-      const col0 = textToUtf16(String(data[i]![columns[0]!.dataIndex]))
-      const lvi = new ArrayBuffer(84)
-      const dv = new DataView(lvi)
-      dv.setUint32(0, LVIF_TEXT, true)
-      dv.setInt32(4, i, true)
-      dv.setBigUint64(24, BigInt(bufPtr(col0)), true)
-      gui.SendMessage(h, gui.LvMsg.INSERTITEMW, 0, bufPtr(lvi))
+      const record = data[i]!
+      gui.SendMessage(h, gui.LvMsg.INSERTITEMW, 0, bufPtr(makeLVItem(i, 0, { text: cellText(record, columns[0]!, i) })))
 
       for (let j = 1; j < nCols; j++) {
-        const colJ = textToUtf16(String(data[i]![columns[j]!.dataIndex]))
-        const sub = new ArrayBuffer(84)
-        const sdv = new DataView(sub)
-        sdv.setUint32(0, LVIF_TEXT, true)
-        sdv.setInt32(4, i, true)
-        sdv.setInt32(8, j, true)
-        sdv.setBigUint64(24, BigInt(bufPtr(colJ)), true)
-        gui.SendMessage(h, gui.LvMsg.SETITEMW, 0, bufPtr(sub))
+        gui.SendMessage(h, gui.LvMsg.SETITEMW, 0, bufPtr(makeLVItem(i, j, { text: cellText(record, columns[j]!, i) })))
       }
     }
 
-    if (sel >= 0 && sel < data.length) {
-      const lvi = new ArrayBuffer(84)
-      const dv = new DataView(lvi)
-      dv.setUint32(0, LVIF_STATE, true)
-      dv.setUint32(12, LVIS_SELECTED | LVIS_FOCUSED, true)
-      dv.setUint32(16, LVIS_SELECTED | LVIS_FOCUSED, true)
-      gui.SendMessage(h, gui.LvMsg.SETITEMSTATE, sel, bufPtr(lvi))
+    if (sel >= 0 && sel < data.length) setSelection(h, sel)
+
+    for (let j = 0; j < columns.length; j++) {
+      if (columns[j]!.width == null) {
+        gui.SendMessage(h, gui.LvMsg.SETCOLUMNWIDTH, j, gui.LvColumnWidthCmd.AUTOSIZE_USEHEADER)
+      }
     }
   }, [data, columns])
 
@@ -126,12 +256,7 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
     const h = lvRef.current
     if (!h) return
 
-    const lvi = new ArrayBuffer(84)
-    const dv = new DataView(lvi)
-    dv.setUint32(0, LVIF_STATE, true)
-    dv.setUint32(12, LVIS_SELECTED | LVIS_FOCUSED, true)
-    dv.setUint32(16, LVIS_SELECTED | LVIS_FOCUSED, true)
-    gui.SendMessage(h, gui.LvMsg.SETITEMSTATE, sel, bufPtr(lvi))
+    setSelection(h, sel)
   }, [sel])
 
   return (
@@ -141,35 +266,34 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
       ref={ref}
       onEvent={(e) => {
         if (e.msg === gui.WmMsg.NOTIFY) {
-          const code = readI32(e.lParam, 16)
+          const code = readI32(e.lParam, NM_CODE)
+          if (code === gui.LvNotifyCode.CUSTOMDRAW) {
+            return handleCustomDraw(e.lParam, columns, data, lvRef.current)
+          }
           if (code === gui.LvNotifyCode.ITEMCHANGED) {
             const h = lvRef.current
             if (!h) return
-            const newSel = gui.SendMessage(h, gui.LvMsg.GETNEXTITEM, -1, LVNI_SELECTED)
+            const newSel = gui.SendMessage(h, gui.LvMsg.GETNEXTITEM, -1, LvNavFlag.SELECTED)
             if (newSel !== sel) {
               if (!isControlled) setInternalIndex(newSel)
               onChange?.(newSel)
             }
           }
+          if (code === gui.LvNotifyCode.CLICK) {
+            const iItem = readI32(e.lParam, NMIA_ITEM)
+            const iSubItem = readI32(e.lParam, NMIA_SUBITEM)
+            const col = columns[iSubItem]
+            const record = data[iItem]
+            if (col?.onCellClick && record !== undefined) col.onCellClick(record, iItem)
+          }
         }
+        return
       }}
     >
-      <w type="SysListView32" ws={lvWs}
+      <w type="SysListView32" ws={LV_WS}
         style={{flexGrow:1}}
         ref={(h: gui.HWND) => {
           lvRef.current = h
-        }}
-        onEvent={(e) => {
-          if (e.msg === gui.WmMsg.SIZE) {
-            const w = e.lParam & 0xFFFF
-            const n = columns.length
-            const availW = w - 22
-            const colW = Math.max(80, Math.floor(availW / n))
-            for (let j = 0; j < n; j++) {
-              const cw = j < n - 1 ? colW : availW - colW * (n - 1)
-              gui.SendMessage(e.hwnd, gui.LvMsg.SETCOLUMNWIDTH, j, Math.max(80, cw))
-            }
-          }
         }}
       />
     </w>

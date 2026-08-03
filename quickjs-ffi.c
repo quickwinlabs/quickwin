@@ -122,10 +122,21 @@ static JSValue js_ffi_read_byte(JSContext *ctx, JSValueConst this_val,
     return JS_NewInt32(ctx, *(uint8_t *)(intptr_t)ptr);
 }
 
+static JSValue js_ffi_write_byte(JSContext *ctx, JSValueConst this_val,
+                                 int argc, JSValueConst *argv)
+{
+    int64_t ptr, val;
+    JS_ToInt64(ctx, &ptr, argv[0]);
+    JS_ToInt64(ctx, &val, argv[1]);
+    *(uint8_t *)(intptr_t)ptr = (uint8_t)val;
+    return JS_UNDEFINED;
+}
+
 static const JSCFunctionListEntry ffi_funcs[] = {
     JS_CFUNC_DEF("ffiCall", 4, js_ffi_call),
     JS_CFUNC_DEF("bufferPtr", 1, js_ffi_buffer_ptr),
     JS_CFUNC_DEF("readByte", 1, js_ffi_read_byte),
+    JS_CFUNC_DEF("writeByte", 2, js_ffi_write_byte),
 };
 
 #define DEF(x) JS_PROP_INT32_DEF(#x, x, JS_PROP_CONFIGURABLE)

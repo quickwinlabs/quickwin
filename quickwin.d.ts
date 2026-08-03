@@ -532,6 +532,7 @@ declare module "ffi" {
     function ffiCall<const T extends Exclude<FfiType, TYPE_OF_FFI_TYPE_VOID>[], const R extends FfiType>(func: number, argTypes: T, args: TypeArgs<T>, retType: R): R extends TYPE_OF_FFI_TYPE_VOID ? undefined : R extends TYPE_OF_FFI_TYPE_POINTER ? number | null : TypeArg<R>;
     function bufferPtr(buf: ArrayBuffer): number;
     function readByte(ptr: number): number;
+    function writeByte(ptr: number, value: number): void;
 }
 
 

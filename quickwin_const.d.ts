@@ -353,8 +353,24 @@ declare module "gui" {
         TEXT = 4, // 0x4
     }
 
+    export const enum LvColumnFormat {
+        LEFT = 0, // 0x0
+        CENTER = 2, // 0x2
+        RIGHT = 1, // 0x1
+    }
+
+    export const enum FontWeight {
+        NORMAL = 400, // 0x190
+        BOLD = 700, // 0x2BC
+    }
+
     export const enum LvNavFlag {
         SELECTED = 2, // 0x2
+    }
+
+    export const enum LvColumnWidthCmd {
+        AUTOSIZE = -1, // 0xFFFFFFFF
+        AUTOSIZE_USEHEADER = -2, // 0xFFFFFFFE
     }
 
     export const enum HdmMsg {
@@ -363,6 +379,23 @@ declare module "gui" {
 
     export const enum LvNotifyCode {
         ITEMCHANGED = -101, // 0xFFFFFF9B
+        CLICK = -2, // 0xFFFFFFFE
+        CUSTOMDRAW = -12, // 0xFFFFFFF4
+    }
+
+    export const enum CustomDrawStage {
+        PREPAINT = 1, // 0x1
+        ITEM = 65536, // 0x10000
+        SUBITEM = 131072, // 0x20000
+        ITEMPREPAINT = 65537, // 0x10001
+        SUBITEMPREPAINT = 196609, // 0x30001
+    }
+
+    export const enum CustomDrawFlag {
+        DODEFAULT = 0, // 0x0
+        NEWFONT = 2, // 0x2
+        NOTIFYITEMDRAW = 32, // 0x20
+        NOTIFYSUBITEMDRAW = 32, // 0x20
     }
 
     export const enum ShowWindowCmd {
