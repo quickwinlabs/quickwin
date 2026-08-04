@@ -6,6 +6,7 @@
 
 #include "quickjs.h"
 #include "quickjs-wolfssl.h"
+#include "quickjs-args.h"
 
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
@@ -88,10 +89,9 @@ static JSValue js_wolfSSL_free(JSContext *ctx, JSValueConst this_val, int argc, 
 static JSValue js_wolfSSL_set_fd(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     int64_t ssl_ptr;
-    int fd;
-    
     if (JS_ToInt64(ctx, &ssl_ptr, argv[0]))
         return JS_ThrowTypeError(ctx, "ssl pointer required");
+    int fd;
     if (JS_ToInt32(ctx, &fd, argv[1]))
         return JS_ThrowTypeError(ctx, "fd required");
     
@@ -117,13 +117,12 @@ static JSValue js_wolfSSL_read(JSContext *ctx, JSValueConst this_val, int argc, 
 {
     int64_t ssl_ptr;
     int size = 4096;
-    
+
     if (JS_ToInt64(ctx, &ssl_ptr, argv[0]))
         return JS_ThrowTypeError(ctx, "ssl pointer required");
-    
-    if (argc > 1 && !JS_IsUndefined(argv[1])) {
+
+    if (argc > 1 && !JS_IsUndefined(argv[1]))
         JS_ToInt32(ctx, &size, argv[1]);
-    }
     
     WOLFSSL *ssl = (WOLFSSL *)(size_t)ssl_ptr;
     uint8_t *buf = malloc(size);
@@ -175,10 +174,9 @@ static JSValue js_wolfSSL_shutdown(JSContext *ctx, JSValueConst this_val, int ar
 static JSValue js_wolfSSL_get_error(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     int64_t ssl_ptr;
-    int ret;
-    
     if (JS_ToInt64(ctx, &ssl_ptr, argv[0]))
         return JS_ThrowTypeError(ctx, "ssl pointer required");
+    int ret;
     if (JS_ToInt32(ctx, &ret, argv[1]))
         return JS_ThrowTypeError(ctx, "ret required");
     
@@ -204,10 +202,9 @@ static JSValue js_wolfSSL_ERR_error_string(JSContext *ctx, JSValueConst this_val
 static JSValue js_wolfSSL_CTX_set_verify(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     int64_t ctx_ptr;
-    int mode;
-    
     if (JS_ToInt64(ctx, &ctx_ptr, argv[0]))
         return JS_ThrowTypeError(ctx, "ctx pointer required");
+    int mode;
     if (JS_ToInt32(ctx, &mode, argv[1]))
         return JS_ThrowTypeError(ctx, "mode required");
     
@@ -239,7 +236,6 @@ static JSValue js_wolfSSL_CTX_load_verify_locations(JSContext *ctx, JSValueConst
 static JSValue js_wolfSSL_CTX_use_certificate_file(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     int64_t ctx_ptr;
-    int type = SSL_FILETYPE_PEM;
     
     if (JS_ToInt64(ctx, &ctx_ptr, argv[0]))
         return JS_ThrowTypeError(ctx, "ctx pointer required");
@@ -248,9 +244,7 @@ static JSValue js_wolfSSL_CTX_use_certificate_file(JSContext *ctx, JSValueConst 
     if (!file)
         return JS_ThrowTypeError(ctx, "file path required");
     
-    if (argc > 2 && !JS_IsUndefined(argv[2])) {
-        JS_ToInt32(ctx, &type, argv[2]);
-    }
+    GET_INT32_OPT(ctx, argv[2], type, SSL_FILETYPE_PEM);
     
     WOLFSSL_CTX *ssl_ctx = (WOLFSSL_CTX *)(size_t)ctx_ptr;
     int ret = wolfSSL_CTX_use_certificate_file(ssl_ctx, file, type);
@@ -263,7 +257,6 @@ static JSValue js_wolfSSL_CTX_use_certificate_file(JSContext *ctx, JSValueConst 
 static JSValue js_wolfSSL_CTX_use_PrivateKey_file(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     int64_t ctx_ptr;
-    int type = SSL_FILETYPE_PEM;
     
     if (JS_ToInt64(ctx, &ctx_ptr, argv[0]))
         return JS_ThrowTypeError(ctx, "ctx pointer required");
@@ -272,9 +265,7 @@ static JSValue js_wolfSSL_CTX_use_PrivateKey_file(JSContext *ctx, JSValueConst t
     if (!file)
         return JS_ThrowTypeError(ctx, "file path required");
     
-    if (argc > 2 && !JS_IsUndefined(argv[2])) {
-        JS_ToInt32(ctx, &type, argv[2]);
-    }
+    GET_INT32_OPT(ctx, argv[2], type, SSL_FILETYPE_PEM);
     
     WOLFSSL_CTX *ssl_ctx = (WOLFSSL_CTX *)(size_t)ctx_ptr;
     int ret = wolfSSL_CTX_use_PrivateKey_file(ssl_ctx, file, type);
@@ -287,10 +278,9 @@ static JSValue js_wolfSSL_CTX_use_PrivateKey_file(JSContext *ctx, JSValueConst t
 static JSValue js_wolfSSL_UseSNI(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     int64_t ssl_ptr;
-    int type;
-    
     if (JS_ToInt64(ctx, &ssl_ptr, argv[0]))
         return JS_ThrowTypeError(ctx, "ssl pointer required");
+    int type;
     if (JS_ToInt32(ctx, &type, argv[1]))
         return JS_ThrowTypeError(ctx, "type required");
     

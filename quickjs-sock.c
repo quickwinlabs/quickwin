@@ -8,6 +8,7 @@
 #include "quickjs.h"
 #include "quickjs-libc.h"
 #include "quickjs-sock.h"
+#include "quickjs-args.h"
 #include "quickjs/cutils.h"
 
 #ifndef countof
@@ -231,13 +232,9 @@ static SockHandle *make_slot(SockRuntime *r, JSRuntime *rt)
 
 static JSValue js_socket(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int af = AF_INET;
-    int type = SOCK_STREAM;
-    int protocol = 0;
-
-    if (argc > 0) JS_ToInt32(ctx, &af, argv[0]);
-    if (argc > 1) JS_ToInt32(ctx, &type, argv[1]);
-    if (argc > 2) JS_ToInt32(ctx, &protocol, argv[2]);
+    GET_INT32_OPT(ctx, argv[0], af, AF_INET);
+    GET_INT32_OPT(ctx, argv[1], type, SOCK_STREAM);
+    GET_INT32_OPT(ctx, argv[2], protocol, 0);
 
     SOCKET fd = socket(af, type, protocol);
     if (fd == INVALID_SOCKET)
@@ -376,15 +373,13 @@ static JSValue js_recv(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
     if (!sock || sock->fd < 0)
         return JS_ThrowTypeError(ctx, "Invalid sock handle");
 
-    int size = 4096;
-    if (argc > 1) JS_ToInt32(ctx, &size, argv[1]);
+    GET_INT32_OPT(ctx, argv[1], size, 4096);
 
     uint8_t *buf = malloc(size);
     if (!buf)
         return JS_ThrowTypeError(ctx, "Out of memory");
 
-    int flags = 0;
-    if (argc > 2) JS_ToInt32(ctx, &flags, argv[2]);
+    GET_INT32_OPT(ctx, argv[2], flags, 0);
 
     int ret = recv(sock->fd, (char*)buf, size, flags);
     if (ret <= 0) {
@@ -432,8 +427,7 @@ static JSValue js_shutdown(JSContext *ctx, JSValueConst this_val, int argc, JSVa
     if (!sock || sock->fd < 0)
         return JS_NewInt32(ctx, -1);
 
-    int how = SD_BOTH;
-    if (argc > 1) JS_ToInt32(ctx, &how, argv[1]);
+    GET_INT32_OPT(ctx, argv[1], how, SD_BOTH);
 
     int ret = shutdown(sock->fd, how);
     return JS_NewInt32(ctx, ret);

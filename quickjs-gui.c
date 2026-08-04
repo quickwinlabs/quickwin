@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "quickjs-gui.h"
+#include "quickjs-args.h"
 
 JSContext *g_ctx = NULL;
 
@@ -248,9 +249,7 @@ static JSValue js_createWindow(JSContext *ctx, JSValueConst this_val, int argc, 
 
 static JSValue js_showWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t hwnd_val;
-    JS_ToInt64(ctx, &hwnd_val, argv[0]);
-    HWND hwnd = (HWND)hwnd_val;
+    HWND hwnd = toHWND(ctx, argv[0]);
     int nCmdShow = SW_SHOWNORMAL;
     if (argc > 1)
     {
@@ -265,9 +264,7 @@ static JSValue js_showWindow(JSContext *ctx, JSValueConst this_val, int argc, JS
 
 static JSValue js_setWndProc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t hwnd_val;
-    JS_ToInt64(ctx, &hwnd_val, argv[0]);
-    HWND hwnd = (HWND)hwnd_val;
+    HWND hwnd = toHWND(ctx, argv[0]);
 
     int idx = findWindowIndex(hwnd);
     if (idx >= 0)
@@ -314,9 +311,7 @@ static BOOL unsetWindowProcInternal(HWND hwnd)
 
 static JSValue js_unsetWindowProc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t hwnd_val;
-    JS_ToInt64(ctx, &hwnd_val, argv[0]);
-    HWND hwnd = (HWND)hwnd_val;
+    HWND hwnd = toHWND(ctx, argv[0]);
     return JS_NewBool(ctx, unsetWindowProcInternal(hwnd));
 }
 
@@ -336,9 +331,7 @@ static void cleanupWindowAndChildren(HWND hwnd)
 
 static JSValue js_destroyWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t hwnd_val;
-    JS_ToInt64(ctx, &hwnd_val, argv[0]);
-    HWND hwnd = (HWND)hwnd_val;
+    HWND hwnd = toHWND(ctx, argv[0]);
     
     cleanupWindowAndChildren(hwnd);
     BOOL result = DestroyWindow(hwnd);
@@ -347,11 +340,8 @@ static JSValue js_destroyWindow(JSContext *ctx, JSValueConst this_val, int argc,
 
 static JSValue js_getWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t hwnd_val;
-    int32_t cmd;
-    JS_ToInt64(ctx, &hwnd_val, argv[0]);
-    JS_ToInt32(ctx, &cmd, argv[1]);
-    HWND hwnd = (HWND)hwnd_val;
+    HWND hwnd = toHWND(ctx, argv[0]);
+    GET_INT32(ctx, argv[1], cmd);
     
     HWND result = GetWindow(hwnd, cmd);
     return JS_NewInt64(ctx, (int64_t)result);
@@ -360,10 +350,9 @@ static JSValue js_getWindow(JSContext *ctx, JSValueConst this_val, int argc, JSV
 static JSValue js_CallWindowProc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     int64_t wndProc, hwnd, wParam, lParam;
-    int32_t msg;
     JS_ToInt64(ctx, &wndProc, argv[0]);
     JS_ToInt64(ctx, &hwnd, argv[1]);
-    JS_ToInt32(ctx, &msg, argv[2]);
+    GET_INT32(ctx, argv[2], msg);
     JS_ToInt64(ctx, &wParam, argv[3]);
     JS_ToInt64(ctx, &lParam, argv[4]);
     LRESULT result = CallWindowProcW((WNDPROC)wndProc, (HWND)hwnd, msg, wParam, lParam);
@@ -372,9 +361,7 @@ static JSValue js_CallWindowProc(JSContext *ctx, JSValueConst this_val, int argc
 
 static JSValue js_setWindowText(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t hwnd_val;
-    JS_ToInt64(ctx, &hwnd_val, argv[0]);
-    HWND hwnd = (HWND)hwnd_val;
+    HWND hwnd = toHWND(ctx, argv[0]);
     const char *text = JS_ToCString(ctx, argv[1]);
     wchar_t *wtext = utf8ToWide(text);
     SetWindowTextW(hwnd, wtext);
@@ -397,9 +384,8 @@ static JSValue js_getWindowText(JSContext *ctx, JSValueConst this_val, int argc,
 static JSValue js_DefWindowProc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     int64_t hwnd, wParam, lParam;
-    int32_t msg;
     JS_ToInt64(ctx, &hwnd, argv[0]);
-    JS_ToInt32(ctx, &msg, argv[1]);
+    GET_INT32(ctx, argv[1], msg);
     JS_ToInt64(ctx, &wParam, argv[2]);
     JS_ToInt64(ctx, &lParam, argv[3]);
     LRESULT ret = DefWindowProcW((HWND)hwnd, msg, wParam, lParam);
@@ -408,8 +394,7 @@ static JSValue js_DefWindowProc(JSContext *ctx, JSValueConst this_val, int argc,
 
 static JSValue js_PostQuitMessage(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int32_t exitCode;
-    JS_ToInt32(ctx, &exitCode, argv[0]);
+    GET_INT32(ctx, argv[0], exitCode);
     PostQuitMessage(exitCode);
     return JS_UNDEFINED;
 }
@@ -417,10 +402,9 @@ static JSValue js_PostQuitMessage(JSContext *ctx, JSValueConst this_val, int arg
 static JSValue js_SendMessage(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     int64_t wParam;
-    int32_t msg;
     LRESULT result;
     HWND hwnd = toHWND(ctx, argv[0]);
-    JS_ToInt32(ctx, &msg, argv[1]);
+    GET_INT32(ctx, argv[1], msg);
     JS_ToInt64(ctx, &wParam, argv[2]);
     if (JS_IsString(argv[3]))
     {
@@ -478,22 +462,19 @@ static JSValue js_createSystemDpiFont(JSContext *ctx, JSValueConst this_val, int
 
 static JSValue js_GetWindowLongPtr(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t hwnd_val;
-    int32_t nIndex;
-    JS_ToInt64(ctx, &hwnd_val, argv[0]);
-    JS_ToInt32(ctx, &nIndex, argv[1]);
-    LONG_PTR result = GetWindowLongPtrW((HWND)hwnd_val, nIndex);
+    HWND hwnd = toHWND(ctx, argv[0]);
+    GET_INT32(ctx, argv[1], nIndex);
+    LONG_PTR result = GetWindowLongPtrW(hwnd, nIndex);
     return JS_NewInt64(ctx, result);
 }
 
 static JSValue js_SetWindowLongPtr(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t hwnd_val, newLong;
-    int32_t nIndex;
-    JS_ToInt64(ctx, &hwnd_val, argv[0]);
-    JS_ToInt32(ctx, &nIndex, argv[1]);
+    HWND hwnd = toHWND(ctx, argv[0]);
+    GET_INT32(ctx, argv[1], nIndex);
+    int64_t newLong;
     JS_ToInt64(ctx, &newLong, argv[2]);
-    LONG_PTR result = SetWindowLongPtrW((HWND)hwnd_val, nIndex, newLong);
+    LONG_PTR result = SetWindowLongPtrW(hwnd, nIndex, newLong);
     return JS_NewInt64(ctx, result);
 }
 
@@ -501,8 +482,7 @@ static JSValue js_SetWindowLongPtr(JSContext *ctx, JSValueConst this_val, int ar
 
 static JSValue js_shellNotifyIcon(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int32_t cmd;
-    JS_ToInt32(ctx, &cmd, argv[0]);
+    GET_INT32(ctx, argv[0], cmd);
 
     NOTIFYICONDATAW nid = {0};
     nid.cbSize = sizeof(NOTIFYICONDATAW);
@@ -598,19 +578,17 @@ static JSValue js_createBitmapFromPixels(JSContext *ctx, JSValueConst this_val, 
 static JSValue js_deleteObject(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     (void)this_val;
-    int64_t h = 0;
-    if (argc > 0) JS_ToInt64(ctx, &h, argv[0]);
+    GET_INT64_OPT(ctx, argv[0], h, 0);
     return JS_NewBool(ctx, DeleteObject((HGDIOBJ)h));
 }
 
 static JSValue js_imageListCreate(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int cx = 16, cy = 16, flags = ILC_COLOR32, initial = 0, grow = 0;
-    if (argc > 0 && JS_IsNumber(argv[0])) JS_ToInt32(ctx, &cx, argv[0]);
-    if (argc > 1 && JS_IsNumber(argv[1])) JS_ToInt32(ctx, &cy, argv[1]);
-    if (argc > 2 && JS_IsNumber(argv[2])) JS_ToInt32(ctx, &flags, argv[2]);
-    if (argc > 3 && JS_IsNumber(argv[3])) JS_ToInt32(ctx, &initial, argv[3]);
-    if (argc > 4 && JS_IsNumber(argv[4])) JS_ToInt32(ctx, &grow, argv[4]);
+    GET_INT32_OPT(ctx, argv[0], cx, 16);
+    GET_INT32_OPT(ctx, argv[1], cy, 16);
+    GET_INT32_OPT(ctx, argv[2], flags, ILC_COLOR32);
+    GET_INT32_OPT(ctx, argv[3], initial, 0);
+    GET_INT32_OPT(ctx, argv[4], grow, 0);
     HIMAGELIST il = ImageList_Create(cx, cy, flags, initial, grow);
     if (il) return JS_NewInt64(ctx, (int64_t)il);
     return JS_NULL;
@@ -618,17 +596,15 @@ static JSValue js_imageListCreate(JSContext *ctx, JSValueConst this_val, int arg
 
 static JSValue js_imageListAdd(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t himl = 0, hbm = 0;
-    if (argc > 0) JS_ToInt64(ctx, &himl, argv[0]);
-    if (argc > 1) JS_ToInt64(ctx, &hbm, argv[1]);
+    GET_INT64_OPT(ctx, argv[0], himl, 0);
+    GET_INT64_OPT(ctx, argv[1], hbm, 0);
     int index = ImageList_Add((HIMAGELIST)himl, (HBITMAP)hbm, NULL);
     return JS_NewInt32(ctx, index);
 }
 
 static JSValue js_imageListDestroy(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t himl = 0;
-    if (argc > 0) JS_ToInt64(ctx, &himl, argv[0]);
+    GET_INT64_OPT(ctx, argv[0], himl, 0);
     BOOL ok = ImageList_Destroy((HIMAGELIST)himl);
     return JS_NewBool(ctx, ok);
 }
@@ -663,8 +639,7 @@ static JSValue js_trackPopupMenu(JSContext *ctx, JSValueConst this_val, int argc
     UINT flags = TPM_RETURNCMD | TPM_RIGHTBUTTON;
 
     if (argc >= 4) {
-        int32_t f;
-        JS_ToInt32(ctx, &f, argv[3]);
+        GET_INT32(ctx, argv[3], f);
         if (f) flags = (UINT)f;
     }
 
@@ -685,8 +660,8 @@ static JSValue js_destroyMenu(JSContext *ctx, JSValueConst this_val, int argc, J
 
 static JSValue js_setForegroundWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t hwnd_val; JS_ToInt64(ctx, &hwnd_val, argv[0]);
-    return JS_NewBool(ctx, SetForegroundWindow((HWND)hwnd_val));
+    HWND hwnd = toHWND(ctx, argv[0]);
+    return JS_NewBool(ctx, SetForegroundWindow(hwnd));
 }
 
 static JSValue js_getCursorPos(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -712,10 +687,9 @@ static JSValue js_getScreenSize(JSContext *ctx, JSValueConst this_val, int argc,
 
 static JSValue js_getClientRect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t hwnd_val;
-    JS_ToInt64(ctx, &hwnd_val, argv[0]);
+    HWND hwnd = toHWND(ctx, argv[0]);
     RECT rect;
-    if (!GetClientRect((HWND)hwnd_val, &rect))
+    if (!GetClientRect(hwnd, &rect))
         return JS_NULL;
     JSValue obj = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, obj, "left",   JS_NewInt32(ctx, rect.left));
@@ -727,10 +701,9 @@ static JSValue js_getClientRect(JSContext *ctx, JSValueConst this_val, int argc,
 
 static JSValue js_getWindowRect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t hwnd_val;
-    JS_ToInt64(ctx, &hwnd_val, argv[0]);
+    HWND hwnd = toHWND(ctx, argv[0]);
     RECT rect;
-    if (!GetWindowRect((HWND)hwnd_val, &rect))
+    if (!GetWindowRect(hwnd, &rect))
         return JS_NULL;
     JSValue obj = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, obj, "left",   JS_NewInt32(ctx, rect.left));
@@ -742,8 +715,7 @@ static JSValue js_getWindowRect(JSContext *ctx, JSValueConst this_val, int argc,
 
 static JSValue js_invalidateRect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t hwnd;
-    JS_ToInt64(ctx, &hwnd, argv[0]);
+    HWND hwnd = toHWND(ctx, argv[0]);
     RECT rect, *pr = NULL;
     if (argc > 1) {
         JSValue r = argv[1];
@@ -760,31 +732,27 @@ static JSValue js_invalidateRect(JSContext *ctx, JSValueConst this_val, int argc
     BOOL erase = TRUE;
     if (argc > 2)
         erase = JS_ToBool(ctx, argv[2]);
-    InvalidateRect((HWND)hwnd, pr, erase);
+    InvalidateRect(hwnd, pr, erase);
     return JS_UNDEFINED;
 }
 
 static JSValue js_updateWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t hwnd;
-    JS_ToInt64(ctx, &hwnd, argv[0]);
-    UpdateWindow((HWND)hwnd);
+    HWND hwnd = toHWND(ctx, argv[0]);
+    UpdateWindow(hwnd);
     return JS_UNDEFINED;
 }
 
 static JSValue js_isWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t hwnd;
-    JS_ToInt64(ctx, &hwnd, argv[0]);
-    return JS_NewBool(ctx, IsWindow((HWND)hwnd));
+    HWND hwnd = toHWND(ctx, argv[0]);
+    return JS_NewBool(ctx, IsWindow(hwnd));
 }
 
 static JSValue js_setScrollInfo(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t hwnd;
-    int32_t bar;
-    JS_ToInt64(ctx, &hwnd, argv[0]);
-    JS_ToInt32(ctx, &bar, argv[1]);
+    HWND hwnd = toHWND(ctx, argv[0]);
+    GET_INT32(ctx, argv[1], bar);
     JSValue info = argv[2];
 
     SCROLLINFO si;
@@ -835,20 +803,18 @@ static JSValue js_setScrollInfo(JSContext *ctx, JSValueConst this_val, int argc,
     if (argc > 3)
         redraw = JS_ToBool(ctx, argv[3]);
 
-    return JS_NewInt32(ctx, SetScrollInfo((HWND)hwnd, bar, &si, redraw));
+    return JS_NewInt32(ctx, SetScrollInfo(hwnd, bar, &si, redraw));
 }
 
 static JSValue js_getScrollInfo(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t hwnd;
-    int32_t bar;
-    JS_ToInt64(ctx, &hwnd, argv[0]);
-    JS_ToInt32(ctx, &bar, argv[1]);
+    HWND hwnd = toHWND(ctx, argv[0]);
+    GET_INT32(ctx, argv[1], bar);
     SCROLLINFO si;
     memset(&si, 0, sizeof(si));
     si.cbSize = sizeof(SCROLLINFO);
     si.fMask = SIF_ALL;
-    GetScrollInfo((HWND)hwnd, bar, &si);
+    GetScrollInfo(hwnd, bar, &si);
     JSValue obj = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, obj, "pos",      JS_NewInt32(ctx, si.nPos));
     JS_SetPropertyStr(ctx, obj, "page",     JS_NewInt32(ctx, si.nPage));
@@ -860,13 +826,10 @@ static JSValue js_getScrollInfo(JSContext *ctx, JSValueConst this_val, int argc,
 
 static JSValue js_showScrollBar(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    int64_t hwnd;
-    int32_t bar;
-    BOOL show;
-    JS_ToInt64(ctx, &hwnd, argv[0]);
-    JS_ToInt32(ctx, &bar, argv[1]);
-    show = JS_ToBool(ctx, argv[2]);
-    return JS_NewBool(ctx, ShowScrollBar((HWND)hwnd, bar, show));
+    HWND hwnd = toHWND(ctx, argv[0]);
+    GET_INT32(ctx, argv[1], bar);
+    BOOL show = JS_ToBool(ctx, argv[2]);
+    return JS_NewBool(ctx, ShowScrollBar(hwnd, bar, show));
 }
 
 /* ─── Win32 parent/position/state ───────────────────────────── */

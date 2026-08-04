@@ -1,4 +1,5 @@
 #include "quickjs-wamr.h"
+#include "quickjs-args.h"
 #include "wasm_export.h"
 #include "wasm.h"
 #include "cutils.h"
@@ -156,9 +157,7 @@ static void wasm_call_js_bridge(wasm_exec_env_t exec_env, uint64_t *args)
         {
         case WASM_I32:
         {
-            int32_t v;
-            JS_ToInt32(ctx, &v, ret);
-            // TODO: check
+            GET_INT32(ctx, ret, v);
             ((int32_t *)args)[0] = v;
             break;
         }
@@ -759,12 +758,9 @@ static JSValue js_wasm_memory_ctor(JSContext *ctx, JSValueConst new_target,
     JSValue init_val = JS_GetPropertyStr(ctx, desc, "initial");
     JSValue max_val = JS_GetPropertyStr(ctx, desc, "maximum");
 
-    int32_t initial = 1, maximum = -1;
-    if (JS_IsNumber(init_val))
-        JS_ToInt32(ctx, &initial, init_val);
+    GET_INT32_OPT(ctx, init_val, initial, 1);
     JS_FreeValue(ctx, init_val);
-    if (JS_IsNumber(max_val))
-        JS_ToInt32(ctx, &maximum, max_val);
+    GET_INT32_OPT(ctx, max_val, maximum, -1);
     JS_FreeValue(ctx, max_val);
 
     if (initial < 0)
@@ -852,9 +848,7 @@ static JSValue js_wasm_memory_grow(JSContext *ctx, JSValueConst this_val,
     if (!wm)
         return JS_EXCEPTION;
 
-    int32_t delta = 1;
-    if (argc >= 1 && JS_IsNumber(argv[0]))
-        JS_ToInt32(ctx, &delta, argv[0]);
+    GET_INT32_OPT(ctx, argv[0], delta, 1);
 
     if (delta < 0)
         return JS_ThrowTypeError(ctx, "WebAssembly.Memory.grow: delta must be non-negative");
@@ -945,7 +939,7 @@ static JSValue js_wasm_table_entry_bridge(JSContext *ctx, JSValueConst this_val,
     for (uint32_t i = 0; i < param_count; i++) {
         wasm_args[i].kind = param_types[i];
         switch (param_types[i]) {
-        case WASM_I32: { int32_t v; JS_ToInt32(ctx, &v, argv[i]); wasm_args[i].of.i32 = v; break; }
+        case WASM_I32: { GET_INT32(ctx, argv[i], v); wasm_args[i].of.i32 = v; break; }
         case WASM_I64: { int64_t v; JS_ToInt64(ctx, &v, argv[i]); wasm_args[i].of.i64 = v; break; }
         case WASM_F32: { double d; JS_ToFloat64(ctx, &d, argv[i]); wasm_args[i].of.f32 = (float)d; break; }
         case WASM_F64: { double d; JS_ToFloat64(ctx, &d, argv[i]); wasm_args[i].of.f64 = d; break; }
@@ -1017,8 +1011,7 @@ static JSValue js_wasm_table_get(JSContext *ctx, JSValueConst this_val,
     if (argc < 1 || !JS_IsNumber(argv[0]))
         return JS_ThrowTypeError(ctx, "WebAssembly.Table.get: index must be a number");
 
-    int32_t index;
-    JS_ToInt32(ctx, &index, argv[0]);
+    GET_INT32(ctx, argv[0], index);
 
     if (index < 0 || (uint32_t)index >= wt->table_inst.cur_size)
         return JS_ThrowRangeError(ctx, "WebAssembly.Table.get: index out of bounds");
@@ -1130,7 +1123,7 @@ JSValue js_call_wasm_bridge(JSContext *ctx, JSValueConst this_val,
     for (uint32_t i = 0; i < param_count; i++) {
         wasm_args[i].kind = param_types[i];
         switch (param_types[i]) {
-        case WASM_I32: { int32_t v; JS_ToInt32(ctx, &v, argv[i]); wasm_args[i].of.i32 = v; DEBUG_PRINTF("  arg[%u]=i32:%d\n", i, v); break; }
+        case WASM_I32: { GET_INT32(ctx, argv[i], v); wasm_args[i].of.i32 = v; DEBUG_PRINTF("  arg[%u]=i32:%d\n", i, v); break; }
         case WASM_I64: { int64_t v; JS_ToInt64(ctx, &v, argv[i]); wasm_args[i].of.i64 = v; DEBUG_PRINTF("  arg[%u]=i64:%lld\n", i, (long long)v); break; }
         case WASM_F32: { double d; JS_ToFloat64(ctx, &d, argv[i]); wasm_args[i].of.f32 = (float)d; DEBUG_PRINTF("  arg[%u]=f32:%f\n", i, (float)d); break; }
         case WASM_F64: { double d; JS_ToFloat64(ctx, &d, argv[i]); wasm_args[i].of.f64 = d; DEBUG_PRINTF("  arg[%u]=f64:%f\n", i, d); break; }
