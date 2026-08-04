@@ -378,6 +378,7 @@ declare module "gui" {
     }
 
     export const enum LvNotifyCode {
+        ITEMCHANGING = -100, // 0xFFFFFF9C
         ITEMCHANGED = -101, // 0xFFFFFF9B
         CLICK = -2, // 0xFFFFFFFE
         CUSTOMDRAW = -12, // 0xFFFFFFF4

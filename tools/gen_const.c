@@ -400,6 +400,7 @@ static void print_enums(void) {
     printf("    }\n\n");
 
     printf("    export const enum LvNotifyCode {\n");
+    DEC(ITEMCHANGING, LVN_ITEMCHANGING);
     DEC(ITEMCHANGED, LVN_ITEMCHANGED);
     DEC(CLICK, NM_CLICK);
     DEC(CUSTOMDRAW, NM_CUSTOMDRAW);

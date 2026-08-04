@@ -1,6 +1,6 @@
-import { forwardRef, useRef, useEffect, useState, type ForwardedRef } from 'react'
+import { forwardRef, useRef, useEffect, type ForwardedRef } from 'react'
 import * as gui from 'gui'
-import { LvItemFlag, LvItemState, LvColumnMask, LvNavFlag } from 'gui'
+import { LvItemFlag, LvItemState, LvColumnMask } from 'gui'
 import * as ffi from 'ffi'
 import * as win from 'win'
 import type { WStyle } from '../jsx.d.ts'
@@ -41,7 +41,7 @@ function bufPtr(buf: ArrayBuffer): number {
 }
 
 const LV_WS = gui.WindowStyle.VISIBLE | gui.WindowStyle.BORDER | gui.WindowStyle.VSCROLL | gui.WindowStyle.HSCROLL
-  | gui.ListViewStyle.REPORT | gui.ListViewStyle.SINGLESEL | gui.ListViewStyle.SHOWSELALWAYS
+  | gui.ListViewStyle.REPORT | gui.ListViewStyle.SINGLESEL
 
 // x64 结构体偏移（NMHDR 为 24 字节）
 const CD_STAGE = 24     // NMCUSTOMDRAW.dwDrawStage
@@ -148,9 +148,6 @@ export interface Column<D> {
 export interface ListViewProps<D extends object> {
   columns: Column<D>[]
   data: D[]
-  selectedIndex?: number
-  defaultSelectedIndex?: number
-  onChange?: (index: number) => void
   style?: WStyle
 }
 
@@ -167,35 +164,20 @@ function cellText<D>(record: D, col: Column<D>, index: number): string {
   return v == null ? '' : String(v)
 }
 
-function makeLVItem(i: number, sub: number, v: { text: string } | { state: number }): ArrayBuffer {
+function makeLVItem(i: number, sub: number, text: string): ArrayBuffer {
   const b = new ArrayBuffer(84)
   const dv = new DataView(b)
   dv.setInt32(4, i, true)
   dv.setInt32(8, sub, true)
-  if ('text' in v) {
-    dv.setUint32(0, LvItemFlag.TEXT, true)
-    dv.setBigUint64(24, BigInt(bufPtr(textToUtf16(v.text))), true)
-  } else {
-    dv.setUint32(0, LvItemFlag.STATE, true)
-    dv.setUint32(12, v.state, true)
-    dv.setUint32(16, v.state, true)
-  }
+  dv.setUint32(0, LvItemFlag.TEXT, true)
+  dv.setBigUint64(24, BigInt(bufPtr(textToUtf16(text))), true)
   return b
 }
 
-function setSelection(h: gui.HWND, sel: number): void {
-  if (sel < 0) return
-  gui.SendMessage(h, gui.LvMsg.SETITEMSTATE, sel, bufPtr(makeLVItem(sel, 0, { state: LvItemState.SELECTED | LvItemState.FOCUSED })))
-}
-
 const ListView = forwardRef(function ListViewInner<D extends object>(
-  { columns, data, selectedIndex: controlledIndex, defaultSelectedIndex = -1,
-    onChange, style }: ListViewProps<D>,
+  { columns, data, style }: ListViewProps<D>,
   ref: ForwardedRef<gui.HWND>
 ) {
-  const [internalIndex, setInternalIndex] = useState(defaultSelectedIndex)
-  const isControlled = controlledIndex !== undefined
-  const sel = isControlled ? controlledIndex : internalIndex
   const lvRef = useRef<gui.HWND>(null)
 
   useEffect(() => {
@@ -236,14 +218,12 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
 
     for (let i = 0; i < data.length; i++) {
       const record = data[i]!
-      gui.SendMessage(h, gui.LvMsg.INSERTITEMW, 0, bufPtr(makeLVItem(i, 0, { text: cellText(record, columns[0]!, i) })))
+      gui.SendMessage(h, gui.LvMsg.INSERTITEMW, 0, bufPtr(makeLVItem(i, 0, cellText(record, columns[0]!, i))))
 
       for (let j = 1; j < nCols; j++) {
-        gui.SendMessage(h, gui.LvMsg.SETITEMW, 0, bufPtr(makeLVItem(i, j, { text: cellText(record, columns[j]!, i) })))
+        gui.SendMessage(h, gui.LvMsg.SETITEMW, 0, bufPtr(makeLVItem(i, j, cellText(record, columns[j]!, i))))
       }
     }
-
-    if (sel >= 0 && sel < data.length) setSelection(h, sel)
 
     for (let j = 0; j < columns.length; j++) {
       if (columns[j]!.width == null) {
@@ -251,13 +231,6 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
       }
     }
   }, [data, columns])
-
-  useEffect(() => {
-    const h = lvRef.current
-    if (!h) return
-
-    setSelection(h, sel)
-  }, [sel])
 
   return (
     <w type="STATIC"
@@ -270,14 +243,10 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
           if (code === gui.LvNotifyCode.CUSTOMDRAW) {
             return handleCustomDraw(e.lParam, columns, data, lvRef.current)
           }
-          if (code === gui.LvNotifyCode.ITEMCHANGED) {
-            const h = lvRef.current
-            if (!h) return
-            const newSel = gui.SendMessage(h, gui.LvMsg.GETNEXTITEM, -1, LvNavFlag.SELECTED)
-            if (newSel !== sel) {
-              if (!isControlled) setInternalIndex(newSel)
-              onChange?.(newSel)
-            }
+          if (code === gui.LvNotifyCode.ITEMCHANGING) {
+            const uNewState = readU32(e.lParam, 32)
+            const uOldState = readU32(e.lParam, 36)
+            if ((uNewState & LvItemState.SELECTED) !== (uOldState & LvItemState.SELECTED)) return 1
           }
           if (code === gui.LvNotifyCode.CLICK) {
             const iItem = readI32(e.lParam, NMIA_ITEM)

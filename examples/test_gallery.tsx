@@ -59,7 +59,6 @@ function App({ svW, svH }: { svW: number; svH: number }) {
   const [checkA, setCheckA] = useState(true)
   const [checkB, setCheckB] = useState(false)
   const [progress, setProgress] = useState(30)
-  const [listSel, setListSel] = useState(0)
   const [lbSel, setLbSel] = useState(0)
   const [cbSel, setCbSel] = useState(-1)
   const [radio, setRadio] = useState('a')
@@ -229,13 +228,11 @@ function App({ svW, svH }: { svW: number; svH: number }) {
       {/* ===== 下半区: ListView + ScrollView + TreeView ===== */}
       <w type="STATIC" ws={VISIBLE} style={{flexDirection:'row', gap:6, alignItems:'stretch', height:400}}>
         <w type="STATIC" ws={VISIBLE | CLIPCHILDREN} style={{flexDirection:'column', gap:4, flexGrow:1}}>
-          <w type="STATIC" ws={VISIBLE} text={`ListView (sel=${listSel >= 0 ? listData[listSel]!.name : 'none'})`} style={{height:24}} />
+          <w type="STATIC" ws={VISIBLE} text={`ListView (${listData.length} items)`} style={{height:24}} />
           <w type="STATIC" ws={VISIBLE} style={{flexDirection:'row', gap:6, alignItems:'stretch', flexGrow:1}}>
             <ListView<Fruit>
               columns={listCols}
               data={listData}
-              selectedIndex={listSel}
-              onChange={(i) => setListSel(i)}
               style={{flexGrow:1}}
             />
             <w type="STATIC" ws={VISIBLE | CLIPCHILDREN} style={{flexDirection:'column', gap:6, width:100}}>
