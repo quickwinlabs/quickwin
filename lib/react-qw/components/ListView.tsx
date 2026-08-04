@@ -204,7 +204,7 @@ function resolveCellStyle<D>(columns: Column<D>[], data: D[], row: number, colIn
 }
 
 function makeLVItem(i: number, sub: number, text: string, image?: number): ArrayBuffer {
-  const b = new ArrayBuffer(84)
+  const b: ArrayBuffer & { __textBuf?: ArrayBuffer } = new ArrayBuffer(84)
   const dv = new DataView(b)
   dv.setInt32(4, i, true)
   dv.setInt32(8, sub, true)
@@ -214,7 +214,9 @@ function makeLVItem(i: number, sub: number, text: string, image?: number): Array
     dv.setInt32(36, image, true)
   }
   dv.setUint32(0, mask, true)
-  dv.setBigUint64(24, BigInt(bufPtr(textToUtf16(text))), true)
+  const textBuf = textToUtf16(text)
+  dv.setBigUint64(24, BigInt(bufPtr(textBuf)), true)
+  b.__textBuf = textBuf
   return b
 }
 
@@ -267,13 +269,14 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
     const n = columns.length
     for (let j = 0; j < n; j++) {
       const titleBuf = textToUtf16(columns[j]!.name)
-      const lvc = new ArrayBuffer(52)
+      const lvc: ArrayBuffer & { __titleBuf?: ArrayBuffer } = new ArrayBuffer(52)
       const dv = new DataView(lvc)
       dv.setUint32(0, LvColumnMask.TEXT | LvColumnMask.WIDTH | LvColumnMask.FORMAT, true)
       dv.setInt32(4, alignToFmt(columns[j]!.align), true)
       dv.setInt32(8, columns[j]!.width ?? 100, true)
       dv.setBigUint64(16, BigInt(bufPtr(titleBuf)), true)
       dv.setInt32(28, j, true)
+      lvc.__titleBuf = titleBuf
       gui.SendMessage(h, gui.LvMsg.INSERTCOLUMNW, j, bufPtr(lvc))
     }
   }, [columns])
@@ -288,10 +291,12 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
     for (let i = 0; i < data.length; i++) {
       const record = data[i]!
       const img = getIcon ? getIcon(record, i) : undefined
-      gui.SendMessage(h, gui.LvMsg.INSERTITEMW, 0, bufPtr(makeLVItem(i, 0, cellText(record, columns[0]!, i), img)))
+      const itemBuf = makeLVItem(i, 0, cellText(record, columns[0]!, i), img)
+      gui.SendMessage(h, gui.LvMsg.INSERTITEMW, 0, bufPtr(itemBuf))
 
       for (let j = 1; j < nCols; j++) {
-        gui.SendMessage(h, gui.LvMsg.SETITEMW, 0, bufPtr(makeLVItem(i, j, cellText(record, columns[j]!, i))))
+        const subBuf = makeLVItem(i, j, cellText(record, columns[j]!, i))
+        gui.SendMessage(h, gui.LvMsg.SETITEMW, 0, bufPtr(subBuf))
       }
     }
 

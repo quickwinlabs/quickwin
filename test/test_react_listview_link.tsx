@@ -13,7 +13,7 @@ interface Row {
 }
 
 const data: Row[] = [
-  { name: 'README.md', action: '编辑', size: '120' },
+  { name: 'README.md', action: '编辑编辑', size: '120' },
   { name: 'package.json', action: '查看', size: '340' },
   { name: 'AGENTS.md', action: '下载', size: '890' },
 ]
