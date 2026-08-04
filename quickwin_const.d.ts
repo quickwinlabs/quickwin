@@ -343,7 +343,20 @@ declare module "gui" {
     }
 
     export const enum StandardCursor {
+        ARROW = 32512, // 0x7F00
+        IBEAM = 32513, // 0x7F01
+        WAIT = 32514, // 0x7F02
+        CROSS = 32515, // 0x7F03
+        UPARROW = 32516, // 0x7F04
+        SIZENWSE = 32642, // 0x7F82
+        SIZENESW = 32643, // 0x7F83
+        SIZEWE = 32644, // 0x7F84
+        SIZENS = 32645, // 0x7F85
+        SIZEALL = 32646, // 0x7F86
+        NO = 32648, // 0x7F88
         HAND = 32649, // 0x7F89
+        APPSTARTING = 32650, // 0x7F8A
+        HELP = 32651, // 0x7F8B
     }
 
     export const enum LvItemFlag {

@@ -35,8 +35,7 @@ const columns: Column<Row>[] = [
     name: '操作',
     dataIndex: 'action',
     align: 'center',
-    cellStyle: { color: 0x00FF0000, underline: true },
-    cursor: 'pointer',
+    cellStyle: { color: 0x00FF0000, underline: true, cursor: gui.StandardCursor.CROSS },
     onCellClick: (record, row) => {
       clicks++
       console.log(`link clicked row=${row} name=${record.name} clicks=${clicks}`)

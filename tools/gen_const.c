@@ -365,7 +365,20 @@ static void print_enums(void) {
     printf("    }\n\n");
 
     printf("    export const enum StandardCursor {\n");
+    DEC(ARROW, IDC_ARROW);
+    DEC(IBEAM, IDC_IBEAM);
+    DEC(WAIT, IDC_WAIT);
+    DEC(CROSS, IDC_CROSS);
+    DEC(UPARROW, IDC_UPARROW);
+    DEC(SIZENWSE, IDC_SIZENWSE);
+    DEC(SIZENESW, IDC_SIZENESW);
+    DEC(SIZEWE, IDC_SIZEWE);
+    DEC(SIZENS, IDC_SIZENS);
+    DEC(SIZEALL, IDC_SIZEALL);
+    DEC(NO, IDC_NO);
     DEC(HAND, IDC_HAND);
+    DEC(APPSTARTING, IDC_APPSTARTING);
+    DEC(HELP, IDC_HELP);
     printf("    }\n\n");
 
     printf("    export const enum LvItemFlag {\n");

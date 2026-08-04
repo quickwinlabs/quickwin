@@ -116,12 +116,8 @@ function handleCustomDraw<D>(lParam: number, columns: Column<D>[], data: D[], hw
   if (stage === gui.CustomDrawStage.ITEMPREPAINT) return gui.CustomDrawFlag.NOTIFYSUBITEMDRAW
   if (stage === gui.CustomDrawStage.SUBITEMPREPAINT) {
     const colIndex = readI32(lParam, CD_SUBITEM)
-    const col = columns[colIndex]
-    if (!col || !col.cellStyle) return gui.CustomDrawFlag.DODEFAULT
     const row = readI32(lParam, CD_ITEM)
-    const record = data[row]
-    if (record === undefined) return gui.CustomDrawFlag.DODEFAULT
-    const style = typeof col.cellStyle === 'function' ? col.cellStyle(record, row) : col.cellStyle
+    const style = resolveCellStyle(columns, data, row, colIndex)
     if (!style) return gui.CustomDrawFlag.DODEFAULT
 
     if (style.color !== undefined) writeU32(lParam, CD_CLRTEXT, style.color)
@@ -147,6 +143,7 @@ export interface CellStyle {
   bold?: boolean
   underline?: boolean
   italic?: boolean
+  cursor?: gui.StandardCursor
 }
 
 export interface Column<D> {
@@ -157,7 +154,6 @@ export interface Column<D> {
   render?: (record: D, index: number) => string
   cellStyle?: CellStyle | ((record: D, index: number) => CellStyle)
   onCellClick?: (record: D, index: number) => void
-  cursor?: 'pointer'
 }
 
 export interface ListViewProps<D extends object> {
@@ -177,6 +173,15 @@ function cellText<D>(record: D, col: Column<D>, index: number): string {
   if (col.dataIndex === undefined) return ''
   const v = record[col.dataIndex!]
   return v == null ? '' : String(v)
+}
+
+function resolveCellStyle<D>(columns: Column<D>[], data: D[], row: number, colIndex: number): CellStyle | undefined {
+  const col = columns[colIndex]
+  if (!col || !col.cellStyle) return undefined
+  const record = data[row]
+  if (record === undefined) return undefined
+  const style = typeof col.cellStyle === 'function' ? col.cellStyle(record, row) : col.cellStyle
+  return style || undefined
 }
 
 function makeLVItem(i: number, sub: number, text: string): ArrayBuffer {
@@ -303,14 +308,15 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
           lvd.setInt32(16, -1, true)
           const lvhiPtr = bufPtr(lvhi)
           gui.SendMessage(h, gui.LvMsg.SUBITEMHITTEST, 0, lvhiPtr)
+          const iItem = readI32(lvhiPtr, 12)
           const iSubItem = readI32(lvhiPtr, 16)
-          if (iSubItem >= 0 && columns[iSubItem]?.cursor === 'pointer') {
-            const hc = ffi.ffiCall(loadCursorW,
-              [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64], [0, gui.StandardCursor.HAND], ffi.FFI_TYPE_UINT64)
-            if (hc) {
-              ffi.ffiCall(setCursorFn, [ffi.FFI_TYPE_UINT64], [hc], ffi.FFI_TYPE_UINT64)
-              return 1
-            }
+          const style = resolveCellStyle(columns, data, iItem, iSubItem)
+          if (!style || style.cursor === undefined) return
+          const hc = ffi.ffiCall(loadCursorW,
+            [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64], [0, style.cursor], ffi.FFI_TYPE_UINT64)
+          if (hc) {
+            ffi.ffiCall(setCursorFn, [ffi.FFI_TYPE_UINT64], [hc], ffi.FFI_TYPE_UINT64)
+            return 1
           }
           return
         }}
