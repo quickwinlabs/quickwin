@@ -357,6 +357,15 @@ static void print_enums(void) {
     DEC(SETCOLUMNWIDTH, LVM_SETCOLUMNWIDTH);
     DEC(DELETECOLUMN, LVM_DELETECOLUMN);
     DEC(GETHEADER, LVM_GETHEADER);
+    DEC(SUBITEMHITTEST, LVM_SUBITEMHITTEST);
+    printf("    }\n\n");
+
+    printf("    export const enum HitTest {\n");
+    DEC(CLIENT, HTCLIENT);
+    printf("    }\n\n");
+
+    printf("    export const enum StandardCursor {\n");
+    DEC(HAND, IDC_HAND);
     printf("    }\n\n");
 
     printf("    export const enum LvItemFlag {\n");

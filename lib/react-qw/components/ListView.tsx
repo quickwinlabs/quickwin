@@ -70,6 +70,20 @@ function ensureGdi(): void {
   getObjectW = win.GetProcAddress(gdi32, 'GetObjectW')
 }
 
+let user32: win.HMODULE | null = null
+let loadCursorW: number | null = null
+let setCursorFn: number | null = null
+let screenToClient: number | null = null
+
+function ensureUser32(): void {
+  if (user32 !== null) return
+  user32 = win.LoadLibrary('user32.dll')
+  if (!user32) return
+  loadCursorW = win.GetProcAddress(user32, 'LoadCursorW')
+  setCursorFn = win.GetProcAddress(user32, 'SetCursor')
+  screenToClient = win.GetProcAddress(user32, 'ScreenToClient')
+}
+
 function getCellFont(hwnd: gui.HWND, style: CellStyle): number | null {
   const key = (style.bold ? 'b' : '') + (style.italic ? 'i' : '') + (style.underline ? 'u' : '')
   if (key === '') return null
@@ -143,6 +157,7 @@ export interface Column<D> {
   render?: (record: D, index: number) => string
   cellStyle?: CellStyle | ((record: D, index: number) => CellStyle)
   onCellClick?: (record: D, index: number) => void
+  cursor?: 'pointer'
 }
 
 export interface ListViewProps<D extends object> {
@@ -263,6 +278,41 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
         style={{flexGrow:1}}
         ref={(h: gui.HWND) => {
           lvRef.current = h
+        }}
+        onEvent={(e) => {
+          if (e.msg !== gui.WmMsg.SETCURSOR) return
+          if ((e.lParam & 0xFFFF) !== gui.HitTest.CLIENT) return
+          const h = lvRef.current
+          if (!h) return
+          ensureUser32()
+          if (!loadCursorW || !setCursorFn || !screenToClient) return
+
+          const sp = gui.GetCursorPos()
+          if (!sp) return
+          const sbuf = new ArrayBuffer(8)
+          const sdv = new DataView(sbuf)
+          sdv.setInt32(0, sp[0], true)
+          sdv.setInt32(4, sp[1], true)
+          ffi.ffiCall(screenToClient, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_POINTER], [h, sbuf], ffi.FFI_TYPE_SINT32)
+
+          const lvhi = new ArrayBuffer(24)
+          const lvd = new DataView(lvhi)
+          lvd.setInt32(0, sdv.getInt32(0, true), true)
+          lvd.setInt32(4, sdv.getInt32(4, true), true)
+          lvd.setInt32(12, -1, true)
+          lvd.setInt32(16, -1, true)
+          const lvhiPtr = bufPtr(lvhi)
+          gui.SendMessage(h, gui.LvMsg.SUBITEMHITTEST, 0, lvhiPtr)
+          const iSubItem = readI32(lvhiPtr, 16)
+          if (iSubItem >= 0 && columns[iSubItem]?.cursor === 'pointer') {
+            const hc = ffi.ffiCall(loadCursorW,
+              [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64], [0, gui.StandardCursor.HAND], ffi.FFI_TYPE_UINT64)
+            if (hc) {
+              ffi.ffiCall(setCursorFn, [ffi.FFI_TYPE_UINT64], [hc], ffi.FFI_TYPE_UINT64)
+              return 1
+            }
+          }
+          return
         }}
       />
     </w>

@@ -335,6 +335,15 @@ declare module "gui" {
         SETCOLUMNWIDTH = 4126, // 0x101E
         DELETECOLUMN = 4124, // 0x101C
         GETHEADER = 4127, // 0x101F
+        SUBITEMHITTEST = 4153, // 0x1039
+    }
+
+    export const enum HitTest {
+        CLIENT = 1, // 0x1
+    }
+
+    export const enum StandardCursor {
+        HAND = 32649, // 0x7F89
     }
 
     export const enum LvItemFlag {
