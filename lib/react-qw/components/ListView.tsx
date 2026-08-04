@@ -5,6 +5,19 @@ import * as ffi from 'ffi'
 import * as win from 'win'
 import type { WStyle } from '../jsx.d.ts'
 
+export function makeColorBlock(size: number, bgra: number): ArrayBuffer {
+  const n = size * size
+  const buf = new ArrayBuffer(n * 4)
+  const b = new Uint8Array(buf)
+  for (let i = 0; i < n; i++) {
+    b[i * 4] = bgra & 0xFF
+    b[i * 4 + 1] = (bgra >> 8) & 0xFF
+    b[i * 4 + 2] = (bgra >> 16) & 0xFF
+    b[i * 4 + 3] = 0xFF
+  }
+  return buf
+}
+
 function textToUtf16(s: string): ArrayBuffer {
   const buf = new ArrayBuffer((s.length + 1) * 2)
   const dv = new DataView(buf)
@@ -160,6 +173,12 @@ export interface ListViewProps<D extends object> {
   columns: Column<D>[]
   data: D[]
   style?: WStyle
+  /** 图标像素数据数组，每个元素为 iconSize*iconSize*4 的 BGRA 像素 ArrayBuffer（色块/程序生成） */
+  icons?: ArrayBuffer[]
+  /** 图标尺寸，默认 32 */
+  iconSize?: number
+  /** 返回记录使用的图标在 icons 中的下标 */
+  getIcon?: (record: D, index: number) => number
 }
 
 function alignToFmt(align: Align | undefined): number {
@@ -184,21 +203,51 @@ function resolveCellStyle<D>(columns: Column<D>[], data: D[], row: number, colIn
   return style || undefined
 }
 
-function makeLVItem(i: number, sub: number, text: string): ArrayBuffer {
+function makeLVItem(i: number, sub: number, text: string, image?: number): ArrayBuffer {
   const b = new ArrayBuffer(84)
   const dv = new DataView(b)
   dv.setInt32(4, i, true)
   dv.setInt32(8, sub, true)
-  dv.setUint32(0, LvItemFlag.TEXT, true)
+  let mask = LvItemFlag.TEXT
+  if (image !== undefined) {
+    mask |= LvItemFlag.IMAGE
+    dv.setInt32(36, image, true)
+  }
+  dv.setUint32(0, mask, true)
   dv.setBigUint64(24, BigInt(bufPtr(textToUtf16(text))), true)
   return b
 }
 
 const ListView = forwardRef(function ListViewInner<D extends object>(
-  { columns, data, style }: ListViewProps<D>,
+  { columns, data, style, icons, iconSize, getIcon }: ListViewProps<D>,
   ref: ForwardedRef<gui.HWND>
 ) {
   const lvRef = useRef<gui.HWND>(null)
+  const iconListRef = useRef<number>(0)
+
+  useEffect(() => {
+    const h = lvRef.current
+    if (!h) return
+    const il = iconListRef.current
+    iconListRef.current = 0
+    if (il) {
+      gui.SendMessage(h, gui.LvMsg.SETIMAGELIST, gui.LvImageList.SMALL, 0)
+      gui.ImageListDestroy(il)
+    }
+    if (!icons || icons.length === 0) return
+    const size = iconSize ?? 32
+    const img = gui.ImageListCreate(size, size, gui.ImageListFlag.COLOR32, icons.length, 1)
+    if (!img) return
+    for (const p of icons) {
+      const hbm = gui.CreateBitmapFromPixels(size, size, p)
+      if (hbm) {
+        gui.ImageListAdd(img, hbm)
+        gui.DeleteObject(hbm)
+      }
+    }
+    gui.SendMessage(h, gui.LvMsg.SETIMAGELIST, gui.LvImageList.SMALL, img)
+    iconListRef.current = img
+  }, [icons, iconSize])
 
   useEffect(() => {
     const h = lvRef.current
@@ -238,7 +287,8 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
 
     for (let i = 0; i < data.length; i++) {
       const record = data[i]!
-      gui.SendMessage(h, gui.LvMsg.INSERTITEMW, 0, bufPtr(makeLVItem(i, 0, cellText(record, columns[0]!, i))))
+      const img = getIcon ? getIcon(record, i) : undefined
+      gui.SendMessage(h, gui.LvMsg.INSERTITEMW, 0, bufPtr(makeLVItem(i, 0, cellText(record, columns[0]!, i), img)))
 
       for (let j = 1; j < nCols; j++) {
         gui.SendMessage(h, gui.LvMsg.SETITEMW, 0, bufPtr(makeLVItem(i, j, cellText(record, columns[j]!, i))))
@@ -250,7 +300,7 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
         gui.SendMessage(h, gui.LvMsg.SETCOLUMNWIDTH, j, gui.LvColumnWidthCmd.AUTOSIZE_USEHEADER)
       }
     }
-  }, [data, columns])
+  }, [data, columns, getIcon])
 
   return (
     <w type="STATIC"

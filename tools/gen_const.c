@@ -358,6 +358,20 @@ static void print_enums(void) {
     DEC(DELETECOLUMN, LVM_DELETECOLUMN);
     DEC(GETHEADER, LVM_GETHEADER);
     DEC(SUBITEMHITTEST, LVM_SUBITEMHITTEST);
+    DEC(SETIMAGELIST, LVM_SETIMAGELIST);
+    printf("    }\n\n");
+
+    printf("    export const enum LvImageList {\n");
+    DEC(NORMAL, LVSIL_NORMAL);
+    DEC(SMALL, LVSIL_SMALL);
+    DEC(STATE, LVSIL_STATE);
+    printf("    }\n\n");
+
+    printf("    export const enum ImageListFlag {\n");
+    DEC(MASK, ILC_MASK);
+    DEC(COLOR, ILC_COLOR);
+    DEC(COLOR32, ILC_COLOR32);
+    DEC(HIGHQUALITYSCALE, ILC_HIGHQUALITYSCALE);
     printf("    }\n\n");
 
     printf("    export const enum HitTest {\n");
@@ -383,6 +397,7 @@ static void print_enums(void) {
 
     printf("    export const enum LvItemFlag {\n");
     DEC(TEXT, LVIF_TEXT);
+    DEC(IMAGE, LVIF_IMAGE);
     DEC(STATE, LVIF_STATE);
     printf("    }\n\n");
 

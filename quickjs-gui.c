@@ -569,6 +569,70 @@ static JSValue js_loadIcon(JSContext *ctx, JSValueConst this_val, int argc, JSVa
     return JS_NULL;
 }
 
+/* ─── Images (pixels) ────────────────────────────────────────── */
+
+/* 从 BGRA 像素数据创建 32bpp top-down DIB；返回 HBITMAP，失败返回 NULL。
+   data 必须是 length >= width*height*4 的 ArrayBuffer。 */
+static JSValue js_createBitmapFromPixels(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    (void)this_val;
+    int width = 0, height = 0;
+    size_t len = 0;
+    uint8_t *data = NULL;
+
+    if (argc < 3) return JS_NULL;
+    JS_ToInt32(ctx, &width, argv[0]);
+    JS_ToInt32(ctx, &height, argv[1]);
+    data = JS_GetArrayBuffer(ctx, &len, argv[2]);
+    if (!data || width <= 0 || height <= 0 || len < (size_t)width * (size_t)height * 4)
+        return JS_NULL;
+
+    BITMAPINFO bi = { .bmiHeader = { sizeof(BITMAPINFOHEADER), width, -height, 1, 32, BI_RGB } };
+    void *bits = NULL;
+    HBITMAP hbm = CreateDIBSection(NULL, &bi, DIB_RGB_COLORS, &bits, NULL, 0);
+    if (!hbm) return JS_NULL;
+    memcpy(bits, data, len);
+    return JS_NewInt64(ctx, (int64_t)hbm);
+}
+
+static JSValue js_deleteObject(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    (void)this_val;
+    int64_t h = 0;
+    if (argc > 0) JS_ToInt64(ctx, &h, argv[0]);
+    return JS_NewBool(ctx, DeleteObject((HGDIOBJ)h));
+}
+
+static JSValue js_imageListCreate(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int cx = 16, cy = 16, flags = ILC_COLOR32, initial = 0, grow = 0;
+    if (argc > 0 && JS_IsNumber(argv[0])) JS_ToInt32(ctx, &cx, argv[0]);
+    if (argc > 1 && JS_IsNumber(argv[1])) JS_ToInt32(ctx, &cy, argv[1]);
+    if (argc > 2 && JS_IsNumber(argv[2])) JS_ToInt32(ctx, &flags, argv[2]);
+    if (argc > 3 && JS_IsNumber(argv[3])) JS_ToInt32(ctx, &initial, argv[3]);
+    if (argc > 4 && JS_IsNumber(argv[4])) JS_ToInt32(ctx, &grow, argv[4]);
+    HIMAGELIST il = ImageList_Create(cx, cy, flags, initial, grow);
+    if (il) return JS_NewInt64(ctx, (int64_t)il);
+    return JS_NULL;
+}
+
+static JSValue js_imageListAdd(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int64_t himl = 0, hbm = 0;
+    if (argc > 0) JS_ToInt64(ctx, &himl, argv[0]);
+    if (argc > 1) JS_ToInt64(ctx, &hbm, argv[1]);
+    int index = ImageList_Add((HIMAGELIST)himl, (HBITMAP)hbm, NULL);
+    return JS_NewInt32(ctx, index);
+}
+
+static JSValue js_imageListDestroy(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int64_t himl = 0;
+    if (argc > 0) JS_ToInt64(ctx, &himl, argv[0]);
+    BOOL ok = ImageList_Destroy((HIMAGELIST)himl);
+    return JS_NewBool(ctx, ok);
+}
+
 /* ─── Popup menu ────────────────────────────────────────────── */
 
 static JSValue js_createPopupMenu(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -858,6 +922,11 @@ static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("CallWindowProc", 5, js_CallWindowProc),
     JS_CFUNC_DEF("ShellNotifyIcon", 2, js_shellNotifyIcon),
     JS_CFUNC_DEF("LoadIcon", 1, js_loadIcon),
+    JS_CFUNC_DEF("CreateBitmapFromPixels", 3, js_createBitmapFromPixels),
+    JS_CFUNC_DEF("DeleteObject", 1, js_deleteObject),
+    JS_CFUNC_DEF("ImageListCreate", 5, js_imageListCreate),
+    JS_CFUNC_DEF("ImageListAdd", 2, js_imageListAdd),
+    JS_CFUNC_DEF("ImageListDestroy", 1, js_imageListDestroy),
     JS_CFUNC_DEF("CreatePopupMenu", 0, js_createPopupMenu),
     JS_CFUNC_DEF("AppendMenu", 4, js_appendMenu),
     JS_CFUNC_DEF("TrackPopupMenu", 3, js_trackPopupMenu),

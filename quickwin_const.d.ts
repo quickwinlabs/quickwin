@@ -336,6 +336,20 @@ declare module "gui" {
         DELETECOLUMN = 4124, // 0x101C
         GETHEADER = 4127, // 0x101F
         SUBITEMHITTEST = 4153, // 0x1039
+        SETIMAGELIST = 4099, // 0x1003
+    }
+
+    export const enum LvImageList {
+        NORMAL = 0, // 0x0
+        SMALL = 1, // 0x1
+        STATE = 2, // 0x2
+    }
+
+    export const enum ImageListFlag {
+        MASK = 1, // 0x1
+        COLOR = 0, // 0x0
+        COLOR32 = 32, // 0x20
+        HIGHQUALITYSCALE = 131072, // 0x20000
     }
 
     export const enum HitTest {
@@ -361,6 +375,7 @@ declare module "gui" {
 
     export const enum LvItemFlag {
         TEXT = 1, // 0x1
+        IMAGE = 2, // 0x2
         STATE = 8, // 0x8
     }
 

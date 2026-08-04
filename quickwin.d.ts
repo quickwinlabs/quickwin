@@ -443,6 +443,12 @@ declare module "gui" {
 
     function ShellNotifyIcon(cmd: NotifyIconCmd, nid: NotifyIconData): boolean;
     function LoadIcon(name: string): HICON | null;
+    /** 从 BGRA 像素数据创建 32bpp top-down DIB，data 为 length >= width*height*4 的 ArrayBuffer，返回 HBITMAP */
+    function CreateBitmapFromPixels(width: number, height: number, data: ArrayBuffer): number | null;
+    function DeleteObject(hObject: number): boolean;
+    function ImageListCreate(cx: number, cy: number, flags?: number, initial?: number, grow?: number): number | null;
+    function ImageListAdd(himl: number, hBitmap: number): number;
+    function ImageListDestroy(himl: number): boolean;
 
 
     function CreatePopupMenu(): HMENU | null;

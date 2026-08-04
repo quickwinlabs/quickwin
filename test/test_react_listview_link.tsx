@@ -2,20 +2,26 @@ import '../lib/polyfill.js'
 import * as std from 'std'
 import * as gui from 'gui'
 import React from 'react'
-import { createRoot, ListView, type Column } from '../lib/react-qw/index.js'
+import { createRoot, ListView, makeColorBlock, type Column } from '../lib/react-qw/index.js'
 
 let clicks = 0
 
 interface Row {
   name: string
   action: string
-  size: number
+  size: string
 }
 
 const data: Row[] = [
-  { name: 'README.md', action: '编辑', size: 1200 },
-  { name: 'package.json', action: '查看', size: 340 },
-  { name: 'AGENTS.md', action: '下载', size: 8900 },
+  { name: 'README.md', action: '编辑', size: '120' },
+  { name: 'package.json', action: '查看', size: '340' },
+  { name: 'AGENTS.md', action: '下载', size: '890' },
+]
+
+const icons = [
+  makeColorBlock(32, 0x000000FF),
+  makeColorBlock(32, 0x0000FF00),
+  makeColorBlock(32, 0x00FF0000),
 ]
 
 const columns: Column<Row>[] = [
@@ -29,7 +35,6 @@ const columns: Column<Row>[] = [
     dataIndex: 'size',
     width: 90,
     align: 'right',
-    render: (record) => `${record.size.toLocaleString('en-US')} B`,
   },
   {
     name: '操作',
@@ -55,6 +60,8 @@ function App() {
       <ListView<Row>
         columns={columns}
         data={data}
+        icons={icons}
+        getIcon={(record) => (record.name === 'README.md' ? 0 : record.name === 'package.json' ? 1 : 2)}
         style={{ flexGrow: 1 }}
       />
     </w>
