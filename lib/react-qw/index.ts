@@ -44,16 +44,18 @@ export function createRoot(container: gui.HWND | RootWindowConfig) {
     const cfg = container
     const className = ensureDefaultClass()
     const ws = (cfg.ws ?? 0) | gui.WindowStyle.OVERLAPPEDWINDOW
-    const h = gui.CreateWindow(
-      className, cfg.text || '', ws,
-      cfg.x != null ? cfg.x * scaleFactor : gui.CreatePos.USEDEFAULT,
-      cfg.y != null ? cfg.y * scaleFactor : gui.CreatePos.USEDEFAULT,
-      (cfg.width ?? 800) * scaleFactor,
-      (cfg.height ?? 600) * scaleFactor,
-      null, null
-    )
-    if (!h) throw new Error('CreateWindow failed')
-    hwnd = h
+    const w = (cfg.width ?? 800) * scaleFactor
+    const h = (cfg.height ?? 600) * scaleFactor
+    const [sw, sh] = gui.GetScreenSize()
+    const x = cfg.x === undefined ? ((sw - w) / 2) | 0
+      : cfg.x === gui.CreatePos.USEDEFAULT ? gui.CreatePos.USEDEFAULT
+      : cfg.x * scaleFactor
+    const y = cfg.y === undefined ? ((sh - h) / 2) | 0
+      : cfg.y === gui.CreatePos.USEDEFAULT ? gui.CreatePos.USEDEFAULT
+      : cfg.y * scaleFactor
+    const hwin = gui.CreateWindow(className, cfg.text || '', ws, x, y, w, h, null, null)
+    if (!hwin) throw new Error('CreateWindow failed')
+    hwnd = hwin
     if (!cfg.noShowWindow) gui.ShowWindow(hwnd)
   } else {
     hwnd = container
