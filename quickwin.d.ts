@@ -396,6 +396,8 @@ declare module "win" {
     function FreeLibrary(hModule: HMODULE): boolean;
     /** GetModuleFileName(hModule?) — 传 HMODULE 或不传（当前进程），返回模块完整路径；失败返回 undefined */
     function GetModuleFileName(hModule?: HMODULE): string | undefined;
+    /** GetModuleHandle(moduleName?) — 不传返回当前 exe 的模块句柄；失败返回 null */
+    function GetModuleHandle(moduleName?: string): HMODULE | null;
 }
 
 declare module "gui" {
@@ -442,7 +444,24 @@ declare module "gui" {
     }
 
     function ShellNotifyIcon(cmd: NotifyIconCmd, nid: NotifyIconData): boolean;
-    function LoadIcon(name: string): HICON | null;
+    /**
+     * Thin wrapper around LoadImageW. Parameter order matches Win32 LoadImageW: (hinst, name, uType?, cx?, cy?, fuLoad?).
+     * hinst: null for system resources/file path, number for module handle;
+     * name: when hinst=null, a system icon IDI or .ico file path; when hinst=module handle, a resource ID (number) or resource name (string);
+     * uType: gui.ImageType constant, default IMAGE_ICON (returns HICON), pass BITMAP/CURSOR for number return;
+     * cx/cy: target size (0 for default, use gui.LoadImageFlag.DEFAULTSIZE for system default size);
+     * fuLoad: gui.LoadImageFlag constants. Note: loading system icons (IDI_*, hinst=null) requires gui.LoadImageFlag.SHARED.
+     * Example: gui.LoadImage(null, "app.ico", gui.ImageType.ICON, 32, 32, gui.LoadImageFlag.LOADFROMFILE)
+     *          gui.LoadImage(null, gui.IDI.APPLICATION, gui.ImageType.ICON, 0, 0, gui.LoadImageFlag.SHARED)
+     */
+    function LoadImage<H extends (import("win").HMODULE) | null, T extends ImageType = ImageType.ICON>(
+        hinst: H,
+        name: H extends null ? string | IDI : string | number,
+        uType?: T,
+        cx?: number,
+        cy?: number,
+        fuLoad?: number
+    ): T extends ImageType.ICON ? HICON | null : number | null;
     /** 从 BGRA 像素数据创建 32bpp top-down DIB，data 为 length >= width*height*4 的 ArrayBuffer，返回 HBITMAP */
     function CreateBitmapFromPixels(width: number, height: number, data: ArrayBuffer): number | null;
     function DeleteObject(hObject: number): boolean;

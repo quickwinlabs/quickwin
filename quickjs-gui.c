@@ -177,6 +177,27 @@ LRESULT CALLBACK ClassProxyWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
     return DefWindowProcW(hWnd, msg, wParam, lParam);
 }
 
+static BOOL CALLBACK enum_first_group_icon(HMODULE hModule, LPCWSTR lpszType, LPWSTR lpszName, LONG_PTR lParam)
+{
+    (void)hModule;
+    (void)lpszType;
+    *((LPCWSTR *)lParam) = lpszName;
+    return FALSE;
+}
+
+/* Load app icon from exe resources (custom icon embedded by rcedit).
+   Enumerates RT_GROUP_ICON and takes the first entry, works with any resource ID
+   (including ID 0 written by rcedit when the exe had no original icon).
+   Returns NULL if the exe has no icon resource. */
+static HICON load_app_icon(int cx, int cy)
+{
+    HMODULE hmod = GetModuleHandleW(NULL);
+    LPCWSTR name = NULL;
+    if (EnumResourceNamesW(hmod, (LPCWSTR)RT_GROUP_ICON, enum_first_group_icon, (LONG_PTR)&name) && name)
+        return (HICON)LoadImageW(hmod, name, IMAGE_ICON, cx, cy, LR_DEFAULTCOLOR);
+    return NULL;
+}
+
 static JSValue js_registerClass(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     const char *className = JS_ToCString(ctx, argv[0]);
@@ -210,6 +231,8 @@ done:
     wc.hInstance = GetModuleHandleW(NULL);
     wc.hCursor = LoadCursorW(NULL, (LPCWSTR)IDC_ARROW);
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wc.hIcon = load_app_icon(0, 0);
+    wc.hIconSm = load_app_icon(GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
     wc.lpszClassName = wclassName;
     ATOM atom = RegisterClassExW(&wc);
 
@@ -526,26 +549,44 @@ static JSValue js_shellNotifyIcon(JSContext *ctx, JSValueConst this_val, int arg
 
 /* ─── Icons ─────────────────────────────────────────────────── */
 
-static JSValue js_loadIcon(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+/* Thin wrapper around LoadImageW: (hinst, name, uType?, cx?, cy?, fuLoad?).
+   hinst=null for system resources/file path, number for module handle.
+   name=string for path/resource name, number for resource ID.
+   Returns HICON handle (int64) on success, null on failure. */
+static JSValue js_loadImage(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    const char *name = JS_ToCString(ctx, argv[0]);
-    HICON hIcon = NULL;
+    HINSTANCE hinst = NULL;
+    wchar_t *wname = NULL;
+    LPCWSTR lpName = NULL;
 
-    if (strcmp(name, "APPLICATION") == 0)      hIcon = LoadIconW(NULL, (LPCWSTR)IDI_APPLICATION);
-    else if (strcmp(name, "ERROR") == 0)         hIcon = LoadIconW(NULL, (LPCWSTR)IDI_ERROR);
-    else if (strcmp(name, "INFORMATION") == 0)   hIcon = LoadIconW(NULL, (LPCWSTR)IDI_INFORMATION);
-    else if (strcmp(name, "QUESTION") == 0)      hIcon = LoadIconW(NULL, (LPCWSTR)IDI_QUESTION);
-    else if (strcmp(name, "WARNING") == 0)       hIcon = LoadIconW(NULL, (LPCWSTR)IDI_WARNING);
-    else if (strcmp(name, "WINLOGO") == 0)       hIcon = LoadIconW(NULL, (LPCWSTR)IDI_WINLOGO);
-    else if (strcmp(name, "SHIELD") == 0)        hIcon = LoadIconW(NULL, (LPCWSTR)IDI_SHIELD);
-    else {
-        wchar_t *wpath = utf8ToWide(name);
-        hIcon = (HICON)LoadImageW(NULL, wpath, IMAGE_ICON, 0, 0, LR_LOADFROMFILE);
-        free(wpath);
+    if (JS_IsNull(argv[0])) {
+        hinst = NULL;
+    } else if (JS_IsNumber(argv[0])) {
+        GET_INT64(ctx, argv[0], hinst64);
+        hinst = (HINSTANCE)hinst64;
+    } else {
+        return JS_ThrowTypeError(ctx, "LoadImage: first argument must be null or a module handle");
     }
 
-    JS_FreeCString(ctx, name);
-    if (hIcon) return JS_NewInt64(ctx, (int64_t)hIcon);
+    if (JS_IsString(argv[1])) {
+        const char *name = JS_ToCString(ctx, argv[1]);
+        wname = utf8ToWide(name);
+        lpName = wname;
+        JS_FreeCString(ctx, name);
+    } else if (JS_IsNumber(argv[1])) {
+        GET_INT32(ctx, argv[1], id);
+        lpName = MAKEINTRESOURCEW(id);
+    }
+
+    GET_INT32_OPT(ctx, argv[2], uType, IMAGE_ICON);
+    GET_INT32_OPT(ctx, argv[3], cx, 0);
+    GET_INT32_OPT(ctx, argv[4], cy, 0);
+    GET_INT32_OPT(ctx, argv[5], fuLoad, 0);
+
+    HANDLE h = LoadImageW(hinst, lpName, uType, cx, cy, fuLoad);
+
+    free(wname);
+    if (h && h != INVALID_HANDLE_VALUE) return JS_NewInt64(ctx, (int64_t)h);
     return JS_NULL;
 }
 
@@ -884,7 +925,7 @@ static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("UnsetWindowProc", 1, js_unsetWindowProc),
     JS_CFUNC_DEF("CallWindowProc", 5, js_CallWindowProc),
     JS_CFUNC_DEF("ShellNotifyIcon", 2, js_shellNotifyIcon),
-    JS_CFUNC_DEF("LoadIcon", 1, js_loadIcon),
+    JS_CFUNC_DEF("LoadImage", 6, js_loadImage),
     JS_CFUNC_DEF("CreateBitmapFromPixels", 3, js_createBitmapFromPixels),
     JS_CFUNC_DEF("DeleteObject", 1, js_deleteObject),
     JS_CFUNC_DEF("ImageListCreate", 5, js_imageListCreate),

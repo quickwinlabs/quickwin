@@ -64,7 +64,7 @@ if (text) {
         gui.SendMessage(text, gui.WmMsg.SETFONT, font, 1)
 }
 
-const hIcon = gui.LoadIcon('APPLICATION')
+const hIcon = gui.LoadImage(null, gui.IDI.APPLICATION, gui.ImageType.ICON, 0, 0, gui.LoadImageFlag.SHARED)
 if (hIcon) {
     const ok = gui.ShellNotifyIcon(gui.NotifyIconCmd.ADD, {
         hwnd: hwnd, uID: 1,

@@ -782,6 +782,31 @@ static void print_enums(void) {
     DEC(CURSOR, IMAGE_CURSOR);
     printf("    }\n\n");
 
+    printf("    export const enum LoadImageFlag {\n");
+    DEC(DEFAULTCOLOR, LR_DEFAULTCOLOR);
+    DEC(MONOCHROME, LR_MONOCHROME);
+    DEC(COLOR, LR_COLOR);
+    DEC(COPYRETURNORG, LR_COPYRETURNORG);
+    DEC(COPYDELETEORG, LR_COPYDELETEORG);
+    DEC(LOADFROMFILE, LR_LOADFROMFILE);
+    DEC(LOADTRANSPARENT, LR_LOADTRANSPARENT);
+    DEC(DEFAULTSIZE, LR_DEFAULTSIZE);
+    DEC(VGACOLOR, LR_VGACOLOR);
+    DEC(CREATEDIBSECTION, LR_CREATEDIBSECTION);
+    DEC(COPYFROMRESOURCE, LR_COPYFROMRESOURCE);
+    DEC(SHARED, LR_SHARED);
+    printf("    }\n\n");
+
+    printf("    export const enum IDI {\n");
+    DEC(APPLICATION, IDI_APPLICATION);
+    DEC(ERROR, IDI_ERROR);
+    DEC(INFORMATION, IDI_INFORMATION);
+    DEC(QUESTION, IDI_QUESTION);
+    DEC(WARNING, IDI_WARNING);
+    DEC(WINLOGO, IDI_WINLOGO);
+    DEC(SHIELD, IDI_SHIELD);
+    printf("    }\n\n");
+
     printf("    export const enum DrawTextFlag {\n");
     DEC(CALCRECT, DT_CALCRECT);
     printf("    }\n\n");

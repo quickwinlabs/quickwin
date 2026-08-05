@@ -7,6 +7,10 @@
     int32_t name;                \
     JS_ToInt32(ctx, &name, v)
 
+#define GET_INT64(ctx, v, name)  \
+    int64_t name;                \
+    JS_ToInt64(ctx, &name, v)
+
 #define GET_INT32_OPT(ctx, v, name, fallback) \
     int32_t name = (fallback);               \
     if (JS_IsNumber(v)) JS_ToInt32(ctx, &name, v)

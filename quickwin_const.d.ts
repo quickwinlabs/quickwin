@@ -760,6 +760,31 @@ declare module "gui" {
         CURSOR = 2, // 0x2
     }
 
+    export const enum LoadImageFlag {
+        DEFAULTCOLOR = 0, // 0x0
+        MONOCHROME = 1, // 0x1
+        COLOR = 2, // 0x2
+        COPYRETURNORG = 4, // 0x4
+        COPYDELETEORG = 8, // 0x8
+        LOADFROMFILE = 16, // 0x10
+        LOADTRANSPARENT = 32, // 0x20
+        DEFAULTSIZE = 64, // 0x40
+        VGACOLOR = 128, // 0x80
+        CREATEDIBSECTION = 8192, // 0x2000
+        COPYFROMRESOURCE = 16384, // 0x4000
+        SHARED = 32768, // 0x8000
+    }
+
+    export const enum IDI {
+        APPLICATION = 32512, // 0x7F00
+        ERROR = 32513, // 0x7F01
+        INFORMATION = 32516, // 0x7F04
+        QUESTION = 32514, // 0x7F02
+        WARNING = 32515, // 0x7F03
+        WINLOGO = 32517, // 0x7F05
+        SHIELD = 32518, // 0x7F06
+    }
+
     export const enum DrawTextFlag {
         CALCRECT = 1024, // 0x400
     }

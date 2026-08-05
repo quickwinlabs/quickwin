@@ -41,6 +41,26 @@ static JSValue js_GetModuleFileName(JSContext *ctx, JSValueConst this_val, int a
     return ret;
 }
 
+static JSValue js_GetModuleHandle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    HMODULE hModule;
+    if (argc > 0 && !JS_IsUndefined(argv[0]) && !JS_IsNull(argv[0]))
+    {
+        const char *name = JS_ToCString(ctx, argv[0]);
+        wchar_t *wname = utf8ToWide(name);
+        hModule = GetModuleHandleW(wname);
+        free(wname);
+        JS_FreeCString(ctx, name);
+    }
+    else
+    {
+        hModule = GetModuleHandleW(NULL);
+    }
+    if (hModule)
+        return JS_NewInt64(ctx, (int64_t)hModule);
+    return JS_NULL;
+}
+
 static JSValue js_LoadLibrary(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     const char *libName = JS_ToCString(ctx, argv[0]);
@@ -82,6 +102,7 @@ static const JSCFunctionListEntry win_funcs[] = {
     JS_CFUNC_DEF("GetProcAddress", 2, js_GetProcAddress),
     JS_CFUNC_DEF("FreeLibrary", 1, js_FreeLibrary),
     JS_CFUNC_DEF("GetModuleFileName", 0, js_GetModuleFileName),
+    JS_CFUNC_DEF("GetModuleHandle", 0, js_GetModuleHandle),
 };
 
 static int js_win_init(JSContext *ctx, JSModuleDef *m)
