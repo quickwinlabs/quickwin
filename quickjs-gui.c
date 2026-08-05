@@ -177,24 +177,33 @@ LRESULT CALLBACK ClassProxyWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
     return DefWindowProcW(hWnd, msg, wParam, lParam);
 }
 
+typedef struct {
+    LPCWSTR name;
+    int found;
+} EnumIconCtx;
+
 static BOOL CALLBACK enum_first_group_icon(HMODULE hModule, LPCWSTR lpszType, LPWSTR lpszName, LONG_PTR lParam)
 {
     (void)hModule;
     (void)lpszType;
-    *((LPCWSTR *)lParam) = lpszName;
+    EnumIconCtx *ctx = (EnumIconCtx *)lParam;
+    ctx->name = lpszName;
+    ctx->found = 1;
     return FALSE;
 }
 
 /* Load app icon from exe resources (custom icon embedded by rcedit).
    Enumerates RT_GROUP_ICON and takes the first entry, works with any resource ID
-   (including ID 0 written by rcedit when the exe had no original icon).
+   (including ID 0 written by rcedit when the exe had no original icon: the loader
+   treats the NULL name from enumeration as ordinal 0 and still loads it).
    Returns NULL if the exe has no icon resource. */
 static HICON load_app_icon(int cx, int cy)
 {
     HMODULE hmod = GetModuleHandleW(NULL);
-    LPCWSTR name = NULL;
-    if (EnumResourceNamesW(hmod, (LPCWSTR)RT_GROUP_ICON, enum_first_group_icon, (LONG_PTR)&name) && name)
-        return (HICON)LoadImageW(hmod, name, IMAGE_ICON, cx, cy, LR_DEFAULTCOLOR);
+    EnumIconCtx ctx = {NULL, 0};
+    EnumResourceNamesW(hmod, (LPCWSTR)RT_GROUP_ICON, enum_first_group_icon, (LONG_PTR)&ctx);
+    if (ctx.found)
+        return (HICON)LoadImageW(hmod, ctx.name, IMAGE_ICON, cx, cy, LR_DEFAULTCOLOR);
     return NULL;
 }
 
@@ -590,6 +599,19 @@ static JSValue js_loadImage(JSContext *ctx, JSValueConst this_val, int argc, JSV
     return JS_NULL;
 }
 
+/* Load the first RT_GROUP_ICON from this exe (custom icon embedded by rcedit).
+   Signature: LoadAppIcon(cx?, cy?). Returns HICON handle (int64) or null. */
+static JSValue js_loadAppIcon(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    (void)this_val;
+    (void)argc;
+    GET_INT32_OPT(ctx, argv[0], cx, 0);
+    GET_INT32_OPT(ctx, argv[1], cy, 0);
+    HICON h = load_app_icon(cx, cy);
+    if (h) return JS_NewInt64(ctx, (int64_t)h);
+    return JS_NULL;
+}
+
 /* ─── Images (pixels) ────────────────────────────────────────── */
 
 /* 从 BGRA 像素数据创建 32bpp top-down DIB；返回 HBITMAP，失败返回 NULL。
@@ -926,6 +948,7 @@ static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("CallWindowProc", 5, js_CallWindowProc),
     JS_CFUNC_DEF("ShellNotifyIcon", 2, js_shellNotifyIcon),
     JS_CFUNC_DEF("LoadImage", 6, js_loadImage),
+    JS_CFUNC_DEF("LoadAppIcon", 2, js_loadAppIcon),
     JS_CFUNC_DEF("CreateBitmapFromPixels", 3, js_createBitmapFromPixels),
     JS_CFUNC_DEF("DeleteObject", 1, js_deleteObject),
     JS_CFUNC_DEF("ImageListCreate", 5, js_imageListCreate),

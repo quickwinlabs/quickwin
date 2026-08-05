@@ -462,6 +462,14 @@ declare module "gui" {
         cy?: number,
         fuLoad?: number
     ): T extends ImageType.ICON ? HICON | null : number | null;
+    /**
+     * Loads the first icon group (RT_GROUP_ICON) from this exe, i.e. the custom icon
+     * embedded by rcedit. Works with any resource ID including 0. Returns null if the
+     * exe has no icon resource.
+     * cx/cy: target size in pixels (0 for the natural size).
+     * Example: gui.LoadAppIcon() → HICON of the exe's icon.
+     */
+    function LoadAppIcon(cx?: number, cy?: number): HICON | null;
     /** 从 BGRA 像素数据创建 32bpp top-down DIB，data 为 length >= width*height*4 的 ArrayBuffer，返回 HBITMAP */
     function CreateBitmapFromPixels(width: number, height: number, data: ArrayBuffer): number | null;
     function DeleteObject(hObject: number): boolean;
