@@ -94,7 +94,7 @@ endif
 OBJS = $(SRCS:%.c=$(BUILD_DIR)/%.o) $(BUILD_DIR)/app.o
 DEPS = $(SRCS:%.c=$(BUILD_DIR)/%.d)
 
-.PHONY: all clean debug nodebug release small minimal nowasm wolfsmin test wamr wasm js npm-pkg embed-js embed-js-br info help
+.PHONY: all clean debug nodebug release small minimal nowasm test wamr wasm js npm-pkg embed-js embed-js-br info help
 
 all: nodebug
 
@@ -141,7 +141,7 @@ $(QUICKJS_LIB):
 	ar rcs $@ $(BUILD_DIR)/quickjs/*.nolto.o
 	@echo "QuickJS library built"
 
-$(WOLFSSL_LIB_STATIC): wolfsmin
+$(WOLFSSL_LIB_STATIC):
 
 ifeq ($(NO_WASM), 1)
 WAMR_LINK =
@@ -230,7 +230,7 @@ wamr:
 	cp $(WAMR_BUILD_DIR)/libiwasm.a $(WAMR_LIB)
 	@echo "WAMR build complete"
 
-wolfsmin:
+$(WOLFSSL_LIB_STATIC):
 	@echo "Building minimal wolfSSL..."
 	if [ ! -f "$(WOLFSSL_DIR)/README.md" ]; then git submodule update --init --depth 1 $(WOLFSSL_DIR); fi
 	@mkdir -p $(WOLFSSL_BUILD_DIR) $(WOLFSSL_DIR)/lib
