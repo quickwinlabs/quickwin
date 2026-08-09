@@ -141,8 +141,6 @@ $(QUICKJS_LIB):
 	ar rcs $@ $(BUILD_DIR)/quickjs/*.nolto.o
 	@echo "QuickJS library built"
 
-$(WOLFSSL_LIB_STATIC):
-
 ifeq ($(NO_WASM), 1)
 WAMR_LINK =
 else
@@ -170,7 +168,7 @@ $(BUILD_DIR)/%.d: %.c
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -MM -MT '$(BUILD_DIR)/$*.o' $< > $@
 
-$(BUILD_DIR)/app.o: app.rc | $(WOLFSSL_LIB_STATIC)
+$(BUILD_DIR)/app.o: app.rc
 	@echo "Compiling resource $<..."
 	mkdir -p $(BUILD_DIR)
 	$(WINDRES) $< -o $@
@@ -199,7 +197,7 @@ const: tools/gen_const.exe
 tools/gen_const.exe: tools/gen_const.c
 	$(CC) -o $@ $<
 
-wamr:
+$(WAMR_LIB):
 	@echo "Building WAMR..."
 	@if [ ! -d "$(WAMR_DIR)" ]; then \
 		echo "Error: wamr directory not found. Run: git submodule update --init"; \
@@ -229,6 +227,8 @@ wamr:
 	@mkdir -p $(WAMR_DIR)/lib
 	cp $(WAMR_BUILD_DIR)/libiwasm.a $(WAMR_LIB)
 	@echo "WAMR build complete"
+
+wamr: $(WAMR_LIB)
 
 $(WOLFSSL_LIB_STATIC):
 	@echo "Building minimal wolfSSL..."
@@ -336,5 +336,6 @@ help:
 	@echo "  embed-js  - Embed JS_EMBED (default: embed.js) into exe: make embed-js JS_EMBED=script.js"
 	@echo "  embed-js-br - Embed brotli-compressed JS into exe: make embed-js-br JS_EMBED=script.js"
 	@echo "  npm-pkg   - Package distributable into $(NPM_PKG_DIR)"
-	@echo "  wolfsmin  - Build custom minimal wolfSSL static library"
+	@echo "  wamr      - Build WAMR static library (auto-built on demand)"
+	@echo "  (wolfSSL) - Custom minimal wolfSSL auto-built on demand"
 	@echo "  help      - Show this help message"
