@@ -867,6 +867,7 @@ static void print_enums(void) {
 
     printf("    export const enum AddrFamily {\n");
     DEC(AF_INET, AF_INET);
+    DEC(AF_INET6, AF_INET6);
     printf("    }\n\n");
 
     printf("    export const enum SockType {\n");
@@ -886,6 +887,7 @@ static void print_enums(void) {
     printf("    }\n\n");
 
     printf("    export const enum FdEvent {\n");
+    DEC(FD_ACCEPT, FD_ACCEPT);
     DEC(FD_READ, FD_READ);
     DEC(FD_WRITE, FD_WRITE);
     DEC(FD_CONNECT, FD_CONNECT);

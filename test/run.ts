@@ -30,6 +30,7 @@ const suiteDefs = [
     { name: 'net-fetch',         file: './test_net_fetch.js',        tags: ['net'] },
     { name: 'net-websocket',     file: './test_net_websocket.js',    tags: ['net'] },
     { name: 'net-event',         file: './test_net_event.js',        tags: ['net'] },
+    { name: 'http-server',       file: './test_http_server.js',      tags: ['net'] },
     { name: 'http-import',       file: './test_http_import.js',      tags: ['net'] },
     { name: 'fetch-cache',       file: './test_fetch_cache.js',      tags: ['net'] },
     { name: 'polyfill',          file: './test_polyfill.js',         tags: [] },

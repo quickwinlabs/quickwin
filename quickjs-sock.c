@@ -21,6 +21,7 @@
 
 typedef struct SockHandle {
     int fd;            /* -1 if slot is free */
+    int af;            /* AF_INET / AF_INET6 */
     WSAEVENT event;
     JSValue on_event;
     JSContext *js_ctx;
@@ -271,6 +272,7 @@ static JSValue js_socket(JSContext *ctx, JSValueConst this_val, int argc, JSValu
     }
 
     sock->fd = (int)fd;
+    sock->af = af;
     sock->event = event;
     sock->on_event = JS_UNDEFINED;
     sock->js_ctx = ctx;
@@ -320,6 +322,7 @@ static JSValue js_connect(JSContext *ctx, JSValueConst this_val, int argc, JSVal
             ioctlsocket(fd, FIONBIO, &mode);
             WSAEventSelect(fd, sock->event, FD_READ | FD_WRITE | FD_CONNECT | FD_CLOSE);
             sock->fd = (int)fd;
+            sock->af = AF_INET6;
         }
 
         ret = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
@@ -384,7 +387,7 @@ static JSValue js_recv(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
     int ret = recv(sock->fd, (char*)buf, size, flags);
     if (ret <= 0) {
         free(buf);
-        return JS_NewInt32(ctx, ret);
+        return JS_NULL;
     }
 
     JSValue arr = JS_NewArrayBufferCopy(ctx, buf, ret);
@@ -514,11 +517,217 @@ static JSValue js_resolve(JSContext *ctx, JSValueConst this_val, int argc, JSVal
     return JS_NewString(ctx, ip);
 }
 
+/* ─── Server-side support ───────────────────────────────────── */
+
+/* Recreate the socket fd with the given address family, reusing the
+   existing WSA event handle. Used when bind() needs a different family. */
+static int sock_rebind_fd(SockHandle *sock, int af, int event_mask)
+{
+    SOCKET fd = socket(af, SOCK_STREAM, 0);
+    if (fd == INVALID_SOCKET)
+        return -1;
+
+    u_long mode = 1;
+    ioctlsocket(fd, FIONBIO, &mode);
+
+    if (WSAEventSelect(fd, sock->event, event_mask) == SOCKET_ERROR) {
+        closesocket(fd);
+        return -1;
+    }
+
+    if (sock->fd >= 0) {
+        WSAEventSelect(sock->fd, sock->event, 0);
+        closesocket(sock->fd);
+    }
+    sock->fd = (int)fd;
+    sock->af = af;
+    return 0;
+}
+
+static JSValue js_bind(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    SockHandle *sock = get_sock(ctx, argv[0]);
+    if (!sock || sock->fd < 0)
+        return JS_ThrowTypeError(ctx, "Invalid sock handle");
+
+    const char *host = NULL;
+    if (argc > 1 && !JS_IsNull(argv[1]) && !JS_IsUndefined(argv[1]))
+        host = JS_ToCString(ctx, argv[1]);
+
+    int port = 0;
+    if (argc > 2) JS_ToInt32(ctx, &port, argv[2]);
+
+    int is_ipv6 = (host && strchr(host, ':') != NULL) ? 1 : 0;
+    int ret;
+
+    if (is_ipv6) {
+        if (sock->af != AF_INET6) {
+            if (sock_rebind_fd(sock, AF_INET6, FD_READ | FD_WRITE | FD_CONNECT | FD_CLOSE)) {
+                if (host) JS_FreeCString(ctx, host);
+                return JS_NewInt32(ctx, -1);
+            }
+        }
+        struct sockaddr_in6 addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sin6_family = AF_INET6;
+        addr.sin6_port = htons((unsigned short)port);
+        if (host && host[0] && strcmp(host, "::") != 0) {
+            if (inet_pton(AF_INET6, host, &addr.sin6_addr) != 1) {
+                if (host) JS_FreeCString(ctx, host);
+                return JS_NewInt32(ctx, -1);
+            }
+        }
+        ret = bind(sock->fd, (struct sockaddr *)&addr, sizeof(addr));
+    } else {
+        if (sock->af != AF_INET) {
+            if (sock_rebind_fd(sock, AF_INET, FD_READ | FD_WRITE | FD_CONNECT | FD_CLOSE)) {
+                if (host) JS_FreeCString(ctx, host);
+                return JS_NewInt32(ctx, -1);
+            }
+        }
+        struct sockaddr_in addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons((unsigned short)port);
+        if (host && host[0]) {
+            addr.sin_addr.s_addr = inet_addr(host);
+            if (addr.sin_addr.s_addr == INADDR_NONE) {
+                if (host) JS_FreeCString(ctx, host);
+                return JS_NewInt32(ctx, -1);
+            }
+        } else {
+            addr.sin_addr.s_addr = htonl(INADDR_ANY);
+        }
+        ret = bind(sock->fd, (struct sockaddr *)&addr, sizeof(addr));
+    }
+
+    if (host) JS_FreeCString(ctx, host);
+    return JS_NewInt32(ctx, ret == 0 ? 0 : -1);
+}
+
+static JSValue js_listen(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    SockHandle *sock = get_sock(ctx, argv[0]);
+    if (!sock || sock->fd < 0)
+        return JS_ThrowTypeError(ctx, "Invalid sock handle");
+
+    int backlog = 8;
+    if (argc > 1) JS_ToInt32(ctx, &backlog, argv[1]);
+
+    int ret = listen(sock->fd, backlog);
+    if (ret == 0) {
+        /* switch the event mask to accept notifications */
+        WSAEventSelect(sock->fd, sock->event, FD_ACCEPT | FD_CLOSE);
+    }
+    return JS_NewInt32(ctx, ret);
+}
+
+static JSValue js_accept(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    SockHandle *sock = get_sock(ctx, argv[0]);
+    if (!sock || sock->fd < 0)
+        return JS_ThrowTypeError(ctx, "Invalid sock handle");
+
+    struct sockaddr_storage ss;
+    int len = sizeof(ss);
+    SOCKET newfd = accept(sock->fd, (struct sockaddr *)&ss, &len);
+    if (newfd == INVALID_SOCKET)
+        return JS_NULL;
+
+    u_long mode = 1;
+    ioctlsocket(newfd, FIONBIO, &mode);
+
+    WSAEVENT event = WSACreateEvent();
+    if (event == WSA_INVALID_EVENT) {
+        closesocket(newfd);
+        return JS_NULL;
+    }
+    if (WSAEventSelect(newfd, event, FD_READ | FD_WRITE | FD_CLOSE) == SOCKET_ERROR) {
+        WSACloseEvent(event);
+        closesocket(newfd);
+        return JS_NULL;
+    }
+
+    SockRuntime *r = find_runtime(JS_GetRuntime(ctx));
+    if (!r) {
+        WSACloseEvent(event);
+        closesocket(newfd);
+        return JS_NULL;
+    }
+
+    SockHandle *ns = make_slot(r, JS_GetRuntime(ctx));
+    if (!ns) {
+        WSACloseEvent(event);
+        closesocket(newfd);
+        return JS_NULL;
+    }
+
+    ns->fd = (int)newfd;
+    ns->af = (ss.ss_family == AF_INET6) ? AF_INET6 : AF_INET;
+    ns->event = event;
+    ns->on_event = JS_UNDEFINED;
+    ns->js_ctx = ctx;
+    r->slot_count++;
+
+    char ip[INET6_ADDRSTRLEN];
+    const char *ip_str = NULL;
+    int port = 0;
+    if (ss.ss_family == AF_INET) {
+        struct sockaddr_in *sin = (struct sockaddr_in *)&ss;
+        ip_str = inet_ntop(AF_INET, &sin->sin_addr, ip, sizeof(ip));
+        port = ntohs(sin->sin_port);
+    } else if (ss.ss_family == AF_INET6) {
+        struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)&ss;
+        ip_str = inet_ntop(AF_INET6, &sin6->sin6_addr, ip, sizeof(ip));
+        port = ntohs(sin6->sin6_port);
+    }
+
+    JSValue obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, obj, "handle", JS_NewInt32(ctx, (int)(ns - r->slots)));
+    JS_SetPropertyStr(ctx, obj, "addr", JS_NewString(ctx, ip_str ? ip_str : ""));
+    JS_SetPropertyStr(ctx, obj, "port", JS_NewInt32(ctx, port));
+    return obj;
+}
+
+static JSValue js_getsockname(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    SockHandle *sock = get_sock(ctx, argv[0]);
+    if (!sock || sock->fd < 0)
+        return JS_ThrowTypeError(ctx, "Invalid sock handle");
+
+    struct sockaddr_storage ss;
+    int len = sizeof(ss);
+    if (getsockname(sock->fd, (struct sockaddr *)&ss, &len) != 0)
+        return JS_NULL;
+
+    char ip[INET6_ADDRSTRLEN];
+    const char *ip_str = NULL;
+    int port = 0;
+    if (ss.ss_family == AF_INET) {
+        struct sockaddr_in *sin = (struct sockaddr_in *)&ss;
+        ip_str = inet_ntop(AF_INET, &sin->sin_addr, ip, sizeof(ip));
+        port = ntohs(sin->sin_port);
+    } else if (ss.ss_family == AF_INET6) {
+        struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)&ss;
+        ip_str = inet_ntop(AF_INET6, &sin6->sin6_addr, ip, sizeof(ip));
+        port = ntohs(sin6->sin6_port);
+    }
+
+    JSValue obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, obj, "addr", JS_NewString(ctx, ip_str ? ip_str : ""));
+    JS_SetPropertyStr(ctx, obj, "port", JS_NewInt32(ctx, port));
+    return obj;
+}
+
 /* ─── Module exports ────────────────────────────────────────── */
 
 static const JSCFunctionListEntry sock_funcs[] = {
     JS_CFUNC_DEF("socket", 3, js_socket),
     JS_CFUNC_DEF("connect", 3, js_connect),
+    JS_CFUNC_DEF("bind", 3, js_bind),
+    JS_CFUNC_DEF("listen", 2, js_listen),
+    JS_CFUNC_DEF("accept", 1, js_accept),
+    JS_CFUNC_DEF("getsockname", 1, js_getsockname),
     JS_CFUNC_DEF("send", 3, js_send),
     JS_CFUNC_DEF("recv", 3, js_recv),
     JS_CFUNC_DEF("shutdown", 2, js_shutdown),

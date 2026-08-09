@@ -844,6 +844,7 @@ declare module "sock" {
 
     export const enum AddrFamily {
         AF_INET = 2, // 0x2
+        AF_INET6 = 23, // 0x17
     }
 
     export const enum SockType {
@@ -863,6 +864,7 @@ declare module "sock" {
     }
 
     export const enum FdEvent {
+        FD_ACCEPT = 8, // 0x8
         FD_READ = 1, // 0x1
         FD_WRITE = 2, // 0x2
         FD_CONNECT = 16, // 0x10

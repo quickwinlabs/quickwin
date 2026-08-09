@@ -350,6 +350,14 @@ declare module "sock" {
 
     function socket(domain?: AddrFamily, type?: SockType, protocol?: Protocol): SockHandle;
     function connect(sock: SockHandle, addr: string, port: number): number;
+    /** bind(sock, addr, port) — addr 可为 "0.0.0.0"/"127.0.0.1"/"::"/"::1" 或 null（任意地址）；失败返回 -1 */
+    function bind(sock: SockHandle, addr: string | null, port: number): number;
+    /** listen(sock, backlog?) — 成功后该 socket 转为监听模式，on_event 会收到 FD_ACCEPT */
+    function listen(sock: SockHandle, backlog?: number): number;
+    /** accept(sock) — 接受一个连接，返回 { handle, addr, port }，无可接受连接时返回 null */
+    function accept(sock: SockHandle): { handle: SockHandle; addr: string; port: number } | null;
+    /** getsockname(sock) — 返回本地绑定地址 { addr, port }（port=0 自动分配后可用它查询实际端口） */
+    function getsockname(sock: SockHandle): { addr: string; port: number } | null;
     function send(sock: SockHandle, buf: ArrayBuffer, flags?: number): number;
     function recv(sock: SockHandle, size?: number, flags?: number): ArrayBuffer | null;
     function closesocket(sock: SockHandle): void;
