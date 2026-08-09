@@ -17,7 +17,7 @@ jobs:
           - msystem: MINGW64
             arch: mingw-w64-x86_64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -31,7 +31,7 @@ jobs:
 
       - name: Cache exe
         id: cache-exe
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             _build/win.exe
@@ -75,7 +75,7 @@ jobs:
           cp _build/win.exe _build/win-${{ matrix.msystem }}.exe
           cp _build/win-nowasm.exe _build/win-nowasm-${{ matrix.msystem }}.exe
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: quickwin-${{ matrix.msystem }}-${{ github.sha }}
           path: |
@@ -90,11 +90,11 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           registry-url: 'https://registry.npmjs.org'
 
@@ -107,7 +107,7 @@ jobs:
             mingw-w64-x86_64-nodejs
             mingw-w64-x86_64-wabt
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: quickwin-MINGW64-${{ github.sha }}
           merge-multiple: true
@@ -120,7 +120,7 @@ jobs:
 
       - name: Cache npm
         id: cache-npm
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: node_modules
           key: npm-${{ hashFiles('package-lock.json') }}
