@@ -140,26 +140,57 @@ jobs:
           kill $SERVER_PID 2>/dev/null
           exit $rc
 
-      # ─── publish steps (仅 main) ───
+      # ─── publish steps (git tag v*) ───
+      # npm 发布需要包名冷却期已过（quickwin 被删除后 24h 内会 403）。
+      # GitHub Release 不受影响，即使 npm 步骤失败也已产出。
 
       - name: Package npm
-        if: github.ref == 'refs/heads/main'
+        if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
         run: make npm-pkg
 
       - name: Place exe for publish
-        if: github.ref == 'refs/heads/main'
+        if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
         run: |
           cp _build/qwin.exe dist/quickwin/qwin.exe
           cp _build/qwin-nowasm.exe dist/quickwin/qwin-nowasm.exe
 
-      - name: Set version (UTC+8)
-        if: github.ref == 'refs/heads/main'
-        run: npm version $(TZ=Asia/Shanghai date +%Y.%-m.%-d-%H%M%S) --no-git-tag-version
-        working-directory: dist/quickwin
+      - name: Verify version matches tag
+        if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+        run: |
+          TAG_VER="${GITHUB_REF_NAME#v}"
+          PKG_VER="$(node -p "require('./dist/quickwin/package.json').version")"
+          if [ "$TAG_VER" != "$PKG_VER" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $PKG_VER"
+            exit 1
+          fi
+          echo "Release version $PKG_VER"
 
-      - name: Publish
-        if: github.ref == 'refs/heads/main'
-        run: npm publish --tag latest
+      - name: Publish npm
+        if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
         working-directory: dist/quickwin
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            echo "Publishing prerelease to dist-tag next"
+            npm publish --tag next
+          else
+            echo "Publishing release to dist-tag latest"
+            npm publish --tag latest
+          fi
+
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          TAG_VER="${TAG#v}"
+          cp _build/qwin.exe qwin.exe
+          cp _build/main.js main.js
+          (cd dist/quickwin && npm pack)
+          gh release create "$TAG" \
+            qwin.exe \
+            main.js \
+            "dist/quickwin/quickwin-${TAG_VER}.tgz" \
+            --title "$TAG" \
+            --notes "QuickWin $TAG — qwin.exe (MINGW64/MSVCRT, Windows 7+), main.js entry, npm tarball quickwin-$TAG_VER.tgz" \
+            --clobber
