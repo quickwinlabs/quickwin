@@ -86,6 +86,8 @@ jobs:
     name: test
     needs: build
     runs-on: windows-latest
+    permissions:
+      contents: write
     defaults:
       run:
         shell: msys2 {0}
@@ -165,21 +167,23 @@ jobs:
           fi
           echo "Release version $PKG_VER"
 
-      - name: Create GitHub Release
+      - name: Pack npm tarball
         if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
         run: |
-          TAG="$GITHUB_REF_NAME"
-          TAG_VER="${TAG#v}"
           cp _build/qwin.exe qwin.exe
           cp _build/main.js main.js
           (cd dist/quickwin && npm pack)
-          gh release create "$TAG" \
-            qwin.exe \
-            main.js \
-            "dist/quickwin/quickwin-${TAG_VER}.tgz" \
-            --title "$TAG" \
-            --notes "QuickWin $TAG — qwin.exe (MINGW64/MSVCRT, Windows 7+), main.js entry, npm tarball quickwin-$TAG_VER.tgz" \
-            --clobber
+
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            qwin.exe
+            main.js
+            dist/quickwin/quickwin-*.tgz
+          body: |
+            QuickWin ${{ github.ref_name }} — qwin.exe (MINGW64/MSVCRT, Windows 7+), main.js entry, npm tarball
 
       - name: Publish npm
         if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
