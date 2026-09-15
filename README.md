@@ -2,11 +2,20 @@
 
 # QuickWin
 
-QuickJS Win32 运行时 —— 用原生 Windows GUI、网络、WASM、FFI 等运行 JavaScript。
+Windows 平台上的 QuickJS 运行时，支持原生 GUI、网络、WASM、FFI 等能力。
 
-```bash
-npm i -g quickwin
-quickwin script.js
+目标：兼容 Windows XP+（32/64 位），保持最小二进制体积。
+
+现状：当前支持 Windows 7+（64 位），体积约 1.5MB。
+
+项目处于早期，功能待完善，包含已知 bug。
+
+直接从 GitHub Release 下载运行：
+
+```powershell
+iwr https://github.com/xna00/quickwin/releases/latest/download/qwin.exe -OutFile qwin.exe
+iwr https://github.com/xna00/quickwin/releases/latest/download/main.js -OutFile main.js
+.\qwin.exe main.js
 ```
 
 ## 特性
@@ -17,9 +26,8 @@ quickwin script.js
 - **WebSocket** —— 完整的 RFC 6455 实现，支持 ws:// 与 wss://
 - **WebAssembly** —— 基于 WAMR，支持标准 `WebAssembly.*` API
 - **FFI** —— 通过 libffi 调用任意 DLL 函数
-- **mupdf** —— 内嵌 PDF 渲染
 - **Polyfills** —— `TextEncoder`、`URL`、`URLSearchParams`、`btoa`/`atob`、`crypto.subtle`、`setTimeout`
-- **动态导入** —— `import('https://esm.sh/...')`，无需 npm install
+- **动态导入** —— `import('https://esm.sh/...')`，无需安装任何依赖
 
 ## CLI
 
@@ -143,9 +151,9 @@ parent.onmessage = (e) => {
 ## 示例
 
 ```bash
-npx quickwin examples/preact_demo.js   # JSX + hooks 的计数器 GUI
-npx quickwin examples/tray_demo.js     # 系统托盘应用
-npx quickwin examples/pdf_preview.js   # 基于 mupdf 的 PDF 阅读器
+.\qwin.exe examples/preact_demo.js   # JSX + hooks 的计数器 GUI
+.\qwin.exe examples/tray_demo.js     # 系统托盘应用
+.\qwin.exe examples/pdf_preview.js   # 基于 mupdf 的 PDF 阅读器
 ```
 
 ## 从源码构建
@@ -178,7 +186,7 @@ cd quickwin
 | `make` / `make nodebug` | 快速构建 |
 | `make minimal` | `-Os` + LTO + `-mwindows` + UPX，无控制台，需要控制台时加 `-o CON` |
 | `make nowasm` | 无 WASM/WAMR 构建 → `_build/qwin-nowasm.exe`（约 1.2MB，无 `WebAssembly` 全局） |
-| `make release` | `-O2` + LTO + strip，约 2.5MB |
+| `make release` | `-O2` + LTO + strip，约 1.5MB |
 | `make debug` | 带 bridge 日志的调试构建 |
 | `make js` | 通过 tsc 编译 TypeScript |
 | `make wasm` | 编译 WAT → WASM fixtures |

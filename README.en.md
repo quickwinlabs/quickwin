@@ -1,25 +1,33 @@
-> [中文文档](README.md) · **English**
+﻿> [ä¸­æ–‡æ–‡æ¡£](README.md) Â· **English**
 
 # QuickWin
 
-QuickJS Win32 runtime — run JavaScript with native Windows GUI, networking, WASM, FFI, and more.
+QuickJS runtime for Windows, with native GUI, networking, WASM, FFI and more.
 
-```bash
-npm i -g quickwin
-quickwin script.js
+Goal: compatibility with Windows XP+ (32/64-bit) and a minimal binary size.
+
+Currently: supports Windows 7+ (64-bit), ~1.5MB binary.
+
+Early-stage project with known bugs.
+
+Download directly from the GitHub Release:
+
+```powershell
+iwr https://github.com/xna00/quickwin/releases/latest/download/qwin.exe -OutFile qwin.exe
+iwr https://github.com/xna00/quickwin/releases/latest/download/main.js -OutFile main.js
+.\qwin.exe main.js
 ```
 
 ## Features
 
-- **Win32 GUI** — native windows, buttons, edit boxes, list boxes, tray icons, popup menus
-- **React renderer** — declarative GUI in JSX with `useState`/`useEffect`, diff updates ([react-qw](lib/react-qw/))
-- **HTTP/HTTPS** — `fetch()` API, Brotli decompression, chunked transfer, conditional caching
-- **WebSocket** — full RFC 6455 implementation, ws:// + wss://
-- **WebAssembly** — WAMR-based, supports `WebAssembly.*` standard API
-- **FFI** — call any DLL function via libffi
-- **mupdf** — embedded PDF rendering
-- **Polyfills** — `TextEncoder`, `URL`, `URLSearchParams`, `btoa`/`atob`, `crypto.subtle`, `setTimeout`
-- **Dynamic import** — `import('https://esm.sh/...')`, no npm install needed
+- **Win32 GUI** â€” native windows, buttons, edit boxes, list boxes, tray icons, popup menus
+- **React renderer** â€” declarative GUI in JSX with `useState`/`useEffect`, diff updates ([react-qw](lib/react-qw/))
+- **HTTP/HTTPS** â€” `fetch()` API, Brotli decompression, chunked transfer, conditional caching
+- **WebSocket** â€” full RFC 6455 implementation, ws:// + wss://
+- **WebAssembly** â€” WAMR-based, supports `WebAssembly.*` standard API
+- **FFI** â€” call any DLL function via libffi
+- **Polyfills** â€” `TextEncoder`, `URL`, `URLSearchParams`, `btoa`/`atob`, `crypto.subtle`, `setTimeout`
+- **Dynamic import** â€” `import('https://esm.sh/...')`, no dependency installation needed
 
 ## CLI
 
@@ -42,12 +50,12 @@ quickwin -- script.js --flag        # -- stops option parsing
 | `-d` | Enable HTTP debug logging |
 | `--` | Stop option parsing, remaining args passed to script |
 
-All unknown flags are transparently forwarded to `scriptArgs` — no error,
+All unknown flags are transparently forwarded to `scriptArgs` â€” no error,
 no consumption. Script file is the first non-flag argument after option parsing.
 
 ## Embedded Script
 
-You can embed a JS script directly into the `qwin.exe` binary — no recompilation needed.
+You can embed a JS script directly into the `qwin.exe` binary â€” no recompilation needed.
 
 ### Format (appended to exe)
 
@@ -89,7 +97,7 @@ When run without a script file argument, `qwin.exe` checks for embedded JS at th
 | `fetch` | `import './lib/fetch.js'` | adds `fetch()`, `Response`, `Headers` to globalThis |
 | `websocket` | `import './lib/websocket.js'` | adds `WebSocket` to globalThis |
 | `polyfill` | `import './lib/polyfill.js'` | adds `TextEncoder`, `URL`, `btoa`/`atob`, `setTimeout` to globalThis |
-| `preact` | `lib/preact/...` | JSX → Win32 renderer (`render`, `useState`, `useEffect`) |
+| `preact` | `lib/preact/...` | JSX â†’ Win32 renderer (`render`, `useState`, `useEffect`) |
 | `react-qw` | `lib/react-qw/` | React Custom Renderer for Win32 GUI ([docs](lib/react-qw/)) |
 
 ## Worker
@@ -144,9 +152,9 @@ Both sides must set `onmessage = null` when communication is complete. This rele
 ## Examples
 
 ```bash
-npx quickwin examples/preact_demo.js   # counter GUI with JSX + hooks
-npx quickwin examples/tray_demo.js     # system tray app
-npx quickwin examples/pdf_preview.js   # PDF reader with mupdf
+.\qwin.exe examples/preact_demo.js   # counter GUI with JSX + hooks
+.\qwin.exe examples/tray_demo.js     # system tray app
+.\qwin.exe examples/pdf_preview.js   # PDF reader with mupdf
 ```
 
 ## Build from Source
@@ -178,11 +186,11 @@ cd quickwin
 |--------|-------------|
 | `make` / `make nodebug` | fast build |
 | `make minimal` | `-Os` + LTO + `-mwindows` + UPX, no console, add `-o CON` for console |
-| `make nowasm` | no WASM/WAMR build → `_build/qwin-nowasm.exe` (~1.2MB, no `WebAssembly` global) |
-| `make release` | `-O2` + LTO + strip, ~2.5MB |
+| `make nowasm` | no WASM/WAMR build â†’ `_build/qwin-nowasm.exe` (~1.2MB, no `WebAssembly` global) |
+| `make release` | `-O2` + LTO + strip, ~1.5MB |
 | `make debug` | debug build with bridge logs |
 | `make js` | compile TypeScript via tsc |
-| `make wasm` | compile WAT → WASM fixtures |
+| `make wasm` | compile WAT â†’ WASM fixtures |
 | `make test` | run all tests |
 | `make test TEST=-net` | skip network tests (fast) |
 | `make test TEST=wasm` | run WASM tests only |
