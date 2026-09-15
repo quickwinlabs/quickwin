@@ -161,7 +161,13 @@ $(BUILD_DIR)/%.o: %.c | $(WOLFSSL_LIB_STATIC)
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-# version.h is included by quickjs-libc.c; explicit dep ensures rebuild on change
+# version.h is generated from package.json so package.json is the single source of truth;
+# quickjs-libc.c includes it, explicit dep ensures rebuild on change
+version.h: package.json
+	@echo "Generating version.h from package.json"
+	@VER=$$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -1); \
+	printf '#pragma once\n\n#define QUICKWIN_VERSION "%s"\n#define QUICKWIN_USER_AGENT "QuickWin/" QUICKWIN_VERSION\n' "$$VER" > $@
+
 $(BUILD_DIR)/quickjs-libc.o: version.h
 
 $(BUILD_DIR)/%.d: %.c

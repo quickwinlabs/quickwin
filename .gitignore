@@ -1,5 +1,6 @@
 _build/
 dist/
+/version.h
 *.exe
 *.o
 *.d

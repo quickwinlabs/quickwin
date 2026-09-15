@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "quickwin",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "QuickJS Win32 runtime — GUI, networking, WASM, FFI, and more",
   "bin": {
     "quickwin": "win-mingw64.exe",
