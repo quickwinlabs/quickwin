@@ -108,6 +108,7 @@ jobs:
             make
             mingw-w64-x86_64-nodejs
             mingw-w64-x86_64-wabt
+            zip
 
       - uses: actions/download-artifact@v7
         with:
@@ -173,6 +174,8 @@ jobs:
           cp _build/qwin.exe qwin.exe
           cp _build/main.js main.js
           (cd dist/quickwin && npm pack)
+          VER="${GITHUB_REF_NAME#v}"
+          zip -j "quickwin-${VER}.zip" qwin.exe main.js
 
       - name: Create GitHub Release
         if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
@@ -181,6 +184,7 @@ jobs:
           files: |
             qwin.exe
             main.js
+            quickwin-*.zip
             dist/quickwin/quickwin-*.tgz
           body: |
             QuickWin ${{ github.ref_name }} — qwin.exe (MINGW64/MSVCRT, Windows 7+), main.js entry, npm tarball
