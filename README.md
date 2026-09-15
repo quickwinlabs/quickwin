@@ -1,100 +1,101 @@
+> [English](README.en.md) · **中文**
+
 # QuickWin
 
-QuickJS Win32 runtime — run JavaScript with native Windows GUI, networking, WASM, FFI, and more.
+QuickJS Win32 运行时 —— 用原生 Windows GUI、网络、WASM、FFI 等运行 JavaScript。
 
 ```bash
 npm i -g quickwin
 quickwin script.js
 ```
 
-## Features
+## 特性
 
-- **Win32 GUI** — native windows, buttons, edit boxes, list boxes, tray icons, popup menus
-- **React renderer** — declarative GUI in JSX with `useState`/`useEffect`, diff updates ([react-qw](lib/react-qw/))
-- **HTTP/HTTPS** — `fetch()` API, Brotli decompression, chunked transfer, conditional caching
-- **WebSocket** — full RFC 6455 implementation, ws:// + wss://
-- **WebAssembly** — WAMR-based, supports `WebAssembly.*` standard API
-- **FFI** — call any DLL function via libffi
-- **mupdf** — embedded PDF rendering
-- **Polyfills** — `TextEncoder`, `URL`, `URLSearchParams`, `btoa`/`atob`, `crypto.subtle`, `setTimeout`
-- **Dynamic import** — `import('https://esm.sh/...')`, no npm install needed
+- **Win32 原生 GUI** —— 原生窗口、按钮、编辑框、列表框、托盘图标、弹出菜单
+- **React 渲染器** —— 用 JSX 声明式 GUI，支持 `useState`/`useEffect`，diff 增量更新（[react-qw](lib/react-qw/)）
+- **HTTP/HTTPS** —— `fetch()` API、Brotli 解压、chunked 传输、条件缓存
+- **WebSocket** —— 完整的 RFC 6455 实现，支持 ws:// 与 wss://
+- **WebAssembly** —— 基于 WAMR，支持标准 `WebAssembly.*` API
+- **FFI** —— 通过 libffi 调用任意 DLL 函数
+- **mupdf** —— 内嵌 PDF 渲染
+- **Polyfills** —— `TextEncoder`、`URL`、`URLSearchParams`、`btoa`/`atob`、`crypto.subtle`、`setTimeout`
+- **动态导入** —— `import('https://esm.sh/...')`，无需 npm install
 
 ## CLI
 
 ```bash
-quickwin script.js                  # run a script
-quickwin -o CON script.js           # run with console (AllocConsole)
-quickwin -o LOG script.js           # run with auto-generated log file
-quickwin -e "console.log('hi')"     # execute expression
-quickwin -- script.js --flag        # -- stops option parsing
+quickwin script.js                  # 运行脚本
+quickwin -o CON script.js           # 带控制台运行（AllocConsole）
+quickwin -o LOG script.js           # 自动生成日志文件运行
+quickwin -e "console.log('hi')"     # 执行表达式
+quickwin -- script.js --flag        # -- 停止选项解析
 ```
 
-### Options
+### 选项
 
 | Flag | Description |
 |------|-------------|
-| `-e <expr>` | Execute expression instead of a file |
-| `-o CON` | Allocate console (`AllocConsole`); only needed for GUI-subsystem builds |
-| `-o LOG` | Redirect stdout+stderr to `log_YYYY_MM_DD_HH_MM_SS.txt` (exe directory) |
-| `-o <file>` | Redirect stdout+stderr to specified file |
-| `-d` | Enable HTTP debug logging |
-| `--` | Stop option parsing, remaining args passed to script |
+| `-e <expr>` | 执行表达式而不是文件 |
+| `-o CON` | 分配控制台（`AllocConsole`）；仅 GUI 子系统构建所需 |
+| `-o LOG` | 将 stdout+stderr 重定向到 `log_YYYY_MM_DD_HH_MM_SS.txt`（exe 所在目录） |
+| `-o <file>` | 将 stdout+stderr 重定向到指定文件 |
+| `-d` | 开启 HTTP 调试日志 |
+| `--` | 停止选项解析，其余参数传给脚本 |
 
-All unknown flags are transparently forwarded to `scriptArgs` — no error,
-no consumption. Script file is the first non-flag argument after option parsing.
+所有未知参数都会透明转发给 `scriptArgs` —— 不报错、不消费。选项解析后的第一个非参数即脚本文件。
 
-## Embedded Script
+## 内嵌脚本
 
-You can embed a JS script directly into the `win.exe` binary — no recompilation needed.
+可以把一个 JS 脚本直接内嵌进 `win.exe` 二进制 —— 无需重新编译。
 
-### Format (appended to exe)
+### 格式（追加到 exe 末尾）
 
 ```
 [JS bytes (N)] [N: uint32 LE] [magic "QWJS"]
 ```
 
-### Usage
+### 用法
 
 ```bash
-# Embed a script
+# 内嵌一个脚本
 powershell -ExecutionPolicy Bypass -File scripts/embed-js.ps1 -ExePath _build/win.exe -JsFile script.js
 
-# Or via make
+# 或通过 make
 make embed-js JS_EMBED=script.js
 
-# Embed a script brotli-compressed (smaller exe, decompressed at runtime)
+# 内嵌 Brotli 压缩的脚本（exe 更小，运行时解压）
 make embed-js-br JS_EMBED=script.js
 
-# Run it (no file argument needed)
+# 运行它（不需要文件参数）
 win.exe
 ```
 
-When run without a script file argument, `win.exe` checks for embedded JS at the end of itself. If found, it executes the embedded code. If not, it falls back to `main.js`. Both raw (`QWJS`) and brotli-compressed (`QWBR`) embedded payloads are supported; the compressed form is decompressed at startup.
+不带脚本文件参数运行时，`win.exe` 会检查自身末尾是否有内嵌 JS：找到则执行内嵌代码，否则回退到 `main.js`。同时支持原始（`QWJS`）与 Brotli 压缩（`QWBR`）两种内嵌格式；压缩格式在启动时解压。
 
-## Modules
+## 模块
 
 | Module | Import | Description |
 |--------|--------|-------------|
-| `std` | built-in | file I/O, environment, URL download |
-| `os` | built-in | filesystem, process, Worker, timer |
-| `gui` | built-in | Win32 window/control/message/tray API |
-| `sock` | built-in | socket networking (`AddrFamily`, `FdEvent` etc.) |
-| `wolfssl` | built-in | TLS/SSL (`VerifyMode`, `ReturnCode` etc.) |
-| `ffi` | built-in | foreign function interface |
-| `win` | built-in | DLL loading (`LoadLibrary`, `GetProcAddress`) |
-| `brotli` | built-in | Brotli decompression |
-| `wamr` | built-in | low-level WAMR API |
-| `fetch` | `import './lib/fetch.js'` | adds `fetch()`, `Response`, `Headers` to globalThis |
-| `websocket` | `import './lib/websocket.js'` | adds `WebSocket` to globalThis |
-| `polyfill` | `import './lib/polyfill.js'` | adds `TextEncoder`, `URL`, `btoa`/`atob`, `setTimeout` to globalThis |
-| `preact` | `lib/preact/...` | JSX → Win32 renderer (`render`, `useState`, `useEffect`) |
-| `react-qw` | `lib/react-qw/` | React Custom Renderer for Win32 GUI ([docs](lib/react-qw/)) |
+| `std` | built-in | 文件 I/O、环境变量、URL 下载 |
+| `os` | built-in | 文件系统、进程、Worker、定时器 |
+| `gui` | built-in | Win32 窗口/控件/消息/托盘 API |
+| `sock` | built-in | Socket 网络（`AddrFamily`、`FdEvent` 等） |
+| `wolfssl` | built-in | TLS/SSL（`VerifyMode`、`ReturnCode` 等） |
+| `ffi` | built-in | 外部函数接口 |
+| `win` | built-in | DLL 加载（`LoadLibrary`、`GetProcAddress`） |
+| `brotli` | built-in | Brotli 解压 |
+| `wamr` | built-in | 底层 WAMR API |
+| `fetch` | `import './lib/fetch.js'` | 向 globalThis 添加 `fetch()`、`Response`、`Headers` |
+| `websocket` | `import './lib/websocket.js'` | 向 globalThis 添加 `WebSocket` |
+| `polyfill` | `import './lib/polyfill.js'` | 向 globalThis 添加 `TextEncoder`、`URL`、`btoa`/`atob`、`setTimeout` |
+| `preact` | `lib/preact/...` | JSX → Win32 渲染器（`render`、`useState`、`useEffect`） |
+| `react-qw` | `lib/react-qw/` | 面向 Win32 GUI 的 React 自定义渲染器（[文档](lib/react-qw/)） |
 
 ## Worker
 
-Spawn background threads for CPU-bound or I/O-bound work. Workers run in separate QuickJS runtimes with their own event loops.
+面向 CPU 密集或 I/O 密集工作创建后台线程。Worker 运行在独立的 QuickJS runtime 中，各自拥有自己的事件循环。
 
-### Main Thread
+### 主线程
 
 ```js
 import * as os from 'os'
@@ -103,13 +104,13 @@ const worker = new os.Worker('./worker.js')
 
 worker.onmessage = (e) => {
     console.log('received:', e.data)
-    worker.onmessage = null  // clean up when done
+    worker.onmessage = null  // 完成后清理
 }
 
 worker.postMessage({ type: 'start', value: 42 })
 ```
 
-### Worker Thread
+### Worker 线程
 
 ```js
 // worker.js
@@ -121,7 +122,7 @@ parent.onmessage = (e) => {
     if (e.data.type === 'start') {
         parent.postMessage({ type: 'result', value: e.data.value * 2 })
     } else if (e.data.type === 'done') {
-        parent.onmessage = null  // clean up to allow event loop exit
+        parent.onmessage = null  // 清理以允许事件循环退出
     }
 }
 ```
@@ -130,66 +131,66 @@ parent.onmessage = (e) => {
 
 | API | Description |
 |-----|-------------|
-| `new os.Worker(specifier)` | Create worker. `specifier` is a file path or URL (supports `https://` for ESM imports) |
-| `worker.postMessage(data)` | Send message (JSON-serializable) to worker |
-| `worker.onmessage = fn` | Set callback for messages from worker. Set to `null` when done to release the message port |
-| `os.Worker.parent` | (Worker side) reference to the parent thread |
+| `new os.Worker(specifier)` | 创建 worker。`specifier` 是文件路径或 URL（支持 `https://` ESM 导入） |
+| `worker.postMessage(data)` | 向 worker 发送消息（JSON 可序列化） |
+| `worker.onmessage = fn` | 设置来自 worker 的消息回调。完成后设为 `null` 以释放消息端口 |
+| `os.Worker.parent` | （Worker 侧）父线程的引用 |
 
-### Cleanup
+### 清理
 
-Both sides must set `onmessage = null` when communication is complete. This releases the message port so the event loop can exit cleanly. Forgetting to do so will cause the process to hang.
+通信完成后，双方都必须把 `onmessage` 设为 `null`。这会释放消息端口，使事件循环能够干净退出。忘记设置会导致进程挂起。
 
-## Examples
+## 示例
 
 ```bash
-npx quickwin examples/preact_demo.js   # counter GUI with JSX + hooks
-npx quickwin examples/tray_demo.js     # system tray app
-npx quickwin examples/pdf_preview.js   # PDF reader with mupdf
+npx quickwin examples/preact_demo.js   # JSX + hooks 的计数器 GUI
+npx quickwin examples/tray_demo.js     # 系统托盘应用
+npx quickwin examples/pdf_preview.js   # 基于 mupdf 的 PDF 阅读器
 ```
 
-## Build from Source
+## 从源码构建
 
-### Prerequisites
+### 前置依赖
 
-- MSYS2 UCRT64 or MINGW64
-- Node.js (for TypeScript compilation via tsc)
-- Git (for submodules)
+- MSYS2 UCRT64 或 MINGW64
+- Node.js（用于通过 tsc 编译 TypeScript）
+- Git（用于子模块）
 
-### Build
+### 构建
 
 ```bash
 git clone --recursive https://github.com/anomalyco/quickwin.git
 cd quickwin
 
-.\run.ps1 "make wamr"       # build WAMR library (first time only)
-.\run.ps1 "make minimal"    # build win.exe (-Os + LTO + UPX)
-.\run.ps1 "make js"         # compile TypeScript
-.\run.ps1 "make test"       # run all tests
+.\run.ps1 "make wamr"       # 构建 WAMR 库（仅首次）
+.\run.ps1 "make minimal"    # 构建 win.exe（-Os + LTO + UPX）
+.\run.ps1 "make js"         # 编译 TypeScript
+.\run.ps1 "make test"       # 运行全部测试
 ```
 
-`make nowasm` produces a smaller `_build/win-nowasm.exe` without WASM/WAMR
-(no `WebAssembly` global); run `make test TEST=-wasm` to skip WASM tests on it.
+`make nowasm` 会产出更小的 `_build/win-nowasm.exe`，不含 WASM/WAMR
+（没有 `WebAssembly` 全局对象）；对这种版本运行 `make test TEST=-wasm` 跳过 WASM 测试。
 
-### Build Targets
+### 构建目标
 
 | Target | Description |
 |--------|-------------|
-| `make` / `make nodebug` | fast build |
-| `make minimal` | `-Os` + LTO + `-mwindows` + UPX, no console, add `-o CON` for console |
-| `make nowasm` | no WASM/WAMR build → `_build/win-nowasm.exe` (~1.2MB, no `WebAssembly` global) |
-| `make release` | `-O2` + LTO + strip, ~2.5MB |
-| `make debug` | debug build with bridge logs |
-| `make js` | compile TypeScript via tsc |
-| `make wasm` | compile WAT → WASM fixtures |
-| `make test` | run all tests |
-| `make test TEST=-net` | skip network tests (fast) |
-| `make test TEST=wasm` | run WASM tests only |
-| `make wamr` | rebuild WAMR library |
-| `make embed-js` | embed `embed.js` into exe (use `JS_EMBED=file.js`) |
-| `make embed-js-br` | embed brotli-compressed JS into exe |
-| `make npm-pkg` | package into `dist/quickwin/` |
-| `make clean` | clean build artifacts |
+| `make` / `make nodebug` | 快速构建 |
+| `make minimal` | `-Os` + LTO + `-mwindows` + UPX，无控制台，需要控制台时加 `-o CON` |
+| `make nowasm` | 无 WASM/WAMR 构建 → `_build/win-nowasm.exe`（约 1.2MB，无 `WebAssembly` 全局） |
+| `make release` | `-O2` + LTO + strip，约 2.5MB |
+| `make debug` | 带 bridge 日志的调试构建 |
+| `make js` | 通过 tsc 编译 TypeScript |
+| `make wasm` | 编译 WAT → WASM fixtures |
+| `make test` | 运行全部测试 |
+| `make test TEST=-net` | 跳过网络测试（快速） |
+| `make test TEST=wasm` | 仅运行 WASM 测试 |
+| `make wamr` | 重建 WAMR 库 |
+| `make embed-js` | 把 `embed.js` 内嵌进 exe（用 `JS_EMBED=file.js`） |
+| `make embed-js-br` | 把 Brotli 压缩的 JS 内嵌进 exe |
+| `make npm-pkg` | 打包到 `dist/quickwin/` |
+| `make clean` | 清理构建产物 |
 
-## License
+## 许可证
 
 MIT

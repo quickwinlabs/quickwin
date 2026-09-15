@@ -313,7 +313,7 @@ npm-pkg: js wasm
 	find lib \( -name '*.ts' -o -name '*.mts' \) -exec cp --parents {} $(NPM_PKG_DIR)/ \;
 	cp test/*.ts $(NPM_PKG_DIR)/test/
 	cp examples/*.ts examples/*.tsx $(NPM_PKG_DIR)/examples/
-	cp quickwin.d.ts quickwin_const.d.ts tsconfig.json package.json README.md $(NPM_PKG_DIR)/
+	cp quickwin.d.ts quickwin_const.d.ts tsconfig.json package.json README.md README.en.md $(NPM_PKG_DIR)/
 	@echo "npm package created at $(NPM_PKG_DIR)"
 
 embed-js: $(TARGET)
