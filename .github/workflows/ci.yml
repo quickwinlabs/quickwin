@@ -34,8 +34,8 @@ jobs:
         uses: actions/cache@v5
         with:
           path: |
-            _build/win.exe
-            _build/win-nowasm.exe
+            _build/qwin.exe
+            _build/qwin-nowasm.exe
           key: exe-${{ matrix.msystem }}-${{ hashFiles('*.c', '*.h', 'Makefile', 'app.rc') }}-wamr-${{ steps.submodules.outputs.wamr }}-qjs-${{ steps.submodules.outputs.qjs }}-wolfssl-${{ steps.submodules.outputs.wolfssl }}
 
       - uses: msys2/setup-msys2@v2
@@ -72,15 +72,15 @@ jobs:
       - name: Rename
         shell: bash
         run: |
-          cp _build/win.exe _build/win-${{ matrix.msystem }}.exe
-          cp _build/win-nowasm.exe _build/win-nowasm-${{ matrix.msystem }}.exe
+          cp _build/qwin.exe _build/qwin-${{ matrix.msystem }}.exe
+          cp _build/qwin-nowasm.exe _build/qwin-nowasm-${{ matrix.msystem }}.exe
 
       - uses: actions/upload-artifact@v6
         with:
           name: quickwin-${{ matrix.msystem }}-${{ github.sha }}
           path: |
-            _build/win-${{ matrix.msystem }}.exe
-            _build/win-nowasm-${{ matrix.msystem }}.exe
+            _build/qwin-${{ matrix.msystem }}.exe
+            _build/qwin-nowasm-${{ matrix.msystem }}.exe
 
   test:
     name: test
@@ -115,8 +115,8 @@ jobs:
       - name: Place exe
         run: |
           mkdir -p _build
-          mv win-MINGW64.exe _build/win.exe
-          mv win-nowasm-MINGW64.exe _build/win-nowasm.exe
+          mv qwin-MINGW64.exe _build/qwin.exe
+          mv qwin-nowasm-MINGW64.exe _build/qwin-nowasm.exe
 
       - name: Cache npm
         id: cache-npm
@@ -135,7 +135,7 @@ jobs:
       - name: Run tests
         run: |
           node --experimental-strip-types tools/serve_test.ts 18923 & SERVER_PID=$!
-          _build/win.exe _build/test/run.js
+          _build/qwin.exe _build/test/run.js
           rc=$?
           kill $SERVER_PID 2>/dev/null
           exit $rc
@@ -149,8 +149,8 @@ jobs:
       - name: Place exe for publish
         if: github.ref == 'refs/heads/main'
         run: |
-          cp _build/win.exe dist/quickwin/win-mingw64.exe
-          cp _build/win-nowasm.exe dist/quickwin/win-nowasm-mingw64.exe
+          cp _build/qwin.exe dist/quickwin/qwin.exe
+          cp _build/qwin-nowasm.exe dist/quickwin/qwin-nowasm.exe
 
       - name: Set version (UTC+8)
         if: github.ref == 'refs/heads/main'

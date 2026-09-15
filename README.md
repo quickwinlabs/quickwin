@@ -46,7 +46,7 @@ quickwin -- script.js --flag        # -- 停止选项解析
 
 ## 内嵌脚本
 
-可以把一个 JS 脚本直接内嵌进 `win.exe` 二进制 —— 无需重新编译。
+可以把一个 JS 脚本直接内嵌进 `qwin.exe` 二进制 —— 无需重新编译。
 
 ### 格式（追加到 exe 末尾）
 
@@ -58,7 +58,7 @@ quickwin -- script.js --flag        # -- 停止选项解析
 
 ```bash
 # 内嵌一个脚本
-powershell -ExecutionPolicy Bypass -File scripts/embed-js.ps1 -ExePath _build/win.exe -JsFile script.js
+powershell -ExecutionPolicy Bypass -File scripts/embed-js.ps1 -ExePath _build/qwin.exe -JsFile script.js
 
 # 或通过 make
 make embed-js JS_EMBED=script.js
@@ -67,10 +67,10 @@ make embed-js JS_EMBED=script.js
 make embed-js-br JS_EMBED=script.js
 
 # 运行它（不需要文件参数）
-win.exe
+qwin.exe
 ```
 
-不带脚本文件参数运行时，`win.exe` 会检查自身末尾是否有内嵌 JS：找到则执行内嵌代码，否则回退到 `main.js`。同时支持原始（`QWJS`）与 Brotli 压缩（`QWBR`）两种内嵌格式；压缩格式在启动时解压。
+不带脚本文件参数运行时，`qwin.exe` 会检查自身末尾是否有内嵌 JS：找到则执行内嵌代码，否则回退到 `main.js`。同时支持原始（`QWJS`）与 Brotli 压缩（`QWBR`）两种内嵌格式；压缩格式在启动时解压。
 
 ## 模块
 
@@ -163,12 +163,12 @@ git clone --recursive https://github.com/anomalyco/quickwin.git
 cd quickwin
 
 .\run.ps1 "make wamr"       # 构建 WAMR 库（仅首次）
-.\run.ps1 "make minimal"    # 构建 win.exe（-Os + LTO + UPX）
+.\run.ps1 "make minimal"    # 构建 qwin.exe（-Os + LTO + UPX）
 .\run.ps1 "make js"         # 编译 TypeScript
 .\run.ps1 "make test"       # 运行全部测试
 ```
 
-`make nowasm` 会产出更小的 `_build/win-nowasm.exe`，不含 WASM/WAMR
+`make nowasm` 会产出更小的 `_build/qwin-nowasm.exe`，不含 WASM/WAMR
 （没有 `WebAssembly` 全局对象）；对这种版本运行 `make test TEST=-wasm` 跳过 WASM 测试。
 
 ### 构建目标
@@ -177,7 +177,7 @@ cd quickwin
 |--------|-------------|
 | `make` / `make nodebug` | 快速构建 |
 | `make minimal` | `-Os` + LTO + `-mwindows` + UPX，无控制台，需要控制台时加 `-o CON` |
-| `make nowasm` | 无 WASM/WAMR 构建 → `_build/win-nowasm.exe`（约 1.2MB，无 `WebAssembly` 全局） |
+| `make nowasm` | 无 WASM/WAMR 构建 → `_build/qwin-nowasm.exe`（约 1.2MB，无 `WebAssembly` 全局） |
 | `make release` | `-O2` + LTO + strip，约 2.5MB |
 | `make debug` | 带 bridge 日志的调试构建 |
 | `make js` | 通过 tsc 编译 TypeScript |

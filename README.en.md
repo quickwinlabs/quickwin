@@ -47,7 +47,7 @@ no consumption. Script file is the first non-flag argument after option parsing.
 
 ## Embedded Script
 
-You can embed a JS script directly into the `win.exe` binary — no recompilation needed.
+You can embed a JS script directly into the `qwin.exe` binary — no recompilation needed.
 
 ### Format (appended to exe)
 
@@ -59,7 +59,7 @@ You can embed a JS script directly into the `win.exe` binary — no recompilatio
 
 ```bash
 # Embed a script
-powershell -ExecutionPolicy Bypass -File scripts/embed-js.ps1 -ExePath _build/win.exe -JsFile script.js
+powershell -ExecutionPolicy Bypass -File scripts/embed-js.ps1 -ExePath _build/qwin.exe -JsFile script.js
 
 # Or via make
 make embed-js JS_EMBED=script.js
@@ -68,10 +68,10 @@ make embed-js JS_EMBED=script.js
 make embed-js-br JS_EMBED=script.js
 
 # Run it (no file argument needed)
-win.exe
+qwin.exe
 ```
 
-When run without a script file argument, `win.exe` checks for embedded JS at the end of itself. If found, it executes the embedded code. If not, it falls back to `main.js`. Both raw (`QWJS`) and brotli-compressed (`QWBR`) embedded payloads are supported; the compressed form is decompressed at startup.
+When run without a script file argument, `qwin.exe` checks for embedded JS at the end of itself. If found, it executes the embedded code. If not, it falls back to `main.js`. Both raw (`QWJS`) and brotli-compressed (`QWBR`) embedded payloads are supported; the compressed form is decompressed at startup.
 
 ## Modules
 
@@ -164,12 +164,12 @@ git clone --recursive https://github.com/anomalyco/quickwin.git
 cd quickwin
 
 .\run.ps1 "make wamr"       # build WAMR library (first time only)
-.\run.ps1 "make minimal"    # build win.exe (-Os + LTO + UPX)
+.\run.ps1 "make minimal"    # build qwin.exe (-Os + LTO + UPX)
 .\run.ps1 "make js"         # compile TypeScript
 .\run.ps1 "make test"       # run all tests
 ```
 
-`make nowasm` produces a smaller `_build/win-nowasm.exe` without WASM/WAMR
+`make nowasm` produces a smaller `_build/qwin-nowasm.exe` without WASM/WAMR
 (no `WebAssembly` global); run `make test TEST=-wasm` to skip WASM tests on it.
 
 ### Build Targets
@@ -178,7 +178,7 @@ cd quickwin
 |--------|-------------|
 | `make` / `make nodebug` | fast build |
 | `make minimal` | `-Os` + LTO + `-mwindows` + UPX, no console, add `-o CON` for console |
-| `make nowasm` | no WASM/WAMR build → `_build/win-nowasm.exe` (~1.2MB, no `WebAssembly` global) |
+| `make nowasm` | no WASM/WAMR build → `_build/qwin-nowasm.exe` (~1.2MB, no `WebAssembly` global) |
 | `make release` | `-O2` + LTO + strip, ~2.5MB |
 | `make debug` | debug build with bridge logs |
 | `make js` | compile TypeScript via tsc |

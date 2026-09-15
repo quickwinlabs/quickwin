@@ -71,7 +71,7 @@ ifeq ($(MINIMAL), 1)
     LDFLAGS += -flto -Wl,--gc-sections -mwindows
 endif
 
-TARGET_NAME ?= win.exe
+TARGET_NAME ?= qwin.exe
 TARGET = $(BUILD_DIR)/$(TARGET_NAME)
 NPM_PKG_DIR = dist/quickwin
 QUICKJS_LIB = $(BUILD_DIR)/libquickjs.a
@@ -121,9 +121,9 @@ minimal:
 
 nowasm:
 	rm -f $(OBJS) $(DEPS) $(QUICKJS_LIB)
-	rm -f $(BUILD_DIR)/win-nowasm.exe
-	@$(MAKE) NO_WASM=1 TARGET_NAME=win-nowasm.exe OPT=-Os MINIMAL=1 nodebug
-	@echo "Build complete: $(BUILD_DIR)/win-nowasm.exe (no WASM, -Os, LTO, stripped)"
+	rm -f $(BUILD_DIR)/qwin-nowasm.exe
+	@$(MAKE) NO_WASM=1 TARGET_NAME=qwin-nowasm.exe OPT=-Os MINIMAL=1 nodebug
+	@echo "Build complete: $(BUILD_DIR)/qwin-nowasm.exe (no WASM, -Os, LTO, stripped)"
 
 
 
@@ -328,7 +328,7 @@ help:
 	@echo "  release   - Build with -O2 + LTO + stripped + custom wolfSSL"
 	@echo "  small     - Build with -Os + LTO + stripped + custom wolfSSL"
 	@echo "  minimal   - Build with -Os + LTO + stripped + UPX + custom wolfSSL"
-	@echo "  nowasm    - Build without WASM/WAMR -> $(BUILD_DIR)/win-nowasm.exe (-Os, LTO, stripped)"
+	@echo "  nowasm    - Build without WASM/WAMR -> $(BUILD_DIR)/qwin-nowasm.exe (-Os, LTO, stripped)"
 	@echo "  debug     - Build debug version (-g -O0, always has DUMP_GC/DUMP_LEAKS)"
 	@echo "  clean     - Remove built files and JS files"
 	@echo "  distclean - Remove all generated files"

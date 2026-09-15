@@ -73,23 +73,23 @@ make wat               # 将 WAT 文件编译为 WASM
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ./run.ps1 -Command "make js"
-powershell -ExecutionPolicy Bypass -File ./run.ps1 -Command "./_build/win.exe test/test_wasm_bidirectional.js"
-powershell -ExecutionPolicy Bypass -File ./run.ps1 -Command "make js && ./_build/win.exe test/test_wasm_bidirectional.js"
+powershell -ExecutionPolicy Bypass -File ./run.ps1 -Command "./_build/qwin.exe test/test_wasm_bidirectional.js"
+powershell -ExecutionPolicy Bypass -File ./run.ps1 -Command "make js && ./_build/qwin.exe test/test_wasm_bidirectional.js"
 ```
 
 **注意：**
-- **`run.ps1` 运行在 MSYS2 bash 环境中，可执行文件在 `_build/win.exe`**（不是根目录的 `win.exe`）
-- `./win.exe`（根目录）可能是旧的或不存在，永远不要直接用它
-- 构建前确保 `win.exe` 未运行：`taskkill /f /im win.exe`
+- **`run.ps1` 运行在 MSYS2 bash 环境中，可执行文件在 `_build/qwin.exe`**（不是根目录的 `qwin.exe`）
+- `./qwin.exe`（根目录）可能是旧的或不存在，永远不要直接用它
+- 构建前确保 `qwin.exe` 未运行：`taskkill /f /im qwin.exe`
 - 需要 MSYS2 UCRT64 和 Node.js 环境
 - `run.ps1` 用于在 PowerShell 中执行 MSYS2 bash 命令，支持包含 `&&` 的复杂命令
 
 ### CLI 参数
 
 ```
-win.exe [options] [script.js]    # 运行 JS 脚本
-win.exe -e <expression>         # 运行表达式
-win.exe [options]               # 无参数时加载 main.js 或内嵌 JS
+qwin.exe [options] [script.js]    # 运行 JS 脚本
+qwin.exe -e <expression>         # 运行表达式
+qwin.exe [options]               # 无参数时加载 main.js 或内嵌 JS
 ```
 
 | 参数 | 说明 |
@@ -103,10 +103,10 @@ win.exe [options]               # 无参数时加载 main.js 或内嵌 JS
 
 **示例：**
 ```bash
-./_build/win.exe -o LOG main.js              # 运行 main.js，输出到日志文件
-./_build/win.exe -o CON -e 'console.log(42)' # 控制台输出
-./_build/win.exe -d -o http.log https.js      # HTTP 调试日志到文件
-./_build/win.exe -- -e 'code'                 # 不会被 -e 捕获
+./_build/qwin.exe -o LOG main.js              # 运行 main.js，输出到日志文件
+./_build/qwin.exe -o CON -e 'console.log(42)' # 控制台输出
+./_build/qwin.exe -d -o http.log https.js      # HTTP 调试日志到文件
+./_build/qwin.exe -- -e 'code'                 # 不会被 -e 捕获
 ```
 
 **注意：** `-o LOG` 生成的日志文件在 exe 所在目录（`_build/`），不是当前工作目录。
@@ -272,7 +272,7 @@ cp wamr/build/libiwasm.a wamr/lib/libiwasm.a
 
 ## 故障排除
 
-- **Permission denied 错误：** `taskkill /f /im win.exe` 后重新构建
+- **Permission denied 错误：** `taskkill /f /im qwin.exe` 后重新构建
 - **TypeScript 错误：** 运行 `build.bat js` 检查错误
 - **运行时错误：** 使用调试版本构建并检查日志
 - **找不到 make 命令：** 使用 `.\build.bat <target>` 代替 `make <target>`（推荐方式）
@@ -296,11 +296,11 @@ cp wamr/build/libiwasm.a wamr/lib/libiwasm.a
 
 ## 9. HTTP Import (esm.sh 动态导入)
 
-**核心能力：** 需要什么 JS 库，直接 `import('https://esm.sh/...')`，无需 `npm install`、无需打包配置、无需 node_modules。`win.exe` 本身就是 runtime + package manager。
+**核心能力：** 需要什么 JS 库，直接 `import('https://esm.sh/...')`，无需 `npm install`、无需打包配置、无需 node_modules。`qwin.exe` 本身就是 runtime + package manager。
 
 例：
 ```js
-// 不用装，直接 `win.exe -e "..."` 就能跑
+// 不用装，直接 `qwin.exe -e "..."` 就能跑
 import('https://esm.sh/marked').then(md => md.marked('# hello'))
 ```
 
