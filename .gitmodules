@@ -8,3 +8,9 @@
 [submodule "wolfssl"]
 	path = wolfssl
 	url = https://github.com/wolfSSL/wolfssl.git
+[submodule "brotli"]
+	path = brotli
+	url = https://github.com/google/brotli
+[submodule "libffi"]
+	path = libffi
+	url = https://github.com/libffi/libffi
