@@ -1,0 +1,30 @@
+FROM fedora:44
+
+# 中科大镜像加速（路径: download.example/pub/fedora/linux → mirrors.ustc.edu.cn/fedora）
+RUN sed -e 's|^metalink=|#metalink=|g' \
+        -e 's|^#baseurl=http://download.example/pub/fedora/linux|baseurl=https://mirrors.ustc.edu.cn/fedora|g' \
+        -i.bak \
+        /etc/yum.repos.d/fedora*.repo && \
+    sed -e 's|^enabled=1|enabled=0|g' \
+        -i /etc/yum.repos.d/fedora-cisco-openh264.repo
+
+RUN dnf install -y \
+    # Build tools
+    gcc gcc-c++ make cmake git \
+    # MinGW cross-compilers
+    mingw64-gcc mingw64-gcc-c++ mingw64-winpthreads-static \
+    mingw32-gcc mingw32-gcc-c++ mingw32-winpthreads-static \
+    # Node.js
+    nodejs npm \
+    # QEMU for Windows testing (core only, no display/audio/block drivers)
+    qemu-system-x86-core \
+    qemu-img \
+    # QEMU CI tools
+    mtools dosfstools genisoimage socat \
+    # Samba (smbd) for QEMU -netdev user,smb=
+    samba \
+    # Utilities
+    curl wget zip unzip p7zip python3 dos2unix && \
+    dnf clean all
+
+WORKDIR /workspace

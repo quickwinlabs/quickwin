@@ -16,6 +16,10 @@ node_modules/
 wamr/build/
 wolfssl/build/
 wolfssl/lib/
+brotli/build-*/
+brotli/lib/
+libffi/build-*/
+libffi/lib/
 temp/
 _cache/
 ./quickjs
