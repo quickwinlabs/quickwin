@@ -1,3 +1,9 @@
+/* Pre-define _SSIZE_T_DEFINED to prevent corecrt.h from defining ssize_t,
+   which conflicts with WAMR's platform_internal.h typedef */
+#ifndef _SSIZE_T_DEFINED
+#define _SSIZE_T_DEFINED
+#endif
+
 #include "quickjs-wamr.h"
 #include "quickjs-args.h"
 #include "wasm_export.h"

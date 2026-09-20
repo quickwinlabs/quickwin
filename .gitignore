@@ -25,3 +25,4 @@ _cache/
 ./quickjs
 !vendor/mupdf-wasm/**
 vendor/mupdf-wasm/mupdf-wasm.wat
+docker/ci-xp/ci_share/quickwin

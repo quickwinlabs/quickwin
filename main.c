@@ -150,9 +150,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     INITCOMMONCONTROLSEX icex = { sizeof(INITCOMMONCONTROLSEX), ICC_WIN95_CLASSES | ICC_LINK_CLASS };
     InitCommonControlsEx(&icex);
-#if _WIN32_WINNT >= 0x0600
-    SetProcessDPIAware();
-#endif
+    {
+        typedef void (WINAPI *SetProcessDPIAware_fn)(void);
+        HMODULE h = GetModuleHandleA("user32.dll");
+        if (h) {
+            SetProcessDPIAware_fn fn = (SetProcessDPIAware_fn)GetProcAddress(h, "SetProcessDPIAware");
+            if (fn) fn();
+        }
+    }
 
     int cmd_argc = 0;
     char **cmd_argv = NULL;

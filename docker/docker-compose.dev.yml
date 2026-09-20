@@ -4,13 +4,13 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     container_name: quickwin-dev
-    privileged: true
     devices:
       - /dev/kvm:/dev/kvm
     volumes:
       - ..:/workspace:Z
     ports:
       - "8081:8080"
+      - "6080:6080"
     working_dir: /workspace
     stdin_open: true
     tty: true

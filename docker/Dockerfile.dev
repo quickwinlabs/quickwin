@@ -23,8 +23,10 @@ RUN dnf install -y \
     mtools dosfstools genisoimage socat \
     # Samba (smbd) for QEMU -netdev user,smb=
     samba \
+    # noVNC for browser-based VNC access to QEMU VMs
+    novnc python3-websockify \
     # Utilities
-    curl wget zip unzip p7zip python3 dos2unix && \
+    curl wget zip unzip 7zip python3 dos2unix && \
     dnf clean all
 
 WORKDIR /workspace

@@ -131,10 +131,10 @@ LRESULT CALLBACK SubProxyWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
                 return CallWindowProcW(g_windows[idx].oldProc, hWnd, msg, wParam, lParam);
             return DefWindowProcW(hWnd, msg, wParam, lParam);
         }
-        LRESULT result = 0;
+        int64_t result = 0;
         JS_ToInt64(g_ctx, &result, ret);
         JS_FreeValue(g_ctx, ret);
-        return result;
+        return (LRESULT)result;
     }
     if (idx >= 0 && g_windows[idx].oldProc)
         return CallWindowProcW(g_windows[idx].oldProc, hWnd, msg, wParam, lParam);
@@ -169,9 +169,10 @@ LRESULT CALLBACK ClassProxyWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
                 return DefWindowProcW(hWnd, msg, wParam, lParam);
             }
             LRESULT result = 0;
-            JS_ToInt64(g_ctx, &result, ret);
+            int64_t temp_result = 0;
+            JS_ToInt64(g_ctx, &temp_result, ret);
             JS_FreeValue(g_ctx, ret);
-            return result;
+            return (LRESULT)temp_result;
         }
     }
     return DefWindowProcW(hWnd, msg, wParam, lParam);

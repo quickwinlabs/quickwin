@@ -43,7 +43,7 @@ else
     CFLAGS = -I./quickjs -I$(MSYS2_PREFIX)/include -DNDEBUG
 endif
 
-CFLAGS += -D_WIN32_WINNT=0x0601
+CFLAGS += -D_WIN32_WINNT=0x0501
 CFLAGS += -DDUMP_GC -DDUMP_LEAKS
 CFLAGS += -Wall -Wextra
 
@@ -109,6 +109,8 @@ else
     CFLAGS += $(WAMR_DEFS)
 endif
 CFLAGS += $(WOLFSSL_INC)
+CFLAGS += -I$(LIBFFI_BUILD_DIR)/include
+CFLAGS += -I$(BROTLI_DIR)/c/include
 
 LDFLAGS = -L$(MSYS2_PREFIX)/lib -static
 LIBS = $(LIBBROTLIDEC) $(LIBBROTLICOMMON) $(WOLFSSL_LIB) -lws2_32 -lbcrypt -lcrypt32 -lm -luser32 -lgdi32 -lcomctl32 $(LIBFFI) -lntdll -lshell32 -lwininet
@@ -132,7 +134,8 @@ SRCS = main.c \
        quickjs-wolfssl.c \
        quickjs-http.c \
        quickjs-libc.c \
-       quickjs-async-task.c
+        quickjs-async-task.c
+
 
 ifeq ($(NO_WASM), 0)
 SRCS += quickjs-wamr.c
@@ -149,7 +152,7 @@ cc64:
 	@$(MAKE) CROSS=1 nodebug
 
 cc32:
-	@$(MAKE) CROSS=1 WAMR_TARGET=X86_32 nodebug
+	@$(MAKE) CROSS=1 CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 nodebug
 
 cc64-small:
 	rm -f $(OBJS) $(DEPS) $(TARGET) $(QUICKJS_LIB)
@@ -157,7 +160,7 @@ cc64-small:
 
 cc32-small:
 	rm -f $(OBJS) $(DEPS) $(TARGET) $(QUICKJS_LIB)
-	@$(MAKE) CROSS=1 WAMR_TARGET=X86_32 OPT=-Os MINIMAL=1 nodebug
+	@$(MAKE) CROSS=1 CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 OPT=-Os MINIMAL=1 nodebug
 
 debug:
 	@$(MAKE) DEBUG=1
@@ -217,7 +220,7 @@ ifeq ($(MINIMAL), 1)
 endif
 	@echo "Build complete: $@"
 
-$(BUILD_DIR)/%.o: %.c | $(WOLFSSL_LIB_STATIC)
+$(BUILD_DIR)/%.o: %.c | $(WOLFSSL_LIB_STATIC) $(CROSS_BUILD_LIBS)
 	@echo "Compiling $<..."
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -270,6 +273,7 @@ $(WAMR_LIB):
 		echo "Error: wamr directory not found. Run: git submodule update --init"; \
 		exit 1; \
 	fi
+	@sh patches/apply-submodule-patches.sh
 	@mkdir -p $(WAMR_BUILD_DIR)
 	cd $(WAMR_DIR) && cmake -B build \
 		-DWAMR_BUILD_PLATFORM=windows \
@@ -291,7 +295,9 @@ $(WAMR_LIB):
 		-DWAMR_DISABLE_HW_BOUND_CHECK=1 \
 		-DWAMR_BUILD_INVOKE_NATIVE_GENERAL=1 \
 		-DWAMR_BUILD_EXCE_HANDLING=0 \
-		-DCMAKE_BUILD_TYPE=Release
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_C_FLAGS="-D_SSIZE_T_DEFINED" \
+		-DCMAKE_CXX_FLAGS="-D_SSIZE_T_DEFINED"
 	cmake --build $(WAMR_BUILD_DIR) --config Release
 	@mkdir -p $(WAMR_DIR)/lib
 	cp $(WAMR_BUILD_DIR)/libiwasm.a $(WAMR_LIB)
@@ -302,6 +308,7 @@ wamr: $(WAMR_LIB)
 $(WOLFSSL_LIB_STATIC):
 	@echo "Building minimal wolfSSL..."
 	if [ ! -f "$(WOLFSSL_DIR)/README.md" ]; then git submodule update --init --depth 1 $(WOLFSSL_DIR); fi
+	@sh patches/apply-submodule-patches.sh
 	@mkdir -p $(WOLFSSL_BUILD_DIR) $(WOLFSSL_DIR)/lib
 	cd $(WOLFSSL_DIR) && cmake -B build \
 		-DCMAKE_C_COMPILER=$(CC) \
@@ -335,7 +342,8 @@ $(WOLFSSL_LIB_STATIC):
 		-DWOLFSSL_SNI=ON \
 		-DWOLFSSL_TLSX=ON \
 		-DWOLFSSL_BASE64_ENCODE=ON \
-		-DWOLFSSL_SUPPORTED_CURVES=ON
+		-DWOLFSSL_SUPPORTED_CURVES=ON \
+		-DNO_INT128=ON
 	cmake --build $(WOLFSSL_BUILD_DIR) --config Release
 	cp $(WOLFSSL_BUILD_DIR)/libwolfssl.a $(WOLFSSL_LIB_STATIC)
 	@echo "Minimal wolfSSL build complete"

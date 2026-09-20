@@ -68,10 +68,11 @@ rm -rf "$LINK" && ln -s "$SHARE_DIR" "$LINK"
 qemu-system-x86_64 \
     $KVM \
     -machine pc-i440fx-5.2 -cpu qemu32 \
+    -device VGA,vgamem_mb=64 \
     -hda "$OVERLAY" -m 1024 -smp 1 \
     -netdev user,id=net0,guestfwd=tcp:10.0.2.4:445-cmd:"$(pwd)/smb_wrapper.sh" \
     -device rtl8139,netdev=net0 \
-    -display none -pidfile qemu.pid \
+    -vnc 0.0.0.0:1 -pidfile qemu.pid \
     -monitor unix:/tmp/qemu-monitor-xp.sock,server,nowait \
     -daemonize
 
@@ -87,6 +88,20 @@ echo ""
 
 if [ -e ci_share/run.log ]; then
     echo "run.bat 已启动（耗时 $(( $(date +%s) - START_TIME ))s）"
+    # ── 等待 run.bat 完成（run.log 出现 "Done" 行）──
+    echo "等待 run.bat 完成..."
+    for i in $(seq 1 120); do
+        if grep -q "Done" ci_share/run.log 2>/dev/null; then
+            break
+        fi
+        if ! kill -0 "$(cat qemu.pid)" 2>/dev/null; then
+            echo "VM 已退出"
+            break
+        fi
+        sleep 5
+        printf "\r  测试进行中 %ds..." $((i*5))
+    done
+    echo ""
     echo "--- run.log ---"
     cat ci_share/run.log
     echo

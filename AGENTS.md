@@ -369,7 +369,47 @@ return extract_body(response);
 
 **当前状态：** 已确认问题，暂时未修。单 Worker 场景完全安全（当前所有测试都是串行 Worker）。
 
-## 11. React Custom Renderer 计划
+## 12. Windows XP 兼容性状态
+
+**分支：** `feat/win32-xp`
+
+**已完成（自己的代码）：**
+- `quickjs-sock.c`：`inet_ntop`/`inet_pton` 运行时检测（Vista+ 用原生，XP 用 `WSAStringToAddress`/`WSAAddressToString` fallback，均支持 IPv4+IPv6）
+- `main.c`：`SetProcessDPIAware` 运行时检测（GetProcAddress + user32.dll）
+- `quickjs-wamr.c`：`FILE_ID_BOTH_DIR_INFO` typedef（Vista+ 结构体，XP 编译时需要）
+- `Makefile`：`-D_WIN32_WINNT=0x0501` + `WAMR_TARGET` 可配置
+- `ci.yml`：UCRT64 → MINGW64/MINGW32 双架构
+
+**未解决（WAMR 子模块，7 个 Vista+ API）：**
+
+| API | 文件 | 说明 |
+|-----|------|------|
+| `AcquireSRWLockExclusive` | wamr/win_thread.c | SRWLock = Vista+ |
+| `AcquireSRWLockShared` | wamr/win_thread.c | 同上 |
+| `InitializeSRWLock` | wamr/win_thread.c | 同上 |
+| `ReleaseSRWLockExclusive` | wamr/win_thread.c | 同上 |
+| `ReleaseSRWLockShared` | wamr/win_thread.c | 同上 |
+| `inet_pton` | wamr/win_socket.c | Vista+ |
+
+**关键发现：**
+- SRWLock 函数**在 iwasm 解释器中未被调用**（解释器只用 `os_mutex`/`os_cond`），但链接器仍将其加入导入表
+- `inet_pton` 在 WAMR 的 `win_socket.c` 中使用（WASI socket 代码），WASI 已禁用但代码仍被编译
+- XP 加载器看到导入表里有不存在的函数（`AcquireSRWLockExclusive`）就会**拒绝加载整个 exe**
+- 即使运行时不会调用这些函数，也**无法通过 XP 加载器检查**
+
+**已实施（submodule patch 机制）：**
+1. WAMR 子模块：`SRWLock` → `CRITICAL_SECTION`、`inet_pton` XP fallback、`strncpy_s`/`strtok_s` 替换
+2. wolfSSL 子模块：`strcpy_s` → `XSTRNCPY`
+3. 通过 `patches/apply-submodule-patches.sh` 自动 apply（幂等，git apply + reverse check）
+4. Makefile 在 WAMR/wolfSSL 构建前自动调用 apply 脚本
+
+**patch 文件：**
+- `patches/wamr-xp-compat.patch` — 标准 git diff 格式（5 文件，41+/9-）
+- `patches/wolfssl-xp-compat.patch` — 标准 git diff 格式（1 文件，1+/1-）
+
+**结论：** 自己的代码 + WAMR/wolfSSL 子模块 patch 均已完全 XP 兼容。submodule 改动不直接提交，通过 patch 机制管理。
+
+## 13. React Custom Renderer 计划
 
 **文件位置：** `.agents/REACT_RENDERER_PLAN.md`
 

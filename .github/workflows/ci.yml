@@ -12,10 +12,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - msystem: UCRT64
-            arch: mingw-w64-ucrt-x86_64
           - msystem: MINGW64
             arch: mingw-w64-x86_64
+          - msystem: MINGW32
+            arch: mingw-w64-i686
     steps:
       - uses: actions/checkout@v5
         with:
@@ -45,6 +45,7 @@ jobs:
           release: false
           install: >-
             make
+            git
             ${{ matrix.arch }}-gcc
             ${{ matrix.arch }}-cmake
             ${{ matrix.arch }}-brotli
@@ -54,20 +55,23 @@ jobs:
         if: steps.cache-exe.outputs.cache-hit != 'true'
         shell: msys2 {0}
         run: make wamr
+        env:
+          WAMR_TARGET: ${{ matrix.msystem == 'MINGW32' && 'X86_32' || 'X86_64' }}
+          MSYS2_PREFIX: C:/msys64/${{ matrix.msystem == 'MINGW32' && 'mingw32' || 'mingw64' }}
 
       - name: Build exe
         if: steps.cache-exe.outputs.cache-hit != 'true'
         shell: msys2 {0}
         run: make small
         env:
-          MSYS2_PREFIX: C:/msys64/${{ matrix.msystem == 'UCRT64' && 'ucrt64' || 'mingw64' }}
+          MSYS2_PREFIX: C:/msys64/${{ matrix.msystem == 'MINGW32' && 'mingw32' || 'mingw64' }}
 
       - name: Build nowasm exe
         if: steps.cache-exe.outputs.cache-hit != 'true'
         shell: msys2 {0}
         run: make nowasm
         env:
-          MSYS2_PREFIX: C:/msys64/${{ matrix.msystem == 'UCRT64' && 'ucrt64' || 'mingw64' }}
+          MSYS2_PREFIX: C:/msys64/${{ matrix.msystem == 'MINGW32' && 'mingw32' || 'mingw64' }}
 
       - name: Rename
         shell: bash
@@ -187,7 +191,7 @@ jobs:
             quickwin-*.zip
             dist/quickwin/quickwin-*.tgz
           body: |
-            QuickWin ${{ github.ref_name }} — qwin.exe (MINGW64/MSVCRT, Windows 7+), main.js entry, npm tarball
+            QuickWin ${{ github.ref_name }} — qwin.exe (MINGW64, Windows XP+), qwin-MINGW32.exe (32-bit), main.js entry, npm tarball
 
       - name: Publish npm
         if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')

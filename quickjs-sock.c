@@ -15,6 +15,72 @@
 #define countof(x) (sizeof(x) / sizeof((x)[0]))
 #endif
 
+/* ─── inet_ntop / inet_pton runtime dispatch ────────────────── */
+/* XP has no inet_ntop/inet_pton; Vista+ has native versions.   */
+/* We use function pointers resolved at init time.              */
+/* XP fallback uses WSAStringToAddress / WSAAddressToString     */
+/* which support both IPv4 and IPv6 on XP SP1+.                 */
+
+typedef const char *(*inet_ntop_fn)(int af, const void *src, char *dst, socklen_t size);
+typedef int (*inet_pton_fn)(int af, const char *src, void *dst);
+
+static inet_ntop_fn p_inet_ntop = NULL;
+static inet_pton_fn p_inet_pton = NULL;
+
+static const char *inet_ntop_compat(int af, const void *src, char *dst, socklen_t size) {
+    struct sockaddr_storage ss;
+    unsigned long len = (unsigned long)size;
+    memset(&ss, 0, sizeof(ss));
+    ss.ss_family = (ADDRESS_FAMILY)af;
+    switch (af) {
+    case AF_INET:
+        ((struct sockaddr_in *)&ss)->sin_addr = *(struct in_addr *)src;
+        break;
+    case AF_INET6:
+        ((struct sockaddr_in6 *)&ss)->sin6_addr = *(struct in6_addr *)src;
+        break;
+    default:
+        return NULL;
+    }
+    if (WSAAddressToStringA((struct sockaddr *)&ss, sizeof(ss), NULL, dst, &len) == 0)
+        return dst;
+    return NULL;
+}
+
+static int inet_pton_compat(int af, const char *src, void *dst) {
+    struct sockaddr_storage ss;
+    int size = sizeof(ss);
+    char src_copy[INET6_ADDRSTRLEN + 1];
+    strncpy(src_copy, src, INET6_ADDRSTRLEN);
+    src_copy[INET6_ADDRSTRLEN] = '\0';
+    memset(&ss, 0, sizeof(ss));
+    if (WSAStringToAddressA(src_copy, af, NULL, (struct sockaddr *)&ss, &size) == 0) {
+        switch (af) {
+        case AF_INET:
+            *(struct in_addr *)dst = ((struct sockaddr_in *)&ss)->sin_addr;
+            return 1;
+        case AF_INET6:
+            *(struct in6_addr *)dst = ((struct sockaddr_in6 *)&ss)->sin6_addr;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void inet_init_compat(void) {
+    if (p_inet_ntop) return;
+    HMODULE h = GetModuleHandleA("ws2_32.dll");
+    if (h) {
+        p_inet_ntop = (inet_ntop_fn)GetProcAddress(h, "inet_ntop");
+        p_inet_pton = (inet_pton_fn)GetProcAddress(h, "inet_pton");
+    }
+    if (!p_inet_ntop) p_inet_ntop = inet_ntop_compat;
+    if (!p_inet_pton) p_inet_pton = inet_pton_compat;
+}
+
+#define inet_ntop p_inet_ntop
+#define inet_pton p_inet_pton
+
 #define INIT_SLOTS_CAP 16
 
 /* ─── Internal types ────────────────────────────────────────── */
@@ -53,6 +119,7 @@ static SockRuntime *find_runtime(JSRuntime *rt)
 
 void js_sock_init(JSRuntime *rt)
 {
+    inet_init_compat();
     if (g_nsock_runtimes >= g_runtimes_capacity) {
         int newCap = g_runtimes_capacity ? g_runtimes_capacity * 2 : 4;
         SockRuntime *p = realloc(g_sock_runtimes, newCap * sizeof(SockRuntime));

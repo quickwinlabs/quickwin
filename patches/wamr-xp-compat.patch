@@ -1,0 +1,142 @@
+diff --git a/core/iwasm/libraries/libc-builtin/libc_builtin_wrapper.c b/core/iwasm/libraries/libc-builtin/libc_builtin_wrapper.c
+index 6c89b853..3f978384 100644
+--- a/core/iwasm/libraries/libc-builtin/libc_builtin_wrapper.c
++++ b/core/iwasm/libraries/libc-builtin/libc_builtin_wrapper.c
+@@ -622,7 +622,7 @@ strcpy_wrapper(wasm_exec_env_t exec_env, char *dst, const char *src)
+ #ifndef BH_PLATFORM_WINDOWS
+     strncpy(dst, src, len);
+ #else
+-    strncpy_s(dst, len, src, len);
++    strncpy(dst, src, len);
+ #endif
+     return (uint32)addr_native_to_app(dst);
+ }
+@@ -640,7 +640,7 @@ strncpy_wrapper(wasm_exec_env_t exec_env, char *dst, const char *src,
+ #ifndef BH_PLATFORM_WINDOWS
+     strncpy(dst, src, size);
+ #else
+-    strncpy_s(dst, size, src, size);
++    strncpy(dst, src, size);
+ #endif
+     return (uint32)addr_native_to_app(dst);
+ }
+diff --git a/core/shared/platform/windows/platform_internal.h b/core/shared/platform/windows/platform_internal.h
+index f77e1ad5..69affc02 100644
+--- a/core/shared/platform/windows/platform_internal.h
++++ b/core/shared/platform/windows/platform_internal.h
+@@ -35,6 +35,23 @@
+ #include <winsock2.h>
+ #include <ws2tcpip.h>
+ #include <windows.h>
++
++#if defined(_WIN32) && (!defined(_WIN32_WINNT) || _WIN32_WINNT < 0x0600)
++typedef struct _FILE_ID_BOTH_DIR_INFO {
++    DWORD NextEntryOffset;
++    DWORD FileIndex;
++    LARGE_INTEGER CreationTime;
++    LARGE_INTEGER LastAccessTime;
++    LARGE_INTEGER LastWriteTime;
++    LARGE_INTEGER ChangeTime;
++    LARGE_INTEGER EndOfFile;
++    LARGE_INTEGER AllocationSize;
++    DWORD FileAttributes;
++    DWORD FileNameLength;
++    DWORD EaSize;
++    WCHAR FileName[1];
++} FILE_ID_BOTH_DIR_INFO;
++#endif
+ #include <basetsd.h>
+ #include <signal.h>
+ 
+@@ -68,7 +85,7 @@ typedef void *korp_mutex;
+ typedef void *korp_sem;
+ 
+ typedef struct {
+-    SRWLOCK lock;
++    CRITICAL_SECTION cs;
+     bool exclusive;
+ } korp_rwlock;
+ 
+diff --git a/core/shared/platform/windows/win_socket.c b/core/shared/platform/windows/win_socket.c
+index 8d61c45c..49108aba 100644
+--- a/core/shared/platform/windows/win_socket.c
++++ b/core/shared/platform/windows/win_socket.c
+@@ -4,6 +4,21 @@
+  */
+ 
+ #include "platform_api_vmcore.h"
++
++/* inet_pton is Vista+; XP fallback via WSAStringToAddress */
++static int inet_pton_xp(int af, const char *src, void *dst) {
++    if (af == AF_INET) {
++        struct sockaddr_in addr;
++        memset(&addr, 0, sizeof(addr));
++        addr.sin_family = AF_INET;
++        if (inet_addr(src) == INADDR_NONE) return 0;
++        addr.sin_addr.S_un.S_addr = inet_addr(src);
++        memcpy(dst, &addr.sin_addr, sizeof(struct in_addr));
++        return 1;
++    }
++    return 0;
++}
++#define inet_pton inet_pton_xp
+ #include "platform_api_extension.h"
+ #include "platform_wasi_types.h"
+ #include "win_util.h"
+diff --git a/core/shared/platform/windows/win_thread.c b/core/shared/platform/windows/win_thread.c
+index 1f6a57eb..155357fe 100644
+--- a/core/shared/platform/windows/win_thread.c
++++ b/core/shared/platform/windows/win_thread.c
+@@ -606,7 +606,7 @@ os_rwlock_init(korp_rwlock *lock)
+ {
+     bh_assert(lock);
+ 
+-    InitializeSRWLock(&(lock->lock));
++    InitializeCriticalSection(&lock->cs);
+     lock->exclusive = false;
+ 
+     return BHT_OK;
+@@ -617,7 +617,7 @@ os_rwlock_rdlock(korp_rwlock *lock)
+ {
+     bh_assert(lock);
+ 
+-    AcquireSRWLockShared(&(lock->lock));
++    EnterCriticalSection(&lock->cs);
+ 
+     return BHT_OK;
+ }
+@@ -627,7 +627,7 @@ os_rwlock_wrlock(korp_rwlock *lock)
+ {
+     bh_assert(lock);
+ 
+-    AcquireSRWLockExclusive(&(lock->lock));
++    EnterCriticalSection(&lock->cs);
+     lock->exclusive = true;
+ 
+     return BHT_OK;
+@@ -640,10 +640,10 @@ os_rwlock_unlock(korp_rwlock *lock)
+ 
+     if (lock->exclusive) {
+         lock->exclusive = false;
+-        ReleaseSRWLockExclusive(&(lock->lock));
++        LeaveCriticalSection(&lock->cs);
+     }
+     else {
+-        ReleaseSRWLockShared(&(lock->lock));
++        LeaveCriticalSection(&lock->cs);
+     }
+ 
+     return BHT_OK;
+diff --git a/core/shared/utils/bh_common.c b/core/shared/utils/bh_common.c
+index d86840d7..b1f1d1cf 100644
+--- a/core/shared/utils/bh_common.c
++++ b/core/shared/utils/bh_common.c
+@@ -172,7 +172,7 @@ bh_strtok_r(char *str, const char *delim, char **saveptr)
+ #if !(defined(_WIN32) || defined(_WIN32_))
+     return strtok_r(str, delim, saveptr);
+ #else
+-    return strtok_s(str, delim, saveptr);
++    return strtok_r(str, delim, saveptr);
+ #endif
+ }
+ 
