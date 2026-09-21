@@ -1,0 +1,339 @@
+name: CI (Win7 + XP QEMU)
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  # ──────────────────────────────────────────────────────────
+  # 构建 + 推送开发容器镜像（仅 Dockerfile.dev 变更时重建，
+  # 或首次运行镜像不存在时）
+  # ──────────────────────────────────────────────────────────
+  build-and-push:
+    name: build-dev-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      needs-build: ${{ steps.need.outputs.needs-build }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check if image exists
+        id: exists
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://ghcr.io/v2/xna00/quickwin-dev/manifests/latest")
+          echo "exists=$([ "$code" = "200" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "ghcr_manifest_status=$code"
+
+      - name: Detect Dockerfile change
+        id: detect
+        run: |
+          changed=false
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            changed=true
+          elif [ "${{ github.event.before }}" = "${{ github.sha }}" ] || [ -z "${{ github.event.before }}" ]; then
+            changed=true
+          else
+            if git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep -q '^docker/Dockerfile.dev$'; then
+              changed=true
+            fi
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: Decide build
+        id: need
+        run: |
+          if [ "${{ steps.exists.outputs.exists }}" != "true" ] || [ "${{ steps.detect.outputs.changed }}" = "true" ]; then
+            echo "needs-build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs-build=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.need.outputs.needs-build == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log into GHCR
+        if: steps.need.outputs.needs-build == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push dev image
+        if: steps.need.outputs.needs-build == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: docker/
+          file: docker/Dockerfile.dev
+          push: true
+          tags: |
+            ghcr.io/xna00/quickwin-dev:latest
+            ghcr.io/xna00/quickwin-dev:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Notify if image skipped
+        if: steps.need.outputs.needs-build == 'false'
+        run: echo "Dockerfile.dev unchanged, reusing existing ghcr image"
+
+  # ──────────────────────────────────────────────────────────
+  # 在开发容器内做交叉编译 + QEMU Win7 VM 测试
+  # （镜像即本地环境：Fedora + posix mingw，消除环境差异）
+  # ──────────────────────────────────────────────────────────
+  win7:
+    name: win7-qemu-test
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/xna00/quickwin-dev:latest
+      options: --device /dev/kvm
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      # ── KVM 直通（容器内自带 /dev/kvm，无需 udev 规则）──
+      - name: Probe KVM availability
+        run: |
+          echo "=== /dev/kvm ==="
+          ls -l /dev/kvm 2>&1 || echo "NO /dev/kvm"
+          [ -w /dev/kvm ] || { echo "::error::KVM not writable in container"; exit 1; }
+          echo "=== toolchain ==="
+          x86_64-w64-mingw32-gcc -v 2>&1 | grep -i "Thread model" || true
+          node --version
+
+      - name: Install npm deps
+        run: npm install
+
+      - name: Restore Win7 snapshot cache
+        id: cache-win7
+        uses: actions/cache@v5
+        with:
+          path: docker/ci-win7/snapshots/win7_ready.qcow2
+          key: win7-ready-v2
+
+      # ── cache miss：现场安装 Win7（下载 ISO + Autounattend 自动安装）──
+      - name: Install Win7 (cache miss only)
+        id: install-win7
+        if: steps.cache-win7.outputs.cache-hit != 'true'
+        run: |
+          cd docker/ci-win7
+          bash setup.sh
+        timeout-minutes: 40
+
+      - name: Verify snapshot
+        run: |
+          ls -lh docker/ci-win7/snapshots/
+          [ -f docker/ci-win7/snapshots/win7_ready.qcow2 ] || \
+            { echo "::error::win7_ready.qcow2 missing"; exit 1; }
+
+      - name: Cache cross-compile deps
+        id: cache-deps
+        uses: actions/cache@v5
+        with:
+          path: |
+            wamr/lib/libiwasm.a
+            wolfssl/lib/libwolfssl.a
+            wolfssl/build/wolfssl/
+            brotli/lib/libbrotlidec.a
+            brotli/lib/libbrotlicommon.a
+            libffi/lib/libffi.a
+            libffi/build-*/include/
+          key: deps-cc64-${{ hashFiles('Makefile', 'patches/**', 'wamr/**', 'wolfssl/**', 'brotli/**', 'libffi/**') }}-v2
+
+      - name: Cross-compile qwin.exe (MINGW64)
+        run: make cc64
+        timeout-minutes: 30
+
+      - name: Compile JS + WASM
+        run: make js wasm
+
+      - name: Start QEMU Win7 VM
+        run: |
+          cd docker/ci-win7
+          SHARE_DIR="$GITHUB_WORKSPACE/_build" bash run.sh
+        timeout-minutes: 10
+
+      - name: Start host test server
+        run: |
+          node tools/serve_test.ts 18923 > /tmp/serve_test.log 2>&1 &
+          echo "serve_test pid=$!"
+          sleep 1
+          curl -sf http://127.0.0.1:18923/ && echo " <- serve_test up"
+
+      - name: Wait for exec_server
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf -X POST http://localhost:8080/exec \
+                -H "Content-Type: application/json" \
+                -d '{"cmd":"cmd /c echo ok"}' | grep -q ok; then
+              echo "exec_server ready after ${i}x5s"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::exec_server did not come up"
+          echo "--- run.log ---"
+          cat docker/ci-win7/ci_share/run.log 2>&1 || true
+          echo "--- exec_server.log ---"
+          cat docker/ci-win7/ci_share/exec_server.log 2>&1 || true
+          exit 1
+        timeout-minutes: 10
+
+      - name: Run tests
+        run: |
+          curl -s --max-time 1150 -X POST http://localhost:8080/exec \
+            -H "Content-Type: application/json" \
+            -d '{"cmd":"cmd /c cd /d Z:\\quickwin && qwin.exe test\\run.js && echo QWIN_EXIT=0 || echo QWIN_EXIT=1"}' \
+            > /tmp/qwin_full.log
+          echo "--- last 25 lines ---"
+          tail -25 /tmp/qwin_full.log
+          grep -q "QWIN_EXIT=0" /tmp/qwin_full.log || \
+            { echo "::error::tests failed (see Test Results above)"; exit 1; }
+        timeout-minutes: 20
+
+      - name: Stop VM
+        if: always()
+        run: cd docker/ci-win7 && bash run.sh --stop || true
+
+      - name: Dump VM logs
+        if: always()
+        run: |
+          cat docker/ci-win7/ci_share/run.log 2>&1 || true
+          cat docker/ci-win7/ci_share/exec_server.log 2>&1 || true
+
+      - name: Save Win7 snapshot cache
+        if: always() && steps.cache-win7.outputs.cache-hit != 'true' && steps.install-win7.outcome == 'success'
+        uses: actions/cache/save@v5
+        with:
+          path: docker/ci-win7/snapshots/win7_ready.qcow2
+          key: win7-ready-v2
+
+  # ──────────────────────────────────────────────────────────
+  # XP 32 位交叉编译 + QEMU XP VM 测试（与 win7 并行）
+  # XP 上 exec_server 处理带反斜杠命令会挂起，所以测试由
+  # ci_share/run.bat 在 VM 内直接跑，结果经 SMB 回传 run.log。
+  # ──────────────────────────────────────────────────────────
+  xp:
+    name: xp-qemu-test
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/xna00/quickwin-dev:latest
+      options: --device /dev/kvm
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      # ── KVM 直通 + 32 位工具链 ──
+      - name: Probe KVM and mingw32 toolchain
+        run: |
+          echo "=== /dev/kvm ==="
+          ls -l /dev/kvm 2>&1 || echo "NO /dev/kvm"
+          [ -w /dev/kvm ] || { echo "::error::KVM not writable in container"; exit 1; }
+          echo "=== mingw32 toolchain ==="
+          i686-w64-mingw32-gcc -v 2>&1 | grep -i "Thread model" || true
+          node --version
+
+      - name: Install npm deps
+        run: npm install
+
+      - name: Restore XP snapshot cache
+        id: cache-xp
+        uses: actions/cache@v5
+        with:
+          path: docker/ci-xp/snapshots/xp_ready.qcow2
+          key: xp-ready-v1
+
+      # ── cache miss：现场安装 XP（下载 ISO + 注入 WINNT.SIF + $OEM$）──
+      - name: Install XP (cache miss only)
+        id: install-xp
+        if: steps.cache-xp.outputs.cache-hit != 'true'
+        run: |
+          cd docker/ci-xp
+          bash setup.sh
+        timeout-minutes: 40
+
+      - name: Verify snapshot
+        run: |
+          ls -lh docker/ci-xp/snapshots/
+          [ -f docker/ci-xp/snapshots/xp_ready.qcow2 ] || \
+            { echo "::error::xp_ready.qcow2 missing"; exit 1; }
+
+      - name: Cache cross-compile deps
+        id: cache-deps
+        uses: actions/cache@v5
+        with:
+          path: |
+            wamr/lib/libiwasm.a
+            wolfssl/lib/libwolfssl.a
+            wolfssl/build/wolfssl/
+            brotli/lib/libbrotlidec.a
+            brotli/lib/libbrotlicommon.a
+            libffi/lib/libffi.a
+            libffi/build-*/include/
+          key: deps-cc32-${{ hashFiles('Makefile', 'patches/**', 'wamr/**', 'wolfssl/**', 'brotli/**', 'libffi/**') }}-v2
+
+      # cc32 会自动构建 i686 的 libiwasm.a：$(TARGET) 依赖 WAMR_LIB，
+      # 且 cc32 把 CC=i686-... 和 WAMR_TARGET=X86_32 传给子 make。
+      # 不要单独跑 make wamr —— 不带 CROSS=1 时会用本机 gcc 建错架构的 .a，
+      # 之后 cc32 发现 .a "最新"就跳过，链接必挂。
+      - name: Cross-compile qwin.exe (i686)
+        run: make cc32
+        timeout-minutes: 30
+
+      - name: Compile JS + WASM
+        run: make js wasm
+
+      - name: Start host test server
+        run: |
+          node tools/serve_test.ts 18923 > /tmp/serve_test.log 2>&1 &
+          echo "serve_test pid=$!"
+          sleep 1
+          curl -sf http://127.0.0.1:18923/ && echo " <- serve_test up"
+
+      - name: Start XP VM and run tests
+        run: |
+          cd docker/ci-xp
+          SHARE_DIR="$GITHUB_WORKSPACE/_build" bash run.sh
+        timeout-minutes: 20
+
+      - name: Stop VM
+        if: always()
+        run: cd docker/ci-xp && bash run.sh --stop || true
+
+      - name: Dump VM logs
+        if: always()
+        run: |
+          cat docker/ci-xp/ci_share/run.log 2>&1 || true
+
+      - name: Assert test results
+        run: |
+          LOG=docker/ci-xp/ci_share/run.log
+          SUMMARY=$(grep -oE "Summary: [0-9]+/[0-9]+" "$LOG" 2>/dev/null | tail -1)
+          [ -n "$SUMMARY" ] || { echo "::error::no Summary line in run.log"; exit 1; }
+          OK=$(printf '%s' "$SUMMARY" | sed 's/.*: *\([0-9]*\)\/.*/\1/')
+          TOTAL=$(printf '%s' "$SUMMARY" | sed 's/.*\/\([0-9]*\).*/\1/')
+          FAILED=$(( TOTAL - OK ))
+          echo "$SUMMARY  (failed=$FAILED)"
+          [ "$FAILED" -le 1 ] || \
+            { echo "::error::$FAILED test failures (tolerating 1 for XP printer diff)"; exit 1; }
+        timeout-minutes: 5
+
+      - name: Save XP snapshot cache
+        if: always() && steps.cache-xp.outputs.cache-hit != 'true' && steps.install-xp.outcome == 'success'
+        uses: actions/cache/save@v5
+        with:
+          path: docker/ci-xp/snapshots/xp_ready.qcow2
+          key: xp-ready-v1

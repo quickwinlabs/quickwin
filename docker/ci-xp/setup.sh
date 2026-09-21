@@ -92,7 +92,10 @@ QEMU_PID=$(cat qemu.pid)
 echo "QEMU 已启动 (PID=$QEMU_PID)，等待安装完成..."
 
 # ── Step 6: 等待安装完成（每 10s 轮询磁盘大小）──
-while kill -0 "$QEMU_PID" 2>/dev/null; do
+# 用 qemu.pid 是否存在判断退出（QEMU 干净退出时会自己 unlink），不能用 kill -0：
+# 它对僵尸进程也返回 0，而 -daemonize 后 QEMU 被 reparent 到 PID 1，
+# 容器里 PID 1 是 shell（不回收孤儿僵尸）→ kill -0 恒为 0 → 无限等待。
+while [ -f qemu.pid ]; do
     sleep 10
     printf "\r  [%s] %ds  disk=%s" "$(date +%H:%M:%S)" \
         "$(( $(date +%s) - START_TIME ))" "$(ls -lh "$DISK" 2>/dev/null | awk '{print $5}')"

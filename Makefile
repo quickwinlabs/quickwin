@@ -144,14 +144,17 @@ endif
 OBJS = $(SRCS:%.c=$(BUILD_DIR)/%.o) $(BUILD_DIR)/app.o
 DEPS = $(SRCS:%.c=$(BUILD_DIR)/%.d)
 
-.PHONY: all clean debug nodebug release small minimal nowasm test wamr wasm js npm-pkg embed-js embed-js-br info help cc64 cc32
+.PHONY: all clean debug nodebug release small minimal nowasm test wamr wasm js npm-pkg embed-js embed-js-br info help cc64 cc32 apply-submodule-patches
 
 all: nodebug
 
-cc64:
+apply-submodule-patches:
+	@sh patches/apply-submodule-patches.sh
+
+cc64: apply-submodule-patches
 	@$(MAKE) CROSS=1 nodebug
 
-cc32:
+cc32: apply-submodule-patches
 	@$(MAKE) CROSS=1 CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 nodebug
 
 cc64-small:

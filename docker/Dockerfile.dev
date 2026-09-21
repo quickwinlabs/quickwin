@@ -1,8 +1,8 @@
 FROM fedora:44
 
-# 中科大镜像加速（路径: download.example/pub/fedora/linux → mirrors.ustc.edu.cn/fedora）
+# 阿里云镜像加速（路径: download.example/pub/fedora/linux → mirrors.aliyun.com/fedora，注意无 /linux/ 层级）
 RUN sed -e 's|^metalink=|#metalink=|g' \
-        -e 's|^#baseurl=http://download.example/pub/fedora/linux|baseurl=https://mirrors.ustc.edu.cn/fedora|g' \
+        -e 's|^#baseurl=http://download.example/pub/fedora/linux|baseurl=https://mirrors.aliyun.com/fedora|g' \
         -i.bak \
         /etc/yum.repos.d/fedora*.repo && \
     sed -e 's|^enabled=1|enabled=0|g' \
@@ -10,7 +10,11 @@ RUN sed -e 's|^metalink=|#metalink=|g' \
 
 RUN dnf install -y \
     # Build tools
-    gcc gcc-c++ make cmake git \
+    gcc gcc-c++ make cmake git pkgconfig \
+    # Autotools (libffi 干净 checkout 需要 autoreconf -fiv)
+    autoconf automake libtool libtool-ltdl-devel \
+    # WABT (wat2wasm 编译 test/*.wat 为 wasm)
+    wabt \
     # MinGW cross-compilers
     mingw64-gcc mingw64-gcc-c++ mingw64-winpthreads-static \
     mingw32-gcc mingw32-gcc-c++ mingw32-winpthreads-static \

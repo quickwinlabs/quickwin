@@ -36,14 +36,15 @@ done
 [ -e /dev/kvm ] && KVM="-accel kvm"
 
 # ── --stop: ACPI 关机 ──
+# 用 qemu.pid 是否存在判断退出（QEMU 退出时会自己 unlink），不能用 kill -0：
+# 它对僵尸进程也返回 0，容器里 PID 1 不回收孤儿僵尸 → 恒为 0。
 if $STOP; then
     [ -f qemu.pid ] || { echo "找不到 qemu.pid，VM 可能未运行"; exit 1; }
     QEMU_PID=$(cat qemu.pid)
-    kill -0 "$QEMU_PID" 2>/dev/null || { echo "QEMU (PID=$QEMU_PID) 未运行"; exit 1; }
     echo "system_powerdown" | socat - UNIX-CONNECT:/tmp/qemu-monitor-xp.sock
     for i in $(seq 1 30); do
         sleep 2
-        kill -0 "$QEMU_PID" 2>/dev/null || { echo "VM 已关机（$((i*2))s）"; rm -f qemu.pid; exit 0; }
+        [ -f qemu.pid ] || { echo "VM 已关机（$((i*2))s）"; exit 0; }
     done
     echo "关机超时（60s），强制 kill"
     kill -9 "$QEMU_PID"; rm -f qemu.pid
@@ -70,7 +71,7 @@ qemu-system-x86_64 \
     -machine pc-i440fx-5.2 -cpu qemu32 \
     -device VGA,vgamem_mb=64 \
     -hda "$OVERLAY" -m 1024 -smp 1 \
-    -netdev user,id=net0,guestfwd=tcp:10.0.2.4:445-cmd:"$(pwd)/smb_wrapper.sh" \
+    -netdev user,id=net0,guestfwd=tcp:10.0.2.4:445-cmd:"$(pwd)/smb_wrapper.sh",hostfwd=tcp::8081-:8080 \
     -device rtl8139,netdev=net0 \
     -vnc 0.0.0.0:1 -pidfile qemu.pid \
     -monitor unix:/tmp/qemu-monitor-xp.sock,server,nowait \
@@ -94,7 +95,7 @@ if [ -e ci_share/run.log ]; then
         if grep -q "Done" ci_share/run.log 2>/dev/null; then
             break
         fi
-        if ! kill -0 "$(cat qemu.pid)" 2>/dev/null; then
+        if [ ! -f qemu.pid ]; then
             echo "VM 已退出"
             break
         fi

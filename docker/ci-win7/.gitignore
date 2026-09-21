@@ -22,3 +22,7 @@ ci_share/exec_server.log
 !ci_share/
 !setup.sh
 !run.sh
+
+
+# QEMU SMB symlink (created by run.sh)
+ci_share/quickwin

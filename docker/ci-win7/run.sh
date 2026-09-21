@@ -33,14 +33,15 @@ done
 [ -e /dev/kvm ] && KVM="-accel kvm"
 
 # ── --stop: ACPI 关机 ──
+# 用 qemu.pid 是否存在判断退出（QEMU 退出时会自己 unlink），不能用 kill -0：
+# 它对僵尸进程也返回 0，容器里 PID 1 不回收孤儿僵尸 → 恒为 0。
 if $STOP; then
     [ -f qemu.pid ] || { echo "找不到 qemu.pid，VM 可能未运行"; exit 1; }
     QEMU_PID=$(cat qemu.pid)
-    kill -0 "$QEMU_PID" 2>/dev/null || { echo "QEMU (PID=$QEMU_PID) 未运行"; exit 1; }
     echo "system_powerdown" | socat - UNIX-CONNECT:/tmp/qemu-monitor-win7.sock
     for i in $(seq 1 30); do
         sleep 2
-        kill -0 "$QEMU_PID" 2>/dev/null || { echo "VM 已关机（$((i*2))s）"; rm -f qemu.pid; exit 0; }
+        [ -f qemu.pid ] || { echo "VM 已关机（$((i*2))s）"; exit 0; }
     done
     echo "关机超时（60s），强制 kill"
     kill -9 "$QEMU_PID"; rm -f qemu.pid
