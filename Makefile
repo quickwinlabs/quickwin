@@ -122,6 +122,9 @@ endif
 
 TARGET_NAME ?= qwin.exe
 TARGET = $(BUILD_DIR)/$(TARGET_NAME)
+TARGET_NAME_32 ?= qwin-x86.exe
+TARGET_NOWASM ?= qwin-nowasm.exe
+TARGET_NOWASM_32 ?= qwin-nowasm-x86.exe
 NPM_PKG_DIR = dist/quickwin
 QUICKJS_LIB = $(BUILD_DIR)/libquickjs.a
 
@@ -144,7 +147,7 @@ endif
 OBJS = $(SRCS:%.c=$(BUILD_DIR)/%.o) $(BUILD_DIR)/app.o
 DEPS = $(SRCS:%.c=$(BUILD_DIR)/%.d)
 
-.PHONY: all clean debug nodebug release small minimal nowasm test wamr wasm js npm-pkg embed-js embed-js-br info help cc64 cc32 apply-submodule-patches
+.PHONY: all clean debug nodebug release small minimal nowasm cc64-nowasm cc32-nowasm test wamr wasm js npm-pkg embed-js embed-js-br info help cc64 cc32 cc32-small cc64-small apply-submodule-patches
 
 all: nodebug
 
@@ -155,15 +158,15 @@ cc64: apply-submodule-patches
 	@$(MAKE) CROSS=1 nodebug
 
 cc32: apply-submodule-patches
-	@$(MAKE) CROSS=1 CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 nodebug
+	@$(MAKE) CROSS=1 CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 TARGET_NAME=$(TARGET_NAME_32) nodebug
 
 cc64-small:
 	rm -f $(OBJS) $(DEPS) $(TARGET) $(QUICKJS_LIB)
 	@$(MAKE) CROSS=1 OPT=-Os MINIMAL=1 nodebug
 
 cc32-small:
-	rm -f $(OBJS) $(DEPS) $(TARGET) $(QUICKJS_LIB)
-	@$(MAKE) CROSS=1 CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 OPT=-Os MINIMAL=1 nodebug
+	rm -f $(OBJS) $(DEPS) $(BUILD_DIR)/$(TARGET_NAME_32) $(QUICKJS_LIB)
+	@$(MAKE) CROSS=1 CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 TARGET_NAME=$(TARGET_NAME_32) OPT=-Os MINIMAL=1 nodebug
 
 debug:
 	@$(MAKE) DEBUG=1
@@ -188,9 +191,19 @@ minimal:
 
 nowasm:
 	rm -f $(OBJS) $(DEPS) $(QUICKJS_LIB)
-	rm -f $(BUILD_DIR)/qwin-nowasm.exe
-	@$(MAKE) NO_WASM=1 TARGET_NAME=qwin-nowasm.exe OPT=-Os MINIMAL=1 nodebug
-	@echo "Build complete: $(BUILD_DIR)/qwin-nowasm.exe (no WASM, -Os, LTO, stripped)"
+	rm -f $(BUILD_DIR)/$(TARGET_NOWASM)
+	@$(MAKE) NO_WASM=1 TARGET_NAME=$(TARGET_NOWASM) OPT=-Os MINIMAL=1 nodebug
+	@echo "Build complete: $(BUILD_DIR)/$(TARGET_NOWASM) (no WASM, -Os, LTO, stripped)"
+
+cc64-nowasm: apply-submodule-patches
+	rm -f $(OBJS) $(DEPS) $(QUICKJS_LIB) $(BUILD_DIR)/$(TARGET_NOWASM)
+	@$(MAKE) CROSS=1 NO_WASM=1 TARGET_NAME=$(TARGET_NOWASM) OPT=-Os MINIMAL=1 nodebug
+	@echo "Build complete: $(BUILD_DIR)/$(TARGET_NOWASM) (cross x86_64, no WASM, -Os, LTO, stripped)"
+
+cc32-nowasm: apply-submodule-patches
+	rm -f $(OBJS) $(DEPS) $(QUICKJS_LIB) $(BUILD_DIR)/$(TARGET_NOWASM_32)
+	@$(MAKE) CROSS=1 CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 NO_WASM=1 TARGET_NAME=$(TARGET_NOWASM_32) OPT=-Os MINIMAL=1 nodebug
+	@echo "Build complete: $(BUILD_DIR)/$(TARGET_NOWASM_32) (cross i686, no WASM, -Os, LTO, stripped)"
 
 
 
@@ -419,6 +432,7 @@ npm-pkg: js wasm
 	cp test/*.ts $(NPM_PKG_DIR)/test/
 	cp examples/*.ts examples/*.tsx $(NPM_PKG_DIR)/examples/
 	cp quickwin.d.ts quickwin_const.d.ts tsconfig.json package.json README.md README.en.md $(NPM_PKG_DIR)/
+	cp $(BUILD_DIR)/$(TARGET_NAME) $(BUILD_DIR)/$(TARGET_NAME_32) $(BUILD_DIR)/$(TARGET_NOWASM) $(BUILD_DIR)/$(TARGET_NOWASM_32) $(NPM_PKG_DIR)/
 	@echo "npm package created at $(NPM_PKG_DIR)"
 
 embed-js: $(TARGET)
@@ -430,14 +444,16 @@ embed-js-br: $(TARGET)
 help:
 	@echo "Available targets:"
 	@echo "  all       - Build nodebug version (default, custom wolfSSL)"
-	@echo "  cc64      - Cross-compile for Windows x86_64 (MinGW, for Linux host)"
-	@echo "  cc32      - Cross-compile for Windows i686 (MinGW, for Linux host)"
+	@echo "  cc64      - Cross-compile for Windows x86_64 -> $(BUILD_DIR)/$(TARGET_NAME)"
+	@echo "  cc32      - Cross-compile for Windows i686   -> $(BUILD_DIR)/$(TARGET_NAME_32)"
 	@echo "  cc64-small - Cross-compile x86_64 with -Os + LTO + stripped"
 	@echo "  cc32-small - Cross-compile i686 with -Os + LTO + stripped"
 	@echo "  release   - Build with -O2 + LTO + stripped + custom wolfSSL"
 	@echo "  small     - Build with -Os + LTO + stripped + custom wolfSSL"
 	@echo "  minimal   - Build with -Os + LTO + stripped + UPX + custom wolfSSL"
-	@echo "  nowasm    - Build without WASM/WAMR -> $(BUILD_DIR)/qwin-nowasm.exe (-Os, LTO, stripped)"
+	@echo "  nowasm    - Build without WASM/WAMR -> $(BUILD_DIR)/$(TARGET_NOWASM) (-Os, LTO, stripped)"
+	@echo "  cc64-nowasm - Cross-compile x86_64 without WASM -> $(BUILD_DIR)/$(TARGET_NOWASM)"
+	@echo "  cc32-nowasm - Cross-compile i686 without WASM   -> $(BUILD_DIR)/$(TARGET_NOWASM_32)"
 	@echo "  debug     - Build debug version (-g -O0, always has DUMP_GC/DUMP_LEAKS)"
 	@echo "  clean     - Remove built files and JS files"
 	@echo "  distclean - Remove all generated files"

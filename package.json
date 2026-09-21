@@ -1,17 +1,23 @@
 {
   "type": "module",
   "name": "quickwin",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "QuickJS Win32 runtime — GUI, networking, WASM, FFI, and more",
   "bin": {
     "quickwin": "qwin.exe",
     "quickwin-nowasm": "qwin-nowasm.exe",
     "qwin": "qwin.exe",
-    "qwin-nowasm": "qwin-nowasm.exe"
+    "qwin-nowasm": "qwin-nowasm.exe",
+    "quickwin-x86": "qwin-x86.exe",
+    "quickwin-nowasm-x86": "qwin-nowasm-x86.exe",
+    "qwin-x86": "qwin-x86.exe",
+    "qwin-nowasm-x86": "qwin-nowasm-x86.exe"
   },
   "files": [
     "qwin.exe",
     "qwin-nowasm.exe",
+    "qwin-x86.exe",
+    "qwin-nowasm-x86.exe",
     "lib/",
     "test/",
     "examples/",

@@ -153,8 +153,21 @@ jobs:
         run: make cc64
         timeout-minutes: 30
 
+      - name: Cross-compile qwin-nowasm.exe (MINGW64)
+        run: make cc64-nowasm
+        timeout-minutes: 30
+
       - name: Compile JS + WASM
         run: make js wasm
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwin-x64
+          path: |
+            _build/qwin.exe
+            _build/qwin-nowasm.exe
+          if-no-files-found: error
 
       - name: Start QEMU Win7 VM
         run: |
@@ -289,12 +302,25 @@ jobs:
       # 且 cc32 把 CC=i686-... 和 WAMR_TARGET=X86_32 传给子 make。
       # 不要单独跑 make wamr —— 不带 CROSS=1 时会用本机 gcc 建错架构的 .a，
       # 之后 cc32 发现 .a "最新"就跳过，链接必挂。
-      - name: Cross-compile qwin.exe (i686)
+      - name: Cross-compile qwin-x86.exe (i686)
         run: make cc32
+        timeout-minutes: 30
+
+      - name: Cross-compile qwin-nowasm-x86.exe (i686)
+        run: make cc32-nowasm
         timeout-minutes: 30
 
       - name: Compile JS + WASM
         run: make js wasm
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwin-x86
+          path: |
+            _build/qwin-x86.exe
+            _build/qwin-nowasm-x86.exe
+          if-no-files-found: error
 
       - name: Start host test server
         run: |
@@ -337,3 +363,51 @@ jobs:
         with:
           path: docker/ci-xp/snapshots/xp_ready.qcow2
           key: xp-ready-v1
+
+  # ──────────────────────────────────────────────────────────
+  # 从 win7/xp job 拿产物发布到 npm（仅 tag push）
+  # ──────────────────────────────────────────────────────────
+  publish:
+    name: npm-publish
+    needs: [win7, xp]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - run: npm install
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: qwin-*
+          path: _build
+          merge-multiple: true
+
+      - name: Verify exes
+        run: |
+          ls -lh _build/qwin*.exe
+          for f in _build/qwin*.exe; do
+            file "$f" || true
+          done
+
+      - name: Package npm
+        run: make npm-pkg
+
+      - name: Verify package contents
+        run: |
+          ls -lh dist/quickwin/qwin*.exe
+          npm pack --dry-run dist/quickwin
+
+      - name: Publish to npm
+        run: npm publish dist/quickwin --access public
+        env:
+          NODE_AUTH_TOKEN: "*** secrets.NPM_TOKEN }}"

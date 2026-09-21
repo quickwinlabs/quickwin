@@ -18,7 +18,7 @@ for %%P in (18923 18924) do (
 netsh interface portproxy show all >> %LOG% 2>&1
 
 rem --- WebSocket 已加 scheme 校验（ws:/wss:），XP 不再挂死 ---
-qwin.exe test/run.js >> %LOG% 2>&1
+qwin-x86.exe test/run.js >> %LOG% 2>&1
 echo --- Exit: %ERRORLEVEL% --- >> %LOG%
 
 echo [%date% %time%] Done >> %LOG%
