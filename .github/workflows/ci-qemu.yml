@@ -426,8 +426,7 @@ jobs:
             _build/main.js \
             "dist/quickwin/quickwin-${TAG_VER}.tgz" \
             --title "$TAG" \
-            --notes "QuickWin $TAG — qwin.exe (x64), qwin-x86.exe (x86), qwin-nowasm.exe, qwin-nowasm-x86.exe, main.js, npm tarball" \
-            --clobber
+            --notes "QuickWin $TAG — qwin.exe (x64), qwin-x86.exe (x86), qwin-nowasm.exe, qwin-nowasm-x86.exe, main.js, npm tarball"
 
       - name: Verify npm auth
         run: npm whoami --registry https://registry.npmjs.org/
