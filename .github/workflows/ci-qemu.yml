@@ -150,7 +150,7 @@ jobs:
           key: deps-cc64-${{ hashFiles('Makefile', 'patches/**', 'wamr/**', 'wolfssl/**', 'brotli/**', 'libffi/**') }}-v2
 
       - name: Cross-compile qwin.exe (MINGW64)
-        run: make cc64
+        run: make cc64-small
         timeout-minutes: 30
 
       - name: Cross-compile qwin-nowasm.exe (MINGW64)
@@ -303,7 +303,7 @@ jobs:
       # 不要单独跑 make wamr —— 不带 CROSS=1 时会用本机 gcc 建错架构的 .a，
       # 之后 cc32 发现 .a "最新"就跳过，链接必挂。
       - name: Cross-compile qwin-x86.exe (i686)
-        run: make cc32
+        run: make cc32-small
         timeout-minutes: 30
 
       - name: Cross-compile qwin-nowasm-x86.exe (i686)
