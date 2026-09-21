@@ -418,6 +418,7 @@ jobs:
           TAG="$GITHUB_REF_NAME"
           TAG_VER="${TAG#v}"
           (cd dist/quickwin && npm pack)
+          gh release delete "$TAG" --yes 2>/dev/null || true
           gh release create "$TAG" \
             _build/qwin.exe \
             _build/qwin-x86.exe \
