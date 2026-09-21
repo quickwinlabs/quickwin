@@ -413,9 +413,7 @@ jobs:
         run: npm pack --dry-run
 
       - name: Verify npm auth
-        run: |
-          npm whoami --registry https://registry.npmjs.org/
-          npm access list packages
+        run: npm whoami --registry https://registry.npmjs.org/
         env:
           NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}"
 
