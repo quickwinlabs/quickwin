@@ -412,6 +412,23 @@ jobs:
         working-directory: dist/quickwin
         run: npm pack --dry-run
 
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          TAG_VER="${TAG#v}"
+          (cd dist/quickwin && npm pack)
+          gh release create "$TAG" \
+            _build/qwin.exe \
+            _build/qwin-x86.exe \
+            _build/qwin-nowasm.exe \
+            _build/qwin-nowasm-x86.exe \
+            _build/main.js \
+            "dist/quickwin/quickwin-${TAG_VER}.tgz" \
+            --title "$TAG" \
+            --notes "QuickWin $TAG — qwin.exe (x64), qwin-x86.exe (x86), qwin-nowasm.exe, qwin-nowasm-x86.exe, main.js, npm tarball" \
+            --clobber
+
       - name: Verify npm auth
         run: npm whoami --registry https://registry.npmjs.org/
         env:
