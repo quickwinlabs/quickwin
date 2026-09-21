@@ -17,9 +17,8 @@ for %%P in (18923 18924) do (
 )
 netsh interface portproxy show all >> %LOG% 2>&1
 
-rem 跑全量，仅排除 net-websocket（XP 上该套件的兜底 timer 不触发，会挂死）
-echo === full -skip-xp === >> %LOG%
-qwin.exe test/run.js -skip-xp >> %LOG% 2>&1
-echo --- full Exit: %ERRORLEVEL% --- >> %LOG%
+rem --- WebSocket 已加 scheme 校验（ws:/wss:），XP 不再挂死 ---
+qwin.exe test/run.js >> %LOG% 2>&1
+echo --- Exit: %ERRORLEVEL% --- >> %LOG%
 
 echo [%date% %time%] Done >> %LOG%

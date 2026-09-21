@@ -227,6 +227,14 @@ class WebSocketImpl {
             }, 0)
             return
         }
+        if (url.protocol !== 'ws:' && url.protocol !== 'wss:') {
+            const self = this
+            os.setTimeout(() => {
+                self._fireError(new Error('Unsupported WebSocket scheme: ' + url.protocol))
+                self._setState(State.CLOSED)
+            }, 0)
+            return
+        }
         const host = url.hostname
         const hostHeader = host.includes(':') ? `[${host}]` : host
         const isWSS = url.protocol === 'wss:'
