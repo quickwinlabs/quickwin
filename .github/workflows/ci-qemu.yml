@@ -405,10 +405,13 @@ jobs:
       - name: Package npm
         run: make npm-pkg
 
+      - name: Configure git to use HTTPS
+        run: git config --global url."https://github.com/".insteadOf ssh://git@github.com/
+
       - name: Verify package contents
         run: |
-          ls -lh dist/quickwin/qwin*.exe
-          npm pack --dry-run dist/quickwin
+          cd dist/quickwin
+          npm pack --dry-run
 
       - name: Publish to npm
         run: npm publish dist/quickwin --access public
