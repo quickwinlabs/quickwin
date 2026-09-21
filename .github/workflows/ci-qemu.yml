@@ -414,6 +414,8 @@ jobs:
           npm pack --dry-run
 
       - name: Publish to npm
-        run: npm publish dist/quickwin --access public
+        run: |
+          cd dist/quickwin
+          npm publish --access public
         env:
           NODE_AUTH_TOKEN: "*** secrets.NPM_TOKEN }}"
