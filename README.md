@@ -4,19 +4,23 @@
 
 Windows 平台上的 QuickJS 运行时，支持原生 GUI、网络、WASM、FFI 等能力。
 
-目标：兼容 Windows XP+（32/64 位），保持最小二进制体积。
-
-现状：当前支持 Windows 7+（64 位），体积约 1.5MB。
+支持 Windows XP+（32/64 位），保持最小二进制体积（约 1.5MB）。32 位构建已在 QEMU Windows XP 虚拟机中通过 CI 测试。
 
 项目处于早期，功能待完善，包含已知 bug。
 
-直接从 GitHub Release 下载运行：
+安装方式：
 
-```powershell
+```bash
+# 方式一：npm 本地安装（推荐）
+npm install quickwin
+npx quickwin script.js
+
+# 方式二：直接从 GitHub Release 下载
 iwr https://github.com/xna00/quickwin/releases/latest/download/qwin.exe -OutFile qwin.exe
-iwr https://github.com/xna00/quickwin/releases/latest/download/main.js -OutFile main.js
 .\qwin.exe main.js
 ```
+
+npm 包自带 4 个可执行文件：`qwin.exe`（64 位）/ `qwin-x86.exe`（32 位，兼容 XP）及其无 WASM 版本 `qwin-nowasm.exe` / `qwin-nowasm-x86.exe`。
 
 ## 特性
 
@@ -151,9 +155,9 @@ parent.onmessage = (e) => {
 ## 示例
 
 ```bash
-.\qwin.exe examples/preact_demo.js   # JSX + hooks 的计数器 GUI
 .\qwin.exe examples/tray_demo.js     # 系统托盘应用
-.\qwin.exe examples/pdf_preview.js   # 基于 mupdf 的 PDF 阅读器
+.\qwin.exe examples/pdf_preview2.js  # 基于 mupdf 的 PDF 阅读器
+.\qwin.exe examples/test_tab.js      # 基于 JSX 的标签页 GUI
 ```
 
 ## 从源码构建
@@ -167,11 +171,11 @@ parent.onmessage = (e) => {
 ### 构建
 
 ```bash
-git clone --recursive https://github.com/anomalyco/quickwin.git
+git clone --recursive https://github.com/xna00/quickwin.git
 cd quickwin
 
 .\run.ps1 "make wamr"       # 构建 WAMR 库（仅首次）
-.\run.ps1 "make minimal"    # 构建 qwin.exe（-Os + LTO + UPX）
+.\run.ps1 "make small"      # 构建 qwin.exe（-Os + LTO，约 1.5MB）
 .\run.ps1 "make js"         # 编译 TypeScript
 .\run.ps1 "make test"       # 运行全部测试
 ```
@@ -184,10 +188,13 @@ cd quickwin
 | Target | Description |
 |--------|-------------|
 | `make` / `make nodebug` | 快速构建 |
-| `make minimal` | `-Os` + LTO + `-mwindows` + UPX，无控制台，需要控制台时加 `-o CON` |
-| `make nowasm` | 无 WASM/WAMR 构建 → `_build/qwin-nowasm.exe`（约 1.2MB，无 `WebAssembly` 全局） |
-| `make release` | `-O2` + LTO + strip，约 1.5MB |
+| `make small` | `-Os` + LTO + strip，约 1.5MB（推荐） |
+| `make minimal` | `small` + UPX 压缩 |
+| `make release` | `-O2` + LTO + strip（未做 `-Os` 优化） |
 | `make debug` | 带 bridge 日志的调试构建 |
+| `make nowasm` | 无 WASM/WAMR 构建 → `_build/qwin-nowasm.exe`（约 1.2MB，无 `WebAssembly` 全局） |
+| `make cc64-small` | 交叉编译 x86_64 `_build/qwin.exe`（`-Os`，CI 用） |
+| `make cc32-small` | 交叉编译 i686 `_build/qwin-x86.exe`（`-Os`，兼容 XP，CI 用） |
 | `make js` | 通过 tsc 编译 TypeScript |
 | `make wasm` | 编译 WAT → WASM fixtures |
 | `make test` | 运行全部测试 |

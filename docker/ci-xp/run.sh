@@ -7,9 +7,9 @@ cd "$(dirname "$0")"
 #  从 snapshot 启动，bootstrap.bat 自动挂载 SMB 并运行 run.bat
 #  用法: ./run.sh [--fresh] [--stop]
 #
-#  验证: run.bat 检测 Z:\quickwin\qwin.exe 是否存在（via SMB symlink），
-#  结果写到 ci_share/run.log。文件出现即说明链路已通。
-#  注意: qwin.exe 目前不支持 XP，所以 run.bat 只做存在性检测，不启动 exec_server。
+#  验证: run.bat 运行 Z:\quickwin\qwin-x86.exe test/run.js（via SMB symlink），
+#  结果写到 ci_share/run.log。
+#  注意: 32 位 qwin-x86.exe 支持 XP，测试直接跑完整套件。
 #  依赖: qemu-system-x86_64, qemu-img, socat
 # ============================================================
 

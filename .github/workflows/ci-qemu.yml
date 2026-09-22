@@ -150,11 +150,24 @@ jobs:
           key: deps-cc64-${{ hashFiles('Makefile', 'patches/**', 'wamr/**', 'wolfssl/**', 'brotli/**', 'libffi/**') }}-v2
 
       - name: Cross-compile qwin.exe (MINGW64)
-        run: make cc64
+        run: make cc64-small
+        timeout-minutes: 30
+
+      - name: Cross-compile qwin-nowasm.exe (MINGW64)
+        run: make cc64-nowasm
         timeout-minutes: 30
 
       - name: Compile JS + WASM
         run: make js wasm
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwin-x64
+          path: |
+            _build/qwin.exe
+            _build/qwin-nowasm.exe
+          if-no-files-found: error
 
       - name: Start QEMU Win7 VM
         run: |
@@ -289,12 +302,25 @@ jobs:
       # 且 cc32 把 CC=i686-... 和 WAMR_TARGET=X86_32 传给子 make。
       # 不要单独跑 make wamr —— 不带 CROSS=1 时会用本机 gcc 建错架构的 .a，
       # 之后 cc32 发现 .a "最新"就跳过，链接必挂。
-      - name: Cross-compile qwin.exe (i686)
-        run: make cc32
+      - name: Cross-compile qwin-x86.exe (i686)
+        run: make cc32-small
+        timeout-minutes: 30
+
+      - name: Cross-compile qwin-nowasm-x86.exe (i686)
+        run: make cc32-nowasm
         timeout-minutes: 30
 
       - name: Compile JS + WASM
         run: make js wasm
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwin-x86
+          path: |
+            _build/qwin-x86.exe
+            _build/qwin-nowasm-x86.exe
+          if-no-files-found: error
 
       - name: Start host test server
         run: |
@@ -337,3 +363,81 @@ jobs:
         with:
           path: docker/ci-xp/snapshots/xp_ready.qcow2
           key: xp-ready-v1
+
+  # ──────────────────────────────────────────────────────────
+  # 从 win7/xp job 拿产物发布到 npm（仅 tag push）
+  # ──────────────────────────────────────────────────────────
+  publish:
+    name: npm-publish
+    needs: [win7, xp]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - run: npm install
+
+      - name: Install wabt
+        run: sudo apt-get update && sudo apt-get install -y wabt
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: qwin-*
+          path: _build
+          merge-multiple: true
+
+      - name: Verify exes
+        run: |
+          ls -lh _build/qwin*.exe
+          for f in _build/qwin*.exe; do
+            file "$f" || true
+          done
+
+      - name: Package npm
+        run: make npm-pkg
+
+      - name: Configure git to use HTTPS
+        run: git config --global url."https://github.com/".insteadOf ssh://git@github.com/
+
+      - name: Verify package contents
+        working-directory: dist/quickwin
+        run: npm pack --dry-run
+
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          TAG_VER="${TAG#v}"
+          (cd dist/quickwin && npm pack)
+          gh release delete "$TAG" --yes 2>/dev/null || true
+          gh release create "$TAG" \
+            _build/qwin.exe \
+            _build/qwin-x86.exe \
+            _build/qwin-nowasm.exe \
+            _build/qwin-nowasm-x86.exe \
+            _build/main.js \
+            "dist/quickwin/quickwin-${TAG_VER}.tgz" \
+            --title "$TAG" \
+            --notes "QuickWin $TAG — qwin.exe (x64), qwin-x86.exe (x86), qwin-nowasm.exe, qwin-nowasm-x86.exe, main.js, npm tarball"
+
+      - name: Verify npm auth
+        run: npm whoami --registry https://registry.npmjs.org/
+        env:
+          NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}"
+
+      - name: Publish to npm
+        working-directory: dist/quickwin
+        run: npm publish --tag latest
+        env:
+          NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}"
