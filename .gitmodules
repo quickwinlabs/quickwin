@@ -1,21 +1,21 @@
 [submodule "wamr"]
-	path = wamr
+	path = deps/wamr
 	url = https://github.com/bytecodealliance/wasm-micro-runtime
 	ignore = dirty
 [submodule "quickjs"]
-	path = quickjs
+	path = deps/quickjs
 	url = https://github.com/bellard/quickjs
 	ignore = dirty
 
 [submodule "wolfssl"]
-	path = wolfssl
+	path = deps/wolfssl
 	url = https://github.com/wolfSSL/wolfssl.git
 	ignore = dirty
 [submodule "brotli"]
-	path = brotli
+	path = deps/brotli
 	url = https://github.com/google/brotli
 	ignore = dirty
 [submodule "libffi"]
-	path = libffi
+	path = deps/libffi
 	url = https://github.com/libffi/libffi
 	ignore = dirty

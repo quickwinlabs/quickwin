@@ -13,16 +13,16 @@ opencode.json
 output.png
 
 node_modules/
-wamr/build/
-wolfssl/build/
-wolfssl/lib/
-brotli/build-*/
-brotli/lib/
-libffi/build-*/
-libffi/lib/
+deps/wamr/build/
+deps/wolfssl/build/
+deps/wolfssl/lib/
+deps/brotli/build-*/
+deps/brotli/lib/
+deps/libffi/build-*/
+deps/libffi/lib/
 temp/
 _cache/
-./quickjs
+./deps/quickjs
 !vendor/mupdf-wasm/**
 vendor/mupdf-wasm/mupdf-wasm.wat
 docker/ci-xp/ci_share/quickwin

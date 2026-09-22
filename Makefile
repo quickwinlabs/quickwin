@@ -37,20 +37,21 @@ BUILD_DIR = _build
 JS_EMBED ?= embed.js
 
 ifeq ($(BUILD), debug)
-    CFLAGS = -I./quickjs -I$(MSYS2_PREFIX)/include -g -O0 -DDEBUG
+    CFLAGS = -I./deps/quickjs -I$(MSYS2_PREFIX)/include -g -O0 -DDEBUG
 else ifeq ($(BUILD), small)
-    CFLAGS = -I./quickjs -I$(MSYS2_PREFIX)/include -DNDEBUG \
+    CFLAGS = -I./deps/quickjs -I$(MSYS2_PREFIX)/include -DNDEBUG \
              -Os -flto -fdata-sections -ffunction-sections
 else
-    CFLAGS = -I./quickjs -I$(MSYS2_PREFIX)/include -DNDEBUG \
+    CFLAGS = -I./deps/quickjs -I$(MSYS2_PREFIX)/include -DNDEBUG \
              -fdata-sections -ffunction-sections
 endif
 
 CFLAGS += -D_WIN32_WINNT=0x0501
+CFLAGS += -Ideps
 CFLAGS += -DDUMP_GC -DDUMP_LEAKS
 CFLAGS += -Wall -Wextra
 
-WAMR_DIR = wamr
+WAMR_DIR = deps/wamr
 WAMR_CORE = $(WAMR_DIR)/core/iwasm
 WAMR_TARGET ?= X86_64
 WAMR_INC = -I$(WAMR_CORE)/include
@@ -79,7 +80,7 @@ WAMR_DEFS = \
 WAMR_BUILD_DIR = $(WAMR_DIR)/build
 WAMR_LIB = $(WAMR_DIR)/lib/libiwasm.a
 
-WOLFSSL_DIR = wolfssl
+WOLFSSL_DIR = deps/wolfssl
 WOLFSSL_INC = -I$(WOLFSSL_DIR) -I$(WOLFSSL_BUILD_DIR)
 WOLFSSL_BUILD_DIR = $(WOLFSSL_DIR)/build
 WOLFSSL_LIB_STATIC = $(WOLFSSL_DIR)/lib/libwolfssl.a
@@ -87,12 +88,12 @@ WOLFSSL_LIB ?= $(WOLFSSL_LIB_STATIC)
 
 CROSS_HOST = $(patsubst %-gcc,%,$(CC))
 
-BROTLI_DIR = brotli
+BROTLI_DIR = deps/brotli
 BROTLI_BUILD_DIR = $(BROTLI_DIR)/build-$(CROSS_HOST)
 BROTLI_LIB = $(BROTLI_DIR)/lib/libbrotlidec.a
 BROTLI_COMMON_LIB = $(BROTLI_DIR)/lib/libbrotlicommon.a
 
-LIBFFI_DIR = libffi
+LIBFFI_DIR = deps/libffi
 LIBFFI_BUILD_DIR = $(LIBFFI_DIR)/build-$(CROSS_HOST)
 LIBFFI_LIB = $(LIBFFI_DIR)/lib/libffi.a
 
@@ -180,12 +181,12 @@ QJ_DEFINES = -D_GNU_SOURCE -DCONFIG_WIN32 -DCONFIG_VERSION=\"2025-09-13\"
 $(QUICKJS_LIB):
 	@echo "Building QuickJS library..."
 	mkdir -p $(BUILD_DIR)/quickjs
-	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(BUILD_DIR)/quickjs/quickjs.nolto.o quickjs/quickjs.c
-	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(BUILD_DIR)/quickjs/dtoa.nolto.o quickjs/dtoa.c
-	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(BUILD_DIR)/quickjs/libregexp.nolto.o quickjs/libregexp.c
-	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(BUILD_DIR)/quickjs/libunicode.nolto.o quickjs/libunicode.c
-	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(BUILD_DIR)/quickjs/cutils.nolto.o quickjs/cutils.c
-	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(BUILD_DIR)/quickjs/quickjs-libc.nolto.o quickjs/quickjs-libc.c
+	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(BUILD_DIR)/quickjs/quickjs.nolto.o deps/quickjs/quickjs.c
+	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(BUILD_DIR)/quickjs/dtoa.nolto.o deps/quickjs/dtoa.c
+	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(BUILD_DIR)/quickjs/libregexp.nolto.o deps/quickjs/libregexp.c
+	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(BUILD_DIR)/quickjs/libunicode.nolto.o deps/quickjs/libunicode.c
+	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(BUILD_DIR)/quickjs/cutils.nolto.o deps/quickjs/cutils.c
+	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(BUILD_DIR)/quickjs/quickjs-libc.nolto.o deps/quickjs/quickjs-libc.c
 	ar rcs $@ $(BUILD_DIR)/quickjs/*.nolto.o
 	@echo "QuickJS library built"
 
@@ -275,7 +276,7 @@ WAMR_CMAKE_OPTS = \
 $(WAMR_LIB):
 	@echo "Building WAMR..."
 	@if [ ! -d "$(WAMR_DIR)" ]; then \
-		echo "Error: wamr directory not found. Run: git submodule update --init"; \
+		echo "Error: $(WAMR_DIR) directory not found. Run: git submodule update --init"; \
 		exit 1; \
 	fi
 	@sh patches/apply-submodule-patches.sh

@@ -43,5 +43,5 @@ apply_patch() {
 }
 
 echo "Applying submodule patches..."
-apply_patch "wamr"    "patches/wamr-xp-compat.patch"
-apply_patch "wolfssl" "patches/wolfssl-xp-compat.patch"
+apply_patch "deps/wamr"    "patches/wamr-xp-compat.patch"
+apply_patch "deps/wolfssl" "patches/wolfssl-xp-compat.patch"

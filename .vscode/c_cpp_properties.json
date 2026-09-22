@@ -5,12 +5,12 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "C:/msys64/ucrt64/include",
-                "${workspaceFolder}/wamr/core/iwasm/include",
-                "${workspaceFolder}/wamr/core/shared/platform/windows",
-                "${workspaceFolder}/wamr/core/iwasm/interpreter",
-                "${workspaceFolder}/wamr/core/iwasm/common",
-                "${workspaceFolder}/wamr/core/shared/utils",
-                "${workspaceFolder}/wamr/core/shared/platform/include"
+                "${workspaceFolder}/deps/wamr/core/iwasm/include",
+                "${workspaceFolder}/deps/wamr/core/shared/platform/windows",
+                "${workspaceFolder}/deps/wamr/core/iwasm/interpreter",
+                "${workspaceFolder}/deps/wamr/core/iwasm/common",
+                "${workspaceFolder}/deps/wamr/core/shared/utils",
+                "${workspaceFolder}/deps/wamr/core/shared/platform/include"
             ],
             "defines": [
                 "_DEBUG",
