@@ -30,17 +30,20 @@ CXX = $(CXX64)
 WINDRES = $(WRES64)
 MSYS2_PREFIX ?= $(SYSROOT64)
 
-DEBUG = 0
-MINIMAL = 0
+# flavor: fast（默认，开发快编）| small（发行，-Os+LTO 小体积）| debug（排错）
+BUILD ?= fast
 NO_WASM = 0
-OPT = -Os
 BUILD_DIR = _build
 JS_EMBED ?= embed.js
 
-ifeq ($(DEBUG), 1)
+ifeq ($(BUILD), debug)
     CFLAGS = -I./quickjs -I$(MSYS2_PREFIX)/include -g -O0 -DDEBUG
+else ifeq ($(BUILD), small)
+    CFLAGS = -I./quickjs -I$(MSYS2_PREFIX)/include -DNDEBUG \
+             -Os -flto -fdata-sections -ffunction-sections
 else
-    CFLAGS = -I./quickjs -I$(MSYS2_PREFIX)/include -DNDEBUG
+    CFLAGS = -I./quickjs -I$(MSYS2_PREFIX)/include -DNDEBUG \
+             -fdata-sections -ffunction-sections
 endif
 
 CFLAGS += -D_WIN32_WINNT=0x0501
@@ -113,12 +116,13 @@ CFLAGS += -I$(LIBFFI_BUILD_DIR)/include
 CFLAGS += -I$(BROTLI_DIR)/c/include
 
 LDFLAGS = -L$(MSYS2_PREFIX)/lib -static
-LIBS = $(LIBBROTLIDEC) $(LIBBROTLICOMMON) $(WOLFSSL_LIB) -lws2_32 -lbcrypt -lcrypt32 -lm -luser32 -lgdi32 -lcomctl32 $(LIBFFI) -lntdll -lshell32 -lwininet
-
-ifeq ($(MINIMAL), 1)
-    CFLAGS += $(OPT) -flto -fdata-sections -ffunction-sections
-    LDFLAGS += -flto -Wl,--gc-sections -mwindows
+ifneq ($(BUILD), debug)
+  ifeq ($(BUILD), small)
+    LDFLAGS += -flto
+  endif
+    LDFLAGS += -Wl,--gc-sections -mwindows
 endif
+LIBS = $(LIBBROTLIDEC) $(LIBBROTLICOMMON) $(WOLFSSL_LIB) -lws2_32 -lbcrypt -lcrypt32 -lm -luser32 -lgdi32 -lcomctl32 $(LIBFFI) -lntdll -lshell32 -lwininet
 
 TARGET_NAME ?= qwin.exe
 TARGET = $(BUILD_DIR)/$(TARGET_NAME)
@@ -137,7 +141,7 @@ SRCS = main.c \
        quickjs-wolfssl.c \
        quickjs-http.c \
        quickjs-libc.c \
-        quickjs-async-task.c
+       quickjs-async-task.c
 
 
 ifeq ($(NO_WASM), 0)
@@ -147,65 +151,29 @@ endif
 OBJS = $(SRCS:%.c=$(BUILD_DIR)/%.o) $(BUILD_DIR)/app.o
 DEPS = $(SRCS:%.c=$(BUILD_DIR)/%.d)
 
-.PHONY: all clean debug nodebug release small minimal nowasm cc64-nowasm cc32-nowasm test wamr wasm js npm-pkg embed-js embed-js-br info help cc64 cc32 cc32-small cc64-small apply-submodule-patches
+# 交叉构建目标重编前清理的产物（exe 各目标不同，在各自 recipe 里追加）
+CLEAN_CACHE = $(OBJS) $(DEPS) $(QUICKJS_LIB)
 
-all: nodebug
+.PHONY: cc64 cc32 cc64-nowasm cc32-nowasm apply-submodule-patches \
+        const wamr wasm js test npm-pkg embed-js embed-js-br info help clean distclean
+
+.DEFAULT_GOAL := cc64
 
 apply-submodule-patches:
 	@sh patches/apply-submodule-patches.sh
 
-cc64: apply-submodule-patches
-	@$(MAKE) CROSS=1 nodebug
+# 交叉构建公共模板：$(1)=target 名  $(2)=产物 exe（子 make goal）  $(3)=子 make 变量
+# 注意 $$(MAKE) 双美元号：避免 eval 提前展开，保留 $(MAKE) 供 -n 递归/jobserver 识别
+define cross_build
+$(1): apply-submodule-patches
+	rm -f $(CLEAN_CACHE) $(2)
+	@$$(MAKE) CROSS=1 $(3) $(2)
+endef
 
-cc32: apply-submodule-patches
-	@$(MAKE) CROSS=1 CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 TARGET_NAME=$(TARGET_NAME_32) nodebug
-
-cc64-small: apply-submodule-patches
-	rm -f $(OBJS) $(DEPS) $(TARGET) $(QUICKJS_LIB)
-	@$(MAKE) CROSS=1 OPT=-Os MINIMAL=1 nodebug
-
-cc32-small: apply-submodule-patches
-	rm -f $(OBJS) $(DEPS) $(BUILD_DIR)/$(TARGET_NAME_32) $(QUICKJS_LIB)
-	@$(MAKE) CROSS=1 CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 TARGET_NAME=$(TARGET_NAME_32) OPT=-Os MINIMAL=1 nodebug
-
-debug:
-	@$(MAKE) DEBUG=1
-
-nodebug: $(QUICKJS_LIB) $(TARGET)
-
-release:
-	rm -f $(OBJS) $(DEPS) $(TARGET) $(QUICKJS_LIB)
-	@$(MAKE) OPT=-O2 MINIMAL=1 nodebug
-	@echo "Build complete: $(TARGET) (-O2, LTO, stripped)"
-
-small:
-	rm -f $(OBJS) $(DEPS) $(TARGET) $(QUICKJS_LIB)
-	@$(MAKE) OPT=-Os MINIMAL=1 nodebug
-	@echo "Build complete: $(TARGET) (-Os, LTO, stripped)"
-
-minimal:
-	rm -f $(OBJS) $(DEPS) $(TARGET) $(QUICKJS_LIB)
-	@$(MAKE) OPT=-Os MINIMAL=1 nodebug
-	@if command -v upx >/dev/null 2>&1; then upx --best $(TARGET); fi
-	@echo "Build complete: $(TARGET) (-Os, LTO, stripped, UPXed)"
-
-nowasm:
-	rm -f $(OBJS) $(DEPS) $(QUICKJS_LIB)
-	rm -f $(BUILD_DIR)/$(TARGET_NOWASM)
-	@$(MAKE) NO_WASM=1 TARGET_NAME=$(TARGET_NOWASM) OPT=-Os MINIMAL=1 nodebug
-	@echo "Build complete: $(BUILD_DIR)/$(TARGET_NOWASM) (no WASM, -Os, LTO, stripped)"
-
-cc64-nowasm: apply-submodule-patches
-	rm -f $(OBJS) $(DEPS) $(QUICKJS_LIB) $(BUILD_DIR)/$(TARGET_NOWASM)
-	@$(MAKE) CROSS=1 NO_WASM=1 TARGET_NAME=$(TARGET_NOWASM) OPT=-Os MINIMAL=1 nodebug
-	@echo "Build complete: $(BUILD_DIR)/$(TARGET_NOWASM) (cross x86_64, no WASM, -Os, LTO, stripped)"
-
-cc32-nowasm: apply-submodule-patches
-	rm -f $(OBJS) $(DEPS) $(QUICKJS_LIB) $(BUILD_DIR)/$(TARGET_NOWASM_32)
-	@$(MAKE) CROSS=1 CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 NO_WASM=1 TARGET_NAME=$(TARGET_NOWASM_32) OPT=-Os MINIMAL=1 nodebug
-	@echo "Build complete: $(BUILD_DIR)/$(TARGET_NOWASM_32) (cross i686, no WASM, -Os, LTO, stripped)"
-
-
+$(eval $(call cross_build,cc64,$(BUILD_DIR)/$(TARGET_NAME),))
+$(eval $(call cross_build,cc32,$(BUILD_DIR)/$(TARGET_NAME_32),CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 TARGET_NAME=$(TARGET_NAME_32)))
+$(eval $(call cross_build,cc64-nowasm,$(BUILD_DIR)/$(TARGET_NOWASM),TARGET_NAME=$(TARGET_NOWASM) NO_WASM=1))
+$(eval $(call cross_build,cc32-nowasm,$(BUILD_DIR)/$(TARGET_NOWASM_32),CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 TARGET_NAME=$(TARGET_NOWASM_32) NO_WASM=1))
 
 QJ_DEFINES = -D_GNU_SOURCE -DCONFIG_WIN32 -DCONFIG_VERSION=\"2025-09-13\"
 
@@ -231,7 +199,7 @@ $(TARGET): $(OBJS) $(QUICKJS_LIB) $(WAMR_LINK) $(WOLFSSL_LIB_STATIC) $(CROSS_BUI
 	@echo "Linking $@..."
 	mkdir -p $(BUILD_DIR)
 	$(CC) -o $@ $(OBJS) $(QUICKJS_LIB) $(WAMR_LINK) $(LDFLAGS) $(LIBS)
-ifeq ($(MINIMAL), 1)
+ifneq ($(BUILD), debug)
 	strip $@
 endif
 	@echo "Build complete: $@"
@@ -283,6 +251,27 @@ const: tools/gen_const.exe
 tools/gen_const.exe: tools/gen_const.c
 	$(CC) -o $@ $<
 
+WAMR_CMAKE_OPTS = \
+	-DWAMR_BUILD_PLATFORM=windows \
+	-DWAMR_BUILD_INTERP=1 \
+	-DWAMR_BUILD_FAST_INTERP=1 \
+	-DWAMR_BUILD_AOT=0 \
+	-DWAMR_BUILD_JIT=0 \
+	-DWAMR_BUILD_LIBC_BUILTIN=1 \
+	-DWAMR_BUILD_LIBC_WASI=0 \
+	-DWAMR_BUILD_MULTI_MODULE=0 \
+	-DWAMR_BUILD_THREAD_MGR=0 \
+	-DWAMR_BUILD_REF_TYPES=0 \
+	-DWAMR_BUILD_GC=0 \
+	-DWAMR_BUILD_SIMD=0 \
+	-DWAMR_BUILD_LOG=0 \
+	-DWAMR_DISABLE_HW_BOUND_CHECK=1 \
+	-DWAMR_BUILD_INVOKE_NATIVE_GENERAL=1 \
+	-DWAMR_BUILD_EXCE_HANDLING=0 \
+	-DCMAKE_BUILD_TYPE=Release \
+	-DCMAKE_C_FLAGS="-D_SSIZE_T_DEFINED" \
+	-DCMAKE_CXX_FLAGS="-D_SSIZE_T_DEFINED"
+
 $(WAMR_LIB):
 	@echo "Building WAMR..."
 	@if [ ! -d "$(WAMR_DIR)" ]; then \
@@ -291,29 +280,10 @@ $(WAMR_LIB):
 	fi
 	@sh patches/apply-submodule-patches.sh
 	@mkdir -p $(WAMR_BUILD_DIR)
-	cd $(WAMR_DIR) && cmake -B build \
-		-DWAMR_BUILD_PLATFORM=windows \
+	cd $(WAMR_DIR) && cmake -B build $(WAMR_CMAKE_OPTS) \
 		-DWAMR_BUILD_TARGET=$(WAMR_TARGET) \
 		-DCMAKE_C_COMPILER=$(CC) \
-		-DCMAKE_CXX_COMPILER=$(CXX) \
-		-DWAMR_BUILD_INTERP=1 \
-		-DWAMR_BUILD_FAST_INTERP=1 \
-		-DWAMR_BUILD_AOT=0 \
-		-DWAMR_BUILD_JIT=0 \
-		-DWAMR_BUILD_LIBC_BUILTIN=1 \
-		-DWAMR_BUILD_LIBC_WASI=0 \
-		-DWAMR_BUILD_MULTI_MODULE=0 \
-		-DWAMR_BUILD_THREAD_MGR=0 \
-		-DWAMR_BUILD_REF_TYPES=0 \
-		-DWAMR_BUILD_GC=0 \
-		-DWAMR_BUILD_SIMD=0 \
-		-DWAMR_BUILD_LOG=0 \
-		-DWAMR_DISABLE_HW_BOUND_CHECK=1 \
-		-DWAMR_BUILD_INVOKE_NATIVE_GENERAL=1 \
-		-DWAMR_BUILD_EXCE_HANDLING=0 \
-		-DCMAKE_BUILD_TYPE=Release \
-		-DCMAKE_C_FLAGS="-D_SSIZE_T_DEFINED" \
-		-DCMAKE_CXX_FLAGS="-D_SSIZE_T_DEFINED"
+		-DCMAKE_CXX_COMPILER=$(CXX)
 	cmake --build $(WAMR_BUILD_DIR) --config Release
 	@mkdir -p $(WAMR_DIR)/lib
 	cp $(WAMR_BUILD_DIR)/libiwasm.a $(WAMR_LIB)
@@ -321,45 +291,47 @@ $(WAMR_LIB):
 
 wamr: $(WAMR_LIB)
 
+WOLFSSL_CMAKE_OPTS = \
+	-DCMAKE_SYSTEM_NAME=Windows \
+	-DCMAKE_BUILD_TYPE=Release \
+	-DCMAKE_C_FLAGS_RELEASE="-Os" \
+	-DBUILD_SHARED_LIBS=OFF \
+	-DWOLFSSL_TLS13=OFF \
+	-DWOLFSSL_MLKEM=OFF \
+	-DWOLFSSL_PQC_HYBRIDS=OFF \
+	-DWOLFSSL_CHACHA=OFF \
+	-DWOLFSSL_POLY1305=OFF \
+	-DWOLFSSL_CURVE25519=OFF \
+	-DWOLFSSL_ED25519=OFF \
+	-DWOLFSSL_CURVE448=OFF \
+	-DWOLFSSL_ED448=OFF \
+	-DWOLFSSL_DH=OFF \
+	-DWOLFSSL_OLD_TLS=OFF \
+	-DWOLFSSL_SHA3=OFF \
+	-DWOLFSSL_SHAKE128=OFF \
+	-DWOLFSSL_SHAKE256=OFF \
+	-DWOLFSSL_SHA224=OFF \
+	-DWOLFSSL_SHA512=OFF \
+	-DWOLFSSL_SESSION_TICKET=OFF \
+	-DWOLFSSL_HARDEN=OFF \
+	-DWOLFSSL_HKDF=OFF \
+	-DWOLFSSL_EXAMPLES=OFF \
+	-DWOLFSSL_CRYPT_TESTS=OFF \
+	-DWOLFSSL_PKCS12=OFF \
+	-DWOLFSSL_DH_DEFAULT_PARAMS=OFF \
+	-DWOLFSSL_SNI=ON \
+	-DWOLFSSL_TLSX=ON \
+	-DWOLFSSL_BASE64_ENCODE=ON \
+	-DWOLFSSL_SUPPORTED_CURVES=ON \
+	-DNO_INT128=ON
+
 $(WOLFSSL_LIB_STATIC):
 	@echo "Building minimal wolfSSL..."
 	if [ ! -f "$(WOLFSSL_DIR)/README.md" ]; then git submodule update --init --depth 1 $(WOLFSSL_DIR); fi
 	@sh patches/apply-submodule-patches.sh
 	@mkdir -p $(WOLFSSL_BUILD_DIR) $(WOLFSSL_DIR)/lib
-	cd $(WOLFSSL_DIR) && cmake -B build \
-		-DCMAKE_C_COMPILER=$(CC) \
-		-DCMAKE_SYSTEM_NAME=Windows \
-		-DCMAKE_BUILD_TYPE=Release \
-		-DCMAKE_C_FLAGS_RELEASE="-Os" \
-		-DBUILD_SHARED_LIBS=OFF \
-		-DWOLFSSL_TLS13=OFF \
-		-DWOLFSSL_MLKEM=OFF \
-		-DWOLFSSL_PQC_HYBRIDS=OFF \
-		-DWOLFSSL_CHACHA=OFF \
-		-DWOLFSSL_POLY1305=OFF \
-		-DWOLFSSL_CURVE25519=OFF \
-		-DWOLFSSL_ED25519=OFF \
-		-DWOLFSSL_CURVE448=OFF \
-		-DWOLFSSL_ED448=OFF \
-		-DWOLFSSL_DH=OFF \
-		-DWOLFSSL_OLD_TLS=OFF \
-		-DWOLFSSL_SHA3=OFF \
-		-DWOLFSSL_SHAKE128=OFF \
-		-DWOLFSSL_SHAKE256=OFF \
-		-DWOLFSSL_SHA224=OFF \
-		-DWOLFSSL_SHA512=OFF \
-		-DWOLFSSL_SESSION_TICKET=OFF \
-		-DWOLFSSL_HARDEN=OFF \
-		-DWOLFSSL_HKDF=OFF \
-		-DWOLFSSL_EXAMPLES=OFF \
-		-DWOLFSSL_CRYPT_TESTS=OFF \
-		-DWOLFSSL_PKCS12=OFF \
-		-DWOLFSSL_DH_DEFAULT_PARAMS=OFF \
-		-DWOLFSSL_SNI=ON \
-		-DWOLFSSL_TLSX=ON \
-		-DWOLFSSL_BASE64_ENCODE=ON \
-		-DWOLFSSL_SUPPORTED_CURVES=ON \
-		-DNO_INT128=ON
+	cd $(WOLFSSL_DIR) && cmake -B build $(WOLFSSL_CMAKE_OPTS) \
+		-DCMAKE_C_COMPILER=$(CC)
 	cmake --build $(WOLFSSL_BUILD_DIR) --config Release
 	cp $(WOLFSSL_BUILD_DIR)/libwolfssl.a $(WOLFSSL_LIB_STATIC)
 	@echo "Minimal wolfSSL build complete"
@@ -408,7 +380,7 @@ info:
 	@echo "  LIBS      = $(LIBS)"
 	@echo "  TARGET    = $(TARGET)"
 	@echo "  BUILD_DIR = $(BUILD_DIR)"
-	@echo "  DEBUG     = $(DEBUG)"
+	@echo "  BUILD     = $(BUILD)"
 	@echo "  NO_WASM   = $(NO_WASM)"
 
 js:
@@ -421,7 +393,7 @@ js:
 	@mkdir -p $(BUILD_DIR)/lib/vendor/web-streams && cp lib/vendor/web-streams/ponyfill.mjs $(BUILD_DIR)/lib/vendor/web-streams/
 	@echo "TypeScript compilation complete"
 
-test: nodebug js wasm
+test: cc64 js wasm
 	node --experimental-strip-types tools/serve_test.ts 18923 & SERVER_PID=$$!; $(TARGET) $(BUILD_DIR)/test/run.js $(TEST); rc=$$?; kill $$SERVER_PID 2>/dev/null; exit $$rc
 
 npm-pkg: js wasm
@@ -435,38 +407,28 @@ npm-pkg: js wasm
 	cp $(BUILD_DIR)/$(TARGET_NAME) $(BUILD_DIR)/$(TARGET_NAME_32) $(BUILD_DIR)/$(TARGET_NOWASM) $(BUILD_DIR)/$(TARGET_NOWASM_32) $(NPM_PKG_DIR)/
 	@echo "npm package created at $(NPM_PKG_DIR)"
 
-embed-js: $(TARGET)
+embed-js: cc64
 	powershell -ExecutionPolicy Bypass -File scripts/embed-js.ps1 -ExePath $(TARGET) -JsFile $(JS_EMBED)
 
-embed-js-br: $(TARGET)
+embed-js-br: cc64
 	powershell -ExecutionPolicy Bypass -File scripts/embed-js.ps1 -ExePath $(TARGET) -JsFile $(JS_EMBED) -Compress
 
 help:
 	@echo "Available targets:"
-	@echo "  all       - Build nodebug version (default, custom wolfSSL)"
-	@echo "  cc64      - Cross-compile for Windows x86_64 -> $(BUILD_DIR)/$(TARGET_NAME)"
-	@echo "  cc32      - Cross-compile for Windows i686   -> $(BUILD_DIR)/$(TARGET_NAME_32)"
-	@echo "  cc64-small - Cross-compile x86_64 with -Os + LTO + stripped"
-	@echo "  cc32-small - Cross-compile i686 with -Os + LTO + stripped"
-	@echo "  release   - Build with -O2 + LTO + stripped + custom wolfSSL"
-	@echo "  small     - Build with -Os + LTO + stripped + custom wolfSSL"
-	@echo "  minimal   - Build with -Os + LTO + stripped + UPX + custom wolfSSL"
-	@echo "  nowasm    - Build without WASM/WAMR -> $(BUILD_DIR)/$(TARGET_NOWASM) (-Os, LTO, stripped)"
-	@echo "  cc64-nowasm - Cross-compile x86_64 without WASM -> $(BUILD_DIR)/$(TARGET_NOWASM)"
-	@echo "  cc32-nowasm - Cross-compile i686 without WASM   -> $(BUILD_DIR)/$(TARGET_NOWASM_32)"
-	@echo "  debug     - Build debug version (-g -O0, always has DUMP_GC/DUMP_LEAKS)"
-	@echo "  clean     - Remove built files and JS files"
-	@echo "  distclean - Remove all generated files"
-	@echo "  info      - Show build configuration"
-	@echo "  const     - Generate quickwin_const.d.ts from tools/gen_const.c"
+	@echo "  BUILD=fast(默认)|small|debug 可用于所有构建 target："
+	@echo "  make cc64                     - cross x86_64, fast build -> $(BUILD_DIR)/$(TARGET_NAME)"
+	@echo "  make cc64 BUILD=small         - cross x86_64, -Os+LTO release (CI/发布)"
+	@echo "  make cc64 BUILD=debug         - cross x86_64, -g -O0 debug (不 strip)"
+	@echo "  cc32                          - cross i686 -> $(BUILD_DIR)/$(TARGET_NAME_32)"
+	@echo "  cc64-nowasm / cc32-nowasm     - 同上但无 WASM/WAMR"
+	@echo "  test      - Run suites: make test / make test TEST=wasm / make test TEST=-net"
 	@echo "  js        - Compile TypeScript files to JavaScript"
-	@echo "  test      - Run all suites: make test"
-	@echo "  test      - Filter by name: make test TEST=wasm"
-	@echo "  test      - Exclude by tag: make test TEST=-net"
 	@echo "  wasm      - Convert WAT files to WASM (requires wabt)"
-	@echo "  embed-js  - Embed JS_EMBED (default: embed.js) into exe: make embed-js JS_EMBED=script.js"
-	@echo "  embed-js-br - Embed brotli-compressed JS into exe: make embed-js-br JS_EMBED=script.js"
 	@echo "  npm-pkg   - Package distributable into $(NPM_PKG_DIR)"
+	@echo "  const     - Generate quickwin_const.d.ts from tools/gen_const.c"
 	@echo "  wamr      - Build WAMR static library (auto-built on demand)"
-	@echo "  (wolfSSL) - Custom minimal wolfSSL auto-built on demand"
+	@echo "  embed-js  - Embed JS_EMBED into exe: make embed-js JS_EMBED=script.js"
+	@echo "  embed-js-br - Embed brotli-compressed JS into exe"
+	@echo "  clean     - Remove built files"
+	@echo "  info      - Show build configuration"
 	@echo "  help      - Show this help message"

@@ -100,10 +100,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { id: win7, cc: x86_64, deps: cc64, small: cc64-small, nowasm: cc64-nowasm,
+          - { id: win7, cc: x86_64, deps: cc64, nowasm: cc64-nowasm,
               snap_key: win7-ready-v1, snap_file: win7_ready.qcow2, artifact: qwin-x64,
               exe: qwin.exe, nowasm_exe: qwin-nowasm.exe }
-          - { id: xp,   cc: i686,   deps: cc32, small: cc32-small, nowasm: cc32-nowasm,
+          - { id: xp,   cc: i686,   deps: cc32, nowasm: cc32-nowasm,
               snap_key: xp-ready-v1,  snap_file: xp_ready.qcow2,   artifact: qwin-x86,
               exe: qwin-x86.exe, nowasm_exe: qwin-nowasm-x86.exe }
     steps:
@@ -166,12 +166,12 @@ jobs:
       # 且 cc32 把 CC=i686-... 和 WAMR_TARGET=X86_32 传给子 make。
       # 不要单独跑 make wamr —— 不带 CROSS=1 时会用本机 gcc 建错架构的 .a，
       # 之后 cc32 发现 .a "最新"就跳过，链接必挂。
-      - name: Cross-compile ${{ matrix.id }} (${{ matrix.small }})
-        run: make ${{ matrix.small }}
+      - name: Cross-compile ${{ matrix.id }} (${{ matrix.deps }})
+        run: make ${{ matrix.deps }} BUILD=small
         timeout-minutes: 30
 
       - name: Cross-compile ${{ matrix.id }} nowasm (${{ matrix.nowasm }})
-        run: make ${{ matrix.nowasm }}
+        run: make ${{ matrix.nowasm }} BUILD=small
         timeout-minutes: 30
 
       - name: Compile JS + WASM
