@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 # ============================================================
 #  Bare QEMU Win7 CI — 安装阶段
 #  安装 Win7 → 关机后打 snapshot → 之后用 run.sh 测试
-#  用法: ./setup.sh
+#  用法: ./setup-win7.sh
 #
 #  安装阶段完全离线（无网卡）：install.bat 只注册开机自启后关机。
 #  ci_share 的链接由 run.sh 负责。
@@ -14,6 +14,7 @@ cd "$(dirname "$0")"
 START_TIME=$(date +%s)
 DISK=snapshots/win7_install.qcow2
 SNAPSHOT=snapshots/win7_ready.qcow2
+FLOPPY_DIR=floppy-win7
 
 # ── 依赖检查 ──
 for c in qemu-system-x86_64 qemu-img mcopy mkfs.vfat; do
@@ -22,26 +23,26 @@ done
 if [ -e /dev/kvm ]; then KVM="-accel kvm"; else echo "WARNING: KVM 不可用，将使用 TCG（很慢）"; fi
 
 # ── ISO ──
-ISO="$(ls iso/*.iso 2>/dev/null | head -1)"
+ISO="$(ls iso/win7/*.iso 2>/dev/null | head -1)"
 if [ -z "$ISO" ]; then
     echo "ISO 不存在，尝试自动下载..."
-    ../scripts/download-iso.sh 7u iso
-    ISO="$(ls iso/*.iso 2>/dev/null | head -1)"
+    scripts/download-iso.sh 7u iso/win7
+    ISO="$(ls iso/win7/*.iso 2>/dev/null | head -1)"
 fi
-[ -n "$ISO" ] || { echo "找不到 ISO: iso/*.iso"; exit 1; }
+[ -n "$ISO" ] || { echo "找不到 ISO: iso/win7/*.iso"; exit 1; }
 
 mkdir -p snapshots
 
 # ── 清理旧产物 ──
-[ -f qemu.pid ] && { kill -9 "$(cat qemu.pid)" 2>/dev/null; sleep 1; }
-rm -f floppy.img qemu.pid snapshots/*.qcow2
+[ -f qemu-win7.pid ] && { kill -9 "$(cat qemu-win7.pid)" 2>/dev/null; sleep 1; }
+rm -f floppy.img qemu-win7.pid snapshots/*.qcow2
 
 # ── Step 1: 创建软盘镜像 ──
 dd if=/dev/zero of=floppy.img bs=512 count=2880 status=none
 mkfs.vfat -F 12 floppy.img >/dev/null
 mmd   -i floppy.img '::/$OEM$' '::/$OEM$/$1' '::/$OEM$/$1/OEM'
-mcopy -i floppy.img floppy/Autounattend.xml ::/Autounattend.xml
-mcopy -i floppy.img floppy/install.bat floppy/bootstrap.bat '::/$OEM$/$1/OEM/'
+mcopy -i floppy.img "$FLOPPY_DIR/Autounattend.xml" ::/Autounattend.xml
+mcopy -i floppy.img "$FLOPPY_DIR/install.bat" "$FLOPPY_DIR/bootstrap.bat" '::/$OEM$/$1/OEM/'
 
 # ── Step 2: 创建虚拟磁盘 ──
 qemu-img create -f qcow2 "$DISK" 30G >/dev/null
@@ -51,18 +52,18 @@ qemu-system-x86_64 \
     $KVM \
     -hda "$DISK" -m 4096 -smp 4 \
     -cdrom "$ISO" -fda floppy.img -boot order=dc \
-    -display none -pidfile qemu.pid \
+    -display none -pidfile qemu-win7.pid \
     -monitor unix:/tmp/qemu-monitor-win7.sock,server,nowait \
     -daemonize
 
-QEMU_PID=$(cat qemu.pid)
+QEMU_PID=$(cat qemu-win7.pid)
 echo "QEMU 已启动 (PID=$QEMU_PID)，等待安装完成..."
 
 # ── Step 4: 等待安装完成（每 10s 轮询磁盘大小）──
 # 用 qemu.pid 是否存在判断退出（QEMU 干净退出时会自己 unlink），不能用 kill -0：
 # 它对僵尸进程也返回 0，而 -daemonize 后 QEMU 被 reparent 到 PID 1，
 # 容器里 PID 1 是 shell（不回收孤儿僵尸）→ kill -0 恒为 0 → 无限等待。
-while [ -f qemu.pid ]; do
+while [ -f qemu-win7.pid ]; do
     sleep 10
     printf "\r  [%s] %ds  disk=%s" "$(date +%H:%M:%S)" \
         "$(( $(date +%s) - START_TIME ))" "$(ls -lh "$DISK" 2>/dev/null | awk '{print $5}')"
@@ -73,4 +74,4 @@ echo ""
 mv "$DISK" "$SNAPSHOT"
 echo "安装完成，耗时 $(( $(date +%s) - START_TIME ))s"
 echo "Ready disk: $SNAPSHOT"
-echo "用 run.sh 启动测试: ./run.sh [--fresh]"
+echo "用 run.sh 启动测试: ./run.sh win7 [--fresh]"

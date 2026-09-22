@@ -160,11 +160,11 @@ cc64: apply-submodule-patches
 cc32: apply-submodule-patches
 	@$(MAKE) CROSS=1 CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 TARGET_NAME=$(TARGET_NAME_32) nodebug
 
-cc64-small:
+cc64-small: apply-submodule-patches
 	rm -f $(OBJS) $(DEPS) $(TARGET) $(QUICKJS_LIB)
 	@$(MAKE) CROSS=1 OPT=-Os MINIMAL=1 nodebug
 
-cc32-small:
+cc32-small: apply-submodule-patches
 	rm -f $(OBJS) $(DEPS) $(BUILD_DIR)/$(TARGET_NAME_32) $(QUICKJS_LIB)
 	@$(MAKE) CROSS=1 CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 TARGET_NAME=$(TARGET_NAME_32) OPT=-Os MINIMAL=1 nodebug
 

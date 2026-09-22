@@ -15,8 +15,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-    outputs:
-      needs-build: ${{ steps.need.outputs.needs-build }}
     steps:
       - uses: actions/checkout@v5
 
@@ -83,17 +81,31 @@ jobs:
         run: echo "Dockerfile.dev unchanged, reusing existing ghcr image"
 
   # ──────────────────────────────────────────────────────────
-  # 在开发容器内做交叉编译 + QEMU Win7 VM 测试
-  # （镜像即本地环境：Fedora + posix mingw，消除环境差异）
+  # 在开发容器内交叉编译 + QEMU Win7/XP VM 测试（matrix）
+  # 镜像即本地环境：Fedora + posix mingw，消除环境差异。
+  # win7/xp 差异：win7 用 MINGW64(cc64) 出 qwin.exe 64 位；
+  #               xp 用 MINGW32(cc32) 出 qwin-x86.exe 32 位。
+  # 测试流程已统一：run.bat 在 VM 内直接跑 test/run.js，
+  # host 只需等 run.log 的 Done + 解析 Summary。
   # ──────────────────────────────────────────────────────────
-  win7:
-    name: win7-qemu-test
+  qemu-test:
+    name: qemu-test (${{ matrix.id }})
     needs: build-and-push
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/xna00/quickwin-dev:latest
       options: --device /dev/kvm
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: win7, cc: x86_64, deps: cc64, small: cc64-small, nowasm: cc64-nowasm,
+              snap_key: win7-ready-v1, snap_file: win7_ready.qcow2, artifact: qwin-x64,
+              exe: qwin.exe, nowasm_exe: qwin-nowasm.exe }
+          - { id: xp,   cc: i686,   deps: cc32, small: cc32-small, nowasm: cc32-nowasm,
+              snap_key: xp-ready-v1,  snap_file: xp_ready.qcow2,   artifact: qwin-x86,
+              exe: qwin-x86.exe, nowasm_exe: qwin-nowasm-x86.exe }
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -106,34 +118,35 @@ jobs:
           echo "=== /dev/kvm ==="
           ls -l /dev/kvm 2>&1 || echo "NO /dev/kvm"
           [ -w /dev/kvm ] || { echo "::error::KVM not writable in container"; exit 1; }
-          echo "=== toolchain ==="
-          x86_64-w64-mingw32-gcc -v 2>&1 | grep -i "Thread model" || true
+          echo "=== toolchain (${{ matrix.cc }}) ==="
+          ${{ matrix.cc }}-w64-mingw32-gcc -v 2>&1 | grep -i "Thread model" || true
           node --version
 
       - name: Install npm deps
         run: npm install
 
-      - name: Restore Win7 snapshot cache
-        id: cache-win7
+      # ── 快照缓存（key 固定 -v1：快照内容不会变，只随安装脚本/流程变化升级）──
+      - name: Restore ${{ matrix.id }} snapshot cache
+        id: cache-snap
         uses: actions/cache@v5
         with:
-          path: docker/ci-win7/snapshots/win7_ready.qcow2
-          key: win7-ready-v2
+          path: docker/snapshots/${{ matrix.snap_file }}
+          key: ${{ matrix.snap_key }}
 
-      # ── cache miss：现场安装 Win7（下载 ISO + Autounattend 自动安装）──
-      - name: Install Win7 (cache miss only)
-        id: install-win7
-        if: steps.cache-win7.outputs.cache-hit != 'true'
+      # ── cache miss：现场安装系统（下载 ISO + 自动应答安装）──
+      - name: Install ${{ matrix.id }} (cache miss only)
+        id: install-vm
+        if: steps.cache-snap.outputs.cache-hit != 'true'
         run: |
-          cd docker/ci-win7
-          bash setup.sh
+          cd docker
+          bash setup-${{ matrix.id }}.sh
         timeout-minutes: 40
 
       - name: Verify snapshot
         run: |
-          ls -lh docker/ci-win7/snapshots/
-          [ -f docker/ci-win7/snapshots/win7_ready.qcow2 ] || \
-            { echo "::error::win7_ready.qcow2 missing"; exit 1; }
+          ls -lh docker/snapshots/
+          [ -f docker/snapshots/${{ matrix.snap_file }} ] || \
+            { echo "::error::${{ matrix.snap_file }} missing"; exit 1; }
 
       - name: Cache cross-compile deps
         id: cache-deps
@@ -147,167 +160,18 @@ jobs:
             brotli/lib/libbrotlicommon.a
             libffi/lib/libffi.a
             libffi/build-*/include/
-          key: deps-cc64-${{ hashFiles('Makefile', 'patches/**', 'wamr/**', 'wolfssl/**', 'brotli/**', 'libffi/**') }}-v2
-
-      - name: Cross-compile qwin.exe (MINGW64)
-        run: make cc64-small
-        timeout-minutes: 30
-
-      - name: Cross-compile qwin-nowasm.exe (MINGW64)
-        run: make cc64-nowasm
-        timeout-minutes: 30
-
-      - name: Compile JS + WASM
-        run: make js wasm
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: qwin-x64
-          path: |
-            _build/qwin.exe
-            _build/qwin-nowasm.exe
-          if-no-files-found: error
-
-      - name: Start QEMU Win7 VM
-        run: |
-          cd docker/ci-win7
-          SHARE_DIR="$GITHUB_WORKSPACE/_build" bash run.sh
-        timeout-minutes: 10
-
-      - name: Start host test server
-        run: |
-          node tools/serve_test.ts 18923 > /tmp/serve_test.log 2>&1 &
-          echo "serve_test pid=$!"
-          sleep 1
-          curl -sf http://127.0.0.1:18923/ && echo " <- serve_test up"
-
-      - name: Wait for exec_server
-        run: |
-          for i in $(seq 1 60); do
-            if curl -sf -X POST http://localhost:8080/exec \
-                -H "Content-Type: application/json" \
-                -d '{"cmd":"cmd /c echo ok"}' | grep -q ok; then
-              echo "exec_server ready after ${i}x5s"
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "::error::exec_server did not come up"
-          echo "--- run.log ---"
-          cat docker/ci-win7/ci_share/run.log 2>&1 || true
-          echo "--- exec_server.log ---"
-          cat docker/ci-win7/ci_share/exec_server.log 2>&1 || true
-          exit 1
-        timeout-minutes: 10
-
-      - name: Run tests
-        run: |
-          curl -s --max-time 1150 -X POST http://localhost:8080/exec \
-            -H "Content-Type: application/json" \
-            -d '{"cmd":"cmd /c cd /d Z:\\quickwin && qwin.exe test\\run.js && echo QWIN_EXIT=0 || echo QWIN_EXIT=1"}' \
-            > /tmp/qwin_full.log
-          echo "--- last 25 lines ---"
-          tail -25 /tmp/qwin_full.log
-          grep -q "QWIN_EXIT=0" /tmp/qwin_full.log || \
-            { echo "::error::tests failed (see Test Results above)"; exit 1; }
-        timeout-minutes: 20
-
-      - name: Stop VM
-        if: always()
-        run: cd docker/ci-win7 && bash run.sh --stop || true
-
-      - name: Dump VM logs
-        if: always()
-        run: |
-          cat docker/ci-win7/ci_share/run.log 2>&1 || true
-          cat docker/ci-win7/ci_share/exec_server.log 2>&1 || true
-
-      - name: Save Win7 snapshot cache
-        if: always() && steps.cache-win7.outputs.cache-hit != 'true' && steps.install-win7.outcome == 'success'
-        uses: actions/cache/save@v5
-        with:
-          path: docker/ci-win7/snapshots/win7_ready.qcow2
-          key: win7-ready-v2
-
-  # ──────────────────────────────────────────────────────────
-  # XP 32 位交叉编译 + QEMU XP VM 测试（与 win7 并行）
-  # XP 上 exec_server 处理带反斜杠命令会挂起，所以测试由
-  # ci_share/run.bat 在 VM 内直接跑，结果经 SMB 回传 run.log。
-  # ──────────────────────────────────────────────────────────
-  xp:
-    name: xp-qemu-test
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/xna00/quickwin-dev:latest
-      options: --device /dev/kvm
-    timeout-minutes: 60
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          submodules: recursive
-
-      # ── KVM 直通 + 32 位工具链 ──
-      - name: Probe KVM and mingw32 toolchain
-        run: |
-          echo "=== /dev/kvm ==="
-          ls -l /dev/kvm 2>&1 || echo "NO /dev/kvm"
-          [ -w /dev/kvm ] || { echo "::error::KVM not writable in container"; exit 1; }
-          echo "=== mingw32 toolchain ==="
-          i686-w64-mingw32-gcc -v 2>&1 | grep -i "Thread model" || true
-          node --version
-
-      - name: Install npm deps
-        run: npm install
-
-      - name: Restore XP snapshot cache
-        id: cache-xp
-        uses: actions/cache@v5
-        with:
-          path: docker/ci-xp/snapshots/xp_ready.qcow2
-          key: xp-ready-v1
-
-      # ── cache miss：现场安装 XP（下载 ISO + 注入 WINNT.SIF + $OEM$）──
-      - name: Install XP (cache miss only)
-        id: install-xp
-        if: steps.cache-xp.outputs.cache-hit != 'true'
-        run: |
-          cd docker/ci-xp
-          bash setup.sh
-        timeout-minutes: 40
-
-      - name: Verify snapshot
-        run: |
-          ls -lh docker/ci-xp/snapshots/
-          [ -f docker/ci-xp/snapshots/xp_ready.qcow2 ] || \
-            { echo "::error::xp_ready.qcow2 missing"; exit 1; }
-
-      - name: Cache cross-compile deps
-        id: cache-deps
-        uses: actions/cache@v5
-        with:
-          path: |
-            wamr/lib/libiwasm.a
-            wolfssl/lib/libwolfssl.a
-            wolfssl/build/wolfssl/
-            brotli/lib/libbrotlidec.a
-            brotli/lib/libbrotlicommon.a
-            libffi/lib/libffi.a
-            libffi/build-*/include/
-          key: deps-cc32-${{ hashFiles('Makefile', 'patches/**', 'wamr/**', 'wolfssl/**', 'brotli/**', 'libffi/**') }}-v2
+          key: deps-${{ matrix.deps }}-${{ hashFiles('Makefile', 'patches/**', 'wamr/**', 'wolfssl/**', 'brotli/**', 'libffi/**') }}-v2
 
       # cc32 会自动构建 i686 的 libiwasm.a：$(TARGET) 依赖 WAMR_LIB，
       # 且 cc32 把 CC=i686-... 和 WAMR_TARGET=X86_32 传给子 make。
       # 不要单独跑 make wamr —— 不带 CROSS=1 时会用本机 gcc 建错架构的 .a，
       # 之后 cc32 发现 .a "最新"就跳过，链接必挂。
-      - name: Cross-compile qwin-x86.exe (i686)
-        run: make cc32-small
+      - name: Cross-compile ${{ matrix.id }} (${{ matrix.small }})
+        run: make ${{ matrix.small }}
         timeout-minutes: 30
 
-      - name: Cross-compile qwin-nowasm-x86.exe (i686)
-        run: make cc32-nowasm
+      - name: Cross-compile ${{ matrix.id }} nowasm (${{ matrix.nowasm }})
+        run: make ${{ matrix.nowasm }}
         timeout-minutes: 30
 
       - name: Compile JS + WASM
@@ -316,12 +180,13 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: qwin-x86
+          name: ${{ matrix.artifact }}
           path: |
-            _build/qwin-x86.exe
-            _build/qwin-nowasm-x86.exe
+            _build/${{ matrix.exe }}
+            _build/${{ matrix.nowasm_exe }}
           if-no-files-found: error
 
+      # ── 测试段（win7/xp 统一：host serve_test + VM 内直跑跑完等 Done）──
       - name: Start host test server
         run: |
           node tools/serve_test.ts 18923 > /tmp/serve_test.log 2>&1 &
@@ -329,24 +194,24 @@ jobs:
           sleep 1
           curl -sf http://127.0.0.1:18923/ && echo " <- serve_test up"
 
-      - name: Start XP VM and run tests
+      - name: Start ${{ matrix.id }} VM and run tests
         run: |
-          cd docker/ci-xp
-          SHARE_DIR="$GITHUB_WORKSPACE/_build" bash run.sh
+          cd docker
+          SHARE_DIR="$GITHUB_WORKSPACE/_build" bash run.sh ${{ matrix.id }}
         timeout-minutes: 20
 
       - name: Stop VM
         if: always()
-        run: cd docker/ci-xp && bash run.sh --stop || true
+        run: cd docker && bash run.sh ${{ matrix.id }} --stop || true
 
       - name: Dump VM logs
         if: always()
         run: |
-          cat docker/ci-xp/ci_share/run.log 2>&1 || true
+          cat docker/ci_share/run-${{ matrix.id }}.log 2>&1 || true
 
       - name: Assert test results
         run: |
-          LOG=docker/ci-xp/ci_share/run.log
+          LOG=docker/ci_share/run-${{ matrix.id }}.log
           SUMMARY=$(grep -oE "Summary: [0-9]+/[0-9]+" "$LOG" 2>/dev/null | tail -1)
           [ -n "$SUMMARY" ] || { echo "::error::no Summary line in run.log"; exit 1; }
           OK=$(printf '%s' "$SUMMARY" | sed 's/.*: *\([0-9]*\)\/.*/\1/')
@@ -357,19 +222,19 @@ jobs:
             { echo "::error::$FAILED test failures (tolerating 1 for XP printer diff)"; exit 1; }
         timeout-minutes: 5
 
-      - name: Save XP snapshot cache
-        if: always() && steps.cache-xp.outputs.cache-hit != 'true' && steps.install-xp.outcome == 'success'
+      - name: Save ${{ matrix.id }} snapshot cache
+        if: always() && steps.cache-snap.outputs.cache-hit != 'true' && steps.install-vm.outcome == 'success'
         uses: actions/cache/save@v5
         with:
-          path: docker/ci-xp/snapshots/xp_ready.qcow2
-          key: xp-ready-v1
+          path: docker/snapshots/${{ matrix.snap_file }}
+          key: ${{ matrix.snap_key }}
 
   # ──────────────────────────────────────────────────────────
-  # 从 win7/xp job 拿产物发布到 npm（仅 tag push）
+  # 从 qemu-test job 拿产物发布到 npm（仅 tag push）
   # ──────────────────────────────────────────────────────────
   publish:
     name: npm-publish
-    needs: [win7, xp]
+    needs: qemu-test
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:

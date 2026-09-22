@@ -1,0 +1,20 @@
+# ISO 文件（各系统子目录：iso/win7/, iso/xp/）
+iso/
+
+# 快照文件
+snapshots/
+
+# 运行时文件
+*.qcow2
+*.img
+qemu-*.pid
+floppy.img
+xp_modified.iso
+_iso_extract/
+
+# 日志（按 VM 区分：run-win7.log / run-xp.log）
+ci_share/run-*.log
+ci_share/exec_server.log
+
+# QEMU SMB symlink (created by run.sh)
+ci_share/quickwin

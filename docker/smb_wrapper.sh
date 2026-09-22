@@ -1,10 +1,11 @@
 #!/bin/bash
-# QEMU guestfwd SMB wrapper - 启动支持 wide links 的 smbd
+# QEMU guestfwd SMB wrapper - 启动 SMB1(win7/xp 均兼容) + wide links 的 smbd
 # 用法: guestfwd=tcp:10.0.2.4:445-cmd:./smb_wrapper.sh
 #
 # 为什么需要它：QEMU `-netdev user,smb=` 会在 /tmp/qemu-smb.* 生成临时 smb.conf，
-# 且无任何参数可配置（不能加 wide links），导致 SMB 无法跟随指向共享外的符号链接。
-# 用 guestfwd 把 guest 的 10.0.2.4:445 交给这个 wrapper 自管 smbd，conf 完全可控。
+# 且无任何参数可配置（不能加 wide links、不能开 SMB1），导致共享无法跟随符号链接、
+# XP 也无法用 SMB1 挂载。用 guestfwd 把 guest 的 10.0.2.4:445 交给这个 wrapper
+# 自管 smbd，conf 完全可控。
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SHARE_DIR="$SCRIPT_DIR/ci_share"
@@ -33,10 +34,12 @@ disable spoolss = yes
 usershare max shares = 0
 # 允许符号链接指向共享目录之外的目标（如 ci_share/quickwin -> /workspace/_build）
 # 注意: smbd 4.24 默认 unix extensions = yes，与 wide links 互斥，会把 wide links 静默禁用。
-# 必须显式关掉 unix extensions 才能让 wide links 生效（Win7 用 SMB2，不受影响）。
+# 必须显式关掉 unix extensions 才能让 wide links 生效。
 unix extensions = no
 follow symlinks = yes
 wide links = yes
+# XP 只支持 SMB1，Win7 可协商更高协议，统一放开 NT1 下限
+server min protocol = NT1
 [qemu]
 path=$SHARE_DIR
 read only=no

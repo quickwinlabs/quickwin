@@ -14,7 +14,7 @@
 - `iphlpsvc`：快照中已是 RUNNING
 
 > 注意：portproxy 规则保存在 overlay（win7_test.qcow2）中，`run.sh --fresh` 重建 overlay 后会丢失，
-> 需通过 `docker/ci-win7/ci_share/run.bat` 每次启动时重建（已实现）。
+> 需通过 `docker/ci_share/run.bat` 每次启动时重建（已实现）。
 
 ## 结果汇总
 
@@ -54,7 +54,7 @@
 ## XP (feat/win32-xp) 逐 suite 测试记录
 
 ### XP 环境说明
-- 宿主端口 **8081** → 客机 8080（与 win7 的 8080 冲突规避，ci-xp/run.sh hostfwd）
+- 宿主端口 **8081** → 客机 8080（与 win7 的 8080 冲突规避，docker/run.sh hostfwd）
 - XP **有 `netsh interface portproxy`**（需先 `netsh interface ipv6 install`，XP 由 IPV6MON.DLL 实现）。
   listenaddress 用 `0.0.0.0`（127.0.0.1 在 XP 上不生效）。
 - run.bat 直接跑测试（不依赖 exec_server，XP 上 exec_server 处理带反斜杠命令后会挂起）。
@@ -113,7 +113,7 @@
 - serve_test 监听 `::`（dual-stack，IPv4+IPv6 都收）。
 - 之前只配 `v4tov4`：guest 的 `::1` IPv6 loopback 无监听，连 `::1:18923` 落入无声黑洞 → 挂起。
 - 加 `v6tov4 listenaddress=:: listenport=18923/18924 connectaddress=10.0.2.2` 后 ipv6 套件 13/13 通过。
-- **结论：portproxy 必须同时配 v4tov4 + v6tov4**（已固化进 ci-xp/ci_share/run.bat）。
+- **结论：portproxy 必须同时配 v4tov4 + v6tov4**（已固化进 docker/ci_share/run.bat，按系统分支执行）。
 - win7 的 run.bat 目前只有 v4tov4，其 ipv6 套件预计同样因缺 v6tov4 而挂。
 
 ### 挂起本质解析（重要）

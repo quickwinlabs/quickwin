@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 # ============================================================
 #  Bare QEMU XP CI — 安装阶段
 #  安装 Windows XP → 重命名为 ready 盘
-#  用法: ./setup.sh
+#  用法: ./setup-xp.sh
 #
 #  XP 需要在安装前修改 ISO（注入 WINNT.SIF + $OEM$ 自动安装脚本），
 #  所以有 ISO 提取/重建步骤。Win7 不需要（直接用原始 ISO）。
@@ -16,6 +16,7 @@ START_TIME=$(date +%s)
 DISK=snapshots/xp_install.qcow2
 SNAPSHOT=snapshots/xp_ready.qcow2
 DISK_SIZE=20G
+FLOPPY_DIR=floppy-xp
 
 # ── 依赖检查 ──
 for c in qemu-system-x86_64 qemu-img genisoimage 7z unix2dos isoinfo python3; do
@@ -24,19 +25,19 @@ done
 if [ -e /dev/kvm ]; then KVM="-accel kvm"; else echo "WARNING: KVM 不可用，将使用 TCG（很慢）"; fi
 
 # ── ISO ──
-ISO="$(ls iso/*.iso 2>/dev/null | head -1)"
+ISO="$(ls iso/xp/*.iso 2>/dev/null | head -1)"
 if [ -z "$ISO" ]; then
     echo "ISO 不存在，尝试自动下载..."
-    ../scripts/download-iso.sh xp iso
-    ISO="$(ls iso/*.iso 2>/dev/null | head -1)"
+    scripts/download-iso.sh xp iso/xp
+    ISO="$(ls iso/xp/*.iso 2>/dev/null | head -1)"
 fi
-[ -n "$ISO" ] || { echo "找不到 ISO: iso/*.iso"; exit 1; }
+[ -n "$ISO" ] || { echo "找不到 ISO: iso/xp/*.iso"; exit 1; }
 
 mkdir -p snapshots
 
 # ── 清理旧产物 ──
-[ -f qemu.pid ] && { kill -9 "$(cat qemu.pid)" 2>/dev/null; sleep 1; }
-rm -f snapshots/*.qcow2 xp_modified.iso qemu.pid ci_share/run.log
+[ -f qemu-xp.pid ] && { kill -9 "$(cat qemu-xp.pid)" 2>/dev/null; sleep 1; }
+rm -f snapshots/*.qcow2 xp_modified.iso qemu-xp.pid ci_share/run-*.log
 rm -rf _iso_extract
 
 # ── Step 1: 提取 ISO ──
@@ -48,11 +49,11 @@ else echo "找不到 I386 或 AMD64 目录"; exit 1; fi
 echo "目标目录: $TARGET"
 
 # ── Step 2: 注入 WINNT.SIF + $OEM$ ──
-unix2dos < floppy/WINNT.SIF > "$TARGET/WINNT.SIF"
+unix2dos < "$FLOPPY_DIR/WINNT.SIF" > "$TARGET/WINNT.SIF"
 OEM_DIR="_iso_extract/\$OEM\$/\$1/OEM"
 mkdir -p "$OEM_DIR"
-unix2dos < floppy/install.bat   > "$OEM_DIR/install.bat"
-unix2dos < floppy/bootstrap.bat > "$OEM_DIR/bootstrap.bat"
+unix2dos < "$FLOPPY_DIR/install.bat"   > "$OEM_DIR/install.bat"
+unix2dos < "$FLOPPY_DIR/bootstrap.bat" > "$OEM_DIR/bootstrap.bat"
 
 # ── Step 3: 重建 ISO（subshell 内 cd，避免污染外层）──
 (
@@ -84,18 +85,18 @@ qemu-system-x86_64 \
     -machine pc-i440fx-5.2 -cpu qemu32 \
     -hda "$DISK" -m 1024 -smp 1 \
     -cdrom xp_modified.iso -boot order=d \
-    -display none -pidfile qemu.pid \
+    -display none -pidfile qemu-xp.pid \
     -monitor unix:/tmp/qemu-monitor-xp.sock,server,nowait \
     -daemonize
 
-QEMU_PID=$(cat qemu.pid)
+QEMU_PID=$(cat qemu-xp.pid)
 echo "QEMU 已启动 (PID=$QEMU_PID)，等待安装完成..."
 
 # ── Step 6: 等待安装完成（每 10s 轮询磁盘大小）──
 # 用 qemu.pid 是否存在判断退出（QEMU 干净退出时会自己 unlink），不能用 kill -0：
 # 它对僵尸进程也返回 0，而 -daemonize 后 QEMU 被 reparent 到 PID 1，
 # 容器里 PID 1 是 shell（不回收孤儿僵尸）→ kill -0 恒为 0 → 无限等待。
-while [ -f qemu.pid ]; do
+while [ -f qemu-xp.pid ]; do
     sleep 10
     printf "\r  [%s] %ds  disk=%s" "$(date +%H:%M:%S)" \
         "$(( $(date +%s) - START_TIME ))" "$(ls -lh "$DISK" 2>/dev/null | awk '{print $5}')"
@@ -107,4 +108,4 @@ mv "$DISK" "$SNAPSHOT"
 rm -rf _iso_extract xp_modified.iso
 echo "安装完成，耗时 $(( $(date +%s) - START_TIME ))s"
 echo "Ready disk: $SNAPSHOT"
-echo "用 run.sh 启动测试: ./run.sh [--fresh]"
+echo "用 run.sh 启动测试: ./run.sh xp [--fresh]"
