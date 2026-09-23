@@ -8,6 +8,7 @@
 #include "quickjs.h"
 #include "quickjs-libc.h"
 #include "quickjs-sock.h"
+#include "quickjs-thread-state.h"
 #include "quickjs-args.h"
 #include "quickjs/cutils.h"
 
@@ -87,34 +88,20 @@ static void inet_init_compat(void) {
 
 /* ─── Internal types ────────────────────────────────────────── */
 
-typedef struct SockHandle {
+struct SockHandle {
     int fd;            /* -1 if slot is free */
     int af;            /* AF_INET / AF_INET6 */
     WSAEVENT event;
     JSValue on_event;
     JSContext *js_ctx;
-} SockHandle;
+};
 
-typedef struct {
-    JSRuntime *rt;
-    SockHandle *slots;
-    int slot_count;
-    int slots_capacity;
-} SockRuntime;
+/* ─── Per-runtime state (embedded in JSThreadState, no globals) ─ */
 
-/* ─── Global state ──────────────────────────────────────────── */
-
-static SockRuntime *g_sock_runtimes = NULL;
-static int g_nsock_runtimes = 0;
-static int g_runtimes_capacity = 0;
-
-static SockRuntime *find_runtime(JSRuntime *rt)
+static SockState *find_runtime(JSRuntime *rt)
 {
-    for (int i = 0; i < g_nsock_runtimes; i++) {
-        if (g_sock_runtimes[i].rt == rt)
-            return &g_sock_runtimes[i];
-    }
-    return NULL;
+    JSThreadState *ts = JS_GetRuntimeOpaque(rt);
+    return ts ? &ts->sock : NULL;
 }
 
 /* ─── API: event-loop integration ───────────────────────────── */
@@ -122,16 +109,9 @@ static SockRuntime *find_runtime(JSRuntime *rt)
 void js_sock_init(JSRuntime *rt)
 {
     inet_init_compat();
-    if (g_nsock_runtimes >= g_runtimes_capacity) {
-        int newCap = g_runtimes_capacity ? g_runtimes_capacity * 2 : 4;
-        SockRuntime *p = realloc(g_sock_runtimes, newCap * sizeof(SockRuntime));
-        if (!p) return;
-        g_sock_runtimes = p;
-        g_runtimes_capacity = newCap;
-    }
-
-    SockRuntime *r = &g_sock_runtimes[g_nsock_runtimes];
-    r->rt = rt;
+    SockState *r = find_runtime(rt);
+    if (!r || r->slots)
+        return;
     r->slot_count = 0;
     r->slots_capacity = INIT_SLOTS_CAP;
     r->slots = malloc(r->slots_capacity * sizeof(SockHandle));
@@ -139,39 +119,31 @@ void js_sock_init(JSRuntime *rt)
         r->slots_capacity = 0;
         return;
     }
-    g_nsock_runtimes++;
     for (int i = 0; i < r->slots_capacity; i++)
         r->slots[i].fd = -1;
 }
 
+/* dispose in-place: free this runtime's slots, no global array */
 void js_sock_remove_runtime(JSRuntime *rt)
 {
-    SockRuntime *r = find_runtime(rt);
-    if (!r) return;
+    SockState *r = find_runtime(rt);
+    if (!r)
+        return;
     free(r->slots);
-    int idx = r - g_sock_runtimes;
-    g_nsock_runtimes--;
-    if (idx < g_nsock_runtimes)
-        g_sock_runtimes[idx] = g_sock_runtimes[g_nsock_runtimes];
-}
-
-void js_sock_cleanup(void)
-{
-    free(g_sock_runtimes);
-    g_sock_runtimes = NULL;
-    g_nsock_runtimes = 0;
-    g_runtimes_capacity = 0;
+    r->slots = NULL;
+    r->slot_count = 0;
+    r->slots_capacity = 0;
 }
 
 int js_sock_slot_count(JSRuntime *rt)
 {
-    SockRuntime *r = find_runtime(rt);
+    SockState *r = find_runtime(rt);
     return r ? r->slot_count : 0;
 }
 
 void js_sock_collect_handles(JSRuntime *rt, HANDLE *handles, int max, int *count)
 {
-    SockRuntime *r = find_runtime(rt);
+    SockState *r = find_runtime(rt);
     if (!r) return;
     for (int i = 0; i < r->slots_capacity; i++) {
         SockHandle *s = &r->slots[i];
@@ -184,7 +156,7 @@ void js_sock_collect_handles(JSRuntime *rt, HANDLE *handles, int max, int *count
 
 int js_sock_handle_event(JSRuntime *rt, HANDLE triggered)
 {
-    SockRuntime *r = find_runtime(rt);
+    SockState *r = find_runtime(rt);
     if (!r) return 0;
     for (int i = 0; i < r->slots_capacity; i++) {
         SockHandle *s = &r->slots[i];
@@ -233,7 +205,8 @@ int js_sock_handle_event(JSRuntime *rt, HANDLE triggered)
                     JS_FreeValueRT(rt, s->on_event);
                     s->on_event = JS_UNDEFINED;
                 }
-                r->slot_count--;
+                if (r->slot_count > 0)
+                    r->slot_count--;
             }
             return 1;
         }
@@ -243,7 +216,7 @@ int js_sock_handle_event(JSRuntime *rt, HANDLE triggered)
 
 void js_sock_free_handles(JSRuntime *rt)
 {
-    SockRuntime *r = find_runtime(rt);
+    SockState *r = find_runtime(rt);
     if (!r) return;
     for (int i = 0; i < r->slots_capacity; i++) {
         SockHandle *s = &r->slots[i];
@@ -266,13 +239,13 @@ static SockHandle *get_sock(JSContext *ctx, JSValueConst val)
     int idx;
     if (JS_ToInt32(ctx, &idx, val))
         return NULL;
-    SockRuntime *r = find_runtime(JS_GetRuntime(ctx));
+    SockState *r = find_runtime(JS_GetRuntime(ctx));
     if (!r || idx < 0 || idx >= r->slots_capacity || r->slots[idx].fd < 0)
         return NULL;
     return &r->slots[idx];
 }
 
-static int find_free_slot(SockRuntime *r)
+static int find_free_slot(SockState *r)
 {
     for (int i = 0; i < r->slots_capacity; i++) {
         if (r->slots[i].fd < 0)
@@ -281,7 +254,7 @@ static int find_free_slot(SockRuntime *r)
     return -1;
 }
 
-static SockHandle *make_slot(SockRuntime *r, JSRuntime *rt)
+static SockHandle *make_slot(SockState *r, JSRuntime *rt)
 {
     int idx = find_free_slot(r);
     if (idx >= 0)
@@ -326,7 +299,7 @@ static JSValue js_socket(JSContext *ctx, JSValueConst this_val, int argc, JSValu
         return JS_NewInt32(ctx, -1);
     }
 
-    SockRuntime *r = find_runtime(JS_GetRuntime(ctx));
+    SockState *r = find_runtime(JS_GetRuntime(ctx));
     if (!r) {
         WSACloseEvent(event);
         closesocket(fd);
@@ -487,7 +460,7 @@ static JSValue js_closesocket(JSContext *ctx, JSValueConst this_val, int argc, J
         sock->on_event = JS_UNDEFINED;
     }
 
-    SockRuntime *r = find_runtime(JS_GetRuntime(ctx));
+    SockState *r = find_runtime(JS_GetRuntime(ctx));
     if (r && r->slot_count > 0) r->slot_count--;
 
     return JS_UNDEFINED;
@@ -717,7 +690,7 @@ static JSValue js_accept(JSContext *ctx, JSValueConst this_val, int argc, JSValu
         return JS_NULL;
     }
 
-    SockRuntime *r = find_runtime(JS_GetRuntime(ctx));
+    SockState *r = find_runtime(JS_GetRuntime(ctx));
     if (!r) {
         WSACloseEvent(event);
         closesocket(newfd);

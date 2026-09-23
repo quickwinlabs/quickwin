@@ -11,17 +11,16 @@ typedef struct AsyncTask {
 } AsyncTask;
 
 typedef struct {
-    JSRuntime *rt;
     HANDLE event;
     AsyncTask *slots;      // dynamic array
     int slot_count;        // how many slots are in use
     int slots_capacity;    // allocated size
-} AsyncTaskRuntime;
+} AsyncTaskState;
 
-AsyncTaskRuntime *js_async_task_init(JSRuntime *rt);
+/* state lives in JSThreadState.async_task */
+AsyncTaskState *js_async_task_init(JSRuntime *rt);
 HANDLE            js_async_task_get_event(JSRuntime *rt);
 int               js_async_task_slot_count(JSRuntime *rt);
 AsyncTask        *js_async_task_make_task(JSRuntime *rt);
 void              js_async_task_process(JSContext *ctx);
 void              js_async_task_destroy(JSRuntime *rt);
-void              js_async_task_cleanup(void);

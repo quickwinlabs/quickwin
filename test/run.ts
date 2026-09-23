@@ -38,7 +38,8 @@ const suiteDefs = [
     { name: 'worker',            file: './test_worker.js',           tags: [] },
     { name: 'worker-wasm',       file: './test_worker_wasm_concurrent.js', tags: ['wasm'] },
     { name: 'worker-http',       file: './test_worker_net.js',       tags: ['net'] },
-    { name: 'worker-fetch',      file: './test_worker_fetch.js',     tags: ['net'] }
+    { name: 'worker-fetch',      file: './test_worker_fetch.js',     tags: ['net'] },
+    { name: 'worker-concurrent', file: './test_worker_concurrent.js', tags: [] }
 ]
 
 async function main(): Promise<void> {

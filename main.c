@@ -250,11 +250,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     }
 
     JSRuntime *rt = JS_NewRuntime();
-    js_async_task_init(rt);
 
     js_std_set_worker_new_context_func(JS_NewCustomContext);
     js_std_set_worker_free_rt_func(JS_FreeCustomRuntime);
     js_std_init_handlers(rt);
+    js_async_task_init(rt);
     JS_SetModuleLoaderFunc2(rt, js_module_normalize_name, js_module_loader, NULL, NULL);
     // JS_SetModuleLoaderFunc2(rt, NULL, js_module_loader, NULL, NULL);
     JSContext *ctx = JS_NewCustomContext(rt);
@@ -298,6 +298,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             for (int i = 0; i < cmd_argc; i++) free(cmd_argv[i]);
             free(cmd_argv);
         }
+        JS_FreeCustomRuntime(rt);
+        js_std_free_handlers(rt);
         JS_FreeContext(ctx);
         JS_FreeRuntime(rt);
         return 1;
@@ -318,6 +320,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             for (int i = 0; i < cmd_argc; i++) free(cmd_argv[i]);
             free(cmd_argv);
         }
+        JS_FreeCustomRuntime(rt);
+        js_std_free_handlers(rt);
         JS_FreeContext(ctx);
         JS_FreeRuntime(rt);
         return 1;
@@ -328,10 +332,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     js_std_loop(ctx);
 
     gui_cleanup();
-    js_std_free_handlers(rt);
     JS_FreeCustomRuntime(rt);
-    js_async_task_cleanup();
-    js_sock_cleanup();
+    js_std_free_handlers(rt);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
     if (cmd_argv) {

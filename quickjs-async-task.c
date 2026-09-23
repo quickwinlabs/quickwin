@@ -1,30 +1,21 @@
 #include "quickjs-async-task.h"
+#include "quickjs-thread-state.h"
 
-static AsyncTaskRuntime *g_runtimes = NULL;
-static int g_nruntimes = 0;
-static int g_runtimes_capacity = 0;
-
-static AsyncTaskRuntime *find_runtime(JSRuntime *rt)
+/* per-runtime state embedded in JSThreadState; no global table */
+static AsyncTaskState *find_runtime(JSRuntime *rt)
 {
-    for (int i = 0; i < g_nruntimes; i++) {
-        if (g_runtimes[i].rt == rt)
-            return &g_runtimes[i];
-    }
-    return NULL;
+    JSThreadState *ts = JS_GetRuntimeOpaque(rt);
+    return ts ? &ts->async_task : NULL;
 }
 
-AsyncTaskRuntime *js_async_task_init(JSRuntime *rt)
+AsyncTaskState *js_async_task_init(JSRuntime *rt)
 {
-    if (g_nruntimes >= g_runtimes_capacity) {
-        int newCap = g_runtimes_capacity ? g_runtimes_capacity * 2 : 4;
-        AsyncTaskRuntime *p = realloc(g_runtimes, newCap * sizeof(AsyncTaskRuntime));
-        if (!p) return NULL;
-        g_runtimes = p;
-        g_runtimes_capacity = newCap;
-    }
-
-    AsyncTaskRuntime *r = &g_runtimes[g_nruntimes++];
-    r->rt = rt;
+    JSThreadState *ts = JS_GetRuntimeOpaque(rt);
+    if (!ts)
+        return NULL;
+    AsyncTaskState *r = &ts->async_task;
+    if (r->event || r->slots)
+        return r;
     r->event = CreateEvent(NULL, FALSE, FALSE, NULL);
     r->slots_capacity = 16;
     r->slots = js_mallocz_rt(rt, r->slots_capacity * sizeof(AsyncTask));
@@ -34,20 +25,21 @@ AsyncTaskRuntime *js_async_task_init(JSRuntime *rt)
 
 HANDLE js_async_task_get_event(JSRuntime *rt)
 {
-    AsyncTaskRuntime *r = find_runtime(rt);
+    AsyncTaskState *r = find_runtime(rt);
     return r ? r->event : NULL;
 }
 
 int js_async_task_slot_count(JSRuntime *rt)
 {
-    AsyncTaskRuntime *r = find_runtime(rt);
+    AsyncTaskState *r = find_runtime(rt);
     return r ? r->slot_count : 0;
 }
 
 AsyncTask *js_async_task_make_task(JSRuntime *rt)
 {
-    AsyncTaskRuntime *r = find_runtime(rt);
-    if (!r) return NULL;
+    AsyncTaskState *r = find_runtime(rt);
+    if (!r || !r->slots)
+        return NULL;
 
     for (int i = 0; i < r->slots_capacity; i++) {
         if (r->slots[i].state == 0) {
@@ -61,25 +53,32 @@ AsyncTask *js_async_task_make_task(JSRuntime *rt)
         }
     }
 
-    int newCap = r->slots_capacity * 2;
+    int oldCap = r->slots_capacity;
+    int newCap = oldCap * 2;
     AsyncTask *p = js_realloc_rt(rt, r->slots, newCap * sizeof(AsyncTask));
     if (!p) return NULL;
     r->slots = p;
-    for (int i = r->slots_capacity; i < newCap; i++)
+    for (int i = oldCap; i < newCap; i++) {
         r->slots[i].state = 0;
+        r->slots[i].result = NULL;
+        r->slots[i].arg = NULL;
+        r->slots[i].on_complete = NULL;
+        r->slots[i].event = NULL;
+    }
     r->slots_capacity = newCap;
 
-    r->slots[r->slots_capacity / 2].state = 1;
-    r->slots[r->slots_capacity / 2].event = r->event;
+    AsyncTask *t = &r->slots[oldCap];
+    t->state = 1;
+    t->event = r->event;
     r->slot_count++;
-    return &r->slots[r->slots_capacity / 2];
+    return t;
 }
 
 void js_async_task_process(JSContext *ctx)
 {
     JSRuntime *rt = JS_GetRuntime(ctx);
-    AsyncTaskRuntime *r = find_runtime(rt);
-    if (!r) return;
+    AsyncTaskState *r = find_runtime(rt);
+    if (!r || !r->slots) return;
 
     for (int i = 0; i < r->slots_capacity; i++) {
         AsyncTask *t = &r->slots[i];
@@ -96,22 +95,16 @@ void js_async_task_process(JSContext *ctx)
 
 void js_async_task_destroy(JSRuntime *rt)
 {
-    AsyncTaskRuntime *r = find_runtime(rt);
+    AsyncTaskState *r = find_runtime(rt);
     if (!r) return;
     if (r->event) {
         CloseHandle(r->event);
         r->event = NULL;
     }
-    js_free_rt(rt, r->slots);
-    r->slots = NULL;
+    if (r->slots) {
+        js_free_rt(rt, r->slots);
+        r->slots = NULL;
+    }
     r->slot_count = 0;
     r->slots_capacity = 0;
-}
-
-void js_async_task_cleanup(void)
-{
-    free(g_runtimes);
-    g_runtimes = NULL;
-    g_nruntimes = 0;
-    g_runtimes_capacity = 0;
 }

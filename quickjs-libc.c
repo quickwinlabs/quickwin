@@ -153,14 +153,16 @@ typedef struct JSWaker {
 #endif
 } JSWaker;
 
-typedef struct {
+#include "quickjs-thread-state.h"
+
+struct JSWorkerMessagePipe {
     int ref_count;
 #ifdef USE_WORKER
     pthread_mutex_t mutex;
 #endif
     struct list_head msg_queue; /* list of JSWorkerMessage.link */
     JSWaker waker;
-} JSWorkerMessagePipe;
+};
 
 typedef struct {
     struct list_head link;
@@ -173,18 +175,6 @@ typedef struct {
     JSValue promise;
     JSValue reason;
 } JSRejectedPromiseEntry;
-
-typedef struct JSThreadState {
-    struct list_head os_rw_handlers; /* list of JSOSRWHandler.link */
-    struct list_head os_signal_handlers; /* list JSOSSignalHandler.link */
-    struct list_head os_timers; /* list of JSOSTimer.link */
-    struct list_head port_list; /* list of JSWorkerMessageHandler.link */
-    struct list_head rejected_promise_list; /* list of JSRejectedPromiseEntry.link */
-    int eval_script_recurse; /* only used in the main thread */
-    int next_timer_id; /* for setTimeout() */
-    /* not used in the main thread */
-    JSWorkerMessagePipe *recv_pipe, *send_pipe;
-} JSThreadState;
 
 static uint64_t os_pending_signals;
 static int (*os_poll_func)(JSContext *ctx);
@@ -3767,9 +3757,9 @@ static void *worker_func(void *opaque)
     js_std_loop(ctx);
 
     JS_FreeContext(ctx);
-    js_std_free_handlers(rt);
     if (js_worker_free_rt_func)
         js_worker_free_rt_func(rt);
+    js_std_free_handlers(rt);
     JS_FreeRuntime(rt);
     return NULL;
 }
