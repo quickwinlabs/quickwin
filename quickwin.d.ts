@@ -340,8 +340,8 @@ declare module "os" {
         static parent: Worker;
     }
 
-    /** Return a string representing the platform: `"linux"`, `"darwin"`, `"win32"` or `"js"`. */
-    const platform: string;
+    /** Process architecture (pointer width): `"x64"` or `"ia32"`. */
+    const arch: string;
 }
 
 declare module "sock" {

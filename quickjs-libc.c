@@ -4027,14 +4027,12 @@ void js_std_set_worker_free_rt_func(void (*func)(JSRuntime *rt))
 #endif
 }
 
-#if defined(_WIN32)
-#define OS_PLATFORM "win32"
-#elif defined(__APPLE__)
-#define OS_PLATFORM "darwin"
-#elif defined(EMSCRIPTEN)
-#define OS_PLATFORM "js"
+/* Process pointer width — compile-time, matches qwin.exe (x64) / qwin-x86.exe (ia32). */
+#if defined(_WIN64) || defined(__LP64__) || defined(_LP64) || \
+    (defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ == 8)
+#define OS_ARCH "x64"
 #else
-#define OS_PLATFORM "linux"
+#define OS_ARCH "ia32"
 #endif
 
 #define OS_FLAG(x) JS_PROP_INT32_DEF(#x, x, JS_PROP_CONFIGURABLE )
@@ -4087,7 +4085,7 @@ static const JSCFunctionListEntry js_os_funcs[] = {
     JS_CFUNC_DEF("setTimeout", 2, js_os_setTimeout ),
     JS_CFUNC_DEF("clearTimeout", 1, js_os_clearTimeout ),
     JS_CFUNC_DEF("sleepAsync", 1, js_os_sleepAsync ),
-    JS_PROP_STRING_DEF("platform", OS_PLATFORM, 0 ),
+    JS_PROP_STRING_DEF("arch", OS_ARCH, 0 ),
     JS_CFUNC_DEF("getcwd", 0, js_os_getcwd ),
     JS_CFUNC_DEF("chdir", 0, js_os_chdir ),
     JS_CFUNC_DEF("mkdir", 1, js_os_mkdir ),

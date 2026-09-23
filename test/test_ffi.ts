@@ -1,13 +1,16 @@
 import * as std from 'std'
 import * as win from 'win'
 import * as ffi from 'ffi'
+import * as os from 'os'
 import { Tester } from './test_helper.js'
+
+const MAX_WCHARS = 4096
 
 function decodeWideAtPtr(ptr: number): string {
     if (!ptr) return ''
     const chars: number[] = []
     let pos = ptr
-    while (true) {
+    while (chars.length < MAX_WCHARS) {
         const low = ffi.readByte(pos)
         const high = ffi.readByte(pos + 1)
         const ch = low + high * 256
@@ -19,6 +22,9 @@ function decodeWideAtPtr(ptr: number): string {
 }
 
 function readPtr(dv: DataView, offset: number): number {
+    if (os.arch === 'ia32') {
+        return dv.getUint32(offset, true)
+    }
     const low = dv.getUint32(offset, true)
     const high = dv.getUint32(offset + 4, true)
     return low + high * 4294967296
@@ -136,16 +142,26 @@ export const suite = {
 
         if (returnedBuf[0]! > 0) {
             const dv = new DataView(printerBuf)
-            const structSize = 136
+            // PRINTER_INFO_2W layout (MinGW verified):
+            //   x64: sizeof=136 name=8 port=24 drv=32 comment=40 location=48 status=124
+            //   ia32: sizeof=84 name=4 port=12 drv=16 comment=20 location=24 status=72
+            const ia32 = os.arch === 'ia32'
+            const structSize = ia32 ? 84 : 136
+            const offName = ia32 ? 4 : 8
+            const offPort = ia32 ? 12 : 24
+            const offDrv = ia32 ? 16 : 32
+            const offComment = ia32 ? 20 : 40
+            const offLocation = ia32 ? 24 : 48
+            const offStatus = ia32 ? 72 : 124
 
             for (let i = 0; i < returnedBuf[0]! && i < 20; i++) {
                 const off = i * structSize
-                const name = decodeWideAtPtr(readPtr(dv, off + 8))
-                const port = decodeWideAtPtr(readPtr(dv, off + 24))
-                const driver = decodeWideAtPtr(readPtr(dv, off + 32))
-                const location = decodeWideAtPtr(readPtr(dv, off + 48))
-                const comment = decodeWideAtPtr(readPtr(dv, off + 40))
-                const status = dv.getUint32(off + 124, true)
+                const name = decodeWideAtPtr(readPtr(dv, off + offName))
+                const port = decodeWideAtPtr(readPtr(dv, off + offPort))
+                const driver = decodeWideAtPtr(readPtr(dv, off + offDrv))
+                const location = decodeWideAtPtr(readPtr(dv, off + offLocation))
+                const comment = decodeWideAtPtr(readPtr(dv, off + offComment))
+                const status = dv.getUint32(off + offStatus, true)
                 std.printf('  [%d] %s\n', i + 1, name)
                 std.printf('       port: %s\n', port)
                 std.printf('       driver: %s\n', driver)
