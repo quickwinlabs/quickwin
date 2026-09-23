@@ -1,8 +1,10 @@
 services:
   dev:
+    image: localhost/quickwin-dev:latest
     build:
       context: .
       dockerfile: Dockerfile.dev
+    pull_policy: never
     container_name: quickwin-dev
     devices:
       - /dev/kvm:/dev/kvm

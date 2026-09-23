@@ -30,14 +30,14 @@ OemSkipWelcome=1
 [UserData]
 FullName="Docker"
 OrgName="CI"
-ProductKey=DR8GV-C8V6J-BYXHG-7PYJR-DB66Y
+ProductKey=MRX3F-47B9T-2487J-KWKMF-RPWBY
 ComputerName=*
 
 [RegionalSettings]
-LanguageGroup=1
-SystemLocale=0409
-UserLocale=0409
-InputLocale=0409:00000409
+LanguageGroup=2
+SystemLocale=0804
+UserLocale=0804
+InputLocale=0804:00000804
 
 [Identification]
 JoinWorkgroup=WORKGROUP

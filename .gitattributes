@@ -1,2 +1,6 @@
+# cmd.exe 按 OEM 代码页做 DBCS 分行；中文/日文系统上 LF-only + 多字节
+# 会吞掉行尾 0x0A，导致整文件行结构崩掉。.bat/.cmd 检出强制 CRLF。
+*.bat text eol=crlf
+*.cmd text eol=crlf
 mupdf-wasm/mupdf-wasm.wasm filter=lfs diff=lfs merge=lfs -text
 vendor/mupdf-wasm/mupdf-wasm.wasm filter=lfs diff=lfs merge=lfs -text

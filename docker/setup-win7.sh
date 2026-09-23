@@ -17,7 +17,7 @@ SNAPSHOT=snapshots/win7_ready.qcow2
 FLOPPY_DIR=floppy-win7
 
 # ── 依赖检查 ──
-for c in qemu-system-x86_64 qemu-img mcopy mkfs.vfat; do
+for c in qemu-system-x86_64 qemu-img mcopy mkfs.vfat unix2dos; do
     command -v "$c" >/dev/null || { echo "需要安装: $c"; exit 1; }
 done
 if [ -e /dev/kvm ]; then KVM="-accel kvm"; else echo "WARNING: KVM 不可用，将使用 TCG（很慢）"; fi
@@ -34,15 +34,27 @@ fi
 mkdir -p snapshots
 
 # ── 清理旧产物 ──
-[ -f qemu-win7.pid ] && { kill -9 "$(cat qemu-win7.pid)" 2>/dev/null; sleep 1; }
-rm -f floppy.img qemu-win7.pid snapshots/*.qcow2
+# pid 文件可能残留已死进程：kill 失败不能让 set -e 中断脚本
+if [ -f qemu-win7.pid ]; then
+    kill -9 "$(cat qemu-win7.pid)" 2>/dev/null || true
+    sleep 1
+fi
+rm -f floppy.img qemu-win7.pid snapshots/win7_install.qcow2 snapshots/win7_ready.qcow2
+rm -rf _oem_crlf
 
 # ── Step 1: 创建软盘镜像 ──
 dd if=/dev/zero of=floppy.img bs=512 count=2880 status=none
 mkfs.vfat -F 12 floppy.img >/dev/null
 mmd   -i floppy.img '::/$OEM$' '::/$OEM$/$1' '::/$OEM$/$1/OEM'
 mcopy -i floppy.img "$FLOPPY_DIR/Autounattend.xml" ::/Autounattend.xml
-mcopy -i floppy.img "$FLOPPY_DIR/install.bat" "$FLOPPY_DIR/bootstrap.bat" '::/$OEM$/$1/OEM/'
+# .bat 必须 CRLF（与 setup-xp.sh 一致）：cmd.exe 对 LF-only 批处理的 if(...) 块 /
+# goto / :label 解析会失败——平铺命令照跑（net use 成功），块结构直接崩，
+# 结果就是 run.bat 永不执行。git 里源文件是 LF，装机时转成 CRLF。
+mkdir -p _o\em_crlf
+unix2dos < "$FLOPPY_DIR/install.bat"   > _oem_crlf/install.bat
+unix2dos < "$FLOPPY_DIR/bootstrap.bat" > _oem_crlf/bootstrap.bat
+mcopy -i floppy.img "_oem_crlf/install.bat" "_oem_crlf/bootstrap.bat" '::/$OEM$/$1/OEM/'
+rm -rf _oem_crlf
 
 # ── Step 2: 创建虚拟磁盘 ──
 qemu-img create -f qcow2 "$DISK" 30G >/dev/null

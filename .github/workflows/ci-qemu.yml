@@ -101,10 +101,10 @@ jobs:
       matrix:
         include:
           - { id: win7, cc: x86_64, deps: cc64, nowasm: cc64-nowasm,
-              snap_key: win7-ready-v1, snap_file: win7_ready.qcow2, artifact: qwin-x64,
+              snap_key: win7-ready-v3, snap_file: win7_ready.qcow2, artifact: qwin-x64,
               exe: qwin.exe, nowasm_exe: qwin-nowasm.exe }
           - { id: xp,   cc: i686,   deps: cc32, nowasm: cc32-nowasm,
-              snap_key: xp-ready-v1,  snap_file: xp_ready.qcow2,   artifact: qwin-x86,
+              snap_key: xp-ready-v3,  snap_file: xp_ready.qcow2,   artifact: qwin-x86,
               exe: qwin-x86.exe, nowasm_exe: qwin-nowasm-x86.exe }
     steps:
       - name: Checkout

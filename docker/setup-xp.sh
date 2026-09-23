@@ -36,8 +36,12 @@ fi
 mkdir -p snapshots
 
 # ── 清理旧产物 ──
-[ -f qemu-xp.pid ] && { kill -9 "$(cat qemu-xp.pid)" 2>/dev/null; sleep 1; }
-rm -f snapshots/*.qcow2 xp_modified.iso qemu-xp.pid ci_share/run-*.log
+# pid 文件可能残留已死进程：kill 失败不能让 set -e 中断脚本
+if [ -f qemu-xp.pid ]; then
+    kill -9 "$(cat qemu-xp.pid)" 2>/dev/null || true
+    sleep 1
+fi
+rm -f snapshots/xp_install.qcow2 snapshots/xp_ready.qcow2 xp_modified.iso qemu-xp.pid ci_share/run-*.log
 rm -rf _iso_extract
 
 # ── Step 1: 提取 ISO ──
@@ -59,7 +63,7 @@ unix2dos < "$FLOPPY_DIR/bootstrap.bat" > "$OEM_DIR/bootstrap.bat"
 (
   cd _iso_extract
   dd if="../$ISO" of=boot.cat bs=2048 skip=19 count=1 status=none
-  VOLID=$(isoinfo -d -i "../$ISO" 2>/dev/null | grep "Volume id:" | sed 's/Volume id: //' || echo "GRTMPFPP_EN")
+  VOLID=$(isoinfo -d -i "../$ISO" 2>/dev/null | grep "Volume id:" | sed 's/Volume id: //' || echo "GRTMPVOL_CN")
   # XP: 从 boot catalog 读取 Nsect (offset 39), 即 boot load size
   BOOT_LOAD_SIZE=$(python3 -c "
 with open('boot.cat', 'rb') as f:

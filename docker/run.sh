@@ -47,7 +47,7 @@ for a in "$@"; do
 done
 
 # ── 依赖检查 ──
-for c in qemu-system-x86_64 qemu-img socat; do
+for c in qemu-system-x86_64 qemu-img socat unix2dos; do
     command -v "$c" >/dev/null || { echo "需要安装: $c"; exit 1; }
 done
 [ -f "$SNAPSHOT" ] || { echo "找不到 snapshot: $SNAPSHOT，请先运行 ./setup-${VM}.sh"; exit 1; }
@@ -70,7 +70,11 @@ if $STOP; then
 fi
 
 # ── 杀旧 QEMU + 清理 ──
-[ -f qemu-$VM.pid ] && { kill -9 "$(cat qemu-$VM.pid)" 2>/dev/null; sleep 1; }
+# pid 文件可能残留已死进程：kill 失败不能让 set -e 中断脚本
+if [ -f qemu-$VM.pid ]; then
+    kill -9 "$(cat qemu-$VM.pid)" 2>/dev/null || true
+    sleep 1
+fi
 rm -f qemu-$VM.pid "$LOGFILE"
 
 # ── 创建 overlay ──
@@ -81,7 +85,17 @@ if $FRESH || [ ! -f "$OVERLAY" ]; then
 fi
 
 # ── 链接 _build 到 ci_share/quickwin（symlink，需 smbd wide links = yes）──
-rm -rf "$LINK" && ln -s "$SHARE_DIR" "$LINK"
+# smb_wrapper: unix extensions=no + wide links=yes，Win7/XP 均已验证 cwd=[Z:\quickwin]。
+# 已是指向 SHARE_DIR 的 symlink 则不动（避免 VM 使用中被删）；否则 rm 后重建。
+if [ "$(readlink "$LINK" 2>/dev/null)" != "$SHARE_DIR" ]; then
+    rm -rf "$LINK" && ln -s "$SHARE_DIR" "$LINK"
+fi
+
+# ── run.bat 转 CRLF ──
+# git 里是 LF，但 cmd.exe 对 LF-only 批处理的 if(...) 块 / goto / :label 解析会失败：
+# 简单命令能跑，块结构直接崩，表现为 net use 成功却永不执行 Z:\run.bat。
+# 每次运行都转一遍（原地），不依赖 checkout 的行尾设置。
+unix2dos -q ci_share/run.bat
 
 # ── 启动 QEMU ──
 # win7/xp 硬件差异在 case 中已配置（内存/CPU/网卡/端口/machine），

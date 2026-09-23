@@ -1,0 +1,7 @@
+# Dockerfile.dev 无 COPY，context 只需极小；排除大文件避免 compose/build 上传 GB 级 tar
+iso/
+snapshots/
+ci_share/
+*.iso
+*.qcow2
+*.img

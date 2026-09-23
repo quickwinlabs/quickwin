@@ -5,7 +5,7 @@ set -e
 #  自动下载 Windows ISO
 #  用法: ./download-iso.sh <xp|7u|10|11> [目标目录]
 #
-#  镜像源: archive.org, dl.bobpony.com, files.dog
+#  镜像源: download.testip.xyz (主), archive.org (备); 10/11 仍用 bobpony/files.dog
 #  下载完成后调用方自行确认完整性
 # ============================================================
 
@@ -21,8 +21,8 @@ error() { echo -e "${RED}[$(ts)] [ERROR]${NC} $*"; exit 1; }
 if [ -z "$VERSION" ]; then
     echo "用法: $0 <xp|7u|10|11> [目标目录]"
     echo ""
-    echo "  xp   - Windows XP Professional SP3 (590MB)"
-    echo "  7u   - Windows 7 Ultimate SP1 x64 (3.1GB)"
+    echo "  xp   - Windows XP Professional SP3 中文 VL (601MB)"
+    echo "  7u   - Windows 7 Ultimate SP1 x64 中文 (3.2GB)"
     echo "  10   - Windows 10 22H2 x64 (5.7GB)"
     echo "  11   - Windows 11 25H2 x64 (7.9GB)"
     exit 1
@@ -38,25 +38,23 @@ get_iso_info() {
 
     case "${version,,}" in
         "xp" )
-            FILE="en_windows_xp_professional_with_service_pack_3_x86_cd_x14-80428.iso"
-            SIZE="617756672"
-            SHA="62b6c91563bad6cd12a352aa018627c314cfc5162d8e9f8af0756a642e602a46"
-            # 镜像源列表（顺序与 7u 一致：bobpony 最稳，archive.org 常被限速/5xx）
+            FILE="zh-hans_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-74070.iso"
+            SIZE="630237184"
+            SHA="39430c2b8dd5c21bbd5af9116573f8c574ae896ce31d47280914ef268f01e33f"
+            # 镜像源：testip 直链（约 17MB/s），archive.org 备源
             URLS=(
-                "https://dl.bobpony.com/windows/xp/professional/en_windows_xp_professional_with_service_pack_3_x86_cd_x14-80428.iso"
-                "https://files.dog/MSDN/Windows%20XP/en_windows_xp_professional_with_service_pack_3_x86_cd_x14-80428.iso"
-                "https://archive.org/download/en_windows_xp_professional_with_service_pack_3_x86_cd_x14-80428/en_windows_xp_professional_with_service_pack_3_x86_cd_x14-80428.iso"
+                "https://download.testip.xyz/windows/zh-hans_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-74070.iso"
+                "https://archive.org/download/zh-hans_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-74070/zh-hans_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-74070.iso"
             )
             ;;
         "7u" | "7" )
-            FILE="Win7_Ult_SP1_English_x64.iso"
-            SIZE="3320903680"
-            SHA="36f4fa2416d0982697ab106e3a72d2e120dbcdb6cc54fd3906d06120d0653808"
+            FILE="cn_windows_7_ultimate_with_sp1_x64_dvd_u_677408.iso"
+            SIZE="3420557312"
+            SHA="70cdfb0cdcbeb2659163e9417d5c242b37ae564da810e7da21dac5c8492ab72f"
             # 镜像源列表（按优先级排序）
             URLS=(
-                "https://dl.bobpony.com/windows/7/en_windows_7_with_sp1_x64.iso"
-                "https://files.dog/MSDN/Windows%207/en_windows_7_ultimate_with_sp1_x64_dvd_u_677332.iso"
-                "https://archive.org/download/win7-ult-sp1-english/Win7_Ult_SP1_English_x64.iso"
+                "https://download.testip.xyz/windows/cn_windows_7_ultimate_with_sp1_x64_dvd_u_677408.iso"
+                "https://archive.org/download/cn_windows_7_ultimate_with_sp1_x64_dvd_u_677408/cn_windows_7_ultimate_with_sp1_x64_dvd_u_677408.iso"
             )
             ;;
         "10" )
