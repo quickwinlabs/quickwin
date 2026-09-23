@@ -1,0 +1,64 @@
+diff --git a/quickjs.c b/quickjs.c
+index e3716a4..0975810 100644
+--- a/quickjs.c
++++ b/quickjs.c
+@@ -58972,11 +58972,7 @@ enum {
+     B64_ALPHABET_BASE64URL = 1,
+ };
+ 
+-enum {
+-    B64_LAST_LOOSE = 0,
+-    B64_LAST_STRICT = 1,
+-    B64_LAST_STOP_BEFORE_PARTIAL = 2,
+-};
++/* B64_LAST_* enum exported in quickjs.h */
+ 
+ static const unsigned char b64_enc[64] = {
+     'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P',
+@@ -58999,7 +58995,7 @@ static const unsigned char b64url_enc[64] = {
+ #define K_WS 64
+ #define K_ER 65
+ 
+-static const uint8_t b64_dec[256] = {
++const uint8_t b64_dec[256] = {
+  [  0]=K_ER, [  1]=K_ER, [  2]=K_ER, [  3]=K_ER, [  4]=K_ER, [  5]=K_ER, [  6]=K_ER, [  7]=K_ER,
+  [  8]=K_ER, [  9]=K_WS, [ 10]=K_WS, [ 11]=K_ER, [ 12]=K_WS, [ 13]=K_WS, [ 14]=K_ER, [ 15]=K_ER,
+  [ 16]=K_ER, [ 17]=K_ER, [ 18]=K_ER, [ 19]=K_ER, [ 20]=K_ER, [ 21]=K_ER, [ 22]=K_ER, [ 23]=K_ER,
+@@ -59115,10 +59111,10 @@ static size_t b64_skip_ws(const char *src, size_t len, size_t index,
+    *p_read: set to number of input characters consumed
+    *p_err: set to 1 on error, 0 on success
+    Returns: number of bytes written to dst */
+-static size_t from_base64(const char *src, size_t src_len,
+-                          uint8_t *dst, size_t max_len,
+-                          const uint8_t *dec_table, int last_chunk,
+-                          size_t *p_read, int *p_err)
++size_t from_base64(const char *src, size_t src_len,
++                   uint8_t *dst, size_t max_len,
++                   const uint8_t *dec_table, int last_chunk,
++                   size_t *p_read, int *p_err)
+ {
+     size_t read = 0, written = 0;
+     uint32_t v, acc = 0;
+diff --git a/quickjs.h b/quickjs.h
+index 476d735..314a774 100644
+--- a/quickjs.h
++++ b/quickjs.h
+@@ -1007,6 +1007,18 @@ JSAtom JS_GetScriptOrModuleName(JSContext *ctx, int n_stack_levels);
+ JSValue JS_LoadModule(JSContext *ctx, const char *basename,
+                       const char *filename);
+ 
++/* only exported for QuickWin data: URL modules */
++enum {
++    B64_LAST_LOOSE = 0,
++    B64_LAST_STRICT = 1,
++    B64_LAST_STOP_BEFORE_PARTIAL = 2,
++};
++extern const uint8_t b64_dec[256];
++size_t from_base64(const char *src, size_t src_len,
++                   uint8_t *dst, size_t max_len,
++                   const uint8_t *dec_table, int last_chunk,
++                   size_t *p_read, int *p_err);
++
+ /* C function definition */
+ typedef enum JSCFunctionEnum {  /* XXX: should rename for namespace isolation */
+     JS_CFUNC_generic,

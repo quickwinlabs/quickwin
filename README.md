@@ -146,7 +146,7 @@ parent.onmessage = (e) => {
 
 | API | Description |
 |-----|-------------|
-| `new os.Worker(specifier)` | 创建 worker。`specifier` 是文件路径或 URL（支持 `https://` ESM 导入） |
+| `new os.Worker(specifier)` | 创建 worker。`specifier` 是文件路径或 URL（支持 `https://` 与 `data:text/javascript;base64,`） |
 | `worker.postMessage(data)` | 向 worker 发送消息（JSON 可序列化） |
 | `worker.onmessage = fn` | 设置来自 worker 的消息回调。完成后设为 `null` 以释放消息端口 |
 | `os.Worker.parent` | （Worker 侧）父线程的引用 |

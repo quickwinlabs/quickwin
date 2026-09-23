@@ -147,7 +147,7 @@ parent.onmessage = (e) => {
 
 | API | Description |
 |-----|-------------|
-| `new os.Worker(specifier)` | Create worker. `specifier` is a file path or URL (supports `https://` for ESM imports) |
+| `new os.Worker(specifier)` | Create worker. `specifier` is a file path or URL (supports `https://` and `data:text/javascript;base64,`) |
 | `worker.postMessage(data)` | Send message (JSON-serializable) to worker |
 | `worker.onmessage = fn` | Set callback for messages from worker. Set to `null` when done to release the message port |
 | `os.Worker.parent` | (Worker side) reference to the parent thread |

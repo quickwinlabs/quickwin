@@ -783,7 +783,11 @@ char* js_module_normalize_name(JSContext *ctx,
         const char *r;
         int cap, len;
 
-        p = strrchr(base_name, '/');
+        /* data: URLs may contain '/' inside base64; treat as pathless parent */
+        if (strncmp(base_name, "data:", 5) == 0)
+            p = NULL;
+        else
+            p = strrchr(base_name, '/');
         if (p)
             len = p - base_name;
         else

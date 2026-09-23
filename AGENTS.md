@@ -393,8 +393,19 @@ return extract_body(response);
 **patch 文件：**
 - `patches/wamr-xp-compat.patch` — 标准 git diff 格式（5 文件，41+/9-）
 - `patches/wolfssl-xp-compat.patch` — 标准 git diff 格式（1 文件，1+/1-）
+- `patches/quickjs-export-from-base64.patch` — 导出 `from_base64`/`b64_dec`/`B64_LAST_*`，供 `data:text/javascript;base64,` 模块加载（`js_module_loader`）
 
-**结论：** 自己的代码 + WAMR/wolfSSL 子模块 patch 均已完全 XP 兼容。submodule 改动不直接提交，通过 patch 机制管理。
+**结论：** 自己的代码 + WAMR/wolfSSL/QuickJS 子模块 patch 均由 patch 机制管理。submodule 改动不直接提交。
+
+## 14. data: URL 模块（Worker / import）
+
+**支持形式：** 仅 `data:text/javascript;base64,<payload>`
+
+- 解析入口：`js_module_loader`（`quickjs-libc.c`）`data:` 分支
+- base64 解码：`from_base64` + `b64_dec` + `B64_LAST_LOOSE`（见 §13 quickjs patch）
+- 用途：`new os.Worker('data:...')`、`await import('data:...')`
+- 不支持：非 base64 percent 编码、`application/javascript` MIME 变体
+- 测试：`test/test_worker_data_url.ts`（suite `worker-data-url`）
 
 ## 13. React Custom Renderer 计划
 

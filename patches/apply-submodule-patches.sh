@@ -45,3 +45,4 @@ apply_patch() {
 echo "Applying submodule patches..."
 apply_patch "deps/wamr"    "patches/wamr-xp-compat.patch"
 apply_patch "deps/wolfssl" "patches/wolfssl-xp-compat.patch"
+apply_patch "deps/quickjs" "patches/quickjs-export-from-base64.patch"

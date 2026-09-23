@@ -707,14 +707,49 @@ JSModuleDef *js_module_loader(JSContext *ctx,
     if (has_suffix(module_name, ".so")) {
         m = js_module_loader_so(ctx, module_name);
     } else {
-        size_t buf_len;
-        uint8_t *buf;
+        size_t buf_len = 0;
+        uint8_t *buf = NULL;
+        int is_data = strstart(module_name, "data:", NULL);
+        int use_libc_free = 0; /* http_get_sync → free(); js_malloc/js_load_file → js_free() */
         // printf("module_name:'%s'", module_name); fflush(stdout);
 
         int is_http = strstart(module_name, "http", NULL);
-        if (is_http) {
+        if (is_data) {
+            /* only data:text/javascript;base64,<payload> */
+            static const char prefix[] = "data:text/javascript;base64,";
+            size_t plen = sizeof(prefix) - 1;
+            size_t nlen = strlen(module_name);
+            if (nlen <= plen || strncmp(module_name, prefix, plen) != 0) {
+                JS_ThrowReferenceError(ctx, "unsupported data URL module '%s'",
+                                       module_name);
+                return NULL;
+            }
+            {
+                const char *payload = module_name + plen;
+                size_t payload_len = nlen - plen;
+                /* +1: QuickJS requires input[input_len] == '\0' */
+                size_t out_cap = (payload_len / 4) * 3 + 3;
+                size_t read_pos = 0;
+                int err = 0;
+                size_t decoded_len;
+                buf = js_malloc(ctx, out_cap + 1);
+                if (!buf)
+                    return NULL;
+                decoded_len = from_base64(payload, payload_len, buf, out_cap,
+                                          b64_dec, B64_LAST_LOOSE,
+                                          &read_pos, &err);
+                if (err || decoded_len == 0) {
+                    js_free(ctx, buf);
+                    JS_ThrowReferenceError(ctx, "invalid base64 data URL module");
+                    return NULL;
+                }
+                buf[decoded_len] = '\0';
+                buf_len = decoded_len;
+            }
+        } else if (is_http) {
             buf = (uint8_t*)http_get_sync(module_name);
             buf_len = buf ? strlen((char*)buf) : 0;
+            use_libc_free = 1;
         } else {
             buf = js_load_file(ctx, &buf_len, module_name);
         }
@@ -723,8 +758,9 @@ JSModuleDef *js_module_loader(JSContext *ctx,
                                    module_name);
             return NULL;
         }
+        /* data: payload is never .json by name; attributes may still request json */
         res = js_module_test_json(ctx, attributes);
-        if (has_suffix(module_name, ".json") || res > 0) {
+        if (!is_data && (has_suffix(module_name, ".json") || res > 0)) {
             /* compile as JSON or JSON5 depending on "type" */
             JSValue val;
             int flags;
@@ -733,7 +769,7 @@ JSModuleDef *js_module_loader(JSContext *ctx,
             else
                 flags = 0;
             val = JS_ParseJSON2(ctx, (char *)buf, buf_len, module_name, flags);
-            if (is_http) free(buf); else js_free(ctx, buf);
+            if (use_libc_free) free(buf); else js_free(ctx, buf);
             if (JS_IsException(val))
                 return NULL;
             m = create_json_module(ctx, module_name, val);
@@ -744,7 +780,7 @@ JSModuleDef *js_module_loader(JSContext *ctx,
             /* compile the module */
             func_val = JS_Eval(ctx, (char *)buf, buf_len, module_name,
                                JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
-            if (is_http) free(buf); else js_free(ctx, buf);
+            if (use_libc_free) free(buf); else js_free(ctx, buf);
             if (JS_IsException(func_val))
                 return NULL;
             /* XXX: could propagate the exception */

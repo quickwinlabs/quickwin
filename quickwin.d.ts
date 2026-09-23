@@ -330,7 +330,7 @@ declare module "os" {
     const S_IFREG: number;
 
     class Worker {
-        /** Constructor to create a new thread (worker) with an API close to the `WebWorkers`. `module_filename` is a string specifying the module filename which is executed in the newly created thread. */
+        /** Constructor to create a new thread (worker) with an API close to the `WebWorkers`. `module_filename` is a file path, `http(s)://` URL, or `data:text/javascript;base64,...` URL executed in the newly created thread. */
         constructor(module_filename: string);
         /** Send a message to the corresponding worker. `msg` is cloned in the destination worker using an algorithm similar to the `HTML` structured clone algorithm. */
         postMessage(msg: unknown): void;
