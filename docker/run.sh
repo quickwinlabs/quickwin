@@ -3,16 +3,20 @@ set -e
 cd "$(dirname "$0")"
 
 # ============================================================
-#  Bare QEMU CI — 测试阶段（win7 / xp 共用）
-#  从 snapshot 启动，bootstrap.bat 自动挂载 SMB 并运行 run.bat。
-#  run.bat 在 VM 内直接跑完整测试套件，写完 Summary 后输出 Done。
-#  用法: ./run.sh <win7|xp> [--fresh] [--stop]
+#  Bare QEMU — 常驻模式（win7 / xp 共用）
+#  从 snapshot 启动，bootstrap.bat 挂 SMB 并跑 run.bat；
+#  run.bat 只做防火墙/portproxy + 启动 exec_server，不跑测试。
+#  测试经 hostfwd HTTP 下发（win7:7080 / xp:5180 → guest:8080）。
 #
-#  验证: run.bat 首行 echo 到 ci_share/run-$VM.log，文件出现即链路已通。
+#  用法: ./run.sh <win7|xp> [--fresh] [--stop] [--restart]
+#    默认：已在跑则只做健康检查后退出（真常驻）
+#    --restart：先停再起
+#    --fresh：重建 overlay 后启动
+#    --stop：ACPI 关机
 # ============================================================
 
 START_TIME=$(date +%s)
-VM="${1:?usage: ./run.sh <win7|xp> [--fresh] [--stop]}"
+VM="${1:?usage: ./run.sh <win7|xp> [--fresh] [--stop] [--restart]}"
 shift
 
 case "$VM" in
@@ -20,14 +24,14 @@ case "$VM" in
     SNAPSHOT="$(pwd)/snapshots/win7_ready.qcow2"
     OVERLAY="$(pwd)/snapshots/win7_test.qcow2"
     MONITOR=/tmp/qemu-monitor-win7.sock
-    MEM=4096; SMP=4; NETDEV=e1000; FWD=8080
+    MEM=4096; SMP=4; NETDEV=e1000; FWD=7080
     EXTRA=()
     ;;
   xp)
     SNAPSHOT="$(pwd)/snapshots/xp_ready.qcow2"
     OVERLAY="$(pwd)/snapshots/xp_test.qcow2"
     MONITOR=/tmp/qemu-monitor-xp.sock
-    MEM=1024; SMP=1; NETDEV=rtl8139; FWD=8081
+    MEM=1024; SMP=1; NETDEV=rtl8139; FWD=5180
     EXTRA=(-machine pc-i440fx-5.2 -cpu qemu32 -device VGA,vgamem_mb=64 -vnc 0.0.0.0:1)
     ;;
   *) echo "未知 VM: $VM（可选 win7|xp）"; exit 1 ;;
@@ -37,11 +41,12 @@ SHARE_DIR="${SHARE_DIR:-/workspace/_build}"
 LINK=ci_share/quickwin
 LOGFILE=ci_share/run-$VM.log
 
-FRESH=false; STOP=false
+FRESH=false; STOP=false; RESTART=false
 for a in "$@"; do
     case "$a" in
         --fresh) FRESH=true ;;
         --stop) STOP=true ;;
+        --restart) RESTART=true ;;
         *) echo "未知参数: $a"; exit 1 ;;
     esac
 done
@@ -52,6 +57,10 @@ for c in qemu-system-x86_64 qemu-img socat unix2dos; do
 done
 [ -f "$SNAPSHOT" ] || { echo "找不到 snapshot: $SNAPSHOT，请先运行 ./setup-${VM}.sh"; exit 1; }
 [ -e /dev/kvm ] && KVM="-accel kvm"
+
+health() {
+    curl -sf -m 3 "http://127.0.0.1:${FWD}/health" >/dev/null 2>&1
+}
 
 # ── --stop: ACPI 关机 ──
 # 用 qemu-${VM}.pid 是否存在判断退出（QEMU 退出时会自己 unlink），不能用 kill -0：
@@ -67,6 +76,26 @@ if $STOP; then
     echo "关机超时（60s），强制 kill"
     kill -9 "$QEMU_PID"; rm -f qemu-$VM.pid
     exit 0
+fi
+
+# ── 已在跑：不杀，只报健康状态（常驻语义）──
+# --restart / --fresh 才强制重启。
+if [ -f qemu-$VM.pid ] && ! $RESTART && ! $FRESH; then
+    echo "VM 已在运行 (PID=$(cat qemu-$VM.pid))，检查健康..."
+    for i in $(seq 1 12); do
+        if health; then
+            echo "exec_server 健康 (http://127.0.0.1:${FWD}/health)  耗时 $(( $(date +%s) - START_TIME ))s"
+            echo "跑测试: ./http_test.sh $VM [filter]"
+            echo "停止:   ./run.sh $VM --stop"
+            exit 0
+        fi
+        [ -f qemu-$VM.pid ] || { echo "VM 已退出"; break; }
+        sleep 5
+        printf "\r  等待健康 %ds..." $((i*5))
+    done
+    echo ""
+    echo "健康检查超时（60s）——服务可能未起，尝试 --restart"
+    exit 1
 fi
 
 # ── 杀旧 QEMU + 清理 ──
@@ -110,7 +139,7 @@ qemu-system-x86_64 \
     -monitor unix:"$MONITOR",server,nowait \
     -daemonize
 
-echo "QEMU 已启动 (PID=$(cat qemu-$VM.pid))，等待 run.bat..."
+echo "QEMU 已启动 (PID=$(cat qemu-$VM.pid))，等待 exec_server..."
 
 # ── 等待 run.log（run.bat 首行 echo 即创建）──
 for i in $(seq 1 24); do
@@ -120,28 +149,35 @@ for i in $(seq 1 24); do
 done
 echo ""
 
-if [ -e "$LOGFILE" ]; then
-    echo "run.bat 已启动（耗时 $(( $(date +%s) - START_TIME ))s）"
-    # ── 等待 run.bat 完成（run.log 出现 "Done" 行）──
-    echo "等待 run.bat 完成..."
-    for i in $(seq 1 120); do
-        if grep -q "Done" "$LOGFILE" 2>/dev/null; then
-            break
-        fi
-        if [ ! -f qemu-$VM.pid ]; then
-            echo "VM 已退出"
-            break
-        fi
-        sleep 5
-        printf "\r  测试进行中 %ds..." $((i*5))
-    done
-    echo ""
-    echo "--- run.log ---"
-    cat "$LOGFILE"
-    echo
-    echo "停止: ./run.sh $VM --stop"
-else
+if [ ! -e "$LOGFILE" ]; then
     echo "等待超时（120s），run.log 未生成"
     echo "调试: cat $LOGFILE"
     exit 1
 fi
+echo "run.bat 已启动（耗时 $(( $(date +%s) - START_TIME ))s）"
+
+# ── 等 Ready（run.bat 写）+ 健康检查（exec_server /health）──
+echo "等待 exec_server 健康..."
+for i in $(seq 1 36); do
+    if health; then
+        echo "exec_server 健康 (http://127.0.0.1:${FWD}/health)  总耗时 $(( $(date +%s) - START_TIME ))s"
+        echo "--- run.log ---"
+        cat "$LOGFILE"
+        echo
+        echo "跑测试: ./http_test.sh $VM [filter]"
+        echo "停止:   ./run.sh $VM --stop"
+        exit 0
+    fi
+    if [ ! -f qemu-$VM.pid ]; then
+        echo "VM 已退出"
+        cat "$LOGFILE" 2>/dev/null || true
+        exit 1
+    fi
+    sleep 5
+    printf "\r  等待健康 %ds..." $((i*5))
+done
+echo ""
+echo "健康检查超时（180s）"
+echo "--- run.log ---"
+cat "$LOGFILE"
+exit 1

@@ -54,10 +54,12 @@
 ## XP (feat/win32-xp) 逐 suite 测试记录
 
 ### XP 环境说明
-- 宿主端口 **8081** → 客机 8080（与 win7 的 8080 冲突规避，docker/run.sh hostfwd）
+- 宿主端口 **5180** → 客机 8080（win7 用 7080；NT 5.1=XP / 7=Win7 助记，docker/run.sh hostfwd。原为 8081，已改）
 - XP **有 `netsh interface portproxy`**（需先 `netsh interface ipv6 install`，XP 由 IPV6MON.DLL 实现）。
   listenaddress 用 `0.0.0.0`（127.0.0.1 在 XP 上不生效）。
-- run.bat 直接跑测试（不依赖 exec_server，XP 上 exec_server 处理带反斜杠命令后会挂起）。
+- ~~run.bat 直接跑测试（不依赖 exec_server，XP 上 exec_server 处理带反斜杠命令后会挂起）~~
+  **2026-09-23 实测证伪**：常驻 exec_server + JSON `{"cmd":...}` 对带反斜杠命令
+  （`dir Z:\quickwin` 等）全部正常返回 `{out,code}`，无挂起。见下方「反斜杠传闻复核」。
 - XP 快照：`xp_ready.qcow2`，1G 内存 1CPU。
 
 ### XP 逐 suite 结果（32 位 qwin.exe，2026-09-20）
@@ -83,7 +85,7 @@
 | worker-wasm | PASS 5/5 | |
 
 ### 关键发现
-- exp_server 单独跑（带反斜杠命令）会挂起；但 run.bat 直接跑 full suite 无此问题。
+- ~~exp_server 单独跑（带反斜杠命令）会挂起~~ → **2026-09-23 证伪**（见反斜杠复核）。
 - worker 单独跑曾遇进程退出挂起 + 时钟显示负数（32 位 Date.now 溢出）；full -net 中正常。
 - net-fetch 在 portproxy 未配时挂起（localhost 连不上）；配好后应可过（完整 -net 不含 net suites，待测）。
 
@@ -93,8 +95,29 @@
   AcquireSRWLock/inet_pton/SetProcessDPIAware（WAMR/wolfSSL XP 补丁生效）。
 - distclean 会清 _build JS 产物，需重跑 `make js` 和 `make wasm`。
 
-### 待测
-- net suites（XP portproxy 就绪后测）
+### 反斜杠传闻复核（2026-09-23，XP 实测）
+
+原记录（L60/L86）称「exec_server 处理带反斜杠命令后会挂起」，仅有一句话无复现步骤。
+在常驻模式 XP 上（hostfwd :5180，容器内 curl）四条对照实测：
+
+| 用例 | body | 结果 |
+|------|------|------|
+| 无反斜杠 | `echo hello` | `{"out":"hello\n","code":0}` ~20ms |
+| JSON 转义反斜杠 | `dir Z:\\quickwin` | 正常目录列表 `code:0` ~17ms |
+| 正斜杠路径 | `dir Z:/quickwin` | `out:"" code:1`（cmd `dir` 本身不认 `/`，预期） |
+| exit code | `cmd /c exit 7` | `code:7`（pclose 取到 exit code） |
+| 非法 JSON 转义 | `dir Z:\quickwin`（未转义） | HTTP 500，**不是挂起** |
+| 健康检查 | 跑完后 GET /health | 始终 `ok` |
+
+**结论：反斜杠挂起传闻不成立。** 疑为早期裸文本协议 + 同步 popen 阻塞事件循环
+导致健康检查超时被误诊为「挂死」。新 JSON 协议 + `http_test.sh` 超时 300s 覆盖同步阻塞。
+
+另：`dir Z:/quickwin` 失败是 cmd.exe 行为（`/` 被当开关），不是 exec_server 问题；
+调用方应使用反斜杠路径。
+
+### 关键发现（XP 全量经 HTTP，2026-09-23）
+- 常驻 exec_server 下 `./http_test.sh xp` 全量：**Summary 425/426**（failed=1 = ffi 打印机环境差，容忍）。
+- 与 run.bat 直跑基线 425/426 一致。
 
 ### XP net suites（portproxy 就绪后，2026-09-20）
 | suite | tag | 结果 | 备注 |

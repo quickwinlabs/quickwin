@@ -23,7 +23,7 @@
 > 
 > 流程：
 > 1. 在 `tools/gen_const.c` `print_enums()` 中添加 `DEC(TS_NAME, SDK_MACRO)` 行
-> 2. 运行 `make const` 重新生成 `quickwin_const.d.ts`
+> 2. 运行 `make gen-const` 交叉编译 `_build/gen_const.exe`，在 Windows/VM 里运行该 exe 重新生成 `quickwin_const.d.ts`
 > 3. 在 TS 代码中通过 `gui.EnumName.MEMBER` 使用
 
 > **禁止自动 commit：提交前必须先让用户确认 diff 和 commit message**
@@ -215,10 +215,10 @@ JS_SetPropertyStr(ctx, js_exports, "add", add_func);
 make wamr
 ```
 
-等同于手动执行：
+等同于手动执行（产物路径按 arch 隔离，`make wamr` 默认 native/`x64-native`，交叉构建请直接用 `make cc64`/`cc32` 自动触发）：
 
 ```bash
-cd wamr && cmake -B build \
+cmake -B _build/deps/x64-native/wamr-build -S deps/wamr \
     -DWAMR_BUILD_PLATFORM=windows \
     -DWAMR_BUILD_TARGET=X86_64 \
     -DWAMR_BUILD_INTERP=1 \
@@ -237,8 +237,8 @@ cd wamr && cmake -B build \
     -DWAMR_DISABLE_HW_BOUND_CHECK=1 \
     -DWAMR_BUILD_INVOKE_NATIVE_GENERAL=1 \
     -DCMAKE_BUILD_TYPE=Release
-cmake --build wamr/build --config Release
-cp wamr/build/libiwasm.a wamr/lib/libiwasm.a
+cmake --build _build/deps/x64-native/wamr-build --config Release
+cp _build/deps/x64-native/wamr-build/libiwasm.a _build/deps/x64-native/libiwasm.a
 ```
 
 ### 参数说明
@@ -268,7 +268,7 @@ cp wamr/build/libiwasm.a wamr/lib/libiwasm.a
 - **`__try`/`__except` 编译错误：** 设置 `WAMR_DISABLE_HW_BOUND_CHECK=1`
 - **`invokeNative` 链接错误：** 设置 `WAMR_BUILD_INVOKE_NATIVE_GENERAL=1`
 - **找不到 cmake：** 安装 `pacman -S mingw-w64-ucrt-x86_64-cmake`
-- **链接 `libiwasm.a` 之前，需将产物从 `build/` 复制到 `lib/`：** `cp wamr/build/libiwasm.a wamr/lib/libiwasm.a`
+- **链接 `libiwasm.a` 之前，产物已由 Makefile 自动从 `wamr-build/` 复制到 `deps/<VARIANT>/`，无需手动 cp**
 
 ## 故障排除
 
@@ -277,8 +277,8 @@ cp wamr/build/libiwasm.a wamr/lib/libiwasm.a
 - **运行时错误：** 使用调试版本构建并检查日志
 - **找不到 make 命令：** 使用 `.\build.bat <target>` 代替 `make <target>`（推荐方式）
 - **wat2wasm 找不到：** 需要安装 wabt 包：`pacman -S wabt`
-- **`WASMModule` 结构体偏移错位：** 如果直接 `(WASMModule *)wasm_module_t` 后读取字段得到垃圾值（如 `import_global_count=624`），说明 `WASM_ENABLE_TAGS`/`WASM_ENABLE_BULK_MEMORY` 等条件编译宏在 WAMR 库和项目代码中不一致。用 `make wamr` 重建 WAMR 库（需先 `rm -rf wamr/build` 清除 CMake cache），确保 `-DWAMR_BUILD_EXCE_HANDLING=1` 等选项生效
-- **`make clean` 会删除所有 `lib/*.js`、`test/*.js` 和根目录 `*.js`：** 运行 `make clean` 后必须执行 `make js` 从 `.ts` 重新生成 JS 文件，否则测试或运行时找不到 `.js` 文件
+- **`WASMModule` 结构体偏移错位：** 如果直接 `(WASMModule *)wasm_module_t` 后读取字段得到垃圾值（如 `import_global_count=624`），说明 `WASM_ENABLE_TAGS`/`WASM_ENABLE_BULK_MEMORY` 等条件编译宏在 WAMR 库和项目代码中不一致。用 `make wamr` 重建 WAMR 库（需先 `rm -rf _build/deps/*/wamr-build` 清除 CMake cache），确保 `-DWAMR_BUILD_EXCE_HANDLING=1` 等选项生效
+- **`make clean` 会删除整个 `_build/`（含 `lib/*.js`、`test/*.js`、wasm fixtures、所有 exe 和 deps 静态库）：** 运行 `make clean` 后必须执行 `make js wasm`（及按需 `make cc64`）重新生成，否则测试或运行时找不到产物
 - **控制台中文乱码：** 运行 `chcp 65001` 设置 UTF-8 编码后再执行程序
 - **`make js` Segmentation fault：** tsc 本身偶尔会 segfault，不是代码问题。直接重新运行 `make js` 即可，通常第二次就能成功
 

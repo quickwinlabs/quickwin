@@ -70,7 +70,7 @@ quickwin -- script.js --flag        # -- 停止选项解析
 
 ```bash
 # 内嵌一个脚本
-powershell -ExecutionPolicy Bypass -File scripts/embed-js.ps1 -ExePath _build/qwin.exe -JsFile script.js
+node scripts/embed-js.mjs --exe _build/qwin.exe --js script.js
 
 # 或通过 make
 make embed-js JS_EMBED=script.js
@@ -78,8 +78,11 @@ make embed-js JS_EMBED=script.js
 # 内嵌 Brotli 压缩的脚本（exe 更小，运行时解压）
 make embed-js-br JS_EMBED=script.js
 
+# 打包 examples/exec_server.ts 并 brotli 内嵌进 exec_server.exe
+make exec_server
+
 # 运行它（不需要文件参数）
-qwin.exe
+_build/exec_server.exe
 ```
 
 不带脚本文件参数运行时，`qwin.exe` 会检查自身末尾是否有内嵌 JS：找到则执行内嵌代码，否则回退到 `main.js`。同时支持原始（`QWJS`）与 Brotli 压缩（`QWBR`）两种内嵌格式；压缩格式在启动时解压。
@@ -203,6 +206,7 @@ cd quickwin
 | `make wamr` | 重建 WAMR 库 |
 | `make embed-js` | 把 `embed.js` 内嵌进 exe（用 `JS_EMBED=file.js`） |
 | `make embed-js-br` | 把 Brotli 压缩的 JS 内嵌进 exe |
+| `make exec_server` | 打包 `examples/exec_server.ts` 并 Brotli 内嵌进 `_build/exec_server.exe` |
 | `make npm-pkg` | 打包到 `dist/quickwin/` |
 | `make clean` | 清理构建产物 |
 

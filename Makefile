@@ -1,4 +1,10 @@
 CROSS ?= 0
+# arch 标签：与 os.arch 一致；cc32 子 make 会传 ARCH_TAG=ia32
+ARCH_TAG ?= x64
+# NO_WASM 须在 VARIANT/OBJ_DIR 之前定义（命令行 NO_WASM=1 仍可覆盖）
+NO_WASM ?= 0
+# 构建变体：arch × native/cross，避免本机 gcc 与交叉编译同 arch 互踩
+VARIANT = $(ARCH_TAG)-$(if $(filter 1,$(CROSS)),cross,native)
 ifeq ($(CROSS),1)
   CC64  = x86_64-w64-mingw32-gcc
   CC32  = i686-w64-mingw32-gcc
@@ -32,7 +38,6 @@ MSYS2_PREFIX ?= $(SYSROOT64)
 
 # flavor: fast（默认，开发快编）| small（发行，-Os+LTO 小体积）| debug（排错）
 BUILD ?= fast
-NO_WASM = 0
 BUILD_DIR = _build
 JS_EMBED ?= embed.js
 
@@ -48,6 +53,7 @@ endif
 
 CFLAGS += -D_WIN32_WINNT=0x0501
 CFLAGS += -Ideps
+CFLAGS += -I$(BUILD_DIR)
 CFLAGS += -DDUMP_GC -DDUMP_LEAKS
 CFLAGS += -Wall -Wextra
 
@@ -77,25 +83,29 @@ WAMR_DEFS = \
     -DWASM_ENABLE_TAGS=0 \
     -DWASM_ENABLE_EXCE_HANDLING=0
 
-WAMR_BUILD_DIR = $(WAMR_DIR)/build
-WAMR_LIB = $(WAMR_DIR)/lib/libiwasm.a
+# 所有中间产物（含 deps 静态库 + cmake build 目录）按 VARIANT 收进 _build/
+DEPS_BUILD = $(BUILD_DIR)/deps/$(VARIANT)
+DEPS_LIB = $(BUILD_DIR)/deps/$(VARIANT)
+
+WAMR_BUILD_DIR = $(DEPS_BUILD)/wamr-build
+WAMR_LIB = $(DEPS_LIB)/libiwasm.a
 
 WOLFSSL_DIR = deps/wolfssl
 WOLFSSL_INC = -I$(WOLFSSL_DIR) -I$(WOLFSSL_BUILD_DIR)
-WOLFSSL_BUILD_DIR = $(WOLFSSL_DIR)/build
-WOLFSSL_LIB_STATIC = $(WOLFSSL_DIR)/lib/libwolfssl.a
+WOLFSSL_BUILD_DIR = $(DEPS_BUILD)/wolfssl-build
+WOLFSSL_LIB_STATIC = $(DEPS_LIB)/libwolfssl.a
 WOLFSSL_LIB ?= $(WOLFSSL_LIB_STATIC)
 
 CROSS_HOST = $(patsubst %-gcc,%,$(CC))
 
 BROTLI_DIR = deps/brotli
-BROTLI_BUILD_DIR = $(BROTLI_DIR)/build-$(CROSS_HOST)
-BROTLI_LIB = $(BROTLI_DIR)/lib/libbrotlidec.a
-BROTLI_COMMON_LIB = $(BROTLI_DIR)/lib/libbrotlicommon.a
+BROTLI_BUILD_DIR = $(DEPS_BUILD)/brotli-build
+BROTLI_LIB = $(DEPS_LIB)/libbrotlidec.a
+BROTLI_COMMON_LIB = $(DEPS_LIB)/libbrotlicommon.a
 
 LIBFFI_DIR = deps/libffi
-LIBFFI_BUILD_DIR = $(LIBFFI_DIR)/build-$(CROSS_HOST)
-LIBFFI_LIB = $(LIBFFI_DIR)/lib/libffi.a
+LIBFFI_BUILD_DIR = $(DEPS_BUILD)/libffi-build
+LIBFFI_LIB = $(DEPS_LIB)/libffi.a
 
 ifeq ($(CROSS),1)
 CROSS_BUILD_LIBS = $(BROTLI_LIB) $(BROTLI_COMMON_LIB) $(LIBFFI_LIB)
@@ -131,7 +141,12 @@ TARGET_NAME_32 ?= qwin-x86.exe
 TARGET_NOWASM ?= qwin-nowasm.exe
 TARGET_NOWASM_32 ?= qwin-nowasm-x86.exe
 NPM_PKG_DIR = dist/quickwin
-QUICKJS_LIB = $(BUILD_DIR)/libquickjs.a
+# nowasm 与 wasm 的 CFLAGS 不同（-DNO_WASM），.o 必须分目录，
+# 否则 cc64 先编出的 main.o 仍引用 js_init_module_wamr，nowasm 链接必挂。
+# deps（wolfssl/brotli/ffi）不依赖 NO_WASM，继续共享 VARIANT 目录。
+OBJ_DIR = $(BUILD_DIR)/obj/$(VARIANT)$(if $(filter 1,$(NO_WASM)),-nowasm)
+QUICKJS_LIB = $(OBJ_DIR)/libquickjs.a
+VERSION_H = $(BUILD_DIR)/version.h
 
 SRCS = main.c \
        quickjs-win.c \
@@ -149,14 +164,11 @@ ifeq ($(NO_WASM), 0)
 SRCS += quickjs-wamr.c
 endif
 
-OBJS = $(SRCS:%.c=$(BUILD_DIR)/%.o) $(BUILD_DIR)/app.o
-DEPS = $(SRCS:%.c=$(BUILD_DIR)/%.d)
-
-# 交叉构建目标重编前清理的产物（exe 各目标不同，在各自 recipe 里追加）
-CLEAN_CACHE = $(OBJS) $(DEPS) $(QUICKJS_LIB)
+OBJS = $(SRCS:%.c=$(OBJ_DIR)/%.o) $(OBJ_DIR)/app.o
+DEPS = $(SRCS:%.c=$(OBJ_DIR)/%.d)
 
 .PHONY: cc64 cc32 cc64-nowasm cc32-nowasm apply-submodule-patches \
-        const wamr wasm js test npm-pkg embed-js embed-js-br info help clean distclean
+        gen-const wamr wasm js test npm-pkg exec_server embed-js embed-js-br info help clean distclean
 
 .DEFAULT_GOAL := cc64
 
@@ -164,30 +176,30 @@ apply-submodule-patches:
 	@sh patches/apply-submodule-patches.sh
 
 # 交叉构建公共模板：$(1)=target 名  $(2)=产物 exe（子 make goal）  $(3)=子 make 变量
+# 中间产物按 VARIANT 隔离，无需在切换 arch 前 rm 全量对象。
 # 注意 $$(MAKE) 双美元号：避免 eval 提前展开，保留 $(MAKE) 供 -n 递归/jobserver 识别
 define cross_build
 $(1): apply-submodule-patches
-	rm -f $(CLEAN_CACHE) $(2)
 	@$$(MAKE) CROSS=1 $(3) $(2)
 endef
 
-$(eval $(call cross_build,cc64,$(BUILD_DIR)/$(TARGET_NAME),))
-$(eval $(call cross_build,cc32,$(BUILD_DIR)/$(TARGET_NAME_32),CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 TARGET_NAME=$(TARGET_NAME_32)))
-$(eval $(call cross_build,cc64-nowasm,$(BUILD_DIR)/$(TARGET_NOWASM),TARGET_NAME=$(TARGET_NOWASM) NO_WASM=1))
-$(eval $(call cross_build,cc32-nowasm,$(BUILD_DIR)/$(TARGET_NOWASM_32),CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 TARGET_NAME=$(TARGET_NOWASM_32) NO_WASM=1))
+$(eval $(call cross_build,cc64,$(BUILD_DIR)/$(TARGET_NAME),ARCH_TAG=x64))
+$(eval $(call cross_build,cc32,$(BUILD_DIR)/$(TARGET_NAME_32),ARCH_TAG=ia32 CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 TARGET_NAME=$(TARGET_NAME_32)))
+$(eval $(call cross_build,cc64-nowasm,$(BUILD_DIR)/$(TARGET_NOWASM),ARCH_TAG=x64 TARGET_NAME=$(TARGET_NOWASM) NO_WASM=1))
+$(eval $(call cross_build,cc32-nowasm,$(BUILD_DIR)/$(TARGET_NOWASM_32),ARCH_TAG=ia32 CC=i686-w64-mingw32-gcc CXX=i686-w64-mingw32-g++ WINDRES=i686-w64-mingw32-windres MSYS2_PREFIX=/usr/i686-w64-mingw32 WAMR_TARGET=X86_32 TARGET_NAME=$(TARGET_NOWASM_32) NO_WASM=1))
 
 QJ_DEFINES = -D_GNU_SOURCE -DCONFIG_WIN32 -DCONFIG_VERSION=\"2025-09-13\"
 
 $(QUICKJS_LIB):
 	@echo "Building QuickJS library..."
-	mkdir -p $(BUILD_DIR)/quickjs
-	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(BUILD_DIR)/quickjs/quickjs.nolto.o deps/quickjs/quickjs.c
-	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(BUILD_DIR)/quickjs/dtoa.nolto.o deps/quickjs/dtoa.c
-	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(BUILD_DIR)/quickjs/libregexp.nolto.o deps/quickjs/libregexp.c
-	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(BUILD_DIR)/quickjs/libunicode.nolto.o deps/quickjs/libunicode.c
-	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(BUILD_DIR)/quickjs/cutils.nolto.o deps/quickjs/cutils.c
-	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(BUILD_DIR)/quickjs/quickjs-libc.nolto.o deps/quickjs/quickjs-libc.c
-	ar rcs $@ $(BUILD_DIR)/quickjs/*.nolto.o
+	mkdir -p $(OBJ_DIR)/quickjs
+	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(OBJ_DIR)/quickjs/quickjs.nolto.o deps/quickjs/quickjs.c
+	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(OBJ_DIR)/quickjs/dtoa.nolto.o deps/quickjs/dtoa.c
+	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(OBJ_DIR)/quickjs/libregexp.nolto.o deps/quickjs/libregexp.c
+	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(OBJ_DIR)/quickjs/libunicode.nolto.o deps/quickjs/libunicode.c
+	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(OBJ_DIR)/quickjs/cutils.nolto.o deps/quickjs/cutils.c
+	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(OBJ_DIR)/quickjs/quickjs-libc.nolto.o deps/quickjs/quickjs-libc.c
+	ar rcs $@ $(OBJ_DIR)/quickjs/*.nolto.o
 	@echo "QuickJS library built"
 
 ifeq ($(NO_WASM), 1)
@@ -205,52 +217,62 @@ ifneq ($(BUILD), debug)
 endif
 	@echo "Build complete: $@"
 
-$(BUILD_DIR)/%.o: %.c | $(WOLFSSL_LIB_STATIC) $(CROSS_BUILD_LIBS)
+$(OBJ_DIR)/%.o: %.c | $(WOLFSSL_LIB_STATIC) $(CROSS_BUILD_LIBS)
 	@echo "Compiling $<..."
-	mkdir -p $(BUILD_DIR)
+	mkdir -p $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # version.h is generated from package.json so package.json is the single source of truth;
-# quickjs-libc.c includes it, explicit dep ensures rebuild on change
-version.h: package.json
-	@echo "Generating version.h from package.json"
+# quickjs-libc.c includes it (via -I$(BUILD_DIR)), explicit dep ensures rebuild on change
+$(VERSION_H): package.json
+	@echo "Generating version.h"
+	@mkdir -p $(BUILD_DIR)
 	@VER=$$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -1); \
 	printf '#pragma once\n\n#define QUICKWIN_VERSION "%s"\n#define QUICKWIN_USER_AGENT "QuickWin/" QUICKWIN_VERSION\n' "$$VER" > $@
 
-$(BUILD_DIR)/quickjs-libc.o: version.h
+$(OBJ_DIR)/quickjs-libc.o: $(VERSION_H)
 
-$(BUILD_DIR)/%.d: %.c
-	@mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -MM -MT '$(BUILD_DIR)/$*.o' $< > $@
+$(OBJ_DIR)/%.d: %.c
+	@mkdir -p $(OBJ_DIR)
+	$(CC) $(CFLAGS) -MM -MT '$(OBJ_DIR)/$*.o' $< > $@
 
-$(BUILD_DIR)/app.o: app.rc
+$(OBJ_DIR)/app.o: app.rc
 	@echo "Compiling resource $<..."
-	mkdir -p $(BUILD_DIR)
+	mkdir -p $(OBJ_DIR)
 	$(WINDRES) $< -o $@
 
+# 依赖文件仅在交叉构建子 make（CROSS=1）时引入：
+# 顶层 CROSS=0 的 goal（cc64/gen-const/...）不应在 x64-native 下生成 .d
+ifeq ($(CROSS),1)
 ifeq ($(MAKECMDGOALS),)
 -include $(DEPS)
 else
-BUILD_GOALS := $(filter-out js wasm npm-pkg info help clean distclean, $(MAKECMDGOALS))
+BUILD_GOALS := $(filter-out js wasm npm-pkg info help clean distclean gen-const wamr apply-submodule-patches $(BUILD_DIR)/gen_const.exe, $(MAKECMDGOALS))
 ifneq ($(BUILD_GOALS),)
 -include $(DEPS)
+endif
 endif
 endif
 
 clean:
 	@echo "Cleaning..."
 	rm -rf $(BUILD_DIR)
-	rm -f tools/gen_const.exe
-	@echo "Clean complete"
+	@echo "Clean complete (all intermediates live under $(BUILD_DIR)/)"
 
 distclean: clean
 
 
-const: tools/gen_const.exe
-	tools/gen_const.exe > quickwin_const.d.ts
+# 交叉编译 gen_const.exe（Windows PE）；重生成 d.ts 以后在 VM 里跑该 exe
+# 固定 mingw + 子 make CROSS=1/x64-cross：Linux 顶层 CC=gcc 无 winsock2.h，
+# 且 native wolfssl 不能配 -DCMAKE_SYSTEM_NAME=Windows；只需 options.h，不链 .a
+GEN_CONST_CC ?= x86_64-w64-mingw32-gcc
 
-tools/gen_const.exe: tools/gen_const.c
-	$(CC) -o $@ $<
+gen-const:
+	@$(MAKE) CROSS=1 ARCH_TAG=x64 $(BUILD_DIR)/gen_const.exe
+
+$(BUILD_DIR)/gen_const.exe: tools/gen_const.c $(WOLFSSL_LIB_STATIC)
+	@mkdir -p $(BUILD_DIR)
+	$(GEN_CONST_CC) $(WOLFSSL_INC) -o $@ $<
 
 WAMR_CMAKE_OPTS = \
 	-DWAMR_BUILD_PLATFORM=windows \
@@ -274,21 +296,20 @@ WAMR_CMAKE_OPTS = \
 	-DCMAKE_CXX_FLAGS="-D_SSIZE_T_DEFINED"
 
 $(WAMR_LIB):
-	@echo "Building WAMR..."
+	@echo "Building WAMR ($(VARIANT))..."
 	@if [ ! -d "$(WAMR_DIR)" ]; then \
 		echo "Error: $(WAMR_DIR) directory not found. Run: git submodule update --init"; \
 		exit 1; \
 	fi
 	@sh patches/apply-submodule-patches.sh
-	@mkdir -p $(WAMR_BUILD_DIR)
-	cd $(WAMR_DIR) && cmake -B build $(WAMR_CMAKE_OPTS) \
+	@mkdir -p $(WAMR_BUILD_DIR) $(DEPS_LIB)
+	cmake -B $(WAMR_BUILD_DIR) -S $(WAMR_DIR) $(WAMR_CMAKE_OPTS) \
 		-DWAMR_BUILD_TARGET=$(WAMR_TARGET) \
 		-DCMAKE_C_COMPILER=$(CC) \
 		-DCMAKE_CXX_COMPILER=$(CXX)
 	cmake --build $(WAMR_BUILD_DIR) --config Release
-	@mkdir -p $(WAMR_DIR)/lib
 	cp $(WAMR_BUILD_DIR)/libiwasm.a $(WAMR_LIB)
-	@echo "WAMR build complete"
+	@echo "WAMR build complete: $(WAMR_LIB)"
 
 wamr: $(WAMR_LIB)
 
@@ -327,20 +348,20 @@ WOLFSSL_CMAKE_OPTS = \
 	-DNO_INT128=ON
 
 $(WOLFSSL_LIB_STATIC):
-	@echo "Building minimal wolfSSL..."
+	@echo "Building minimal wolfSSL ($(VARIANT))..."
 	if [ ! -f "$(WOLFSSL_DIR)/README.md" ]; then git submodule update --init --depth 1 $(WOLFSSL_DIR); fi
 	@sh patches/apply-submodule-patches.sh
-	@mkdir -p $(WOLFSSL_BUILD_DIR) $(WOLFSSL_DIR)/lib
-	cd $(WOLFSSL_DIR) && cmake -B build $(WOLFSSL_CMAKE_OPTS) \
+	@mkdir -p $(WOLFSSL_BUILD_DIR) $(DEPS_LIB)
+	cmake -B $(WOLFSSL_BUILD_DIR) -S $(WOLFSSL_DIR) $(WOLFSSL_CMAKE_OPTS) \
 		-DCMAKE_C_COMPILER=$(CC)
 	cmake --build $(WOLFSSL_BUILD_DIR) --config Release
 	cp $(WOLFSSL_BUILD_DIR)/libwolfssl.a $(WOLFSSL_LIB_STATIC)
-	@echo "Minimal wolfSSL build complete"
+	@echo "Minimal wolfSSL build complete: $(WOLFSSL_LIB_STATIC)"
 
 $(BROTLI_LIB) $(BROTLI_COMMON_LIB):
-	@echo "Building brotli..."
+	@echo "Building brotli ($(VARIANT))..."
 	@if [ ! -f "$(BROTLI_DIR)/README.md" ]; then git submodule update --init --depth 1 $(BROTLI_DIR); fi
-	@mkdir -p $(BROTLI_BUILD_DIR) $(BROTLI_DIR)/lib
+	@mkdir -p $(BROTLI_BUILD_DIR) $(DEPS_LIB)
 	cmake -B $(BROTLI_BUILD_DIR) -S $(BROTLI_DIR) \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_C_COMPILER=$(CC) \
@@ -354,10 +375,10 @@ $(BROTLI_LIB) $(BROTLI_COMMON_LIB):
 	@echo "brotli build complete"
 
 $(LIBFFI_LIB):
-	@echo "Building libffi..."
+	@echo "Building libffi ($(VARIANT))..."
 	@if [ ! -f "$(LIBFFI_DIR)/LICENSE" ]; then git submodule update --init --depth 1 $(LIBFFI_DIR); fi
 	@if [ ! -f "$(LIBFFI_DIR)/configure" ]; then cd $(LIBFFI_DIR) && autoreconf -fiv; fi
-	@mkdir -p $(LIBFFI_BUILD_DIR) $(LIBFFI_DIR)/lib
+	@mkdir -p $(LIBFFI_BUILD_DIR) $(DEPS_LIB)
 	cd $(LIBFFI_BUILD_DIR) && \
 		$(abspath $(LIBFFI_DIR))/configure \
 			--host=$(CROSS_HOST) --build=x86_64-pc-linux-gnu \
@@ -381,17 +402,20 @@ info:
 	@echo "  LIBS      = $(LIBS)"
 	@echo "  TARGET    = $(TARGET)"
 	@echo "  BUILD_DIR = $(BUILD_DIR)"
+	@echo "  OBJ_DIR   = $(OBJ_DIR)"
+	@echo "  DEPS_LIB  = $(DEPS_LIB)"
+	@echo "  VARIANT   = $(VARIANT)"
 	@echo "  BUILD     = $(BUILD)"
 	@echo "  NO_WASM   = $(NO_WASM)"
 
 js:
 	@echo "Compiling TypeScript files to JavaScript using tsc..."
 	@npx tsc --project tsconfig.json
-	@echo "Bundling react entries with esbuild..."
-	@node build.ts
 	@echo "Copying vendor/mupdf-wasm to $(BUILD_DIR)/vendor/mupdf-wasm..."
 	@rm -rf $(BUILD_DIR)/vendor/mupdf-wasm && mkdir -p $(BUILD_DIR)/vendor/mupdf-wasm && cp -r vendor/mupdf-wasm/. $(BUILD_DIR)/vendor/mupdf-wasm/
 	@mkdir -p $(BUILD_DIR)/lib/vendor/web-streams && cp lib/vendor/web-streams/ponyfill.mjs $(BUILD_DIR)/lib/vendor/web-streams/
+	@echo "Bundling entries with esbuild..."
+	@node build.ts
 	@echo "TypeScript compilation complete"
 
 test: cc64 js wasm
@@ -408,28 +432,47 @@ npm-pkg: js wasm
 	cp $(BUILD_DIR)/$(TARGET_NAME) $(BUILD_DIR)/$(TARGET_NAME_32) $(BUILD_DIR)/$(TARGET_NOWASM) $(BUILD_DIR)/$(TARGET_NOWASM_32) $(NPM_PKG_DIR)/
 	@echo "npm package created at $(NPM_PKG_DIR)"
 
+# 优先 32-bit（XP 可跑）；否则用已有的 64-bit（CI win7 只编 cc64）。
+# 两者都没有才递归 make cc32（保持本地 clean 后 make exec_server 可用）。
+exec_server: js
+	@if [ ! -f $(BUILD_DIR)/$(TARGET_NAME_32) ] && [ ! -f $(BUILD_DIR)/$(TARGET_NAME) ]; then \
+		$(MAKE) cc32; \
+	fi
+	@if [ -f $(BUILD_DIR)/$(TARGET_NAME_32) ]; then \
+		cp $(BUILD_DIR)/$(TARGET_NAME_32) $(BUILD_DIR)/exec_server.exe; \
+	else \
+		cp $(BUILD_DIR)/$(TARGET_NAME) $(BUILD_DIR)/exec_server.exe; \
+	fi
+	node scripts/embed-js.mjs --exe $(BUILD_DIR)/exec_server.exe \
+	  --js $(BUILD_DIR)/examples/exec_server.js --compress
+
 embed-js: cc64
-	powershell -ExecutionPolicy Bypass -File scripts/embed-js.ps1 -ExePath $(TARGET) -JsFile $(JS_EMBED)
+	node scripts/embed-js.mjs --exe $(TARGET) --js $(JS_EMBED)
 
 embed-js-br: cc64
-	powershell -ExecutionPolicy Bypass -File scripts/embed-js.ps1 -ExePath $(TARGET) -JsFile $(JS_EMBED) -Compress
+	node scripts/embed-js.mjs --exe $(TARGET) --js $(JS_EMBED) --compress
 
 help:
 	@echo "Available targets:"
 	@echo "  BUILD=fast(默认)|small|debug 可用于所有构建 target："
-	@echo "  make cc64                     - cross x86_64, fast build -> $(BUILD_DIR)/$(TARGET_NAME)"
-	@echo "  make cc64 BUILD=small         - cross x86_64, -Os+LTO release (CI/发布)"
-	@echo "  make cc64 BUILD=debug         - cross x86_64, -g -O0 debug (不 strip)"
-	@echo "  cc32                          - cross i686 -> $(BUILD_DIR)/$(TARGET_NAME_32)"
-	@echo "  cc64-nowasm / cc32-nowasm     - 同上但无 WASM/WAMR"
+	@echo "  make cc64                     - cross x64, fast build -> $(BUILD_DIR)/$(TARGET_NAME)"
+	@echo "  make cc64 BUILD=small         - cross x64, -Os+LTO release (CI/发布)"
+	@echo "  make cc64 BUILD=debug         - cross x64, -g -O0 debug (不 strip)"
+	@echo "  make cc32                     - cross ia32 -> $(BUILD_DIR)/$(TARGET_NAME_32)"
+	@echo "  make cc64-nowasm / cc32-nowasm - 同上但无 WASM/WAMR"
+	@echo "  中间产物全部在 $(BUILD_DIR)/ 下，按 arch 隔离："
+	@echo "    $(BUILD_DIR)/obj/{x64,ia32}-{cross,native}[-nowasm]/   .o .d libquickjs.a"
+	@echo "    $(BUILD_DIR)/deps/{x64,ia32}-{cross,native}/  静态库 + cmake build（nowasm 共享）"
+	@echo "    切 32/64 无需手动清 deps；make clean 清掉全部中间产物"
 	@echo "  test      - Run suites: make test / make test TEST=wasm / make test TEST=-net"
 	@echo "  js        - Compile TypeScript files to JavaScript"
 	@echo "  wasm      - Convert WAT files to WASM (requires wabt)"
 	@echo "  npm-pkg   - Package distributable into $(NPM_PKG_DIR)"
-	@echo "  const     - Generate quickwin_const.d.ts from tools/gen_const.c"
+	@echo "  gen-const - Cross-compile tools/gen_const.exe -> $(BUILD_DIR)/gen_const.exe"
 	@echo "  wamr      - Build WAMR static library (auto-built on demand)"
+	@echo "  exec_server - Bundle examples/exec_server.ts, brotli-embed into $(BUILD_DIR)/exec_server.exe"
 	@echo "  embed-js  - Embed JS_EMBED into exe: make embed-js JS_EMBED=script.js"
 	@echo "  embed-js-br - Embed brotli-compressed JS into exe"
-	@echo "  clean     - Remove built files"
+	@echo "  clean     - Remove $(BUILD_DIR)/ (all intermediates)"
 	@echo "  info      - Show build configuration"
 	@echo "  help      - Show this help message"

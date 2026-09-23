@@ -18,18 +18,27 @@ function readAll(file: std.FILE): string {
 }
 
 const server = createServer(async (req) => {
-    if (req.method === 'POST' && new URL(req.url).pathname === '/exec') {
+    const path = new URL(req.url).pathname
+    if (req.method === 'GET' && (path === '/' || path === '/health')) {
+        return new Response('ok', { headers: { 'Content-Type': 'text/plain' } })
+    }
+    if (req.method === 'POST' && path === '/exec') {
         const body = await req.json() as { cmd: string }
         const file = std.popen(body.cmd, 'r')
-        if (!file) return new Response('popen failed', { status: 500 })
+        if (!file) {
+            return new Response(JSON.stringify({ out: '', code: -1, error: 'popen failed' }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json' }
+            })
+        }
         const output = readAll(file)
-        file.close()
-        return new Response(output, {
-            headers: { 'Content-Type': 'application/octet-stream' }
+        const code = file.close()
+        return new Response(JSON.stringify({ out: output, code }), {
+            headers: { 'Content-Type': 'application/json' }
         })
     }
     return new Response('Not Found', { status: 404 })
 })
 
-server.listen(8080)
-console.log('listening on http://localhost:8080')
+const rc = server.listen(8080, '0.0.0.0')
+console.log('listen rc=' + rc + ' addr=' + JSON.stringify(server.address()))

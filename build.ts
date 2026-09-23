@@ -18,6 +18,7 @@ async function main() {
       '_build/examples/pdf_viewer.js',
       '_build/examples/test_root_window.js',
       '_build/examples/test_react_lazy.js',
+      '_build/examples/exec_server.js',
     ],
     allowOverwrite: true,
     bundle: true,
@@ -33,7 +34,7 @@ async function main() {
     treeShaking: true,
     // minify: true
   })
-  console.log('React bundles built')
+  console.log('Bundles built')
 }
 
 main().catch(e => { console.error(e); process.exit(1) })

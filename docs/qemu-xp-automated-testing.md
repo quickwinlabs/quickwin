@@ -82,8 +82,8 @@ qemu-img create -f qcow2 -b xp_ready.qcow2 -F qcow2 xp_test.qcow2
 **解决方案：guestfwd + 自定义 smbd**。用 QEMU 的 `guestfwd` 机制替代 `-smb`，启动一个支持 SMB1 的自定义 smbd：
 
 ```bash
-# run.sh 里替换 -smb：
--netdev user,id=net0,guestfwd=tcp:10.0.2.4:445-cmd:"$(pwd)/smb_wrapper.sh",hostfwd=tcp::8081-:8080 \
+# run.sh 里替换 -smb（FWD 按 VM：win7=7080，xp=5180 → guest 8080）：
+-netdev user,id=net0,guestfwd=tcp:10.0.2.4:445-cmd:"$(pwd)/smb_wrapper.sh",hostfwd=tcp::"$FWD"-:8080 \
 ```
 
 `smb_wrapper.sh` 生成完全自定义的 smb.conf，关键两行：
@@ -126,10 +126,21 @@ QEMU 以 `-daemonize` 后台运行、`-display none` 隐藏窗口，测试全程
 
 主要目的是**持续测试**：VM 内常驻一个 HTTP 服务，宿主机随时可以提交命令执行，不用每次测试都重启虚拟机，节约时间。
 
-实现：在 VM 内启动 `exec_server.js`（VM 内 HTTP 8080），宿主机经 hostfwd（`8081→8080`）远程执行命令，例如：
+实现：在 VM 内启动 `exec_server`（VM 内 HTTP 8080），宿主机经 hostfwd 远程执行命令。宿主侧端口按系统区分，一眼可读：
+
+| VM | 容器内 hostfwd | 助记 |
+|----|----------------|------|
+| Win7 | **7080** → guest 8080 | 开头 7 = Win7 |
+| XP | **5180** → guest 8080 | NT **5.1** = XP |
 
 ```bash
-curl -X POST http://localhost:8081/exec \
+# Win7
+curl -X POST http://localhost:7080/exec \
+    -H "Content-Type: application/json" \
+    -d '{"cmd":"dir"}'
+
+# XP
+curl -X POST http://localhost:5180/exec \
     -H "Content-Type: application/json" \
     -d '{"cmd":"dir"}'
 ```

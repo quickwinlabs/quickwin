@@ -85,8 +85,9 @@ jobs:
   # 镜像即本地环境：Fedora + posix mingw，消除环境差异。
   # win7/xp 差异：win7 用 MINGW64(cc64) 出 qwin.exe 64 位；
   #               xp 用 MINGW32(cc32) 出 qwin-x86.exe 32 位。
-  # 测试流程已统一：run.bat 在 VM 内直接跑 test/run.js，
-  # host 只需等 run.log 的 Done + 解析 Summary。
+  # ── 测试段：常驻 exec_server + http_test.sh HTTP 下发 ──
+  # run.sh 开机等 /health；http_test.sh 起 serve_test、POST /exec、判 Summary
+  # （failed≤1 容忍 XP 打印机 ffi 环境差），exit code 即断言。
   # ──────────────────────────────────────────────────────────
   qemu-test:
     name: qemu-test (${{ matrix.id }})
@@ -153,14 +154,14 @@ jobs:
         uses: actions/cache@v5
         with:
           path: |
-            deps/wamr/lib/libiwasm.a
-            deps/wolfssl/lib/libwolfssl.a
-            deps/wolfssl/build/wolfssl/
-            deps/brotli/lib/libbrotlidec.a
-            deps/brotli/lib/libbrotlicommon.a
-            deps/libffi/lib/libffi.a
-            deps/libffi/build-*/include/
-          key: deps-${{ matrix.deps }}-${{ hashFiles('Makefile', 'patches/**', 'deps/wamr/**', 'deps/wolfssl/**', 'deps/brotli/**', 'deps/libffi/**') }}-v2
+            _build/deps/*/libiwasm.a
+            _build/deps/*/libwolfssl.a
+            _build/deps/*/wolfssl-build/wolfssl/
+            _build/deps/*/libbrotlidec.a
+            _build/deps/*/libbrotlicommon.a
+            _build/deps/*/libffi.a
+            _build/deps/*/libffi-build/include/
+          key: deps-${{ matrix.deps }}-${{ hashFiles('Makefile', 'patches/**', 'deps/wamr/**', 'deps/wolfssl/**', 'deps/brotli/**', 'deps/libffi/**') }}-v3
 
       # cc32 会自动构建 i686 的 libiwasm.a：$(TARGET) 依赖 WAMR_LIB，
       # 且 cc32 把 CC=i686-... 和 WAMR_TARGET=X86_32 传给子 make。
@@ -186,19 +187,22 @@ jobs:
             _build/${{ matrix.nowasm_exe }}
           if-no-files-found: error
 
-      # ── 测试段（win7/xp 统一：host serve_test + VM 内直跑跑完等 Done）──
-      - name: Start host test server
-        run: |
-          node tools/serve_test.ts 18923 > /tmp/serve_test.log 2>&1 &
-          echo "serve_test pid=$!"
-          sleep 1
-          curl -sf http://127.0.0.1:18923/ && echo " <- serve_test up"
+      # ── 测试段（常驻 exec_server + HTTP 下发）──
+      # run.sh 只开机等 /health；http_test.sh POST /exec 跑 test/run.js 并解析 Summary。
+      - name: Build exec_server
+        run: make exec_server
 
-      - name: Start ${{ matrix.id }} VM and run tests
+      - name: Start ${{ matrix.id }} VM (resident)
         run: |
           cd docker
           SHARE_DIR="$GITHUB_WORKSPACE/_build" bash run.sh ${{ matrix.id }}
-        timeout-minutes: 20
+        timeout-minutes: 10
+
+      - name: Run tests via HTTP
+        run: |
+          cd docker
+          bash http_test.sh ${{ matrix.id }}
+        timeout-minutes: 15
 
       - name: Stop VM
         if: always()
@@ -208,19 +212,6 @@ jobs:
         if: always()
         run: |
           cat docker/ci_share/run-${{ matrix.id }}.log 2>&1 || true
-
-      - name: Assert test results
-        run: |
-          LOG=docker/ci_share/run-${{ matrix.id }}.log
-          SUMMARY=$(grep -oE "Summary: [0-9]+/[0-9]+" "$LOG" 2>/dev/null | tail -1)
-          [ -n "$SUMMARY" ] || { echo "::error::no Summary line in run.log"; exit 1; }
-          OK=$(printf '%s' "$SUMMARY" | sed 's/.*: *\([0-9]*\)\/.*/\1/')
-          TOTAL=$(printf '%s' "$SUMMARY" | sed 's/.*\/\([0-9]*\).*/\1/')
-          FAILED=$(( TOTAL - OK ))
-          echo "$SUMMARY  (failed=$FAILED)"
-          [ "$FAILED" -le 1 ] || \
-            { echo "::error::$FAILED test failures (tolerating 1 for XP printer diff)"; exit 1; }
-        timeout-minutes: 5
 
       - name: Save ${{ matrix.id }} snapshot cache
         if: always() && steps.cache-snap.outputs.cache-hit != 'true' && steps.install-vm.outcome == 'success'

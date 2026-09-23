@@ -1,6 +1,5 @@
 _build/
 dist/
-/version.h
 *.exe
 *.o
 *.d
@@ -13,13 +12,6 @@ opencode.json
 output.png
 
 node_modules/
-deps/wamr/build/
-deps/wolfssl/build/
-deps/wolfssl/lib/
-deps/brotli/build-*/
-deps/brotli/lib/
-deps/libffi/build-*/
-deps/libffi/lib/
 temp/
 _cache/
 ./deps/quickjs

@@ -71,7 +71,7 @@ You can embed a JS script directly into the `qwin.exe` binary — no recompilati
 
 ```bash
 # Embed a script
-powershell -ExecutionPolicy Bypass -File scripts/embed-js.ps1 -ExePath _build/qwin.exe -JsFile script.js
+node scripts/embed-js.mjs --exe _build/qwin.exe --js script.js
 
 # Or via make
 make embed-js JS_EMBED=script.js
@@ -79,8 +79,11 @@ make embed-js JS_EMBED=script.js
 # Embed a script brotli-compressed (smaller exe, decompressed at runtime)
 make embed-js-br JS_EMBED=script.js
 
+# Bundle examples/exec_server.ts and brotli-embed into exec_server.exe
+make exec_server
+
 # Run it (no file argument needed)
-qwin.exe
+_build/exec_server.exe
 ```
 
 When run without a script file argument, `qwin.exe` checks for embedded JS at the end of itself. If found, it executes the embedded code. If not, it falls back to `main.js`. Both raw (`QWJS`) and brotli-compressed (`QWBR`) embedded payloads are supported; the compressed form is decompressed at startup.
@@ -204,6 +207,7 @@ cd quickwin
 | `make wamr` | rebuild WAMR library |
 | `make embed-js` | embed `embed.js` into exe (use `JS_EMBED=file.js`) |
 | `make embed-js-br` | embed brotli-compressed JS into exe |
+| `make exec_server` | Bundle `examples/exec_server.ts` and brotli-embed into `_build/exec_server.exe` |
 | `make npm-pkg` | package into `dist/quickwin/` |
 | `make clean` | clean build artifacts |
 
