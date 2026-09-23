@@ -21,13 +21,15 @@
 /* XP fallback uses WSAStringToAddress / WSAAddressToString     */
 /* which support both IPv4 and IPv6 on XP SP1+.                 */
 
-typedef const char *(*inet_ntop_fn)(int af, const void *src, char *dst, socklen_t size);
-typedef int (*inet_pton_fn)(int af, const char *src, void *dst);
+/* Native ws2_32 inet_ntop/inet_pton are WSAAPI (stdcall on x86).
+   Mismatch vs cdecl corrupts the stack on Win7 x86 — must match. */
+typedef const char *(WSAAPI *inet_ntop_fn)(int af, const void *src, char *dst, socklen_t size);
+typedef int (WSAAPI *inet_pton_fn)(int af, const char *src, void *dst);
 
 static inet_ntop_fn p_inet_ntop = NULL;
 static inet_pton_fn p_inet_pton = NULL;
 
-static const char *inet_ntop_compat(int af, const void *src, char *dst, socklen_t size) {
+static const char *WSAAPI inet_ntop_compat(int af, const void *src, char *dst, socklen_t size) {
     struct sockaddr_storage ss;
     unsigned long len = (unsigned long)size;
     memset(&ss, 0, sizeof(ss));
@@ -47,7 +49,7 @@ static const char *inet_ntop_compat(int af, const void *src, char *dst, socklen_
     return NULL;
 }
 
-static int inet_pton_compat(int af, const char *src, void *dst) {
+static int WSAAPI inet_pton_compat(int af, const char *src, void *dst) {
     struct sockaddr_storage ss;
     int size = sizeof(ss);
     char src_copy[INET6_ADDRSTRLEN + 1];
