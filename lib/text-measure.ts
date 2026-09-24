@@ -1,4 +1,5 @@
 import * as ffi from 'ffi'
+import * as os from 'os'
 import * as win from 'win'
 import * as gui from 'gui'
 
@@ -16,7 +17,8 @@ const GetDC = loadProc(user32, 'GetDC')
 const ReleaseDC = loadProc(user32, 'ReleaseDC')
 const SelectObject = loadProc(gdi32, 'SelectObject')
 
-const FFI_TYPE_UINT64 = ffi.FFI_TYPE_UINT64
+// 句柄宽度随架构：ia32 上 HDC/HWND 是 32-bit，错用 UINT64 会导致 DrawTextW 参数错位、测宽为 0
+const FFI_HND = os.arch === 'ia32' ? ffi.FFI_TYPE_UINT32 : ffi.FFI_TYPE_UINT64
 const FFI_S32 = ffi.FFI_TYPE_SINT32
 const FFI_PTR = ffi.FFI_TYPE_POINTER
 
@@ -25,7 +27,7 @@ export function measureText(hdc: number, text: string, maxWidth: number): { widt
     const rect = new ArrayBuffer(16)
     const dv = new DataView(rect)
     dv.setInt32(8, maxWidth, true)
-    ffi.ffiCall(DrawTextW, [FFI_TYPE_UINT64, FFI_PTR, FFI_S32, FFI_PTR, FFI_S32], [hdc, textBuf, -1, rect, gui.DrawTextFlag.CALCRECT], FFI_TYPE_UINT64)
+    ffi.ffiCall(DrawTextW, [FFI_HND, FFI_PTR, FFI_S32, FFI_PTR, FFI_S32], [hdc, textBuf, -1, rect, gui.DrawTextFlag.CALCRECT], FFI_S32)
     return { width: dv.getInt32(8, true), height: dv.getInt32(12, true) }
 }
 
@@ -37,13 +39,13 @@ export function getButtonIdealSize(hwnd: gui.HWND): { width: number; height: num
 }
 
 export function measureTextForHwnd(hwnd: gui.HWND, text: string): { width: number; height: number } {
-    const hdc = ffi.ffiCall(GetDC, [FFI_TYPE_UINT64], [hwnd], FFI_TYPE_UINT64)
+    const hdc = ffi.ffiCall(GetDC, [FFI_HND], [hwnd], FFI_HND)
     if (!hdc) return { width: 0, height: 0 }
     const hFont = gui.SendMessage(hwnd, gui.WmMsg.GETFONT, 0, 0)
-    const oldFont = hFont ? ffi.ffiCall(SelectObject, [FFI_TYPE_UINT64, FFI_TYPE_UINT64], [hdc, hFont], FFI_TYPE_UINT64) : 0
+    const oldFont = hFont ? ffi.ffiCall(SelectObject, [FFI_HND, FFI_HND], [hdc, hFont], FFI_HND) : 0
     const result = measureText(hdc, text, 0)
-    if (hFont) ffi.ffiCall(SelectObject, [FFI_TYPE_UINT64, FFI_TYPE_UINT64], [hdc, oldFont], FFI_TYPE_UINT64)
-    ffi.ffiCall(ReleaseDC, [FFI_TYPE_UINT64, FFI_TYPE_UINT64], [hwnd, hdc], FFI_S32)
+    if (hFont) ffi.ffiCall(SelectObject, [FFI_HND, FFI_HND], [hdc, oldFont], FFI_HND)
+    ffi.ffiCall(ReleaseDC, [FFI_HND, FFI_HND], [hwnd, hdc], FFI_S32)
     const wr = gui.GetWindowRect(hwnd)
     const cr = gui.GetClientRect(hwnd)
     if (wr && cr) {
