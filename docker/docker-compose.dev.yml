@@ -11,7 +11,8 @@ services:
     volumes:
       - ..:/workspace:Z
     ports:
-      - "6080:6080"
+      - "6005:6005"
+      - "6007:6007"
     working_dir: /workspace
     stdin_open: true
     tty: true

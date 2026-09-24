@@ -1,21 +1,28 @@
 #!/bin/bash
-# Start noVNC websockify bridge (VNC 5901 -> WebSocket 6080)
+# Start noVNC websockify bridges (one per VM)
+#   XP:   host/container 6005 -> QEMU VNC 5901 (display :1)
+#   Win7: host/container 6007 -> QEMU VNC 5902 (display :2)
 # Usage: start-novnc.sh
 
-echo "Starting noVNC websockify bridge..."
-echo "  VNC: 5901 (QEMU)"
-echo "  WebSocket: 6080 (browser)"
+echo "Starting noVNC websockify bridges..."
+echo "  XP:   6005 -> localhost:5901"
+echo "  Win7: 6007 -> localhost:5902"
 
-# Kill existing websockify if running
 pkill -x websockify 2>/dev/null && sleep 1
 
-# Start websockify: listen on 0.0.0.0:6080, forward to VNC localhost:5901
 nohup /usr/sbin/websockify --log - \
     --web /usr/share/novnc \
-    0.0.0.0:6080 \
-    localhost:5901 > /tmp/websockify.log 2>&1 &
+    0.0.0.0:6005 \
+    localhost:5901 > /tmp/websockify-xp.log 2>&1 &
+XP_PID=$!
 
-WEB_PID=$!
-echo "websockify PID: $WEB_PID"
-echo "Access: http://localhost:6080/vnc.html"
-echo "  (or http://<host-ip>:6080/vnc.html from another machine)"
+nohup /usr/sbin/websockify --log - \
+    --web /usr/share/novnc \
+    0.0.0.0:6007 \
+    localhost:5902 > /tmp/websockify-win7.log 2>&1 &
+W7_PID=$!
+
+echo "websockify XP PID: $XP_PID"
+echo "websockify Win7 PID: $W7_PID"
+echo "Access XP:   http://localhost:6005/vnc.html"
+echo "Access Win7: http://localhost:6007/vnc.html"

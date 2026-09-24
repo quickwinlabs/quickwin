@@ -17,8 +17,8 @@ VM="${1:?usage: ./http_test.sh <win7|xp> [filter]}"
 FILTER="${2:-}"
 
 case "$VM" in
-  win7) FWD=7080 ;;
-  xp)   FWD=5180 ;;
+  win7) FWD=8007 ;;
+  xp)   FWD=8005 ;;
   *) echo "未知 VM: $VM（可选 win7|xp）"; exit 1 ;;
 esac
 

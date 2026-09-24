@@ -54,7 +54,7 @@
 ## XP (feat/win32-xp) 逐 suite 测试记录
 
 ### XP 环境说明
-- 宿主端口 **5180** → 客机 8080（win7 用 7080；NT 5.1=XP / 7=Win7 助记，docker/run.sh hostfwd。原为 8081，已改）
+- 宿主端口 **8005** → 客机 8080（win7 用 8007；800x+5=XP / +7=Win7 助记，docker/run.sh hostfwd。原为 8081，已改）
 - XP **有 `netsh interface portproxy`**（需先 `netsh interface ipv6 install`，XP 由 IPV6MON.DLL 实现）。
   listenaddress 用 `0.0.0.0`（127.0.0.1 在 XP 上不生效）。
 - ~~run.bat 直接跑测试（不依赖 exec_server，XP 上 exec_server 处理带反斜杠命令后会挂起）~~
@@ -98,7 +98,7 @@
 ### 反斜杠传闻复核（2026-09-23，XP 实测）
 
 原记录（L60/L86）称「exec_server 处理带反斜杠命令后会挂起」，仅有一句话无复现步骤。
-在常驻模式 XP 上（hostfwd :5180，容器内 curl）四条对照实测：
+在常驻模式 XP 上（hostfwd :8005，容器内 curl）四条对照实测：
 
 | 用例 | body | 结果 |
 |------|------|------|

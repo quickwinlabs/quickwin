@@ -140,7 +140,7 @@ cd docker
 
 Win7 用 `qwin.exe`（64 位），XP 用 `qwin-x86.exe`（32 位），`http_test.sh` 按 VM 参数选 exe；`run.bat` 按 `ver` 选日志文件名。
 
-> hostfwd 端口（win7:**7080** / xp:**5180**）只在容器网络里，宿主直连不通；本地须 `podman exec quickwin-dev` 进容器跑上述脚本。CI 在容器内直接跑，无此问题。
+> hostfwd 端口（win7:**8007** / xp:**8005**）只在容器网络里，宿主直连不通；本地须 `podman exec quickwin-dev` 进容器跑上述脚本。CI 在容器内直接跑，无此问题。
 
 ### 常见故障
 
@@ -152,7 +152,7 @@ Win7 用 `qwin.exe`（64 位），XP 用 `qwin-x86.exe`（32 位），`http_test
 | 网络测试连不上宿主 | guest `portproxy` 18923/18924 + 容器内 `serve_test` 必须都在；`--fresh` 会丢 overlay 里的 portproxy，由 run.bat 每次重建；`http_test.sh` 会自动拉起 serve_test |
 | `/exec` 超时 | `popen` 在 Worker 里跑，主循环不阻塞；默认 60s，`http_test.sh` 给 300s。真挂死用 `./run.sh <vm> --restart` |
 | 关机/等待死循环 | 不能用 `kill -0` 判 QEMU（容器 PID1 不回收僵尸）；看 pid **文件是否还存在**（QEMU 退出时自行 unlink） |
-| 需要看 VM 画面 | XP：monitor `screendump`（`setup-xp.sh` 无 VNC）；Win7/XP 测试态可 `./start-novnc.sh` 后浏览器开 `:6080` |
+| 需要看 VM 画面 | 容器内 `./start-novnc.sh` 后浏览器开 XP `:6005` / Win7 `:6007`（宿主已映射）；或 monitor `screendump` 截图 |
 | 残留 QEMU | `./run.sh <vm> --stop`；pid 文件残留用 `kill -9 $(cat qemu-<vm>.pid) \|\| true` |
 
 ## CI（ci-qemu.yml）

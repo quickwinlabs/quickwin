@@ -82,7 +82,7 @@ qemu-img create -f qcow2 -b xp_ready.qcow2 -F qcow2 xp_test.qcow2
 **解决方案：guestfwd + 自定义 smbd**。用 QEMU 的 `guestfwd` 机制替代 `-smb`，启动一个支持 SMB1 的自定义 smbd：
 
 ```bash
-# run.sh 里替换 -smb（FWD 按 VM：win7=7080，xp=5180 → guest 8080）：
+# run.sh 里替换 -smb（FWD 按 VM：win7=8007，xp=8005 → guest 8080）：
 -netdev user,id=net0,guestfwd=tcp:10.0.2.4:445-cmd:"$(pwd)/smb_wrapper.sh",hostfwd=tcp::"$FWD"-:8080 \
 ```
 
@@ -115,11 +115,16 @@ bootstrap.bat (HKLM\Run 自动触发)
 
 ### novnc
 
-QEMU 以 `-daemonize` 后台运行、`-display none` 隐藏窗口，测试全程无人值守。当流程卡住或安装异常时，看不到屏幕很难排查——此时需要在浏览器里直观看到 XP 界面。QEMU 的 VNC 是裸协议，浏览器无法直接访问，所以用 noVNC 把它桥接成 WebSocket：
+QEMU 以 `-daemonize` 后台运行、`-display none` 隐藏窗口，测试全程无人值守。当流程卡住或安装异常时，看不到屏幕很难排查——此时需要在浏览器里直观看到 guest 界面。QEMU 的 VNC 是裸协议，浏览器无法直接访问，所以用 noVNC 把它桥接成 WebSocket：
+
+| VM | QEMU VNC | 容器/宿主 noVNC | 浏览器 |
+|----|----------|-----------------|--------|
+| XP | `:1` → 5901 | 6005 | `http://<host>:6005/vnc.html` |
+| Win7 | `:2` → 5902 | 6007 | `http://<host>:6007/vnc.html` |
 
 ```bash
 ./start-novnc.sh
-# 打开 http://<host>:6080/vnc.html（websockify 桥：VNC 5901 -> WebSocket 6080）
+# 容器内起两路 websockify；宿主 compose 已映射 6005/6007
 ```
 
 ### exec_server
@@ -130,17 +135,17 @@ QEMU 以 `-daemonize` 后台运行、`-display none` 隐藏窗口，测试全程
 
 | VM | 容器内 hostfwd | 助记 |
 |----|----------------|------|
-| Win7 | **7080** → guest 8080 | 开头 7 = Win7 |
-| XP | **5180** → guest 8080 | NT **5.1** = XP |
+| Win7 | **8007** → guest 8080 | 800x + 7 = Win7 |
+| XP | **8005** → guest 8080 | 800x + 5 = XP |
 
 ```bash
 # Win7
-curl -X POST http://localhost:7080/exec \
+curl -X POST http://localhost:8007/exec \
     -H "Content-Type: application/json" \
     -d '{"cmd":"dir"}'
 
 # XP
-curl -X POST http://localhost:5180/exec \
+curl -X POST http://localhost:8005/exec \
     -H "Content-Type: application/json" \
     -d '{"cmd":"dir"}'
 ```

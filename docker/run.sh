@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 #  Bare QEMU — 常驻模式（win7 / xp 共用）
 #  从 snapshot 启动，bootstrap.bat 挂 SMB 并跑 run.bat；
 #  run.bat 只做防火墙/portproxy + 启动 exec_server，不跑测试。
-#  测试经 hostfwd HTTP 下发（win7:7080 / xp:5180 → guest:8080）。
+#  测试经 hostfwd HTTP 下发（win7:8007 / xp:8005 → guest:8080）。
 #
 #  用法: ./run.sh <win7|xp> [--fresh] [--stop] [--restart]
 #    默认：已在跑则只做健康检查后退出（真常驻）
@@ -24,14 +24,14 @@ case "$VM" in
     SNAPSHOT="$(pwd)/snapshots/win7_ready.qcow2"
     OVERLAY="$(pwd)/snapshots/win7_test.qcow2"
     MONITOR=/tmp/qemu-monitor-win7.sock
-    MEM=4096; SMP=4; NETDEV=e1000; FWD=7080
-    EXTRA=()
+    MEM=4096; SMP=4; NETDEV=e1000; FWD=8007
+    EXTRA=(-vnc 0.0.0.0:2)
     ;;
   xp)
     SNAPSHOT="$(pwd)/snapshots/xp_ready.qcow2"
     OVERLAY="$(pwd)/snapshots/xp_test.qcow2"
     MONITOR=/tmp/qemu-monitor-xp.sock
-    MEM=1024; SMP=1; NETDEV=rtl8139; FWD=5180
+    MEM=1024; SMP=1; NETDEV=rtl8139; FWD=8005
     EXTRA=(-machine pc-i440fx-5.2 -cpu qemu32 -device VGA,vgamem_mb=64 -vnc 0.0.0.0:1)
     ;;
   *) echo "未知 VM: $VM（可选 win7|xp）"; exit 1 ;;
