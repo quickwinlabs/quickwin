@@ -145,6 +145,12 @@ curl -X POST http://localhost:5180/exec \
     -d '{"cmd":"dir"}'
 ```
 
+响应：
+- **200** → body = 命令原始字节（Windows 中文输出多为 GBK），退出码在 `X-Exit-Code`
+- **非 200** → body = JSON `{"error":"..."}`（500=worker/错误，504=超时）
+
+`popen` 在 Worker 线程执行，`/health` 在长命令期间仍可响应。
+
 ---
 
 完整实现代码见 [quickwin/docker](https://github.com/xna00/quickwin/tree/main/docker)。

@@ -150,7 +150,7 @@ Win7 用 `qwin.exe`（64 位），XP 用 `qwin-x86.exe`（32 位），`http_test
 | VM 内挂不上 Z: | XP 仅 SMB1：须走 `smb_wrapper.sh`（guestfwd + `server min protocol = NT1`），不能用 QEMU `-smb` |
 | `net use` 成功但不跑 run.bat | `.bat` 必须 CRLF：仓库根 `.gitattributes` 已 `eol=crlf`（checkout 即 CRLF），`run.sh` 每次再 `unix2dos` 作双保险 |
 | 网络测试连不上宿主 | guest `portproxy` 18923/18924 + 容器内 `serve_test` 必须都在；`--fresh` 会丢 overlay 里的 portproxy，由 run.bat 每次重建；`http_test.sh` 会自动拉起 serve_test |
-| `/exec` 超时 | 同步 `popen` 阻塞事件循环属预期；`http_test.sh` 给 300s。真挂死用 `./run.sh <vm> --restart` |
+| `/exec` 超时 | `popen` 在 Worker 里跑，主循环不阻塞；默认 60s，`http_test.sh` 给 300s。真挂死用 `./run.sh <vm> --restart` |
 | 关机/等待死循环 | 不能用 `kill -0` 判 QEMU（容器 PID1 不回收僵尸）；看 pid **文件是否还存在**（QEMU 退出时自行 unlink） |
 | 需要看 VM 画面 | XP：monitor `screendump`（`setup-xp.sh` 无 VNC）；Win7/XP 测试态可 `./start-novnc.sh` 后浏览器开 `:6080` |
 | 残留 QEMU | `./run.sh <vm> --stop`；pid 文件残留用 `kill -9 $(cat qemu-<vm>.pid) \|\| true` |

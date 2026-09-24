@@ -2,7 +2,25 @@ import { build } from 'esbuild'
 
 const nativeModules = ['gui', 'os', 'std', 'sock', 'brotli', 'ffi', 'wamr', 'win', 'tls', 'wolfssl', '../lib/polyfill.js', '../vendor/mupdf-wasm/mupdf.js', '../vendor/mupdf-wasm/mupdf-wasm.js']
 
+async function buildExecWorkerDataUrl(): Promise<string> {
+  const result = await build({
+    entryPoints: ['_build/examples/exec_server_worker.js'],
+    bundle: true,
+    external: nativeModules,
+    format: 'esm',
+    minify: true,
+    write: false,
+    logLevel: 'warning',
+  })
+  const js = result.outputFiles[0].text
+  const b64 = Buffer.from(js, 'utf8').toString('base64')
+  return 'data:text/javascript;base64,' + b64
+}
+
 async function main() {
+  const workerDataUrl = await buildExecWorkerDataUrl()
+  console.log('exec_worker data URL length=' + workerDataUrl.length)
+
   await build({
     entryPoints: [
       '_build/test/test_react_counter.js',
@@ -30,7 +48,10 @@ async function main() {
     outdir: '.',
     outbase: '.',
     logLevel: 'warning',
-    define: { 'DEBUG': 'false' },
+    define: {
+      'DEBUG': 'false',
+      'WORKER_DATA_URL': JSON.stringify(workerDataUrl),
+    },
     treeShaking: true,
     // minify: true
   })

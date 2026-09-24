@@ -1,20 +1,48 @@
 import { createServer } from '../lib/http-server.js'
-import * as std from 'std'
+import * as os from 'os'
 
-function readAll(file: std.FILE): string {
-    const chunks: Uint8Array[] = []
-    const buf = new Uint8Array(4096)
-    while (true) {
-        const n = file.read(buf.buffer, 0, 4096)
-        if (n <= 0) break
-        chunks.push(buf.slice(0, n))
-    }
-    let total = 0
-    for (const c of chunks) total += c.length
-    const out = new Uint8Array(total)
-    let offset = 0
-    for (const c of chunks) { out.set(c, offset); offset += c.length }
-    return new TextDecoder().decode(out)
+// WORKER_DATA_URL 由 esbuild --define 在 build.ts 中注入（base64 data: URL）
+declare const WORKER_DATA_URL: string
+
+const EXEC_TIMEOUT_MS = 60_000
+
+interface ExecResult {
+    out: Uint8Array
+    code: number
+    error: string | null
+}
+
+function runInWorker(cmd: string): Promise<ExecResult> {
+    return new Promise((resolve, reject) => {
+        const worker = new os.Worker(WORKER_DATA_URL)
+        const id = 1
+        let settled = false
+        let timer: ReturnType<typeof os.setTimeout>
+
+        const finish = (fn: () => void) => {
+            if (settled) return
+            settled = true
+            os.clearTimeout(timer)
+            worker.onmessage = null
+            fn()
+        }
+
+        timer = os.setTimeout(() => {
+            finish(() => reject(new Error('exec timeout')))
+        }, EXEC_TIMEOUT_MS)
+
+        worker.onmessage = (e) => {
+            const msg = e.data as { type: string; id: number; out?: Uint8Array; code?: number; error?: string | null }
+            if (msg.type !== 'result' || msg.id !== id) return
+            finish(() => resolve({ out: msg.out ?? new Uint8Array(0), code: msg.code ?? -1, error: msg.error ?? null }))
+        }
+
+        try {
+            worker.postMessage({ type: 'run', id, cmd })
+        } catch (ex) {
+            finish(() => reject(ex instanceof Error ? ex : new Error(String(ex))))
+        }
+    })
 }
 
 const server = createServer(async (req) => {
@@ -24,18 +52,26 @@ const server = createServer(async (req) => {
     }
     if (req.method === 'POST' && path === '/exec') {
         const body = await req.json() as { cmd: string }
-        const file = std.popen(body.cmd, 'r')
-        if (!file) {
-            return new Response(JSON.stringify({ out: '', code: -1, error: 'popen failed' }), {
-                status: 500,
+        try {
+            const { out, code, error } = await runInWorker(body.cmd)
+            if (error) {
+                return new Response(JSON.stringify({ error }), {
+                    status: 500,
+                    headers: { 'Content-Type': 'application/json' }
+                })
+            }
+            return new Response(out, {
+                headers: {
+                    'Content-Type': 'application/octet-stream',
+                    'X-Exit-Code': String(code),
+                }
+            })
+        } catch (ex) {
+            return new Response(JSON.stringify({ error: String(ex) }), {
+                status: 504,
                 headers: { 'Content-Type': 'application/json' }
             })
         }
-        const output = readAll(file)
-        const code = file.close()
-        return new Response(JSON.stringify({ out: output, code }), {
-            headers: { 'Content-Type': 'application/json' }
-        })
     }
     return new Response('Not Found', { status: 404 })
 })
