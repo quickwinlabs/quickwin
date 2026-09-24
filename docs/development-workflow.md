@@ -154,6 +154,7 @@ Win7 用 `qwin.exe`（64 位），XP 用 `qwin-x86.exe`（32 位），`http_test
 | 关机/等待死循环 | 不能用 `kill -0` 判 QEMU（容器 PID1 不回收僵尸）；看 pid **文件是否还存在**（QEMU 退出时自行 unlink） |
 | 需要看 VM 画面 | 容器内 `./start-novnc.sh` 后浏览器开 XP `:6005` / Win7 `:6007`（宿主已映射）；或 monitor `screendump` 截图 |
 | 残留 QEMU | `./run.sh <vm> --stop`；pid 文件残留用 `kill -9 $(cat qemu-<vm>.pid) \|\| true` |
+| 改过 C/`qwin*.exe` 后 guest 仍像旧代码 | Windows SMB **按路径**缓存 exe：覆盖写/inode 变了仍可能跑旧映像（新文件名立刻生效）。`./run.sh <vm> --restart` 清会话；或临时拷到 `%TEMP%` 换名再跑 |
 
 ## CI（ci-qemu.yml）
 

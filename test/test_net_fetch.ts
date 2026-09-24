@@ -1,5 +1,6 @@
 import '../lib/fetch.js'
 import * as std from 'std'
+import * as os from 'os'
 import { Tester } from './test_helper.js'
 
 export const suite = {
@@ -233,6 +234,77 @@ export const suite = {
             assert('https body matches', body === 'hello from test server')
         } else {
             assert('https endpoint reachable', false)
+        }
+
+        // ── large HTTPS body (wolfSSL_read null regression) ──
+        // Pre-fix: wolfSSL_read returned number -1 on WANT_READ →
+        // receivedBytes became NaN → stream never closed → hang.
+        t.section('large HTTPS body')
+        {
+            const LARGE = 200000
+            try {
+                const r = await Promise.race([
+                    fetch(`https://localhost:18924/large/${LARGE}`, { timeout: 15000 }),
+                    new Promise<never>((_, rej) =>
+                        os.setTimeout(() => rej(new Error('Body hang watchdog 15s')), 15000)
+                    )
+                ])
+                assert('large HTTPS status 200', r.status === 200)
+                const buf = await Promise.race([
+                    r.arrayBuffer(),
+                    new Promise<never>((_, rej) =>
+                        os.setTimeout(() => rej(new Error('arrayBuffer hang watchdog 15s')), 15000)
+                    )
+                ])
+                assert('large HTTPS byteLength exact', buf.byteLength === LARGE)
+            } catch (e: unknown) {
+                assert('large HTTPS completed without hang (' + String((e as Error).message) + ')', false)
+            }
+        }
+
+        // ── large HTTP body (sock.recv path same null contract) ──
+        t.section('large HTTP body')
+        {
+            const LARGE = 200000
+            try {
+                const r = await Promise.race([
+                    fetch(`http://localhost:18923/large/${LARGE}`, { timeout: 15000 }),
+                    new Promise<never>((_, rej) =>
+                        os.setTimeout(() => rej(new Error('Body hang watchdog 15s')), 15000)
+                    )
+                ])
+                assert('large HTTP status 200', r.status === 200)
+                const buf = await Promise.race([
+                    r.arrayBuffer(),
+                    new Promise<never>((_, rej) =>
+                        os.setTimeout(() => rej(new Error('arrayBuffer hang watchdog 15s')), 15000)
+                    )
+                ])
+                assert('large HTTP byteLength exact', buf.byteLength === LARGE)
+            } catch (e: unknown) {
+                assert('large HTTP completed (' + String((e as Error).message) + ')', false)
+            }
+        }
+
+        // ── body timeout after headers (armTimeout after doResolve) ──
+        t.section('HTTPS body timeout')
+        {
+            let rejected = false
+            let msg = ''
+            try {
+                const r = await fetch('https://localhost:18924/stall', { timeout: 2000 })
+                await Promise.race([
+                    r.arrayBuffer(),
+                    new Promise<never>((_, rej) =>
+                        os.setTimeout(() => rej(new Error('Body timeout')), 8000)
+                    )
+                ])
+            } catch (e: unknown) {
+                rejected = true
+                msg = String((e as Error).message)
+            }
+            assert('stall body rejects (timeout)', rejected)
+            assert('stall error mentions timeout', /timeout/i.test(msg))
         }
     }
 }

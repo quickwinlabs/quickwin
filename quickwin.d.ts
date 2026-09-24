@@ -386,6 +386,7 @@ declare module "wolfssl" {
     function wolfSSL_connect(ssl: WOLFSSL): number;
     function wolfSSL_shutdown(ssl: WOLFSSL): number;
     function wolfSSL_write(ssl: WOLFSSL, buf: ArrayBuffer): number;
+    /** 成功返回 ArrayBuffer；EOF/暂无数据/错误返回 null（区分用 wolfSSL_get_error：6=ZERO_RETURN 关闭，2=WANT_READ） */
     function wolfSSL_read(ssl: WOLFSSL, sz: number): ArrayBuffer | null;
     function wolfSSL_get_error(ssl: WOLFSSL, ret: number): number;
     function wolfSSL_UseSNI(ssl: WOLFSSL, type: SniType, name: string, len?: number): number;

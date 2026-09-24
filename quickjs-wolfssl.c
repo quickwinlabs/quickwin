@@ -132,7 +132,7 @@ static JSValue js_wolfSSL_read(JSContext *ctx, JSValueConst this_val, int argc, 
     int ret = wolfSSL_read(ssl, buf, size);
     if (ret <= 0) {
         free(buf);
-        return JS_NewInt32(ctx, ret);
+        return JS_NULL;
     }
     
     JSValue arr = JS_NewArrayBufferCopy(ctx, buf, ret);

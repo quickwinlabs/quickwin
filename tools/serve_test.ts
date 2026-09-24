@@ -85,6 +85,37 @@ const server = http.createServer(async (req, res) => {
         return
     }
 
+    if (req.method === 'GET' && pathname.startsWith('/large/')) {
+        const n = Math.max(0, Math.min(5_000_000, parseInt(pathname.slice('/large/'.length), 10) || 0))
+        res.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': String(n) })
+        const chunk = 'A'.repeat(65536)
+        let sent = 0
+        const writeMore = () => {
+            while (sent < n) {
+                const take = Math.min(chunk.length, n - sent)
+                const ok = res.write(take === chunk.length ? chunk : chunk.slice(0, take))
+                sent += take
+                if (!ok) { res.once('drain', writeMore); return }
+            }
+            res.end()
+        }
+        writeMore()
+        return
+    }
+
+    if (req.method === 'GET' && pathname === '/stall') {
+        res.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': '1000000' })
+        res.write('partial')
+        // never end — client body-timeout path
+        return
+    }
+
+    if (req.method === 'GET' && pathname === '/close') {
+        res.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': '5' })
+        res.end('bye')
+        return
+    }
+
     res.writeHead(404)
     res.end('not found')
 })
@@ -142,6 +173,37 @@ const httpsServer = https.createServer(httpsOpts, async (req, res) => {
             'Cache-Control': 'public, max-age=60'
         })
         res.end('cached response')
+        return
+    }
+
+    if (req.method === 'GET' && pathname.startsWith('/large/')) {
+        const n = Math.max(0, Math.min(5_000_000, parseInt(pathname.slice('/large/'.length), 10) || 0))
+        res.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': String(n) })
+        const chunk = 'A'.repeat(65536)
+        let sent = 0
+        const writeMore = () => {
+            while (sent < n) {
+                const take = Math.min(chunk.length, n - sent)
+                const ok = res.write(take === chunk.length ? chunk : chunk.slice(0, take))
+                sent += take
+                if (!ok) { res.once('drain', writeMore); return }
+            }
+            res.end()
+        }
+        writeMore()
+        return
+    }
+
+    if (req.method === 'GET' && pathname === '/stall') {
+        res.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': '1000000' })
+        res.write('partial')
+        // never end — client body-timeout path
+        return
+    }
+
+    if (req.method === 'GET' && pathname === '/close') {
+        res.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': '5' })
+        res.end('bye')
         return
     }
 

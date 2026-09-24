@@ -107,6 +107,7 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
 
         const cleanupSocket = (): void => {
             state = ST_DONE
+            if (timerId) { clearTimeout(timerId); timerId = undefined }
             if (ssl) { wolfssl.wolfSSL_free(ssl); ssl = null }
             if (ctx) { wolfssl.wolfSSL_CTX_free(ctx); ctx = null }
             if (s !== null && s >= 0) { sock.closesocket(s); s = null }
@@ -116,17 +117,36 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
             if (timerId) { clearTimeout(timerId); timerId = undefined }
         }
 
+        const armTimeout = (): void => {
+            if (timerId) { clearTimeout(timerId); timerId = undefined }
+            timerId = setTimeout(() => {
+                timerId = undefined
+                if (state === ST_DONE) return
+                if (!resolved) {
+                    doReject(new Error('Request timeout'))
+                    return
+                }
+                if (state === ST_RECV_BODY && stream && _controller) {
+                    try { _controller.error(new Error('Body timeout')) } catch { /* already closed */ }
+                    stream = null
+                    cleanupSocket()
+                }
+            }, timeout)
+        }
+
         const doResolve = (response: ResponseImpl): void => {
-            if (!resolved) { resolved = true; cleanup(); resolve(response) }
+            if (resolved) return
+            resolved = true
+            if (state === ST_DONE) cleanup()
+            else armTimeout()
+            resolve(response)
         }
 
         const doReject = (error: Error): void => {
             if (!resolved) { resolved = true; cleanup(); cleanupSocket(); reject(error) }
         }
 
-        timerId = setTimeout(() => {
-            doReject(new Error('Request timeout'))
-        }, timeout)
+        armTimeout()
 
         s = sock.socket()
         if (s < 0) { doReject(new Error('Failed to create socket')); return }

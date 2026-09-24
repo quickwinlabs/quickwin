@@ -15,3 +15,4 @@
 - [ ] `_PreloadedStream` optimization: `slice()` → `subarray()`
 - [ ] Add protocol whitelist for `fetch()`
 - [ ] `exec_server` 流式输出：当前三层全缓冲（worker `readBytes` 读到 EOF 一次 `postMessage` → `runInWorker` 等完整 `out` → `http-server.sendResponse` `_readStream` + `Content-Length` 一次 `queueSend`），命令跑完客户端才收到 body。要做流式需：(1) worker 分块 `postMessage({type:'chunk'})` + 结束 `result`；(2) `/exec` 用 `ReadableStream` 构造 Response；(3) `sendResponse` 支持 chunked 响应（先 headers 再多次 `sock.send`，EOF `0\r\n\r\n`）——`chunked` 目前只解析请求 body；(4) 中途断开/超时/worker 挂收尾；(5) `http_test.sh` 回归。文件：`examples/exec_server.ts`、`examples/exec_server_worker.ts`、`lib/http-server.ts`（`sendResponse` ~L395）
+- [ ] 研究 guest SMB 按路径缓存 `qwin*.exe` 的治本方案：覆盖写/inode 变仍跑旧映像（已实测新文件名立刻生效）。候选：`http_test.sh` 本地临时拷贝换名、`smb_wrapper` 关 oplock、guest 关客户端缓存注册表、exe hash 变自动 `--restart`。现状见 `docs/development-workflow.md` 故障表
