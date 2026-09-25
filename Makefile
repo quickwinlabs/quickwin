@@ -430,6 +430,7 @@ npm-pkg: js wasm
 	cp examples/*.ts examples/*.tsx $(NPM_PKG_DIR)/examples/
 	cp quickwin.d.ts quickwin_const.d.ts tsconfig.json package.json README.md README.en.md $(NPM_PKG_DIR)/
 	cp $(BUILD_DIR)/$(TARGET_NAME) $(BUILD_DIR)/$(TARGET_NAME_32) $(BUILD_DIR)/$(TARGET_NOWASM) $(BUILD_DIR)/$(TARGET_NOWASM_32) $(NPM_PKG_DIR)/
+	cp $(BUILD_DIR)/main.js $(NPM_PKG_DIR)/main.js
 	@echo "npm package created at $(NPM_PKG_DIR)"
 
 # 优先 32-bit（XP 可跑）；否则用已有的 64-bit（CI win7 只编 cc64）。
