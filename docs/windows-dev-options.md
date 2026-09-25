@@ -5,7 +5,7 @@
 | **Electron** | Win10+（旧版可到Win7） | 极大(100MB+) | 低 | 低 | 是 |
 | **Tauri** | Win10+（旧版可到Win7，需装WebView2） | 小 | 中 | 高 | 是 |
 | **C/C++ + Win32** | Win95+ | 极小 | 高 | 最高 | 否 |
-| [**QuickWin**](https://github.com/xna00/quickwin) | Win7 64位（计划支持XP 32/64位） | ~1.5MB | 低 | 高 | 否 |
+| [**QuickWin**](https://github.com/xna00/quickwin) | Windows XP | ~1.5MB | 低 | 高 | 否 |
 | **Python + PyQt5** | XP+\*（旧版本） | 很大 | 低 | 中 | 是 |
 | **C# (WinForms / WPF)** | Win7+（需 .NET 运行时\*） | 较大 | 中 | 高 | 否 |
 
@@ -27,7 +27,7 @@
 - 原生 Win32 GUI（窗口/按钮/托盘），也可用 **React/JSX** 声明式界面
 - 内置 **HTTP/HTTPS、WebSocket、WASM（WAMR）、FFI** 等能力
 - 支持 `import('https://esm.sh/...')` 动态导入，无需安装依赖
-- 目标兼容 XP+（32/64 位），当前支持 Win7+（64 位）
+- 支持 Windows XP+
 
 ```powershell
 iwr https://github.com/xna00/quickwin/releases/latest/download/qwin.exe -OutFile qwin.exe

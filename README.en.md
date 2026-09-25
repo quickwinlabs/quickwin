@@ -13,10 +13,11 @@ Install:
 ```bash
 # Option 1: npm local install (recommended)
 npm install quickwin
-npx quickwin script.js
+npx quickwin node_modules/quickwin/main.js   # bundled main.js demo; use npx quickwin script.js for your own scripts
 
 # Option 2: download directly from GitHub Release
 iwr https://github.com/xna00/quickwin/releases/latest/download/qwin.exe -OutFile qwin.exe
+iwr https://github.com/xna00/quickwin/releases/latest/download/main.js -OutFile main.js
 .\qwin.exe main.js
 ```
 

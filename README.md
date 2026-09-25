@@ -13,10 +13,11 @@ Windows 平台上的 QuickJS 运行时，支持原生 GUI、网络、WASM、FFI 
 ```bash
 # 方式一：npm 本地安装（推荐）
 npm install quickwin
-npx quickwin script.js
+npx quickwin node_modules/quickwin/main.js   # 包自带 main.js 示例；用 npx quickwin script.js 运行你自己的脚本
 
 # 方式二：直接从 GitHub Release 下载
 iwr https://github.com/xna00/quickwin/releases/latest/download/qwin.exe -OutFile qwin.exe
+iwr https://github.com/xna00/quickwin/releases/latest/download/main.js -OutFile main.js
 .\qwin.exe main.js
 ```
 
