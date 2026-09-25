@@ -1,7 +1,19 @@
 import { forwardRef, useRef, useEffect, useState, type ReactNode } from 'react'
 import * as gui from 'gui'
 import * as ffi from 'ffi'
+import { struct } from '../../ffi-struct.js'
+import { nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
+
+const TCITEMW = struct({
+  mask: 'u32',
+  dwState: 'u32',
+  dwStateMask: 'u32',
+  pszText: 'ptr',
+  cchTextMax: 'i32',
+  iImage: 'i32',
+  lParam: 'ptr',
+})
 
 function textToUtf16(s: string): ArrayBuffer {
   const buf = new ArrayBuffer((s.length + 1) * 2)
@@ -9,11 +21,6 @@ function textToUtf16(s: string): ArrayBuffer {
   for (let i = 0; i < s.length; i++)
     dv.setUint16(i * 2, s.charCodeAt(i), true)
   return buf
-}
-
-function readI32(ptr: number, offset: number): number {
-  return ffi.readByte(ptr + offset) | (ffi.readByte(ptr + offset + 1) << 8) |
-    (ffi.readByte(ptr + offset + 2) << 16) | (ffi.readByte(ptr + offset + 3) << 24)
 }
 
 export interface TabProps {
@@ -37,11 +44,15 @@ export const Tab = forwardRef<gui.HWND, TabProps>(
       gui.SendMessage(h, gui.TcMsg.DELETEALLITEMS, 0, 0)
       for (let i = 0; i < tabs.length; i++) {
         const titleBuf = textToUtf16(tabs[i]!.title)
-        const tci = new ArrayBuffer(40)
-        const dv = new DataView(tci)
-        dv.setUint32(0, gui.TcItemFlag.TEXT, true)
-        dv.setBigUint64(16, BigInt(ffi.bufferPtr(titleBuf)), true)
-        dv.setInt32(24, tabs[i]!.title.length + 1, true)
+        const tci = TCITEMW.write({
+          mask: gui.TcItemFlag.TEXT,
+          dwState: 0,
+          dwStateMask: 0,
+          pszText: ffi.bufferPtr(titleBuf),
+          cchTextMax: tabs[i]!.title.length + 1,
+          iImage: 0,
+          lParam: 0,
+        })
         const tciPtr = ffi.bufferPtr(tci)
         gui.SendMessage(h, gui.TcMsg.INSERTITEMW, i, tciPtr)
       }
@@ -63,7 +74,7 @@ export const Tab = forwardRef<gui.HWND, TabProps>(
           if (e.msg === gui.WmMsg.NOTIFY) {
             const h = tabHwnd.current
             if (!h) return
-            const code = readI32(e.lParam, 16)
+            const code = nmCode(e.lParam)
             // SysTabControl32 在 comctl32 v6 下不发标准的 TCN_SELCHANGE (-550),
             // 收到 NM_CLICK (-2) 或 TCN_SELCHANGING (-551) 时读实际选中项
             if (code === gui.TcNotifyCode.SELCHANGING || code === gui.SysLinkNotifyCode.CLICK) {

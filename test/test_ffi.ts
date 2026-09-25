@@ -173,18 +173,18 @@ export const suite = {
             std.printf('  no printers installed (skip)\n')
         }
 
-        t.section('pointer arg type check')
-        let threw = false
-        try {
-            ffi.ffiCall(
-                enumPrinters,
-                [ffi.FFI_TYPE_POINTER] as any,
-                [123] as any,
-                ffi.FFI_TYPE_VOID
-            )
-        } catch (e) {
-            threw = true
+        t.section('PTR accepts raw number handles (XP 32-bit fix)')
+        const hUser32 = win.LoadLibrary('user32.dll')
+        t.checkTrue('LoadLibrary("user32.dll") succeeds', hUser32 !== null)
+        if (hUser32) {
+            const getDC = win.GetProcAddress(hUser32, 'GetDC')
+            t.checkTrue('GetProcAddress("GetDC") succeeds', getDC !== null)
+            if (getDC) {
+                const screenDc = ffi.ffiCall(getDC, [ffi.FFI_TYPE_POINTER], [0], ffi.FFI_TYPE_POINTER)
+                t.checkTrue('PTR slot takes number (NULL hwnd) and returns a DC handle', screenDc !== 0 && screenDc !== null)
+                const bogus = ffi.ffiCall(getDC, [ffi.FFI_TYPE_POINTER], [0x12345678], ffi.FFI_TYPE_POINTER)
+                t.checkTrue('PTR slot takes non-zero number without throwing', bogus === 0 || bogus === null)
+            }
         }
-        t.checkTrue('non-ArrayBuffer pointer arg throws TypeError', threw)
     }
 }

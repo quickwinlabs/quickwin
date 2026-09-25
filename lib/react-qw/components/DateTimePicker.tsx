@@ -1,7 +1,19 @@
 import { forwardRef, useRef, useEffect, useState, type Ref } from 'react'
 import * as gui from 'gui'
 import * as ffi from 'ffi'
+import { struct } from '../../ffi-struct.js'
+import { NMHDR, nmCode, readI32At, readU16At } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
+
+const SYSTEMTIME = struct({
+  wYear: 'u16', wMonth: 'u16', wDayOfWeek: 'u16', wDay: 'u16',
+  wHour: 'u16', wMinute: 'u16', wSecond: 'u16', wMilliseconds: 'u16',
+})
+const NMDATETIMECHANGE = struct({
+  hdr: NMHDR,
+  dwFlags: 'u32',
+  st: SYSTEMTIME,
+})
 
 export interface DateTimePickerProps {
   value?: Date | null
@@ -11,15 +23,6 @@ export interface DateTimePickerProps {
   allowNone?: boolean
   updown?: boolean
   style?: WStyle
-}
-
-function readI16(ptr: number, offset: number): number {
-  return ffi.readByte(ptr + offset) | (ffi.readByte(ptr + offset + 1) << 8)
-}
-
-function readI32(ptr: number, offset: number): number {
-  return ffi.readByte(ptr + offset) | (ffi.readByte(ptr + offset + 1) << 8) |
-    (ffi.readByte(ptr + offset + 2) << 16) | (ffi.readByte(ptr + offset + 3) << 24)
 }
 
 function bufPtr(buf: ArrayBuffer): number {
@@ -89,19 +92,21 @@ const DateTimePicker = forwardRef(function DateTimePicker(
       ref={ref}
       onEvent={(e) => {
         if (e.msg === gui.WmMsg.NOTIFY) {
-          const code = readI32(e.lParam, 16)
+          const code = nmCode(e.lParam)
           if (code === gui.DtNotifyCode.DATETIMECHANGE) {
-            const dwFlags = readI32(e.lParam, 24)
+            // NMDATETIMECHANGE: NMHDR + DWORD dwFlags + SYSTEMTIME st
+            const st = NMDATETIMECHANGE.offsetOf('st')
+            const dwFlags = readI32At(e.lParam, NMDATETIMECHANGE.offsetOf('dwFlags'))
             if (dwFlags === gui.DtFlag.GDT_NONE) {
               if (!isControlled) setInternalDate(null)
               onChangeRef.current?.(null)
             } else {
-              const year = readI16(e.lParam, 28)
-              const month = readI16(e.lParam, 30)
-              const day = readI16(e.lParam, 34)
-              const hour = readI16(e.lParam, 36)
-              const min = readI16(e.lParam, 38)
-              const sec = readI16(e.lParam, 40)
+              const year = readU16At(e.lParam, st + 0)
+              const month = readU16At(e.lParam, st + 2)
+              const day = readU16At(e.lParam, st + 6)
+              const hour = readU16At(e.lParam, st + 8)
+              const min = readU16At(e.lParam, st + 10)
+              const sec = readU16At(e.lParam, st + 12)
               const d = new Date(year, month - 1, day, hour, min, sec)
               if (!isControlled) setInternalDate(d)
               onChangeRef.current?.(d)

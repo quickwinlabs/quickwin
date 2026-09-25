@@ -5,6 +5,7 @@ import * as win from 'win'
 import * as ffi from 'ffi'
 import type { Document, Page, Pixmap } from '../vendor/mupdf-wasm/mupdf.js'
 import { assertNonNullable } from '../lib/assert.js'
+import { OPENFILENAMEW } from '../lib/win-common-structs.js'
 
 const FFI_PTR = ffi.FFI_TYPE_POINTER
 const FFI_U32 = ffi.FFI_TYPE_UINT32
@@ -53,11 +54,6 @@ function wideToStr(buf: ArrayBuffer): string {
         chars.push(c)
     }
     return String.fromCharCode(...chars)
-}
-
-function setPtr(dv: DataView, off: number, ptr: number): void {
-    dv.setUint32(off, ptr & 0xFFFFFFFF, true)
-    dv.setUint32(off + 4, Math.floor(ptr / 0x100000000), true)
 }
 
 interface PixmapInfo {
@@ -133,17 +129,35 @@ function renderPdfPage(mupdf: MuPdf, filePath: string, pageIndex: number): Pixma
 
 function openPdfFileDialog(): string | null {
     assertNonNullable(hwndMain)
-    const structBuf = new ArrayBuffer(152), sv = new DataView(structBuf)
     const fileBuf = new ArrayBuffer(260 * 2)
     const filterWide = strToWide('PDF Files\0*.pdf\0All Files\0*.*\0\0')
-    sv.setUint32(0, 152, true)
-    sv.setUint32(8, hwndMain & 0xFFFFFFFF, true)
-    sv.setUint32(12, Math.floor(hwndMain / 0x100000000), true)
-    setPtr(sv, 24, ffi.bufferPtr(filterWide))
-    setPtr(sv, 48, ffi.bufferPtr(fileBuf))
-    sv.setUint32(56, 260, true)
-    sv.setUint32(96, 0x1000 | 0x0800 | 0x0004, true)
-    const ret = ffi.ffiCall(GetOpenFileNameW, [FFI_PTR], [structBuf], FFI_U32)
+    const ofn: ArrayBuffer & { __keep?: ArrayBuffer[] } = OPENFILENAMEW.write({
+        lStructSize: OPENFILENAMEW.size,
+        hwndOwner: hwndMain,
+        hInstance: 0,
+        lpstrFilter: ffi.bufferPtr(filterWide),
+        lpstrCustomFilter: 0,
+        nMaxCustFilter: 0,
+        nFilterIndex: 0,
+        lpstrFile: ffi.bufferPtr(fileBuf),
+        nMaxFile: 260,
+        lpstrFileTitle: 0,
+        nMaxFileTitle: 0,
+        lpstrInitialDir: 0,
+        lpstrTitle: 0,
+        Flags: 0x1000 | 0x0800 | 0x0004,
+        nFileOffset: 0,
+        nFileExtension: 0,
+        lpstrDefExt: 0,
+        lCustData: 0,
+        lpfnHook: 0,
+        lpTemplateName: 0,
+        pvReserved: 0,
+        dwReserved: 0,
+        FlagsEx: 0,
+    })
+    ofn.__keep = [fileBuf, filterWide]
+    const ret = ffi.ffiCall(GetOpenFileNameW, [FFI_PTR], [ofn], FFI_U32)
     return ret ? wideToStr(fileBuf) : null
 }
 
@@ -299,15 +313,15 @@ let hwndBtnNext: gui.HWND | null = null
             gui.DefWindowProc(hwnd, msg, wParam, lParam)
             const pm = currentPixmap
             if (!pm) return 0
-            const hdc = ffi.ffiCall(GetDC, [ffi.FFI_TYPE_UINT64], [hwnd], ffi.FFI_TYPE_UINT64)
+            const hdc = ffi.ffiCall(GetDC, [ffi.FFI_TYPE_POINTER], [hwnd], ffi.FFI_TYPE_POINTER)
             if (hdc) {
                 const bmi = makeBitmapInfo(pm.w, pm.h)
                 ffi.ffiCall(SetDIBitsToDevice, [
-                    ffi.FFI_TYPE_UINT64, FFI_S32, FFI_S32, FFI_U32, FFI_U32,
+                    ffi.FFI_TYPE_POINTER, FFI_S32, FFI_S32, FFI_U32, FFI_U32,
                     FFI_S32, FFI_S32, FFI_U32, FFI_U32,
                     FFI_PTR, FFI_PTR, FFI_U32
                 ], [hdc, 0, 0, pm.w, pm.h, 0, 0, 0, pm.h, pm.data, bmi, 0], FFI_S32)
-                ffi.ffiCall(ReleaseDC, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64], [hwnd, hdc], FFI_S32)
+                ffi.ffiCall(ReleaseDC, [ffi.FFI_TYPE_POINTER, ffi.FFI_TYPE_POINTER], [hwnd, hdc], FFI_S32)
             }
             return 0
         }
@@ -321,11 +335,11 @@ let hwndBtnNext: gui.HWND | null = null
             const cr = gui.GetClientRect(hwnd)
             if (cr) {
                 const cw = cr.right - cr.left, ch = cr.bottom - cr.top
-            const hdc = ffi.ffiCall(GetDC, [ffi.FFI_TYPE_UINT64], [hwnd], ffi.FFI_TYPE_UINT64)
+            const hdc = ffi.ffiCall(GetDC, [ffi.FFI_TYPE_POINTER], [hwnd], ffi.FFI_TYPE_POINTER)
                 if (hdc) {
-                    ffi.ffiCall(PatBlt, [ffi.FFI_TYPE_UINT64, FFI_S32, FFI_S32, FFI_S32, FFI_S32, FFI_U32],
+                    ffi.ffiCall(PatBlt, [ffi.FFI_TYPE_POINTER, FFI_S32, FFI_S32, FFI_S32, FFI_S32, FFI_U32],
                         [hdc, 0, 0, cw, ch, WHITENESS], FFI_U32)
-                    ffi.ffiCall(ReleaseDC, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64], [hwnd, hdc], FFI_S32)
+                    ffi.ffiCall(ReleaseDC, [ffi.FFI_TYPE_POINTER, ffi.FFI_TYPE_POINTER], [hwnd, hdc], FFI_S32)
                 }
             }
             gui.DefWindowProc(hwnd, msg, wParam, lParam)

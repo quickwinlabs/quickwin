@@ -1,6 +1,7 @@
 import { forwardRef, useRef, useEffect, type Ref } from 'react'
 import * as gui from 'gui'
 import * as ffi from 'ffi'
+import { nmCode, NMHDR_SIZE } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
 
 export interface LinkProps {
@@ -8,11 +9,6 @@ export interface LinkProps {
   children?: string
   onClick?: (url: string) => void
   style?: WStyle
-}
-
-function readI32(ptr: number, offset: number): number {
-  return ffi.readByte(ptr + offset) | (ffi.readByte(ptr + offset + 1) << 8) |
-    (ffi.readByte(ptr + offset + 2) << 16) | (ffi.readByte(ptr + offset + 3) << 24)
 }
 
 function readUtf16(ptr: number, offset: number, maxWords: number): string {
@@ -50,9 +46,10 @@ const Link = forwardRef(function Link(
       ref={ref}
       onEvent={(e) => {
         if (e.msg === gui.WmMsg.NOTIFY) {
-          const code = readI32(e.lParam, 16)
+          const code = nmCode(e.lParam)
           if (code === gui.SysLinkNotifyCode.CLICK || code === gui.SysLinkNotifyCode.RETURN) {
-            const url = readUtf16(e.lParam, 136, 2048)
+            // NMLINK: NMHDR(12/20) + LITEM{ mask,iLink,state,stateMask (16B) + szID[48] (96B) } → szUrl
+            const url = readUtf16(e.lParam, NMHDR_SIZE + 112, 2048)
             onClickRef.current?.(url)
           }
         }

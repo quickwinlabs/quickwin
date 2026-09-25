@@ -1,6 +1,7 @@
 import { useRef, useEffect, Children, cloneElement } from 'react'
 import * as gui from 'gui'
 import * as ffi from 'ffi'
+import { struct } from '../../ffi-struct.js'
 
 export interface TooltipProps {
   text: string
@@ -8,27 +9,37 @@ export interface TooltipProps {
   balloon?: boolean
 }
 
-const TTTOOLINFO_CBSIZE = 64
-
-function setQword(dv: DataView, offset: number, val: number): void {
-  dv.setUint32(offset, val & 0xFFFFFFFF, true)
-  dv.setUint32(offset + 4, Math.floor(val / 0x100000000), true)
-}
+const TTTOOLINFOW = struct({
+  cbSize: 'u32',
+  uFlags: 'u32',
+  hwnd: 'ptr',
+  uId: 'ptr',
+  rect: 'i32[4]',
+  hinst: 'ptr',
+  lpszText: 'ptr',
+  lParam: 'ptr',
+  lpReserved: 'ptr', // WinXP+ 追加字段（系统 sizeof 含之）
+})
 
 function buildToolInfo(hTarget: number, text: string): ArrayBuffer {
-  const textOff = TTTOOLINFO_CBSIZE
+  const size = TTTOOLINFOW.size
   const textLen = (text.length + 1) * 2
-  const buf = new ArrayBuffer(TTTOOLINFO_CBSIZE + textLen)
+  const buf = new ArrayBuffer(size + textLen)
+  TTTOOLINFOW.write({
+    cbSize: size,
+    uFlags: gui.TtToolFlag.SUBCLASS | gui.TtToolFlag.IDISHWND,
+    hwnd: hTarget,
+    uId: hTarget,
+    rect: [0, 0, 0, 0],
+    hinst: 0,
+    lpszText: ffi.bufferPtr(buf) + size,
+    lParam: 0,
+    lpReserved: 0,
+  }, buf)
   const dv = new DataView(buf)
-  dv.setUint32(0, TTTOOLINFO_CBSIZE, true)
-  dv.setUint32(4, gui.TtToolFlag.SUBCLASS | gui.TtToolFlag.IDISHWND, true)
-  setQword(dv, 8, hTarget)
-  setQword(dv, 16, hTarget)
   for (let i = 0; i < text.length; i++)
-    dv.setUint16(textOff + i * 2, text.charCodeAt(i), true)
-  dv.setUint16(textOff + text.length * 2, 0, true)
-  const bufPtr = ffi.bufferPtr(buf)
-  setQword(dv, 48, bufPtr + textOff)
+    dv.setUint16(size + i * 2, text.charCodeAt(i), true)
+  dv.setUint16(size + text.length * 2, 0, true)
   return buf
 }
 

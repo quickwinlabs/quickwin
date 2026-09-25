@@ -1,7 +1,23 @@
 import { forwardRef, useRef, useEffect, useState } from 'react'
 import * as gui from 'gui'
 import * as ffi from 'ffi'
+import { struct } from '../../ffi-struct.js'
+import { nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
+
+const TVITEM = struct({
+    mask: 'u32',
+    hItem: 'ptr',
+    state: 'u32',
+    stateMask: 'u32',
+    pszText: 'ptr',
+    cchTextMax: 'i32',
+    iImage: 'i32',
+    iSelectedImage: 'i32',
+    cChildren: 'i32',
+    lParam: 'ptr',
+})
+const TVINSERTSTRUCT = struct({ hParent: 'ptr', hInsertAfter: 'ptr', item: TVITEM })
 
 export interface TreeNode<D = unknown> {
   key?: string
@@ -25,47 +41,18 @@ function textToUtf16(s: string): ArrayBuffer {
   return buf
 }
 
-function readI32(ptr: number, offset: number): number {
-  return ffi.readByte(ptr + offset) | (ffi.readByte(ptr + offset + 1) << 8) |
-    (ffi.readByte(ptr + offset + 2) << 16) | (ffi.readByte(ptr + offset + 3) << 24)
-}
-
 function bufPtr(buf: ArrayBuffer): number {
   return ffi.bufferPtr(buf)
 }
 
-function setPtr(dv: DataView, offset: number, ptr: number): void {
-  dv.setUint32(offset, ptr & 0xFFFFFFFF, true)
-  dv.setUint32(offset + 4, Math.floor(ptr / 0x100000000), true)
-}
-
 function buildTvItem(textPtr: number, cChildren: number): ArrayBuffer {
-  let mask = gui.TvIfFlag.TEXT
-  if (cChildren > 0) mask |= gui.TvIfFlag.CHILDREN
-  const buf = new ArrayBuffer(56)
-  const dv = new DataView(buf)
-  dv.setUint32(0, mask, true)            // mask (offset 0)
-  setPtr(dv, 8, 0)                       // hItem
-  dv.setUint32(16, 0, true)              // state
-  dv.setUint32(20, 0, true)              // stateMask
-  setPtr(dv, 24, textPtr)                // pszText
-  dv.setInt32(32, 260, true)             // cchTextMax
-  dv.setInt32(36, 0, true)               // iImage
-  dv.setInt32(40, 0, true)               // iSelectedImage
-  dv.setInt32(44, cChildren, true)       // cChildren
-  setPtr(dv, 48, 0)                      // lParam
-  return buf
-}
-
-function buildTvInsertStruct(hParent: number, hInsertAfter: number, itemBuf: ArrayBuffer): ArrayBuffer {
-  const buf = new ArrayBuffer(72)
-  const dv = new DataView(buf)
-  setPtr(dv, 0, hParent)                 // hParent (offset 0)
-  setPtr(dv, 8, hInsertAfter)            // hInsertAfter (offset 8)
-  const src = new DataView(itemBuf)
-  for (let i = 0; i < 56; i += 4)
-    dv.setUint32(16 + i, src.getUint32(i, true), true)
-  return buf
+    let mask = gui.TvIfFlag.TEXT
+    if (cChildren > 0) mask |= gui.TvIfFlag.CHILDREN
+    return TVITEM.write({
+        mask, hItem: 0, state: 0, stateMask: 0,
+        pszText: textPtr, cchTextMax: 260,
+        iImage: 0, iSelectedImage: 0, cChildren, lParam: 0,
+    })
 }
 
 function insertItems(
@@ -76,7 +63,8 @@ function insertItems(
     const cChildren = node.children && node.children.length > 0 ? 1 : 0
     const textBuf = textToUtf16(node.label)
     const itemBuf = buildTvItem(bufPtr(textBuf), cChildren)
-    const tvins = buildTvInsertStruct(parentHandle, gui.TvInsertAfter.ROOT, itemBuf)
+    const item = TVITEM.read(itemBuf)
+    const tvins = TVINSERTSTRUCT.write({ hParent: parentHandle, hInsertAfter: gui.TvInsertAfter.ROOT, item })
     const hItem = gui.SendMessage(hTree, gui.TvMsg.INSERTITEMW, 0, bufPtr(tvins))
     hItemMap.set(hItem, node)
     if (node.key) keyMap.set(node.key, hItem)
@@ -145,7 +133,7 @@ const TreeView = forwardRef(function TreeViewInner<D>(
       ref={ref}
       onEvent={(e) => {
         if (e.msg === gui.WmMsg.NOTIFY) {
-          const code = readI32(e.lParam, 16)
+          const code = nmCode(e.lParam)
           if (code === gui.TvNotifyCode.SELCHANGEDW) {
             const h = tvRef.current
             if (!h) return

@@ -7,6 +7,7 @@ import type { Document, Page, Pixmap } from '../vendor/mupdf-wasm/mupdf.js'
 import { useState } from 'react'
 import { render, Button, Input, ScrollView } from '../lib/react-qw/index.js'
 import { PdfCanvas } from './PdfCanvas.js'
+import { OPENFILENAMEW } from '../lib/win-common-structs.js'
 
 type MuPdf = typeof import('../vendor/mupdf-wasm/mupdf.js')
 
@@ -46,28 +47,37 @@ function wideToStr(buf: ArrayBuffer): string {
   return String.fromCharCode(...chars)
 }
 
-function setPtr(dv: DataView, off: number, ptr: number): void {
-  dv.setUint32(off, ptr & 0xFFFFFFFF, true)
-  dv.setUint32(off + 4, Math.floor(ptr / 0x100000000), true)
-}
-
 function openPdfFileDialog(owner: number): string | null {
-  const structBuf = new ArrayBuffer(152)
-  const sv = new DataView(structBuf)
   const fileBuf = new ArrayBuffer(260 * 2)
   const filterWide = strToWide('PDF Files\0*.pdf\0All Files\0*.*\0\0')
+  const ofn: ArrayBuffer & { __keep?: ArrayBuffer[] } = OPENFILENAMEW.write({
+    lStructSize: OPENFILENAMEW.size,
+    hwndOwner: owner,
+    hInstance: 0,
+    lpstrFilter: ffi.bufferPtr(filterWide),
+    lpstrCustomFilter: 0,
+    nMaxCustFilter: 0,
+    nFilterIndex: 0,
+    lpstrFile: ffi.bufferPtr(fileBuf),
+    nMaxFile: 260,
+    lpstrFileTitle: 0,
+    nMaxFileTitle: 0,
+    lpstrInitialDir: 0,
+    lpstrTitle: 0,
+    Flags: 0x1000 | 0x0800 | 0x0004,
+    nFileOffset: 0,
+    nFileExtension: 0,
+    lpstrDefExt: 0,
+    lCustData: 0,
+    lpfnHook: 0,
+    lpTemplateName: 0,
+    pvReserved: 0,
+    dwReserved: 0,
+    FlagsEx: 0,
+  })
+  ofn.__keep = [fileBuf, filterWide]
 
-  sv.setUint32(0, 152, true)
-  sv.setUint32(8, owner & 0xFFFFFFFF, true)
-  sv.setUint32(12, Math.floor(owner / 0x100000000), true)
-
-  setPtr(sv, 24, ffi.bufferPtr(filterWide))
-  setPtr(sv, 48, ffi.bufferPtr(fileBuf))
-  sv.setUint32(56, 260, true)
-
-  sv.setUint32(96, 0x1000 | 0x0800 | 0x0004, true)
-
-  const ret = ffi.ffiCall(GetOpenFileNameW_, [FFI_PTR], [structBuf], FFI_U32)
+  const ret = ffi.ffiCall(GetOpenFileNameW_, [FFI_PTR], [ofn], FFI_U32)
   if (!ret) return null
 
   const path = wideToStr(fileBuf)

@@ -27,6 +27,8 @@ const suiteDefs = [
     { name: 'mupdf-twice',       file: './test_mupdf_twice.js',      tags: ['wasm', 'mupdf'] },
     { name: 'mupdf-render',      file: './test_mupdf_render.js',     tags: ['wasm', 'mupdf'] },
     { name: 'ffi',               file: './test_ffi.js',              tags: [] },
+    { name: 'ffi-bind',          file: './test_ffi_bind.js',         tags: [] },
+    { name: 'ffi-struct',        file: './test_ffi_struct.js',       tags: [] },
     { name: 'net-fetch',         file: './test_net_fetch.js',        tags: ['net'] },
     { name: 'net-wolfssl-read',   file: './test_wolfssl_read.js',     tags: ['net'] },
     { name: 'net-websocket',     file: './test_net_websocket.js',    tags: ['net'] },

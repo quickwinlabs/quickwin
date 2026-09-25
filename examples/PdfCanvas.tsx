@@ -59,11 +59,11 @@ export const PdfCanvas = forwardRef<gui.HWND, PdfCanvasProps>(
           if (e.msg === gui.WmMsg.PAINT) {
             const pm = pixmapRef.current
             if (!pm) return 0
-            const hdc = ffi.ffiCall(GetDC_, [ffi.FFI_TYPE_UINT64], [hwnd], ffi.FFI_TYPE_UINT64)
+            const hdc = ffi.ffiCall(GetDC_, [ffi.FFI_TYPE_POINTER], [hwnd], ffi.FFI_TYPE_POINTER)
             if (hdc) {
               const bmi = makeBitmapInfo(pm.w, pm.h)
               ffi.ffiCall(SetDIBitsToDevice_, [
-                ffi.FFI_TYPE_UINT64, FFI_S32, FFI_S32, FFI_U32, FFI_U32,
+                ffi.FFI_TYPE_POINTER, FFI_S32, FFI_S32, FFI_U32, FFI_U32,
                 FFI_S32, FFI_S32, FFI_U32, FFI_U32,
                 FFI_PTR, FFI_PTR, FFI_U32
               ], [
@@ -71,7 +71,7 @@ export const PdfCanvas = forwardRef<gui.HWND, PdfCanvasProps>(
                 0, 0, 0, pm.h,
                 pm.data, bmi, 0
               ], FFI_S32)
-              ffi.ffiCall(ReleaseDC_, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64], [hwnd, hdc], FFI_S32)
+              ffi.ffiCall(ReleaseDC_, [ffi.FFI_TYPE_POINTER, ffi.FFI_TYPE_POINTER], [hwnd, hdc], FFI_S32)
             }
             return 0
           }

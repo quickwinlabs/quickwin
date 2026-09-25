@@ -3,6 +3,8 @@ import * as gui from 'gui'
 import { LvItemFlag, LvItemState, LvColumnMask } from 'gui'
 import * as ffi from 'ffi'
 import * as win from 'win'
+import { struct } from '../../ffi-struct.js'
+import { NMHDR, PTR_SIZE, nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
 
 export function makeColorBlock(size: number, bgra: number): ArrayBuffer {
@@ -56,16 +58,48 @@ function bufPtr(buf: ArrayBuffer): number {
 const LV_WS = gui.WindowStyle.VISIBLE | gui.WindowStyle.BORDER | gui.WindowStyle.VSCROLL | gui.WindowStyle.HSCROLL
   | gui.ListViewStyle.REPORT | gui.ListViewStyle.SINGLESEL
 
-// x64 结构体偏移（NMHDR 为 24 字节）
-const CD_STAGE = 24     // NMCUSTOMDRAW.dwDrawStage
-const CD_HDC = 32       // NMCUSTOMDRAW.hdc
-const CD_ITEM = 56      // NMCUSTOMDRAW.dwItemSpec（行索引）
-const CD_CLRTEXT = 80   // NMLVCUSTOMDRAW.clrText
-const CD_CLRTEXTBK = 84 // NMLVCUSTOMDRAW.clrTextBk
-const CD_SUBITEM = 88   // NMLVCUSTOMDRAW.iSubItem
-const NMIA_ITEM = 24    // NMITEMACTIVATE.iItem
-const NMIA_SUBITEM = 28 // NMITEMACTIVATE.iSubItem
-const NM_CODE = 16      // NMHDR.code
+// ListView 通知结构（嵌套 NMHDR 以复现 MSVC 尾 padding 传染，offsetOf 保证 ia32/x64 均正确）。
+const NMCUSTOMDRAW = struct({
+  hdr: NMHDR,
+  dwDrawStage: 'u32', hdc: 'ptr', rc: 'i32[4]',
+  dwItemSpec: 'ptr', uItemState: 'u32', lItemlParam: 'ptr',
+})
+const NMLVCUSTOMDRAW = struct({
+  hdr: NMHDR,
+  dwDrawStage: 'u32', hdc: 'ptr', rc: 'i32[4]',
+  dwItemSpec: 'ptr', uItemState: 'u32', lItemlParam: 'ptr',
+  clrText: 'u32', clrTextBk: 'u32', iSubItem: 'i32', dwItemType: 'u32',
+})
+// NMLISTVIEW / NMITEMACTIVATE 前缀字段布局一致（iItem..uChanged）
+const NMLISTVIEW = struct({
+  hdr: NMHDR,
+  iItem: 'i32', iSubItem: 'i32', uNewState: 'u32', uOldState: 'u32', uChanged: 'u32',
+  ptAction: 'i32[2]', lParam: 'ptr',
+})
+const CD_STAGE = NMCUSTOMDRAW.offsetOf('dwDrawStage')
+const CD_HDC = NMCUSTOMDRAW.offsetOf('hdc')
+const CD_ITEM = NMCUSTOMDRAW.offsetOf('dwItemSpec')
+const CD_CLRTEXT = NMLVCUSTOMDRAW.offsetOf('clrText')
+const CD_CLRTEXTBK = NMLVCUSTOMDRAW.offsetOf('clrTextBk')
+const CD_SUBITEM = NMLVCUSTOMDRAW.offsetOf('iSubItem')
+const NMIA_ITEM = NMLISTVIEW.offsetOf('iItem')
+const NMIA_SUBITEM = NMLISTVIEW.offsetOf('iSubItem')
+const NMLV_UNEW = NMLISTVIEW.offsetOf('uNewState')
+const NMLV_UOLD = NMLISTVIEW.offsetOf('uOldState')
+
+const LVITEMW = struct({
+  mask: 'u32', iItem: 'i32', iSubItem: 'i32',
+  state: 'u32', stateMask: 'u32',
+  pszText: 'ptr', cchTextMax: 'i32', iImage: 'i32', lParam: 'ptr',
+  iIndent: 'i32', iGroupId: 'i32', cColumns: 'u32',
+  puColumns: 'ptr', piColFmt: 'ptr', iGroup: 'i32',
+})
+
+const LVCOLUMNW = struct({
+  mask: 'u32', fmt: 'i32', cx: 'i32',
+  pszText: 'ptr', cchTextMax: 'i32', iSubItem: 'i32', iImage: 'i32', iOrder: 'i32',
+  cxMin: 'i32', cxDefault: 'i32', cxIdeal: 'i32',
+})
 
 const fontCache = new Map<string, number>()
 
@@ -109,7 +143,7 @@ function getCellFont(hwnd: gui.HWND, style: CellStyle): number | null {
   const dv = new DataView(lf)
   const cur = gui.SendMessage(hwnd, gui.WmMsg.GETFONT, 0, 0)
   if (cur) {
-    const got = ffi.ffiCall(getObjectW, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_SINT32, ffi.FFI_TYPE_POINTER],
+    const got = ffi.ffiCall(getObjectW, [ffi.FFI_TYPE_POINTER, ffi.FFI_TYPE_SINT32, ffi.FFI_TYPE_POINTER],
       [cur, 92, lf], ffi.FFI_TYPE_SINT32)
     if (!got) return null
   } else {
@@ -118,9 +152,9 @@ function getCellFont(hwnd: gui.HWND, style: CellStyle): number | null {
   if (style.bold) dv.setInt32(16, gui.FontWeight.BOLD, true)
   if (style.italic) dv.setUint8(20, 1)
   if (style.underline) dv.setUint8(21, 1)
-  const h = ffi.ffiCall(createFontIndirectW, [ffi.FFI_TYPE_POINTER], [lf], ffi.FFI_TYPE_UINT64)
-  fontCache.set(key, h === 0 ? 0 : h)
-  return h === 0 ? null : h
+  const h = ffi.ffiCall(createFontIndirectW, [ffi.FFI_TYPE_POINTER], [lf], ffi.FFI_TYPE_POINTER)
+  fontCache.set(key, h ? h : 0)
+  return h ? h : null
 }
 
 function handleCustomDraw<D>(lParam: number, columns: Column<D>[], data: D[], hwnd: gui.HWND | null): number {
@@ -138,9 +172,9 @@ function handleCustomDraw<D>(lParam: number, columns: Column<D>[], data: D[], hw
 
     const hfont = getCellFont(hwnd!, style)
     if (hfont && selectObjectFn) {
-      const hdc = readU64(lParam, CD_HDC)
+      const hdc = PTR_SIZE === 8 ? readU64(lParam, CD_HDC) : readU32(lParam, CD_HDC)
       if (hdc) {
-        ffi.ffiCall(selectObjectFn, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64], [hdc, hfont], ffi.FFI_TYPE_UINT64)
+        ffi.ffiCall(selectObjectFn, [ffi.FFI_TYPE_POINTER, ffi.FFI_TYPE_POINTER], [hdc, hfont], ffi.FFI_TYPE_POINTER)
         return gui.CustomDrawFlag.NEWFONT
       }
     }
@@ -204,18 +238,24 @@ function resolveCellStyle<D>(columns: Column<D>[], data: D[], row: number, colIn
 }
 
 function makeLVItem(i: number, sub: number, text: string, image?: number): ArrayBuffer {
-  const b: ArrayBuffer & { __textBuf?: ArrayBuffer } = new ArrayBuffer(84)
-  const dv = new DataView(b)
-  dv.setInt32(4, i, true)
-  dv.setInt32(8, sub, true)
-  let mask = LvItemFlag.TEXT
-  if (image !== undefined) {
-    mask |= LvItemFlag.IMAGE
-    dv.setInt32(36, image, true)
-  }
-  dv.setUint32(0, mask, true)
   const textBuf = textToUtf16(text)
-  dv.setBigUint64(24, BigInt(bufPtr(textBuf)), true)
+  const b: ArrayBuffer & { __textBuf?: ArrayBuffer } = LVITEMW.write({
+    mask: LvItemFlag.TEXT | (image !== undefined ? LvItemFlag.IMAGE : 0),
+    iItem: i,
+    iSubItem: sub,
+    state: 0,
+    stateMask: 0,
+    pszText: bufPtr(textBuf),
+    cchTextMax: 0,
+    iImage: image ?? 0,
+    lParam: 0,
+    iIndent: 0,
+    iGroupId: 0,
+    cColumns: 0,
+    puColumns: 0,
+    piColFmt: 0,
+    iGroup: 0,
+  })
   b.__textBuf = textBuf
   return b
 }
@@ -269,13 +309,19 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
     const n = columns.length
     for (let j = 0; j < n; j++) {
       const titleBuf = textToUtf16(columns[j]!.name)
-      const lvc: ArrayBuffer & { __titleBuf?: ArrayBuffer } = new ArrayBuffer(52)
-      const dv = new DataView(lvc)
-      dv.setUint32(0, LvColumnMask.TEXT | LvColumnMask.WIDTH | LvColumnMask.FORMAT, true)
-      dv.setInt32(4, alignToFmt(columns[j]!.align), true)
-      dv.setInt32(8, columns[j]!.width ?? 100, true)
-      dv.setBigUint64(16, BigInt(bufPtr(titleBuf)), true)
-      dv.setInt32(28, j, true)
+      const lvc: ArrayBuffer & { __titleBuf?: ArrayBuffer } = LVCOLUMNW.write({
+        mask: LvColumnMask.TEXT | LvColumnMask.WIDTH | LvColumnMask.FORMAT,
+        fmt: alignToFmt(columns[j]!.align),
+        cx: columns[j]!.width ?? 100,
+        pszText: bufPtr(titleBuf),
+        cchTextMax: 0,
+        iSubItem: j,
+        iImage: 0,
+        iOrder: 0,
+        cxMin: 0,
+        cxDefault: 0,
+        cxIdeal: 0,
+      })
       lvc.__titleBuf = titleBuf
       gui.SendMessage(h, gui.LvMsg.INSERTCOLUMNW, j, bufPtr(lvc))
     }
@@ -314,13 +360,13 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
       ref={ref}
       onEvent={(e) => {
         if (e.msg === gui.WmMsg.NOTIFY) {
-          const code = readI32(e.lParam, NM_CODE)
+          const code = nmCode(e.lParam)
           if (code === gui.LvNotifyCode.CUSTOMDRAW) {
             return handleCustomDraw(e.lParam, columns, data, lvRef.current)
           }
           if (code === gui.LvNotifyCode.ITEMCHANGING) {
-            const uNewState = readU32(e.lParam, 32)
-            const uOldState = readU32(e.lParam, 36)
+            const uNewState = readU32(e.lParam, NMLV_UNEW)
+            const uOldState = readU32(e.lParam, NMLV_UOLD)
             if ((uNewState & LvItemState.SELECTED) !== (uOldState & LvItemState.SELECTED)) return 1
           }
           if (code === gui.LvNotifyCode.CLICK) {
@@ -353,7 +399,7 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
           const sdv = new DataView(sbuf)
           sdv.setInt32(0, sp[0], true)
           sdv.setInt32(4, sp[1], true)
-          ffi.ffiCall(screenToClient, [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_POINTER], [h, sbuf], ffi.FFI_TYPE_SINT32)
+          ffi.ffiCall(screenToClient, [ffi.FFI_TYPE_POINTER, ffi.FFI_TYPE_POINTER], [h, sbuf], ffi.FFI_TYPE_SINT32)
 
           const lvhi = new ArrayBuffer(24)
           const lvd = new DataView(lvhi)
@@ -368,9 +414,9 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
           const style = resolveCellStyle(columns, data, iItem, iSubItem)
           if (!style || style.cursor === undefined) return
           const hc = ffi.ffiCall(loadCursorW,
-            [ffi.FFI_TYPE_UINT64, ffi.FFI_TYPE_UINT64], [0, style.cursor], ffi.FFI_TYPE_UINT64)
+            [ffi.FFI_TYPE_POINTER, ffi.FFI_TYPE_POINTER], [0, style.cursor], ffi.FFI_TYPE_POINTER)
           if (hc) {
-            ffi.ffiCall(setCursorFn, [ffi.FFI_TYPE_UINT64], [hc], ffi.FFI_TYPE_UINT64)
+            ffi.ffiCall(setCursorFn, [ffi.FFI_TYPE_POINTER], [hc], ffi.FFI_TYPE_POINTER)
             return 1
           }
           return
