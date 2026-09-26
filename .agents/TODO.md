@@ -4,6 +4,7 @@
 - [x] Fix C-level chunked encoding (`http_get_sync`/`read_http_response` hangs with Cloudflare)
 - [x] Fix Worker thread safety — 方案 T 已落地（sock/async state 嵌入 JSThreadState，`c929a9c`），回归 `test_worker_concurrent.ts`
 - [x] Fix cache bug: conditional request 200 doesn't update cache (`lib/fetch.ts:838`)
+- [ ] HTTPS/wss 校验证书 — 目前 `SSL_VERIFY_NONE`（`lib/fetch.ts:166`、`lib/websocket.ts:321`），需内嵌/加载 CA + 默认 `VERIFY_PEER` + 可选 `rejectUnauthorized`
 
 ## 中优先级
 - [x] Fix `test_ffi.ts` 32-bit PRINTER_INFO_2 layout — `structSize` 硬编码 136（x64），ia32 应为 **84**（非 80；MinGW 实测 sizeof=84 name=4 port=12 drv=16 comment=20 location=24 status=72）。已按 `os.arch` 分支 structSize/偏移，`readPtr` ia32 只读 4 字节，`decodeWideAtPtr` 加 4096 WCHAR 上限防越界死循环（详见 `.agents/QEMU_NET_SUITE_TEST.md`）
