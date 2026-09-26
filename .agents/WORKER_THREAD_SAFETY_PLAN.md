@@ -181,7 +181,7 @@ JS_FreeRuntime(rt);
 ### 3.8 文档（实施完成后）
 
 - `.agents/TODO.md`：高优「Fix Worker thread safety」→ `[x]`，注明方案 T（嵌入 JSThreadState），废弃 `worker-locks` 加锁方案。
-- `AGENTS.md` §10：改为「已通过嵌入 JSThreadState 修复」；删除「加 CRITICAL_SECTION」修复方向；可简述顺序约束 D3。
+- `AGENTS.md` §10：已在整体精简时删除；Worker 线程安全现状（方案 T + `quickjs-thread-state.h`）见 `.agents/` 代码注释，无独立文档
 - 旧分支 `worker-locks` / `origin/worker-locks`：修完后是否删除 → **待用户确认**。
 
 ### 3.9 明确不包含

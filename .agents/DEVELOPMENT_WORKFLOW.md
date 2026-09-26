@@ -27,6 +27,12 @@ podman exec quickwin-dev bash -lc 'cd /workspace && make cc64'
 
 > CI（`.github/workflows/ci-qemu.yml`）用同一镜像 `ghcr.io/xna00/quickwin-dev`，本地与 CI 行为一致。项目已不使用 MSYS2 原生编译路径。
 
+## GitHub 操作（宿主）
+
+需要做 GitHub 操作（创建 Release、上传资产等）时，先检查宿主是否设置了 `GH_TOKEN`
+（`[ -n "$GH_TOKEN" ]`）；有则用它调用 GitHub REST API（`curl -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/...`）。
+token 值严禁写入文件、日志或命令行历史。
+
 ## 环境准备
 
 ```bash
@@ -98,11 +104,21 @@ _build/
 
 **不要单独跑 `make wamr`**（native 路径）：不带 `CROSS=1` 会用本机 gcc 建 ELF `.a`，之后 `cc64` 发现 `.a` 比源文件新就跳过重建，链接必挂（已按 `VARIANT=x64-native` 与 `x64-cross` 隔离，不会覆盖交叉产物，但对 cross 无用）。WAMR/WolfSSL/Brotli/libffi 由 `cc64`/`cc32` 目标自动按正确架构构建。
 
-XP 32 位另有子模块 patch（`patches/*-xp-compat.patch`），构建前由 Makefile 自动 apply，详见 AGENTS.md「Windows XP 兼容性状态」。
+XP 32 位另有子模块 patch（`patches/wamr-xp-compat.patch`、`patches/wolfssl-xp-compat.patch`、`patches/quickjs-export-from-base64.patch`），构建前由 Makefile 自动调 `patches/apply-submodule-patches.sh` 幂等 apply（git apply + reverse check）。**子模块改动不直接提交**，一律以 patch 文件管理。
+
+### WAMR 构建注意
+
+WAMR 由 `cc64`/`cc32` 自动构建，勿单独 `make wamr`（见上）。Makefile 固定传入的关键 flag（改前先确认）：
+
+- `WAMR_DISABLE_HW_BOUND_CHECK=1` —— 禁用 Windows SEH（`__try`/`__except`），工具链不支持 MSVC 扩展
+- `WAMR_BUILD_INVOKE_NATIVE_GENERAL=1` —— 用纯 C 版 `invokeNative`；否则 cmake 对 MinGW 检测失败会编译 MSVC 汇编 `.asm`，链接时 `invokeNative` 未定义
+- `WAMR_BUILD_EXCE_HANDLING=0` —— 当前关闭异常处理/TAGS。历史上开 =1 时 `WASMModule` 结构体偏移易与条件编译宏不一致而错位（直接 cast 读字段得垃圾值），需清掉 `_build/deps/*/wamr-build` CMake cache 重建
+
+WASM 导出到 JS 的函数用 `JS_NewCFunctionData`（`magic` 传函数 ID）创建，`JSClassDef.call` 方案无效；设置导出属性后不要 `JS_FreeValue`。
 
 ## QEMU VM 验证
 
-原理与实现细节见 [qemu-xp-automated-testing.md](qemu-xp-automated-testing.md)。日常只需：
+原理与实现细节见 [qemu-xp-automated-testing.md](../docs/qemu-xp-automated-testing.md)。日常只需：
 
 ### 一次性装机
 
@@ -167,19 +183,45 @@ Win7 用 `qwin.exe`（64 位），XP 用 `qwin-x86.exe`（32 位），`http_test
 
 本地跑同一套 = 提前发现 CI 问题。
 
+## CLI 参数（运行时）
+
+```
+qwin.exe [options] [script.js]    # 运行 JS 脚本
+qwin.exe -e <expression>          # 运行表达式（优先于脚本文件）
+qwin.exe [options]                # 无参数时加载 main.js 或内嵌 JS
+```
+
+| 参数 | 说明 |
+|------|------|
+| `-d` | 开启 HTTP 调试日志（输出到 stderr） |
+| `-o CON` | 输出重定向到控制台（AllocConsole） |
+| `-o LOG` | 输出重定向到自动生成的日志文件 `log_YYYY_MM_DD_HH_MM_SS.txt`（exe 同目录） |
+| `-o <file>` | 输出重定向到指定文件（stdout + stderr） |
+| `--` | 结束选项解析，后续参数作为脚本文件 |
+
+注意：`-o LOG` 日志在 exe 所在目录（非当前工作目录）；`--` 可防止 `-e 'code'` 被当作选项捕获。完整说明见 README「CLI」与「内嵌脚本」。
+
 ## 提交规范
 
 1. **先展示再提交**：宿主跑 `git diff`，写出拟用 commit message，**用户明确同意后**才 `git add` / `commit` / `push`
 2. **message 依据 diff**：不凭文件名猜；风格对齐 `git log`（如 `feat(docker): ...`、`fix: ...`）
 3. **Windows 常量**：禁止手写数值，必须在 `tools/gen_const.c` 用 `DEC(...)` 定义 → `make gen-const` → 在 VM 跑 `gen_const.exe` → TS 里用 `gui.EnumName.MEMBER`
-4. 中文 ISO、子模块 patch 等大文件/policy 见 AGENTS.md 对应章节
+4. 大文件不直接提交：中文 ISO 放 `docker/iso/`（本地/CI 缓存，不入库）；子模块改动走 `patches/`（见上「XP 兼容 patch」）
+
+### Windows 常量（gen_const）
+
+所有 Windows API 常量（窗口样式、消息号、通知码等）必须通过 `tools/gen_const.c` 的 `DEC(TS_NAME, SDK_MACRO)` 宏从 SDK 头文件获取，不得在 TS 代码中手写数值。流程：
+
+1. 在 `tools/gen_const.c` `print_enums()` 添加 `DEC(TS_NAME, SDK_MACRO)` 行
+2. `make gen-const` 交叉编译 `_build/gen_const.exe`，在 Windows/VM 里运行该 exe 重新生成 `quickwin_const.d.ts`
+3. 在 TS 代码中通过 `gui.EnumName.MEMBER` 使用
 
 ## 排错索引
 
 | 资料 | 用途 |
 |------|------|
-| `AGENTS.md` | 构建命令、WAMR/XP patch、已知问题、http import 实现 |
-| `docs/qemu-xp-automated-testing.md` | QEMU 无人值守安装 + SMB + bootstrap 原理 |
+| 本文档 | 构建/测试命令、CLI、WAMR flag、XP patch、已知问题 |
+| `../docs/qemu-xp-automated-testing.md` | QEMU 无人值守安装 + SMB + bootstrap 原理 |
 | `.agents/QEMU_NET_SUITE_TEST.md` | 逐 suite 网络测试与 ipv6/portproxy 历史 |
 | `docker/run.sh` / `http_test.sh` / `setup-*.sh` | 常驻启停、HTTP 下发测试、装机脚本内注释 |
 | `make debug` + `-o LOG` | bridge 调用日志；release 构建会编译掉 `DEBUG_PRINTF` |

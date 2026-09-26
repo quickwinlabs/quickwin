@@ -168,9 +168,10 @@ parent.onmessage = (e) => {
 
 ### 前置依赖
 
-- MSYS2 UCRT64 或 MINGW64
-- Node.js（用于通过 tsc 编译 TypeScript）
+- **podman**（开发容器；构建/测试/QEMU 验证都在容器内完成，与 CI 一致）
 - Git（用于子模块）
+
+> 也支持 MSYS2 原生直接 `make`，详见 `.agents/DEVELOPMENT_WORKFLOW.md`。
 
 ### 构建
 
@@ -178,38 +179,34 @@ parent.onmessage = (e) => {
 git clone --recursive https://github.com/xna00/quickwin.git
 cd quickwin
 
-.\run.ps1 "make wamr"       # 构建 WAMR 库（仅首次）
-.\run.ps1 "make small"      # 构建 qwin.exe（-Os + LTO，约 1.5MB）
-.\run.ps1 "make js"         # 编译 TypeScript
-.\run.ps1 "make test"       # 运行全部测试
+./docker/dev-podman.sh up      # 启动开发容器（复用 ghcr.io/xna00/quickwin-dev）
+podman exec quickwin-dev bash -lc 'cd /workspace && make js && make cc64 && make test TEST=-net'
 ```
 
-`make nowasm` 会产出更小的 `_build/qwin-nowasm.exe`，不含 WASM/WAMR
-（没有 `WebAssembly` 全局对象）；对这种版本运行 `make test TEST=-wasm` 跳过 WASM 测试。
+`make cc64` 产出 `_build/qwin.exe`。`cc64-nowasm` 会产出更小的
+`_build/qwin-nowasm.exe`，不含 WASM/WAMR（没有 `WebAssembly` 全局对象）；
+对这种版本运行 `make test TEST=-wasm` 跳过 WASM 测试。
 
 ### 构建目标
 
 | Target | Description |
 |--------|-------------|
-| `make` / `make nodebug` | 快速构建 |
-| `make small` | `-Os` + LTO + strip，约 1.5MB（推荐） |
-| `make minimal` | `small` + UPX 压缩 |
-| `make release` | `-O2` + LTO + strip（未做 `-Os` 优化） |
-| `make debug` | 带 bridge 日志的调试构建 |
-| `make nowasm` | 无 WASM/WAMR 构建 → `_build/qwin-nowasm.exe`（约 1.2MB，无 `WebAssembly` 全局） |
-| `make cc64-small` | 交叉编译 x86_64 `_build/qwin.exe`（`-Os`，CI 用） |
-| `make cc32-small` | 交叉编译 i686 `_build/qwin-x86.exe`（`-Os`，兼容 XP，CI 用） |
+| `make cc64` | 交叉编译 x86_64 → `_build/qwin.exe`（默认目标，`BUILD=fast`） |
+| `make cc32` | 交叉编译 i686/XP → `_build/qwin-x86.exe` |
+| `make cc64-nowasm` / `cc32-nowasm` | 无 WASM/WAMR 版 |
+| `BUILD=fast\|small\|debug` | 构建 flavor：`make cc64 BUILD=small` = `-Os`+LTO（约 1.5MB，CI 用） |
 | `make js` | 通过 tsc 编译 TypeScript |
-| `make wasm` | 编译 WAT → WASM fixtures |
+| `make wasm` / `make wat` | 编译 WAT → WASM fixtures |
 | `make test` | 运行全部测试 |
 | `make test TEST=-net` | 跳过网络测试（快速） |
 | `make test TEST=wasm` | 仅运行 WASM 测试 |
-| `make wamr` | 重建 WAMR 库 |
-| `make embed-js` | 把 `embed.js` 内嵌进 exe（用 `JS_EMBED=file.js`） |
-| `make embed-js-br` | 把 Brotli 压缩的 JS 内嵌进 exe |
 | `make exec_server` | 打包 `examples/exec_server.ts` 并 Brotli 内嵌进 `_build/exec_server.exe` |
+| `make embed-js` / `embed-js-br` | 把 JS（Brotli 压缩）内嵌进 exe |
 | `make npm-pkg` | 打包到 `dist/quickwin/` |
-| `make clean` | 清理构建产物 |
+| `make gen-const` | 重新生成 `quickwin_const.d.ts` |
+| `make clean` / `distclean` | 清理（会清掉整个 `_build/`，之后需 `make js wasm`） |
+
+构建与排错细节见 `.agents/DEVELOPMENT_WORKFLOW.md`。
 
 ## 许可证
 
