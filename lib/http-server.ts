@@ -36,6 +36,7 @@ interface Conn {
     pending: PendingReq | null
     current: ActiveReq | null
     outQueue: Uint8Array | null
+    resumeRead: (() => void) | null
     closed: boolean
     closeAfterFlush: boolean
     keepAlive: boolean
@@ -196,6 +197,7 @@ export class HttpServer {
                 pending: null,
                 current: null,
                 outQueue: null,
+                resumeRead: null,
                 closed: false,
                 closeAfterFlush: false,
                 keepAlive: true,
@@ -233,28 +235,33 @@ function onRead(c: Conn): void {
     if (!c.closed) tryProcess(c)
 }
 
-function queueSend(c: Conn, data: Uint8Array): void {
-    if (c.closed || data.length === 0) return
+/** Send `data`, or queue it when the kernel send buffer is full.
+ *  Returns true when the data was fully handed to the kernel, or false
+ *  when it has been buffered (or partially handed over) and the caller
+ *  should back off until `flushQueue` drains and calls `c.resumeRead`. */
+function queueSend(c: Conn, data: Uint8Array): boolean {
+    if (c.closed || data.length === 0) return true
     if (c.outQueue && c.outQueue.length > 0) {
         c.outQueue = concatU8([c.outQueue, data])
-        return
+        return false
     }
     const ret = sock.send(c.sock, toArrayBuffer(data))
     if (ret < 0) {
         c.outQueue = data
-        return
+        return false
     }
     if (ret < data.length) {
         c.outQueue = data.subarray(ret)
-        return
+        return false
     }
-    if (c.closeAfterFlush) closeConn(c)
+    return true
 }
 
 function flushQueue(c: Conn): void {
     if (c.closed) return
     if (!c.outQueue || c.outQueue.length === 0) {
         if (c.closeAfterFlush) closeConn(c)
+        else resumeReader(c)
         return
     }
     const q = c.outQueue
@@ -266,13 +273,61 @@ function flushQueue(c: Conn): void {
     }
     c.outQueue = null
     if (c.closeAfterFlush) closeConn(c)
+    else resumeReader(c)
 }
 
 function closeConn(c: Conn): void {
     if (c.closed) return
     c.closed = true
+    resumeReader(c)
     if (c.sock >= 0) sock.closesocket(c.sock)
     c.owner.conns.delete(c.sock)
+}
+
+/** Resolve the pending back-pressure awaiter, if any. Called whenever the
+ *  send queue drains or the connection closes. */
+function resumeReader(c: Conn): void {
+    const r = c.resumeRead
+    c.resumeRead = null
+    if (r) r()
+}
+
+/** Close the connection once a response is fully flushed, when the
+ *  handler or client asked for `Connection: close`. */
+function finishResponse(c: Conn): void {
+    if (c.closeAfterFlush && !c.outQueue) closeConn(c)
+}
+
+/** Frame `data` as a single chunked-transfer block: `<hex size>\r\n<data>\r\n`. */
+function encodeChunkFrame(data: Uint8Array, enc: TextEncoder): Uint8Array {
+    return concatU8([enc.encode(data.byteLength.toString(16) + '\r\n'), data, enc.encode('\r\n')])
+}
+
+/** Read `body` one chunk at a time and send it out. When the kernel send
+ *  buffer fills up (`queueSend` returns false) we pause on `c.resumeRead`,
+ *  which `flushQueue` resumes once the socket drains — backpressure. */
+async function writeStreamingBody(c: Conn, body: ReadableStream<Uint8Array> | null, chunked: boolean): Promise<void> {
+    if (c.closed || body == null) return
+    const reader = body.getReader()
+    const enc = new TextEncoder()
+    try {
+        while (!c.closed) {
+            const { done, value } = await reader.read()
+            if (done) break
+            if (value && value.byteLength > 0) {
+                const frame = chunked ? encodeChunkFrame(value, enc) : value
+                if (!queueSend(c, frame)) {
+                    await new Promise<void>((resolve) => { c.resumeRead = resolve })
+                }
+            }
+        }
+        if (!c.closed) {
+            if (chunked) queueSend(c, enc.encode('0\r\n\r\n'))
+            finishResponse(c)
+        }
+    } finally {
+        reader.releaseLock()
+    }
 }
 
 // ── Request state machine ──
@@ -385,11 +440,24 @@ async function handleRequest(c: Conn): Promise<void> {
     }
 
     if (c.closed) return
-    await sendResponse(c, req.method, res)
+    try {
+        await sendResponse(c, req.method, res)
+    } catch (e) {
+        console.error('[http-server] response send error:', e)
+        if (!c.closed) closeConn(c)
+        return
+    }
     if (c.closed) return
 
     c.current = null
     if (!c.closeAfterFlush) tryProcess(c)
+}
+
+function buildHead(status: number, statusText: string, headers: HeadersImpl): Uint8Array {
+    let head = 'HTTP/1.1 ' + status + ' ' + statusText + '\r\n'
+    for (const [name, value] of headers) head += name + ': ' + value + '\r\n'
+    head += '\r\n'
+    return new TextEncoder().encode(head)
 }
 
 async function sendResponse(c: Conn, method: string, res: Response): Promise<void> {
@@ -397,28 +465,45 @@ async function sendResponse(c: Conn, method: string, res: Response): Promise<voi
     const statusText = res.statusText || STATUS_TEXT[status] || 'OK'
     const headers = new HeadersImpl(res.headers)
 
-    let body: Uint8Array
-    try {
-        body = await _readStream(res.body)
-    } catch {
-        body = new Uint8Array(0)
-    }
-    if (c.closed) return
-
     const headOnly = method === 'HEAD'
     const bodyless = (status >= 100 && status < 200) || status === 204 || status === 304
 
-    if (!headers.has('content-length') && !bodyless) headers.set('Content-Length', String(body.length))
     if (!headers.has('connection')) headers.set('Connection', c.keepAlive ? 'keep-alive' : 'close')
-
     const connHdr = (headers.get('connection') || '').toLowerCase()
     if (!c.keepAlive || connHdr === 'close') c.closeAfterFlush = true
 
-    let head = 'HTTP/1.1 ' + status + ' ' + statusText + '\r\n'
-    for (const [name, value] of headers) head += name + ': ' + value + '\r\n'
-    head += '\r\n'
+    if (bodyless) {
+        headers.delete('Transfer-Encoding')
+        headers.delete('Content-Length')
+        queueSend(c, buildHead(status, statusText, headers))
+        finishResponse(c)
+        return
+    }
 
-    const headBytes = new TextEncoder().encode(head)
-    const payload = headOnly || body.length === 0 ? headBytes : concatU8([headBytes, body])
-    queueSend(c, payload)
+    if (headOnly) {
+        headers.delete('Transfer-Encoding')
+        if (!headers.has('content-length')) {
+            try {
+                const full = await _readStream(res.body)
+                headers.set('Content-Length', String(full.length))
+            } catch { /* leave length unspecified */ }
+        }
+        if (c.closed) return
+        queueSend(c, buildHead(status, statusText, headers))
+        finishResponse(c)
+        return
+    }
+
+    // Body is streamed out chunk by chunk. A declared Content-Length sends
+    // the bytes as-is; otherwise we use chunked framing.
+    const chunked = (headers.get('transfer-encoding') || '').toLowerCase() === 'chunked' ||
+        !headers.has('content-length')
+    if (chunked) {
+        headers.delete('Content-Length')
+        if (!headers.has('transfer-encoding')) headers.set('Transfer-Encoding', 'chunked')
+    } else {
+        headers.delete('Transfer-Encoding')
+    }
+    queueSend(c, buildHead(status, statusText, headers))
+    await writeStreamingBody(c, res.body, chunked)
 }

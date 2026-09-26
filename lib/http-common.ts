@@ -296,9 +296,27 @@ export class ResponseImpl {
         this.statusText = statusText
         this._headers = headers
         this.ok = status >= 200 && status < 300
-        this._body = body != null ? _toReadableStream(body) : new ReadableStream<Uint8Array>({
-            start(ctrl) { ctrl.close() }
-        })
+        if (body instanceof ReadableStream) {
+            this._body = body
+        } else {
+            let bytes: Uint8Array
+            if (body == null) {
+                bytes = new Uint8Array(0)
+            } else if (typeof body === 'string') {
+                bytes = new TextEncoder().encode(body)
+            } else if (body instanceof ArrayBuffer) {
+                bytes = new Uint8Array(body)
+            } else {
+                bytes = new Uint8Array(body.buffer, body.byteOffset, body.byteLength)
+            }
+            if (!headers.has('content-length')) headers.set('Content-Length', String(bytes.byteLength))
+            this._body = new ReadableStream<Uint8Array>({
+                start(ctrl) {
+                    ctrl.enqueue(bytes)
+                    ctrl.close()
+                }
+            })
+        }
     }
 
     async text(): Promise<string> {

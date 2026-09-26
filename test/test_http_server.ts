@@ -69,6 +69,24 @@ export const suite = {
                 return new Response(req.method + ':' + await req.text(), { headers: { 'Content-Type': 'text/plain' } })
             } else if (path === '/json') {
                 return new Response(JSON.stringify({ method: req.method, q: Object.fromEntries(url.searchParams) }), { headers: { 'Content-Type': 'application/json' } })
+            } else if (path === '/stream') {
+                // length unknown: server must send chunked frames
+                return new Response(new ReadableStream({
+                    start(control) {
+                        control.enqueue(new TextEncoder().encode('chunkA/'))
+                        control.enqueue(new TextEncoder().encode('chunkB'))
+                        control.close()
+                    }
+                }), { headers: { 'Content-Type': 'text/plain' } })
+            } else if (path === '/file') {
+                // length known: server streams raw bytes with Content-Length
+                return new Response(new ReadableStream({
+                    start(control) {
+                        control.enqueue(new TextEncoder().encode('chunkA/'))
+                        control.enqueue(new TextEncoder().encode('chunkB'))
+                        control.close()
+                    }
+                }), { headers: { 'Content-Type': 'text/plain', 'Content-Length': '13' } })
             } else {
                 return new Response('not found', { status: 404 })
             }
@@ -87,6 +105,32 @@ export const suite = {
         t.checkTrue('200 status', r.indexOf('HTTP/1.1 200') === 0)
         t.checkTrue('body = hello world', r.endsWith('hello world'))
         t.checkTrue('content-type text', r.toLowerCase().indexOf('content-type: text/plain') >= 0)
+        t.checkTrue('static body gets content-length', r.toLowerCase().indexOf('content-length: 11') >= 0)
+
+        // ── streaming chunked response (length unknown) ──
+        t.section('streaming chunked response')
+        r = await httpSend('127.0.0.1', port, 'GET /stream HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n')
+        t.checkTrue('200 status', r.indexOf('HTTP/1.1 200') === 0)
+        t.checkTrue('transfer-encoding chunked', r.toLowerCase().indexOf('transfer-encoding: chunked') >= 0)
+        t.checkTrue('no content-length', r.toLowerCase().indexOf('content-length:') < 0)
+        t.checkTrue('chunk frames + terminator', r.indexOf('7\r\nchunkA/\r\n6\r\nchunkB\r\n0\r\n\r\n') >= 0)
+
+        // ── streaming raw response with known length ──
+        t.section('streaming known-length response')
+        r = await httpSend('127.0.0.1', port, 'GET /file HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n')
+        t.checkTrue('200 status', r.indexOf('HTTP/1.1 200') === 0)
+        t.checkTrue('content-length 13', r.toLowerCase().indexOf('content-length: 13') >= 0)
+        t.checkTrue('no chunked encoding', r.toLowerCase().indexOf('transfer-encoding: chunked') < 0)
+        t.checkTrue('streamed raw body', r.includes('chunkA/chunkB'))
+        t.checkTrue('no chunk frame headers', r.indexOf('7\r\nchunkA/') < 0)
+
+        // ── HEAD of a streamed body: headers only, empty body ──
+        t.section('HEAD streaming response')
+        r = await httpSend('127.0.0.1', port, 'HEAD /stream HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n')
+        t.checkTrue('HEAD 200', r.indexOf('HTTP/1.1 200') === 0)
+        t.checkTrue('HEAD content-length 13', r.toLowerCase().indexOf('content-length: 13') >= 0)
+        const headBodyIdx = r.indexOf('\r\n\r\n')
+        t.checkTrue('HEAD empty body', r.slice(headBodyIdx + 4).length === 0)
 
         // ── POST with body ──
         t.section('POST with body')
@@ -124,7 +168,7 @@ export const suite = {
 
         // ── server received expected requests ──
         t.section('request log')
-        t.check('total requests', 7, requests.length)
+        t.check('total requests', 10, requests.length)
         t.checkTrue('saw GET /', requests.indexOf('GET /') >= 0)
         t.checkTrue('saw POST /echo', requests.indexOf('POST /echo') >= 0)
 
