@@ -47,6 +47,25 @@ function parseHeaders(data: string): ParsedResponse | null {
     return { status, statusText, headers }
 }
 
+/** True when the chunked body is complete. With a declared `Trailer`,
+ *  the terminating block is followed by 0..n header lines and a final
+ *  empty line (`\r\n0\r\n<trailer...>\r\n\r\n`) instead of the bare
+ *  `\r\n0\r\n\r\n` form. */
+function chunkedEndReached(data: Uint8Array, hasTrailer: boolean): boolean {
+    if (!hasTrailer) return _hasChunkedEnd(data)
+    const tail = '\r\n0\r\n'
+    for (let i = data.length - 1; i >= 0; i--) {
+        let j = 0
+        while (j < tail.length && i + j < data.length && data[i + j] === tail.charCodeAt(j)) j++
+        if (j === tail.length) {
+            const after = i + tail.length
+            if (data.length >= after + 2 &&
+                data[data.length - 2] === 0x0D && data[data.length - 1] === 0x0A) return true
+        }
+    }
+    return false
+}
+
 // ── State machine constants ──
 
 const ST_CONNECTING = 0
@@ -101,6 +120,7 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
     let _controller: ReadableStreamDefaultController<Uint8Array> | null = null
     let headerRaw: Uint8Array = new Uint8Array(0)
     let isChunked = false
+    let hasTrailer = false
     let contentLength = 0
     let chunkedParts: Uint8Array[] = []
     let receivedBytes = 0
@@ -217,6 +237,7 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                             const trailingBodyBytes = headerRaw.subarray(headerEnd + 4)
 
                             isChunked = (parsed.headers.get('transfer-encoding') || '').toLowerCase().includes('chunked')
+                            hasTrailer = parsed.headers.get('trailer') != null
                             contentLength = isChunked ? 0 : parseInt(
                                 parsed.headers.get('content-length') || '0', 10
                             )
@@ -228,7 +249,7 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                             if (trailingBodyBytes.length > 0) {
                                 if (isChunked) {
                                     chunkedParts = [trailingBodyBytes]
-                                    if (_hasChunkedEnd(trailingBodyBytes)) {
+                                    if (chunkedEndReached(trailingBodyBytes, hasTrailer)) {
                                         const decoded = decodeChunked(trailingBodyBytes)
                                         _controller!.enqueue(decoded)
                                         _controller!.close()
@@ -272,7 +293,7 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                         if (isChunked) {
                             chunkedParts.push(new Uint8Array(data))
                             const combined = _concat(chunkedParts)
-                            if (_hasChunkedEnd(combined)) {
+                            if (chunkedEndReached(combined, hasTrailer)) {
                                 const decoded = decodeChunked(combined)
                                 _controller!.enqueue(decoded)
                                 _controller!.close()

@@ -85,6 +85,20 @@ const server = http.createServer(async (req, res) => {
         return
     }
 
+    if (req.method === 'GET' && pathname === '/trailer') {
+        res.writeHead(200, {
+            'Content-Type': 'text/plain',
+            'Trailer': 'X-Checksum'
+        })
+        res.write('chunkA/')
+        setTimeout(() => {
+            res.write('chunkB')
+            res.addTrailers({ 'X-Checksum': 'deadbeef' })
+            res.end()
+        }, 50)
+        return
+    }
+
     if (req.method === 'GET' && pathname.startsWith('/large/')) {
         const n = Math.max(0, Math.min(5_000_000, parseInt(pathname.slice('/large/'.length), 10) || 0))
         res.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': String(n) })
@@ -173,6 +187,20 @@ const httpsServer = https.createServer(httpsOpts, async (req, res) => {
             'Cache-Control': 'public, max-age=60'
         })
         res.end('cached response')
+        return
+    }
+
+    if (req.method === 'GET' && pathname === '/trailer') {
+        res.writeHead(200, {
+            'Content-Type': 'text/plain',
+            'Trailer': 'X-Checksum'
+        })
+        res.write('chunkA/')
+        setTimeout(() => {
+            res.write('chunkB')
+            res.addTrailers({ 'X-Checksum': 'deadbeef' })
+            res.end()
+        }, 50)
         return
     }
 

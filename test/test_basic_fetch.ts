@@ -29,5 +29,14 @@ export const suite = {
             const body = await r.text()
             assert('body = hello from test server', body === 'hello from test server')
         }
+
+        t.section('fetch chunked response with Trailer')
+        {
+            const r = await fetch(URL127 + 'trailer')
+            assert('status 200', r.status === 200)
+            assert('trailer declared', (r.headers.get('trailer') || '').toLowerCase() === 'x-checksum')
+            const body = await r.text()
+            assert('body decoded without trailer footer', body === 'chunkA/chunkB')
+        }
     }
 }
