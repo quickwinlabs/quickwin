@@ -75,6 +75,20 @@ function findCrLfCrLf(buf: Uint8Array): number {
     return -1
 }
 
+/** Flatten a `HeadersInit` into `[name, value]` pairs, preserving the
+ *  casing the caller provided (Node `addTrailers` semantics). */
+function headersInitToPairs(init: HeadersInit): [string, string][] {
+    if (init instanceof HeadersImpl) {
+        const out: [string, string][] = []
+        for (const [name, value] of init) out.push([name, value])
+        return out
+    }
+    if (Array.isArray(init)) return init.map(([name, value]) => [name, String(value)])
+    const out: [string, string][] = []
+    for (const name of Object.keys(init)) out.push([name, String((init as Record<string, string>)[name])])
+    return out
+}
+
 /** Decode a chunked-transfer body starting at `start`. Returns the decoded
  *  data and the offset just past the terminating CRLF, or null if the buffer
  *  does not yet contain the complete chunked body. */
@@ -306,7 +320,7 @@ function encodeChunkFrame(data: Uint8Array, enc: TextEncoder): Uint8Array {
 /** Read `body` one chunk at a time and send it out. When the kernel send
  *  buffer fills up (`queueSend` returns false) we pause on `c.resumeRead`,
  *  which `flushQueue` resumes once the socket drains — backpressure. */
-async function writeStreamingBody(c: Conn, body: ReadableStream<Uint8Array> | null, chunked: boolean): Promise<void> {
+async function writeStreamingBody(c: Conn, body: ReadableStream<Uint8Array> | null, chunked: boolean, trailer: Promise<HeadersInit> | undefined): Promise<void> {
     if (c.closed || body == null) return
     const reader = body.getReader()
     const enc = new TextEncoder()
@@ -322,7 +336,23 @@ async function writeStreamingBody(c: Conn, body: ReadableStream<Uint8Array> | nu
             }
         }
         if (!c.closed) {
-            if (chunked) queueSend(c, enc.encode('0\r\n\r\n'))
+            if (chunked) {
+                let terminator = '0\r\n\r\n'
+                if (trailer) {
+                    try {
+                        const pairs = headersInitToPairs(await trailer)
+                        if (pairs.length > 0) {
+                            let s = '0\r\n'
+                            for (const [name, value] of pairs) s += name + ': ' + value + '\r\n'
+                            s += '\r\n'
+                            terminator = s
+                        }
+                    } catch (e) {
+                        console.error('[http-server] trailers promise rejected:', e)
+                    }
+                }
+                queueSend(c, enc.encode(terminator))
+            }
             finishResponse(c)
         }
     } finally {
@@ -475,6 +505,7 @@ async function sendResponse(c: Conn, method: string, res: Response): Promise<voi
     if (bodyless) {
         headers.delete('Transfer-Encoding')
         headers.delete('Content-Length')
+        headers.delete('Trailer')
         queueSend(c, buildHead(status, statusText, headers))
         finishResponse(c)
         return
@@ -482,6 +513,7 @@ async function sendResponse(c: Conn, method: string, res: Response): Promise<voi
 
     if (headOnly) {
         headers.delete('Transfer-Encoding')
+        headers.delete('Trailer')
         if (!headers.has('content-length')) {
             try {
                 const full = await _readStream(res.body)
@@ -498,12 +530,17 @@ async function sendResponse(c: Conn, method: string, res: Response): Promise<voi
     // the bytes as-is; otherwise we use chunked framing.
     const chunked = (headers.get('transfer-encoding') || '').toLowerCase() === 'chunked' ||
         !headers.has('content-length')
+    // Trailing headers are only emitted when the body is chunk-framed and a
+    // `Trailer` declaration header is present (Node addTrailers semantics).
+    const trailerDeclared = (headers.get('trailer') || '').trim().length > 0
     if (chunked) {
         headers.delete('Content-Length')
         if (!headers.has('transfer-encoding')) headers.set('Transfer-Encoding', 'chunked')
+        if (!trailerDeclared) headers.delete('Trailer')
     } else {
         headers.delete('Transfer-Encoding')
+        headers.delete('Trailer')
     }
     queueSend(c, buildHead(status, statusText, headers))
-    await writeStreamingBody(c, res.body, chunked)
+    await writeStreamingBody(c, res.body, chunked, (chunked && trailerDeclared) ? res.trailers : undefined)
 }

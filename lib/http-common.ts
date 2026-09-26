@@ -280,9 +280,13 @@ export class ResponseImpl {
     _url: string = ''
     private _body: ReadableStream<Uint8Array>
     private _bodyConsumed: boolean = false
+    private _trailers: Promise<HeadersInit> | undefined
 
     get body(): ReadableStream<Uint8Array> { return this._body }
     get bodyUsed(): boolean { return this._bodyConsumed || this._body.locked }
+    /** Trailing headers to emit after a chunked body (Promise resolves to
+     *  a HeadersInit), when a `Trailer` declaration header is present. */
+    get trailers(): Promise<HeadersInit> | undefined { return this._trailers }
     get headers(): HeadersImpl { return this._headers }
     get redirected(): boolean { return this._redirected }
     get type(): ResponseType { return this._type }
@@ -295,6 +299,7 @@ export class ResponseImpl {
         this.status = status
         this.statusText = statusText
         this._headers = headers
+        this._trailers = init?.trailers
         this.ok = status >= 200 && status < 300
         if (body instanceof ReadableStream) {
             this._body = body
@@ -347,7 +352,7 @@ export class ResponseImpl {
         if (this.bodyUsed) throw new TypeError('Body already used')
         const [branch1, branch2] = this._body.tee()
         this._body = branch1
-        return new ResponseImpl(branch2, { status: this.status, statusText: this.statusText, headers: this._headers })
+        return new ResponseImpl(branch2, { status: this.status, statusText: this.statusText, headers: this._headers, trailers: this._trailers })
     }
 
     _applyDecompressedBody(stream: ReadableStream<Uint8Array>, _body: ArrayBuffer, newHeaders: HeadersImpl): void {
@@ -397,6 +402,10 @@ declare global {
         status?: number;
         statusText?: string;
         headers?: HeadersInit;
+        /** Non-standard: trailing headers, resolved after the body streams.
+         *  http-server emits them (Node addTrailers semantics) when a `Trailer`
+         *  declaration header is present and the body is chunk-framed. */
+        trailers?: Promise<HeadersInit>;
     }
 
     interface Headers extends HeadersImpl {}

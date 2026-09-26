@@ -4,6 +4,7 @@ import * as os from 'os'
 import * as sock from 'sock'
 import { Tester } from './test_helper.js'
 import { createServer } from '../lib/http-server.js'
+import '../lib/fetch.js'
 
 // ── Minimal raw HTTP client for testing ──
 
@@ -87,6 +88,19 @@ export const suite = {
                         control.close()
                     }
                 }), { headers: { 'Content-Type': 'text/plain', 'Content-Length': '13' } })
+            } else if (path === '/stream-trailer') {
+                // chunked stream with trailing headers (Node addTrailers
+                // semantics: `Trailer` declaration + frames, then the footer)
+                return new Response(new ReadableStream({
+                    start(control) {
+                        control.enqueue(new TextEncoder().encode('chunkA/'))
+                        control.enqueue(new TextEncoder().encode('chunkB'))
+                        control.close()
+                    }
+                }), {
+                    headers: { 'Content-Type': 'text/plain', 'Trailer': 'X-Exit-Code' },
+                    trailers: Promise.resolve({ 'X-Exit-Code': '3' })
+                })
             } else {
                 return new Response('not found', { status: 404 })
             }
@@ -132,6 +146,22 @@ export const suite = {
         const headBodyIdx = r.indexOf('\r\n\r\n')
         t.checkTrue('HEAD empty body', r.slice(headBodyIdx + 4).length === 0)
 
+        // ── streaming chunked response with trailing headers ──
+        t.section('streaming trailer response')
+        r = await httpSend('127.0.0.1', port, 'GET /stream-trailer HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n')
+        t.checkTrue('200 status', r.indexOf('HTTP/1.1 200') === 0)
+        t.checkTrue('trailer declared in head', r.toLowerCase().indexOf('trailer: x-exit-code') >= 0)
+        t.checkTrue('terminator carries trailer', r.indexOf('0\r\nX-Exit-Code: 3\r\n\r\n') >= 0)
+        t.checkTrue('trailer footer after body', r.indexOf('7\r\nchunkA/\r\n6\r\nchunkB\r\n0\r\nX-Exit-Code: 3\r\n\r\n') >= 0)
+
+        // ── fetch client consumes chunked response with trailer footer ──
+        t.section('fetch consumes trailer response')
+        {
+            const rr = await fetch(`http://127.0.0.1:${port}/stream-trailer`)
+            t.checkTrue('status 200', rr.status === 200)
+            t.checkTrue('body decoded without trailer', await rr.text() === 'chunkA/chunkB')
+        }
+
         // ── POST with body ──
         t.section('POST with body')
         r = await httpSend('127.0.0.1', port, 'POST /echo HTTP/1.1\r\nHost: x\r\nContent-Length: 7\r\nConnection: close\r\n\r\npayload')
@@ -168,7 +198,7 @@ export const suite = {
 
         // ── server received expected requests ──
         t.section('request log')
-        t.check('total requests', 10, requests.length)
+        t.check('total requests', 12, requests.length)
         t.checkTrue('saw GET /', requests.indexOf('GET /') >= 0)
         t.checkTrue('saw POST /echo', requests.indexOf('POST /echo') >= 0)
 
