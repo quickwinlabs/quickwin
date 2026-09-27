@@ -26,19 +26,30 @@ try {
         closeHandle: bind('kernel32.dll', 'CloseHandle', 'ptr -> i32'),
         getLastError: bind('kernel32.dll', 'GetLastError', ' -> u32'),
         getSystemDirectoryW: bind('kernel32.dll', 'GetSystemDirectoryW', 'ptr u32 -> u32'),
+        getSystemInfo: bind('kernel32.dll', 'GetSystemInfo', 'ptr -> void'),
     }
 } catch (ex) {
     diagFile('K-BIND-FAIL: ' + String(ex))
     throw ex
 }
 
-const PTR = os.arch === 'x64' ? 8 : 4
+// 布局长度由「调用进程位数」决定（CreateProcessW 以调用进程位数解析 STARTUPINFO）。
+// 不能用 os.arch：它报告的是系统原生架构，64 位 Win7 上运行 32 位 exec_server 时
+// os.arch='x64'，会误选 64 位布局，使 hStdOutput/hStdError 落在错误偏移，
+// 子进程全部 stdout/stderr 丢失（现象：exit code 0 但 body 全空）。
+// GetSystemInfo 报告进程视角架构（WOW64 下返回 INTEL=0），用它判定。
+const sysinfoBuf = new ArrayBuffer(64)
+K.getSystemInfo(ffi.bufferPtr(sysinfoBuf))
+const sysinfoPtr = ffi.bufferPtr(sysinfoBuf)
+const wArch = ffi.readByte(sysinfoPtr) | (ffi.readByte(sysinfoPtr + 1) << 8)
+const IS_PROC_64 = wArch === 9 /* PROCESSOR_ARCHITECTURE_AMD64 */
+const PTR = IS_PROC_64 ? 8 : 4
 const HANDLE_FLAG_INHERIT = 0x1
 const STARTF_USESTDHANDLES = 0x100
 const WAIT_INFINITE = 0xffffffff
-// STARTUPINFOW 字段偏移随字宽变化：x64 指针字段 8 字节（对齐后整体 104B），x86 68B。
-const L = PTR === 8 ? { flags: 60, hOut: 88, hErr: 96, siSize: 104, piSize: 24, pidAt: 16 }
-                    : { flags: 44, hOut: 60, hErr: 64, siSize: 68, piSize: 16, pidAt: 8 }
+// STARTUPINFOW 字段偏移随进程位数变化：x64 指针字段 8 字节（对齐后整体 104B），x86 68B。
+const L = IS_PROC_64 ? { flags: 60, hOut: 88, hErr: 96, siSize: 104, piSize: 24, pidAt: 16 }
+                     : { flags: 44, hOut: 60, hErr: 64, siSize: 68, piSize: 16, pidAt: 8 }
 
 const parent = os.Worker.parent
 const nRead = new ArrayBuffer(4)
@@ -67,14 +78,19 @@ function rdI32(p: number): number {
 
 function rdPtr(p: number, off: number): number {
     if (PTR === 4) return rdU32(p + off)
-    let v = 0
-    for (let i = 0; i < 8; i++) v |= ffi.readByte(p + off + i) << (8 * i)
-    return v >>> 0
+    // 64 位：JS 位运算移位量取 mod 32（`<< 32` 等价 `<< 0`），
+    // 不能逐 8 位移位拼 8 字节；拆高/低两个 u32 各读一次再合成。
+    const lo = rdU32(p + off)
+    const hi = rdU32(p + off + 4)
+    return hi === 0 ? lo : hi * 0x100000000 + lo
 }
 
 function wrPtr(p: number, off: number, t: number): void {
     if (PTR === 4) { u32At(p, off, t >>> 0); return }
-    for (let i = 0; i < 8; i++) ffi.writeByte(p + off + i, (t >>> (8 * i)) & 0xff)
+    // 同上：`t >>> 32` 等价 `t >>> 0`，会把手柄/地址低 32 位重复写进高 32 位，
+    // 导致 SI 里 hStdOutput/hStdError 变成 0x000000f4000000f4 这类非法 64 位句柄。
+    u32At(p, off, t >>> 0)
+    u32At(p, off + 4, (t / 0x100000000) >>> 0)
 }
 
 function zeroBuf(n: number): ArrayBuffer {
