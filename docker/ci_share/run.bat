@@ -54,6 +54,8 @@ netsh interface portproxy show all >> %LOG% 2>&1
 
 :run
 rem ---- cwd 到共享目录，启动常驻 exec_server ----
+rem 注：部署新 exe 必须"先删再写同一文件名"（新 inode），
+rem 直接覆盖同名会命中 SMB 缓存读到旧版（改名也可绕过，见 .agents/CONSOLE_STDOUT_MECHANISM.md §7.5）。
 cd /d Z:\quickwin
 echo [%date% %time%] exe=[%EXE%] cwd=[%cd%] >> %LOG%
 if exist exec_server.exe goto startsvc

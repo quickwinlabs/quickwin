@@ -20,7 +20,7 @@ type ArgTypeOf = {
     u64: number; i64: number
     f32: number; f64: number
     ptr: ArrayBuffer | number | null
-    wstr: string
+    wstr: string | null
 }
 type RetTypeOf = {
     u8: number; i8: number; u16: number; i16: number
@@ -145,8 +145,11 @@ function makeFn(proc: number, sig: string): (...a: unknown[]) => unknown {
     const argTypes = args.map((k) => KIND_TO_FFI[k])
     const retType = KIND_TO_FFI[ret]
     return (...a: unknown[]) => {
-        const vals = args.map((k, i) =>
-            k === 'wstr' ? new TextEncoder('utf-16le').encode(String(a[i]) + '\0').buffer : a[i])
+        const vals = args.map((k, i) => {
+            if (k !== 'wstr') return a[i]
+            const s = a[i] as string | null | undefined
+            return s == null ? null : new TextEncoder('utf-16le').encode(String(s) + '\0').buffer
+        })
         return ffi.ffiCall(proc, argTypes as any, vals as any, retType)
     }
 }
