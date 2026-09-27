@@ -168,7 +168,7 @@ OBJS = $(SRCS:%.c=$(OBJ_DIR)/%.o) $(OBJ_DIR)/app.o
 DEPS = $(SRCS:%.c=$(OBJ_DIR)/%.d)
 
 .PHONY: cc64 cc32 cc64-nowasm cc32-nowasm apply-submodule-patches \
-        gen-const wamr wasm js test npm-pkg exec_server embed-js embed-js-br info help clean distclean
+        gen-const wamr wasm js test npm-pkg exec_server exec_server-full embed-js embed-js-br info help clean distclean
 
 .DEFAULT_GOAL := cc64
 
@@ -190,7 +190,15 @@ $(eval $(call cross_build,cc32-nowasm,$(BUILD_DIR)/$(TARGET_NOWASM_32),ARCH_TAG=
 
 QJ_DEFINES = -D_GNU_SOURCE -DCONFIG_WIN32 -DCONFIG_VERSION=\"2025-09-13\"
 
-$(QUICKJS_LIB):
+# 必须声明源文件依赖：无前置条件时归档永不重编，子模块 patch 后的新代码不会进 exe
+# （曾因 9/23 的归档缺 quickjs.c 里的 base64 补丁，导致 data: URL 的 new Worker() 全挂）。
+QJ_SRCS = deps/quickjs/quickjs.c deps/quickjs/dtoa.c deps/quickjs/libregexp.c \
+          deps/quickjs/libunicode.c deps/quickjs/cutils.c deps/quickjs/quickjs-libc.c
+QJ_HDRS = $(patsubst %.c,%.h,$(QJ_SRCS)) \
+          deps/quickjs/quickjs-atom.h deps/quickjs/quickjs-opcode.h \
+          deps/quickjs/libregexp-opcode.h deps/quickjs/libunicode-table.h
+
+$(QUICKJS_LIB): $(QJ_SRCS) $(QJ_HDRS)
 	@echo "Building QuickJS library..."
 	mkdir -p $(OBJ_DIR)/quickjs
 	$(CC) $(CFLAGS) $(QJ_DEFINES) -c -o $(OBJ_DIR)/quickjs/quickjs.nolto.o deps/quickjs/quickjs.c
@@ -433,9 +441,26 @@ npm-pkg: js wasm
 	cp $(BUILD_DIR)/main.js $(NPM_PKG_DIR)/main.js
 	@echo "npm package created at $(NPM_PKG_DIR)"
 
-# 优先 32-bit（XP 可跑）；否则用已有的 64-bit（CI win7 只编 cc64）。
-# 两者都没有才递归 make cc32（保持本地 clean 后 make exec_server 可用）。
+# 底座用 nowasm：exec_server.js 只 import os/sock/std，worker 只 import os/std/ffi，
+# 完全不依赖 WAMR —— 去掉 wasm 运行时可省 297KB(x86) / 262KB(x64)，BUILD=small 实测。
+# 优先 32-bit nowasm（XP 可跑）；否则用已有的 64-bit nowasm（CI win7 只编 cc64-nowasm）。
+# 两者都没有才递归 make cc32-nowasm（保持本地 clean 后 make exec_server 可用）。
 exec_server: js
+	@if [ ! -f $(BUILD_DIR)/$(TARGET_NOWASM_32) ] && [ ! -f $(BUILD_DIR)/$(TARGET_NOWASM) ]; then \
+		$(MAKE) cc32-nowasm; \
+	fi
+	@if [ -f $(BUILD_DIR)/$(TARGET_NOWASM_32) ]; then \
+		cp $(BUILD_DIR)/$(TARGET_NOWASM_32) $(BUILD_DIR)/exec_server.exe; \
+	elif [ -f $(BUILD_DIR)/$(TARGET_NOWASM) ]; then \
+		cp $(BUILD_DIR)/$(TARGET_NOWASM) $(BUILD_DIR)/exec_server.exe; \
+	else \
+		@echo "error: no nowasm base found, run: make cc32-nowasm or make cc64-nowasm"; exit 1; \
+	fi
+	node scripts/embed-js.mjs --exe $(BUILD_DIR)/exec_server.exe \
+	  --js $(BUILD_DIR)/examples/exec_server.js --compress
+
+# 含 WAMR 的完整底座版本（保留：exec_server 若将来要跑 wasm 用这个）
+exec_server-full: js
 	@if [ ! -f $(BUILD_DIR)/$(TARGET_NAME_32) ] && [ ! -f $(BUILD_DIR)/$(TARGET_NAME) ]; then \
 		$(MAKE) cc32; \
 	fi
@@ -471,7 +496,8 @@ help:
 	@echo "  npm-pkg   - Package distributable into $(NPM_PKG_DIR)"
 	@echo "  gen-const - Cross-compile tools/gen_const.exe -> $(BUILD_DIR)/gen_const.exe"
 	@echo "  wamr      - Build WAMR static library (auto-built on demand)"
-	@echo "  exec_server - Bundle examples/exec_server.ts, brotli-embed into $(BUILD_DIR)/exec_server.exe"
+	@echo "  exec_server      - examples/exec_server.ts -> exec_server.exe（nowasm 底座，无 WAMR，省 297KB x86 / 262KB x64）"
+	@echo "  exec_server-full - 同上，但用含 WAMR 的完整底座"
 	@echo "  embed-js  - Embed JS_EMBED into exe: make embed-js JS_EMBED=script.js"
 	@echo "  embed-js-br - Embed brotli-compressed JS into exe"
 	@echo "  clean     - Remove $(BUILD_DIR)/ (all intermediates)"

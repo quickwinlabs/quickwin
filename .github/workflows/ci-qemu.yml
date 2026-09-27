@@ -190,7 +190,10 @@ jobs:
       # ── 测试段（常驻 exec_server + HTTP 下发）──
       # run.sh 只开机等 /health；http_test.sh POST /exec 跑 test/run.js 并解析 Summary。
       - name: Build exec_server
-        run: make exec_server
+        run: |
+          make exec_server
+          ls -lh _build/exec_server.exe _build/qwin*.exe
+          file _build/exec_server.exe
 
       - name: Start ${{ matrix.id }} VM (resident)
         run: |
