@@ -5,8 +5,6 @@ import * as std from 'std'
 // WORKER_DATA_URL 由 esbuild --define 在 build.ts 中注入（base64 data: URL）
 declare const WORKER_DATA_URL: string
 
-const EXEC_TIMEOUT_MS = 60_000
-
 interface ExecHandle {
     stream: ReadableStream<Uint8Array>
     ready: Promise<{ ok: boolean; error?: string }>
@@ -14,7 +12,8 @@ interface ExecHandle {
     kill: () => void
 }
 
-function runInWorker(cmd: string): ExecHandle {
+// timeoutMs <= 0 / null/NaN → 无上限：连接活着命令就一直跑，断连才 kill。
+function runInWorker(cmd: string, signal: AbortSignal | null, timeoutMs: number | null): ExecHandle {
     // worker 内以 "system32\cmd.exe /c <cmd>" 启动，保留 cmd shell 语义（内部命令/管道/for），
     // cmd.exe 路径由 worker 用 GetSystemDirectoryW 拼（CreateProcess 直接 PATH 解析在本环境失败）。
     // 子进程树由 CreateProcessW 返回的 pid 定位，超时/断开时 taskkill /T 递归杀掉。
@@ -25,7 +24,7 @@ function runInWorker(cmd: string): ExecHandle {
     let settled = false
     let readySettled = false
     let controller: ReadableStreamDefaultController<Uint8Array> | null = null
-    let timer: ReturnType<typeof os.setTimeout>
+    let timer: ReturnType<typeof os.setTimeout> | null = null
 
     const settleReady = (v: { ok: boolean; error?: string }): void => {
         readySettled = true
@@ -48,7 +47,7 @@ function runInWorker(cmd: string): ExecHandle {
     const finish = (fn: () => void): void => {
         if (settled) return
         settled = true
-        os.clearTimeout(timer)
+        if (timer !== null) os.clearTimeout(timer)
         worker.onmessage = null
         fn()
     }
@@ -66,19 +65,29 @@ function runInWorker(cmd: string): ExecHandle {
         }
     }
 
-    timer = os.setTimeout(() => {
-        finish(() => {
-            kill()
-            resolveTrailers({ 'X-Exit-Code': '-1' })
-            if (readySettled) {
-                // 已有输出（200 已发）：正常收尾（尾帧 + trailer -1）
-                if (controller) controller.close()
-            } else {
-                // 尚无任何输出：Response 未发，安全地报超时
-                failReady(new Error('exec timeout'))
-            }
-        })
-    }, EXEC_TIMEOUT_MS)
+    // 客户端断连 → 立即 kill（不等 60s 超时）。abort 事件同步触发；
+    // 若断连发生在 worker 尚未回报 innerPid 时无法 kill，则在 'info' 到达后补刀。
+    const killOnAbort = (): void => { kill() }
+    if (signal) {
+        signal.addEventListener('abort', killOnAbort)
+        if (signal.aborted) killOnAbort()
+    }
+
+    if (timeoutMs != null && timeoutMs > 0) {
+        timer = os.setTimeout(() => {
+            finish(() => {
+                kill()
+                resolveTrailers({ 'X-Exit-Code': '-1' })
+                if (readySettled) {
+                    // 已有输出（200 已发）：正常收尾（尾帧 + trailer -1）
+                    if (controller) controller.close()
+                } else {
+                    // 尚无任何输出：Response 未发，安全地报超时
+                    failReady(new Error('exec timeout'))
+                }
+            })
+        }, timeoutMs)
+    }
 
     worker.onmessage = (e) => {
         const msg = e.data as { type: string; id?: number; chunk?: Uint8Array; code?: number; pid?: number; error?: string | null }
@@ -86,6 +95,7 @@ function runInWorker(cmd: string): ExecHandle {
         switch (msg.type) {
             case 'info':
                 innerPid = msg.pid ?? null
+                if (innerPid !== null && signal?.aborted) kill()
                 break
             case 'data':
                 settleReady({ ok: true })
@@ -105,7 +115,7 @@ function runInWorker(cmd: string): ExecHandle {
     const stream = new ReadableStream<Uint8Array>({
         start(c) { controller = c },
         cancel() {
-            // 客户端断开（当前 http-server 不会主动感知，保底语义）
+            // http-server 在断连时主动 cancel 响应体 → 落这里 kill 子进程
             finish(() => kill())
         }
     })
@@ -130,8 +140,12 @@ const server = createServer(async (req) => {
     if (req.method === 'POST' && path === '/exec') {
         let out: ExecHandle
         try {
-            const body = await req.json() as { cmd: string }
-            out = runInWorker(body.cmd)
+            const body = await req.json() as { cmd: string; timeout?: unknown }
+            const t = body.timeout
+            const timeoutMs: number | null = typeof t === 'number' && Number.isFinite(t) && t > 0
+                ? t
+                : null
+            out = runInWorker(body.cmd, req.signal, timeoutMs)
         } catch (ex) {
             return new Response(JSON.stringify({ error: 'setup: ' + String(ex) }), {
                 status: 500,
