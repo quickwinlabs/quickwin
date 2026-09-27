@@ -188,7 +188,7 @@ export class RequestImpl {
     readonly credentials: string = 'same-origin'
     readonly referrer: string = 'about:client'
     readonly referrerPolicy: string = ''
-    readonly signal: AbortSignal | null = null
+    readonly signal: AbortSignal | null
     readonly destination: string = ''
 
     get body(): ReadableStream<Uint8Array> | null { return this._body }
@@ -220,6 +220,9 @@ export class RequestImpl {
             this.timeout = init.timeout || 30000
             this.maxRedirects = init.maxRedirects || 5
         }
+        this.signal = init.signal !== undefined
+            ? init.signal
+            : (input instanceof RequestImpl ? input.signal : null)
     }
 
     async arrayBuffer(): Promise<ArrayBuffer> {
@@ -254,6 +257,7 @@ export class RequestImpl {
                 redirect: this.redirect,
                 timeout: this.timeout,
                 maxRedirects: this.maxRedirects,
+                signal: this.signal,
             })
             return req
         }
@@ -263,6 +267,7 @@ export class RequestImpl {
             redirect: this.redirect,
             timeout: this.timeout,
             maxRedirects: this.maxRedirects,
+            signal: this.signal,
         })
     }
 }
@@ -376,7 +381,9 @@ declare global {
     interface AbortSignal {
         readonly aborted: boolean;
         readonly reason: unknown;
-        onabort: ((event: Event) => void) | null;
+        onabort: ((event: { type: 'abort'; target: unknown }) => void) | null;
+        addEventListener(type: 'abort', listener: (e: { type: 'abort'; target: unknown }) => void): void;
+        removeEventListener(type: 'abort', listener: (e: { type: 'abort'; target: unknown }) => void): void;
         throwIfAborted(): void;
     }
 

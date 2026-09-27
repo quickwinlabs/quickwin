@@ -1,6 +1,7 @@
 import './polyfill.js'
 import * as sock from 'sock'
 import { HeadersImpl, RequestImpl, ResponseImpl, _readStream } from './http-common.js'
+import { AbortController } from './abort.js'
 
 type SockHandle = import('sock').SockHandle
 
@@ -41,6 +42,9 @@ interface Conn {
     closeAfterFlush: boolean
     keepAlive: boolean
     owner: HttpServer
+    /** AbortController for the request currently served on this connection,
+     *  aborted when the client disconnects mid-response. */
+    ac: AbortController | null
 }
 
 const STATUS_TEXT: Record<number, string> = {
@@ -216,6 +220,7 @@ export class HttpServer {
                 closeAfterFlush: false,
                 keepAlive: true,
                 owner: this,
+                ac: null,
             }
             this.conns.set(c.sock, c)
             sock.set_on_event(c.sock, (event: NetEvent) => this.onConnEvent(c, event))
@@ -228,7 +233,8 @@ export class HttpServer {
         if (event.lNetworkEvents & sock.FdEvent.FD_WRITE) flushQueue(c)
         if (event.lNetworkEvents & sock.FdEvent.FD_CLOSE) {
             onRead(c)
-            if (!c.current && !c.pending) closeConn(c)
+            abortConn(c)
+            closeConn(c)
         }
     }
 }
@@ -261,8 +267,9 @@ function queueSend(c: Conn, data: Uint8Array): boolean {
     }
     const ret = sock.send(c.sock, toArrayBuffer(data))
     if (ret < 0) {
-        c.outQueue = data
-        return false
+        abortConn(c)
+        closeConn(c)
+        return true
     }
     if (ret < data.length) {
         c.outQueue = data.subarray(ret)
@@ -280,7 +287,11 @@ function flushQueue(c: Conn): void {
     }
     const q = c.outQueue
     const ret = sock.send(c.sock, toArrayBuffer(q))
-    if (ret < 0) return
+    if (ret < 0) {
+        abortConn(c)
+        closeConn(c)
+        return
+    }
     if (ret < q.length) {
         c.outQueue = q.subarray(ret)
         return
@@ -296,6 +307,15 @@ function closeConn(c: Conn): void {
     resumeReader(c)
     if (c.sock >= 0) sock.closesocket(c.sock)
     c.owner.conns.delete(c.sock)
+}
+
+/** Abort the in-flight request (notifying its handler via `req.signal`).
+ *  Safe to call when idle or already aborted: the controller is cleared so
+ *  a fresh request on this connection gets a fresh signal. */
+function abortConn(c: Conn): void {
+    const ac = c.ac
+    c.ac = null
+    if (ac) ac.abort()
 }
 
 /** Resolve the pending back-pressure awaiter, if any. Called whenever the
@@ -335,26 +355,32 @@ async function writeStreamingBody(c: Conn, body: ReadableStream<Uint8Array> | nu
                 }
             }
         }
-        if (!c.closed) {
-            if (chunked) {
-                let terminator = '0\r\n\r\n'
-                if (trailer) {
-                    try {
-                        const pairs = headersInitToPairs(await trailer)
-                        if (pairs.length > 0) {
-                            let s = '0\r\n'
-                            for (const [name, value] of pairs) s += name + ': ' + value + '\r\n'
-                            s += '\r\n'
-                            terminator = s
-                        }
-                    } catch (e) {
-                        console.error('[http-server] trailers promise rejected:', e)
-                    }
-                }
-                queueSend(c, enc.encode(terminator))
+        if (c.closed) {
+            // 客户端断开（FD_CLOSE / send 失败）：取消响应体，让 producer 感知
+            //（exec_server 借此 kill 子进程），而不是干等它自然结束。
+            try { await reader.cancel() } catch (e) {
+                console.error('[http-server] body cancel error:', e)
             }
-            finishResponse(c)
+            return
         }
+        if (chunked) {
+            let terminator = '0\r\n\r\n'
+            if (trailer) {
+                try {
+                    const pairs = headersInitToPairs(await trailer)
+                    if (pairs.length > 0) {
+                        let s = '0\r\n'
+                        for (const [name, value] of pairs) s += name + ': ' + value + '\r\n'
+                        s += '\r\n'
+                        terminator = s
+                    }
+                } catch (e) {
+                    console.error('[http-server] trailers promise rejected:', e)
+                }
+            }
+            queueSend(c, enc.encode(terminator))
+        }
+        finishResponse(c)
     } finally {
         reader.releaseLock()
     }
@@ -440,12 +466,15 @@ function dispatchRequest(c: Conn, parsed: ParsedHeader, body: Uint8Array, end: n
     const isAbsolute = parsed.target.startsWith('http://') || parsed.target.startsWith('https://')
     const url = isAbsolute ? parsed.target : 'http://' + host + parsed.target
 
+    const ac = new AbortController()
     const req = new RequestImpl(url, {
         method: parsed.method,
         headers: new HeadersImpl(parsed.headers),
         body: body.length > 0 ? body : undefined,
+        signal: ac.signal,
     })
 
+    c.ac = ac
     c.current = { req }
     trimParts(c, whole(c), end)
     void handleRequest(c)
