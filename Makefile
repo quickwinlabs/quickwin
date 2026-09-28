@@ -441,8 +441,8 @@ npm-pkg: js wasm
 	cp $(BUILD_DIR)/main.js $(NPM_PKG_DIR)/main.js
 	@echo "npm package created at $(NPM_PKG_DIR)"
 
-# 底座用 nowasm：exec_server.js 只 import os/sock/std，worker 只 import os/std/ffi，
-# 完全不依赖 WAMR —— 去掉 wasm 运行时可省 297KB(x86) / 262KB(x64)，BUILD=small 实测。
+# 底座用 nowasm：exec_server.js import os/sock/std + gui/react-qw（GUI 日志窗），
+# worker 只 import os/std/ffi，完全不依赖 WAMR —— 去掉 wasm 运行时可省 297KB(x86) / 262KB(x64)，BUILD=small 实测。
 # 优先 32-bit nowasm（XP 可跑）；否则用已有的 64-bit nowasm（CI win7 只编 cc64-nowasm）。
 # 两者都没有才递归 make cc32-nowasm（保持本地 clean 后 make exec_server 可用）。
 exec_server: js
