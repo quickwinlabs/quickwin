@@ -132,10 +132,148 @@ function runInWorker(cmd: string, signal: AbortSignal | null, timeoutMs: number 
     return { stream, ready, trailers, kill }
 }
 
+const SCREENSHOT_TIMEOUT_MS = 30_000
+const WINDOWS_TIMEOUT_MS = 5_000
+
+interface WindowEntry {
+    hwnd: number
+    title: string
+    className: string
+    rect: { left: number; top: number; right: number; bottom: number }
+    visible: boolean
+    minimized: boolean
+}
+
+interface WorkerResult {
+    type: string
+    id?: number
+    chunk?: Uint8Array
+    error?: string | null
+    width?: number
+    height?: number
+    windows?: WindowEntry[]
+}
+
+// /screenshot 与 /windows 复用同一个 worker（同一份 WORKER_DATA_URL），但消息类型不是 'run'：
+// 它们不起子进程，也就没有 innerPid，/exec 那套 kill/超时树杀逻辑天然不适用。
+// 帧格式沿用 {type:'data',chunk} / {type:'result'}，这里只是按类型攒块或直接取字段。
+function withWorker<R>(
+    timeoutMs: number,
+    onTimeout: () => R,
+    post: Record<string, unknown>,
+    onData: (chunk: Uint8Array) => void,
+    onResult: (msg: WorkerResult) => R
+): Promise<R> {
+    return new Promise((resolve) => {
+        const worker = new os.Worker(WORKER_DATA_URL)
+        const id = 1
+        let settled = false
+        let timer: ReturnType<typeof os.setTimeout> | null = null
+
+        const settle = (r: R): void => {
+            if (settled) return
+            settled = true
+            if (timer !== null) os.clearTimeout(timer)
+            worker.onmessage = null
+            resolve(r)
+        }
+
+        // 兜底：worker 若静默挂掉（绑定失败等）不会发任何消息，避免请求永久悬挂。
+        timer = os.setTimeout(() => settle(onTimeout()), timeoutMs)
+
+        worker.onmessage = (e) => {
+            const msg = e.data as WorkerResult
+            if (msg.id !== undefined && msg.id !== id) return
+            if (msg.type === 'data') { onData(msg.chunk as Uint8Array); return }
+            if (msg.type !== 'result') return
+            settle(onResult(msg))
+        }
+
+        try {
+            worker.postMessage(post)
+        } catch (ex) {
+            settle(onResult({ type: 'error', error: 'spawn: ' + String(ex) }))
+        }
+    })
+}
+
+function jsonError(status: number, msg: string): Response {
+    return new Response(JSON.stringify({ error: msg }), {
+        status,
+        headers: { 'Content-Type': 'application/json' }
+    })
+}
+
+interface ShotOpts {
+    hwnd: number | null
+    area: 'window' | 'client'
+    mode: 'screen' | 'print'
+}
+
+function parseShotOpts(params: URLSearchParams): ShotOpts {
+    const area = params.get('area') ?? 'window'
+    const mode = params.get('mode') ?? 'screen'
+    if (area !== 'window' && area !== 'client') throw new Error('area must be "window" or "client"')
+    if (mode !== 'screen' && mode !== 'print') throw new Error('mode must be "screen" or "print"')
+
+    const raw = params.get('hwnd')
+    if (raw === null || raw === '') return { hwnd: null, area, mode }
+    const hwnd = Number(raw)
+    if (!Number.isInteger(hwnd) || hwnd <= 0) throw new Error('hwnd must be a positive integer')
+    return { hwnd, area, mode }
+}
+
+function windowsResponse(): Promise<Response> {
+    return withWorker(WINDOWS_TIMEOUT_MS, () => jsonError(504, 'windows timeout'),
+        { type: 'windows', id: 1 },
+        () => { },
+        (msg) => msg.error
+            ? jsonError(500, msg.error)
+            : new Response(JSON.stringify(msg.windows ?? []), { headers: { 'Content-Type': 'application/json' } }))
+}
+
+function screenshotResponse(opts: ShotOpts): Promise<Response> {
+    const parts: Uint8Array[] = []
+    let total = 0
+    const post: Record<string, unknown> = { type: 'screenshot', id: 1 }
+    if (opts.hwnd !== null) {
+        post.hwnd = opts.hwnd
+        post.area = opts.area
+        post.mode = opts.mode
+    }
+    return withWorker(SCREENSHOT_TIMEOUT_MS, () => jsonError(504, 'screenshot timeout'), post,
+        (c) => { parts.push(c); total += c.byteLength },
+        (msg) => {
+            if (msg.error) return jsonError(500, msg.error)
+            if (total === 0) return jsonError(500, 'empty capture')
+            const buf = new Uint8Array(total)
+            let off = 0
+            for (const p of parts) { buf.set(p, off); off += p.byteLength }
+            const dims = msg.width !== undefined && msg.height !== undefined
+                ? msg.width + 'x' + msg.height
+                : ''
+            return new Response(buf, {
+                headers: { 'Content-Type': 'image/bmp', 'X-Dimensions': dims }
+            })
+        })
+}
+
 const server = createServer(async (req) => {
     const path = new URL(req.url).pathname
     if (req.method === 'GET' && (path === '/' || path === '/health')) {
         return new Response('ok', { headers: { 'Content-Type': 'text/plain' } })
+    }
+    if (req.method === 'GET' && path === '/windows') {
+        return windowsResponse()
+    }
+    if (req.method === 'GET' && path === '/screenshot') {
+        let opts: ShotOpts
+        try {
+            opts = parseShotOpts(new URL(req.url).searchParams)
+        } catch (ex) {
+            return jsonError(400, String(ex))
+        }
+        return screenshotResponse(opts)
     }
     if (req.method === 'POST' && path === '/exec') {
         let out: ExecHandle
