@@ -101,6 +101,9 @@ echo "$SUMMARY  (failed=$FAILED)"
 # XP 打印机 ffi 环境差容忍 1
 if [ "$FAILED" -gt 1 ]; then
   echo "::error::$FAILED test failures (tolerating 1 for XP printer diff)"
+  # 失败明细在响应 body 里（run.ts 每条 FAIL: 一行），CI 上 dump 出来便于定位 flaky
+  echo "--- failing test lines ---"
+  grep -aE "FAIL:|SUITE FAILED" "$BODY_FILE" | head -30 || true
   exit 1
 fi
 # popen/pclose 的 code 非 0 也提示（Summary 已主判）
