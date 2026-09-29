@@ -3,9 +3,9 @@ set -e
 cd "$(dirname "$0")"
 
 # ============================================================
-#  经常驻 exec_server 的 HTTP 下发测试（win7 / xp 共用）
+#  经常驻 exec_server 的 HTTP 下发测试（win7 / xp / win11 共用）
 #  前置：run.sh <vm> 已起且健康；host 上 serve_test 在 18923。
-#  用法: ./http_test.sh <win7|xp> [filter]
+#  用法: ./http_test.sh <win7|xp|win11> [filter]
 #    filter 透传给 test/run.js，如: -net / basic / wasm
 #  协议:
 #    200 → body = popen 原始字节（可为 GBK），退出码在 X-Exit-Code
@@ -13,17 +13,18 @@ cd "$(dirname "$0")"
 #  判定: Summary failed<=1（XP 打印机 ffi 容忍 1）
 # ============================================================
 
-VM="${1:?usage: ./http_test.sh <win7|xp> [filter]}"
+VM="${1:?usage: ./http_test.sh <win7|xp|win11> [filter]}"
 FILTER="${2:-}"
 
 case "$VM" in
-  win7) FWD=8007 ;;
-  xp)   FWD=8005 ;;
-  *) echo "未知 VM: $VM（可选 win7|xp）"; exit 1 ;;
+  win7)  FWD=8007 ;;
+  xp)    FWD=8005 ;;
+  win11) FWD=8011 ;;
+  *) echo "未知 VM: $VM（可选 win7|xp|win11）"; exit 1 ;;
 esac
 
 # 命令用相对路径（exec_server 启动时 cwd=Z:\quickwin，popen 继承）。
-# 按架构选 exe：xp 用 qwin-x86.exe，win7 用 qwin.exe
+# 按架构选 exe：xp 用 qwin-x86.exe，win7/win11 用 qwin.exe
 if [ "$VM" = "xp" ]; then
   EXE="qwin-x86.exe"
 else

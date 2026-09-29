@@ -29,6 +29,8 @@ RUN dnf install -y \
     samba \
     # noVNC for browser-based VNC access to QEMU VMs
     novnc python3-websockify \
+    # TPM emulator (swtpm) for Win11 guests (TPM 2.0 + Secure Boot checks)
+    swtpm swtpm-tools \
     # Utilities
     curl wget zip unzip 7zip python3 dos2unix && \
     dnf clean all

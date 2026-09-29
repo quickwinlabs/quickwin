@@ -107,6 +107,9 @@ jobs:
           - { id: xp,   cc: i686,   deps: cc32, nowasm: cc32-nowasm,
               snap_key: xp-ready-v3,  snap_file: xp_ready.qcow2,   artifact: qwin-x86,
               exe: qwin-x86.exe, nowasm_exe: qwin-nowasm-x86.exe }
+          - { id: win11, cc: x86_64, deps: cc64, nowasm: cc64-nowasm,
+              snap_key: win11-ready-v3, snap_file: win11_ready.qcow2, artifact: qwin-x64,
+              exe: qwin.exe, nowasm_exe: qwin-nowasm.exe }
     steps:
       - name: Checkout
         uses: actions/checkout@v5

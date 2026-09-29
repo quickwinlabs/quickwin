@@ -13,6 +13,7 @@ services:
     ports:
       - "6005:6005"
       - "6007:6007"
+      - "6011:6011"
     working_dir: /workspace
     stdin_open: true
     tty: true

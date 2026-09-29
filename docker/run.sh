@@ -3,12 +3,13 @@ set -e
 cd "$(dirname "$0")"
 
 # ============================================================
-#  Bare QEMU — 常驻模式（win7 / xp 共用）
+#  Bare QEMU — 常驻模式（win7 / xp / win11 共用）
 #  从 snapshot 启动，bootstrap.bat 挂 SMB 并跑 run.bat；
 #  run.bat 只做防火墙/portproxy + 启动 exec_server，不跑测试。
-#  测试经 hostfwd HTTP 下发（win7:8007 / xp:8005 → guest:8080）。
+#  测试经 hostfwd HTTP 下发（win7:8007 / xp:8005 / win11:8011 → guest:8080）。
+#  端口助记：HTTP = 8000+版本号，noVNC = 6000+版本号（8009/6009 留空，Win9 未发布）。
 #
-#  用法: ./run.sh <win7|xp> [--fresh] [--stop] [--restart]
+#  用法: ./run.sh <win7|xp|win11> [--fresh] [--stop] [--restart]
 #    默认：已在跑则只做健康检查后退出（真常驻）
 #    --restart：先停再起
 #    --fresh：重建 overlay 后启动
@@ -16,8 +17,10 @@ cd "$(dirname "$0")"
 # ============================================================
 
 START_TIME=$(date +%s)
-VM="${1:?usage: ./run.sh <win7|xp> [--fresh] [--stop] [--restart]}"
+VM="${1:?usage: ./run.sh <win7|xp|win11> [--fresh] [--stop] [--restart]}"
 shift
+TPM=0
+TPM_EXTRA=()
 
 case "$VM" in
   win7)
@@ -34,7 +37,30 @@ case "$VM" in
     MEM=1024; SMP=1; NETDEV=rtl8139; FWD=8005
     EXTRA=(-machine pc-i440fx-5.2 -cpu qemu32 -device VGA,vgamem_mb=64 -vnc 0.0.0.0:1)
     ;;
-  *) echo "未知 VM: $VM（可选 win7|xp）"; exit 1 ;;
+  win11)
+    SNAPSHOT="$(pwd)/snapshots/win11_ready.qcow2"
+    OVERLAY="$(pwd)/snapshots/win11_test.qcow2"
+    MONITOR=/tmp/qemu-monitor-win11.sock
+    MEM=8192; SMP=4; NETDEV=e1000e; FWD=8011
+    # UEFI + Secure Boot + TPM 2.0：需 OVMF_secboot 固件（pflash）+ swtpm
+    # 注意: 新版 edk2-ovmf 的 2M OVMF 无 TPM 支持，Windows 11 会报 TPM 2.0 缺失；
+    #       必须用 4M 版（qcow2 镜像）OVMF_CODE_4M.secboot.qcow2 / OVMF_VARS_4M.secboot.qcow2。
+    TPM=1
+    TPM_DIR=/tmp/tpm-win11; TPM_SOCK=/tmp/swtpm-win11.sock; TPM_PID=/tmp/swtpm-win11.pid
+    OVMF_CODE=/usr/share/edk2/ovmf/OVMF_CODE_4M.secboot.qcow2
+    OVMF_VARS_TEMPLATE=/usr/share/edk2/ovmf/OVMF_VARS_4M.secboot.qcow2
+    VARS="$(pwd)/snapshots/win11_VARS.qcow2"
+    [ -e /dev/kvm ] && CPUOPTS=(-cpu host) || CPUOPTS=(-cpu max)
+    EXTRA=(-machine q35 "${CPUOPTS[@]}" \
+        -drive if=pflash,format=qcow2,readonly=on,file="$OVMF_CODE" \
+        -drive if=pflash,format=qcow2,file="$VARS" \
+        -vga std -vnc 0.0.0.0:3)
+    TPM_EXTRA=(-chardev socket,id=chrtpm,path="$TPM_SOCK" \
+        -tpmdev emulator,id=tpm0,chardev=chrtpm \
+        -device tpm-tis,tpmdev=tpm0)
+    command -v swtpm >/dev/null || { echo "需要安装: swtpm"; exit 1; }
+    ;;
+  *) echo "未知 VM: $VM（可选 win7|xp|win11）"; exit 1 ;;
 esac
 
 SHARE_DIR="${SHARE_DIR:-/workspace/_build}"
@@ -69,6 +95,11 @@ if $STOP; then
     [ -f qemu-$VM.pid ] || { echo "找不到 qemu-$VM.pid，VM 可能未运行"; exit 1; }
     QEMU_PID=$(cat qemu-$VM.pid)
     echo "system_powerdown" | socat - UNIX-CONNECT:"$MONITOR"
+    # win11 的 TPM 随 VM 一起停（若仅在 force-kill 分支清理，ACPI 正常关机后会残留）
+    if [ "$TPM" = 1 ] && [ -f "$TPM_PID" ]; then
+        kill "$(cat "$TPM_PID")" 2>/dev/null || true
+        rm -f "$TPM_PID"
+    fi
     for i in $(seq 1 30); do
         sleep 2
         [ -f qemu-$VM.pid ] || { echo "VM 已关机（$((i*2))s）"; exit 0; }
@@ -104,6 +135,10 @@ if [ -f qemu-$VM.pid ]; then
     kill -9 "$(cat qemu-$VM.pid)" 2>/dev/null || true
     sleep 1
 fi
+if [ "$TPM" = 1 ] && [ -f "$TPM_PID" ]; then
+    kill -9 "$(cat "$TPM_PID")" 2>/dev/null || true
+    rm -f "$TPM_PID"
+fi
 rm -f qemu-$VM.pid "$LOGFILE"
 
 # ── 创建 overlay ──
@@ -111,6 +146,14 @@ if $FRESH || [ ! -f "$OVERLAY" ]; then
     rm -f "$OVERLAY"
     echo "创建 overlay..."
     qemu-img create -f qcow2 -b "$SNAPSHOT" -F qcow2 "$OVERLAY" >/dev/null
+fi
+
+# ── OVMF VARS（win11）──
+# 与 overlay 同语义：--fresh 重建（Secure Boot 密钥归位），缺文件从模板复制
+if [ "$TPM" = 1 ] && { [ "$FRESH" = true ] || [ ! -f "$VARS" ]; }; then
+    rm -f "$VARS"
+    cp "$OVMF_VARS_TEMPLATE" "$VARS"
+    echo "重置 OVMF VARS: $VARS"
 fi
 
 # ── 链接 _build 到 ci_share/quickwin（symlink，需 smbd wide links = yes）──
@@ -126,12 +169,24 @@ fi
 # 每次运行都转一遍（原地），不依赖 checkout 的行尾设置。
 unix2dos -q ci_share/run.bat
 
+# ── 启动 swtpm（win11 TPM 2.0）──
+if [ "$TPM" = 1 ]; then
+    rm -rf "$TPM_DIR"; mkdir -p "$TPM_DIR"
+    rm -f "$TPM_SOCK" "$TPM_PID"
+    swtpm socket \
+        --tpmstate dir="$TPM_DIR" \
+        --ctrl type=unixio,path="$TPM_SOCK" \
+        --tpm2 --pid file="$TPM_PID" --daemon
+    echo "swtpm 已启动 (PID=$(cat "$TPM_PID"))"
+fi
+
 # ── 启动 QEMU ──
 # win7/xp 硬件差异在 case 中已配置（内存/CPU/网卡/端口/machine），
 # EXTRA 为空时不展开（win7 不需要 -machine 参数）。
 qemu-system-x86_64 \
     $KVM \
     "${EXTRA[@]}" \
+    "${TPM_EXTRA[@]}" \
     -hda "$OVERLAY" -m "$MEM" -smp "$SMP" \
     -netdev user,id=net0,guestfwd=tcp:10.0.2.4:445-cmd:"$(pwd)/smb_wrapper.sh",hostfwd=tcp::"$FWD"-:8080 \
     -device "$NETDEV",netdev=net0 \

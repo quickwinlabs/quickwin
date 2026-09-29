@@ -1,25 +1,27 @@
 @echo off
 rem ============================================================
-rem  QEMU 常驻服务启动器（win7 / xp 共用）
+rem  QEMU 常驻服务启动器（win7 / xp / win11 共用）
 rem  由 bootstrap.bat 在 VM 内调用：关防火墙、配 portproxy、
 rem  启动 exec_server（HTTP 8080），不自动跑测试。
-rem  结果写 Z:\run-win7.log / Z:\run-xp.log；就绪输出 Ready 行
+rem  结果写 Z:\run-win7.log / Z:\run-xp.log / Z:\run-win11.log
 rem  （run.sh 据此 / 或 host curl 健康检查）。
 rem ============================================================
 set LOG=Z:\run-win7.log
 set EXE=qwin.exe
-rem ---- 判断系统版本：XP=5.x，win7=6.x（决定日志文件名 + 用哪个 exe）----
+rem ---- 判断系统版本：XP=5.x 走单独分支；win11=10.x（只差日志名）----
 ver | findstr /r /c:"5\." >nul 2>&1
 if not errorlevel 1 (set LOG=Z:\run-xp.log & set EXE=qwin-x86.exe)
 echo [%date% %time%] run.bat started >> %LOG%
 
 Z:
 
-rem ---- 判断系统版本：XP=5.x，win7=6.x ----
+rem ---- 判断系统版本：XP=5.x，win11=10.x，win7=6.x ----
 ver | findstr /r /c:"5\." >nul 2>&1
 if %errorlevel%==0 goto xp
+ver | findstr /r /c:"10\." >nul 2>&1
+if not errorlevel 1 set LOG=Z:\run-win11.log
 
-rem ---------------- win7 ----------------
+rem ---------------- win11 / win7 ----------------
 rem Disable Windows Firewall (QEMU SLIRP forwarded connections are blocked by it)
 echo [%date% %time%] Disabling firewall... >> %LOG%
 netsh advfirewall set allprofiles state off >nul 2>&1
