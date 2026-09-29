@@ -190,8 +190,8 @@ function runInWorker(cmd: string, signal: AbortSignal | null, timeoutMs: number 
         fn()
     }
 
-    // kill 整棵树：winpty_spawn 拿到的 pid 即 cmd.exe 根，taskkill /T 递归。
-    // 杀掉后 worker 侧 ReadFile 断管道自动收尾、winpty_free 兜底关 console。
+    // kill 整棵树：CreateProcessW 返回的 pid 即 cmd.exe 根，taskkill /T 递归。
+    // 杀掉后 worker 侧 ReadFile 断管道自动收尾。
     const kill = (): void => {
         if (innerPid === null) return
         try {
