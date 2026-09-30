@@ -70,7 +70,7 @@ export const suite = {
         // ── 4. fetch HTTPS IPv6 ──
         t.section('fetch https://[::1]')
         {
-            const r = await fetch(`https://[::1]:${HTTPS_PORT}/`, { timeout: 5000 })
+            const r = await fetch(`https://[::1]:${HTTPS_PORT}/`, { timeout: 5000, rejectUnauthorized: false })
             assert('fetch IPv6 HTTPS status 200', r.status === 200)
             const body = await r.text()
             assert('fetch IPv6 HTTPS body', body === 'hello from test server')
@@ -104,7 +104,7 @@ export const suite = {
         // ── 6. WebSocket WSS IPv6 ──
         t.section('wss://[::1] echo')
         await new Promise<void>((resolve, reject) => {
-            const ws = new WebSocket(`wss://[::1]:${HTTPS_PORT}/`)
+            const ws = new WebSocket(`wss://[::1]:${HTTPS_PORT}/`, { rejectUnauthorized: false })
             const timeoutId = os.setTimeout(() => reject(new Error('WSS IPv6 timeout')), 10000)
 
             ws.onopen = () => {

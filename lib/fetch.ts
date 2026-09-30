@@ -183,11 +183,21 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                     const tlsMethod = wolfssl.wolfTLSv1_2_client_method()
                     ctx = wolfssl.wolfSSL_CTX_new(tlsMethod)
                     if (!ctx) { doReject(new Error('SSL_CTX_new failed')); return }
-                    wolfssl.wolfSSL_CTX_set_verify(ctx, wolfssl.VerifyMode.SSL_VERIFY_NONE)
+                    if (req.rejectUnauthorized === false) {
+                        wolfssl.wolfSSL_CTX_set_verify(ctx, wolfssl.VerifyMode.SSL_VERIFY_NONE)
+                    } else {
+                        wolfssl.wolfSSL_CTX_set_verify(ctx, wolfssl.VerifyMode.SSL_VERIFY_PEER)
+                        wolfssl.loadTrustedCerts(ctx)
+                    }
                     ssl = wolfssl.wolfSSL_new(ctx)
                     if (!ssl) { doReject(new Error('SSL_new failed')); return }
                     wolfssl.wolfSSL_set_fd(ssl, sock.get_fd(fd))
-                    if (parsedUrl.hostname) wolfssl.wolfSSL_UseSNI(ssl, wolfssl.SniType.WOLFSSL_SNI_HOST_NAME, parsedUrl.hostname)
+                    if (parsedUrl.hostname) {
+                        wolfssl.wolfSSL_UseSNI(ssl, wolfssl.SniType.WOLFSSL_SNI_HOST_NAME, parsedUrl.hostname)
+                        if (req.rejectUnauthorized !== false) {
+                            wolfssl.wolfSSL_check_domain_name(ssl, parsedUrl.hostname)
+                        }
+                    }
                     state = ST_HANDSHAKE
                 } else {
                     sock.send(fd, httpRequest)

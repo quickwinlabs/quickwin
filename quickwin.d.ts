@@ -377,6 +377,15 @@ declare module "wolfssl" {
     function wolfSSL_CTX_new(method: WOLFSSL_METHOD): WOLFSSL_CTX | null;
     function wolfSSL_CTX_free(ctx: WOLFSSL_CTX): void;
     function wolfSSL_CTX_set_verify(ctx: WOLFSSL_CTX, mode: VerifyMode): number;
+    function wolfSSL_CTX_load_verify_locations(ctx: WOLFSSL_CTX, file: string, path?: string): number;
+    function wolfSSL_check_domain_name(ssl: WOLFSSL, name: string): number;
+    /** Add a PEM to the process-wide trusted CA store (fixed capacity).
+     *  Returns the new entry count, or throws if the store is full. Entries
+     *  are applied by loadTrustedCerts() at handshake setup time, not retroactively. */
+    function addTrustedCA(pem: string): number;
+    /** Load the OS CA store plus every entry of the trusted CA store into ctx.
+     *  Returns how many store entries were loaded. */
+    function loadTrustedCerts(ctx: WOLFSSL_CTX): number;
     function wolfSSL_CTX_use_certificate_file(ctx: WOLFSSL_CTX, file: string, format?: FileType): number;
     function wolfSSL_CTX_use_PrivateKey_file(ctx: WOLFSSL_CTX, file: string, format?: FileType): number;
 

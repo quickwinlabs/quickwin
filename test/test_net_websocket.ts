@@ -145,7 +145,7 @@ export const suite = {
         t.section('wss basic text message')
         const p7 = waitForTest()
         let opened7 = false, received7 = false, closed7 = false
-        const ws7 = new WebSocket("wss://localhost:18924")
+        const ws7 = new WebSocket("wss://localhost:18924", { rejectUnauthorized: false })
         ws7.onopen = () => { opened7 = true; ws7.send("Hello WSS!") }
         ws7.onmessage = () => { received7 = true; ws7.close(1000, "done") }
         ws7.onclose = (e) => {

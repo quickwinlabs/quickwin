@@ -99,7 +99,9 @@ export const suite = {
                     if (d instanceof ArrayBuffer) {
                         sawArray = true
                         total += d.byteLength
-                        if (total >= EXPECTED) break
+                        // Keep draining after the body is complete: the point of
+                        // this suite is the no-data/EOF contract, so a full body
+                        // must not short-circuit the read that would observe null.
                     }
                 }
                 if (total >= EXPECTED) finish()

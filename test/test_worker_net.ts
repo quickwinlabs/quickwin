@@ -31,24 +31,32 @@ export const suite = {
             t.checkTrue('worker creation failed: ' + e, false)
         }
 
+        // Retry: this pulls the worker script from jsdelivr, so a dropped
+        // connection on a slow CI network must not be reported as a
+        // TLS regression.
         t.section('npm-package')
         let worker3: any
-        try {
-            const { data: r3 } = await new Promise<any>((resolve, reject) => {
-                worker3 = new os.Worker('https://cdn.jsdelivr.net/npm/quickwin/test/worker_module.js')
-                const timer = os.setTimeout(() => reject(new Error('timeout')), 15000)
-                worker3.onmessage = (e: any) => {
-                    os.clearTimeout(timer)
-                    resolve({ worker: worker3, data: e.data })
-                }
-                worker3.postMessage({ type: 'start' })
-            })
-            t.check('npm worker message type', 'result', r3.type)
-            t.check('npm worker imported value', 42, r3.value)
-            worker3.postMessage({ type: 'done' })
-            worker3.onmessage = null
-        } catch (e) {
-            t.checkTrue('npm worker failed: ' + e, false)
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                const { data: r3 } = await new Promise<any>((resolve, reject) => {
+                    worker3 = new os.Worker('https://cdn.jsdelivr.net/npm/quickwin/test/worker_module.js')
+                    const timer = os.setTimeout(() => reject(new Error('timeout')), 15000)
+                    worker3.onmessage = (e: any) => {
+                        os.clearTimeout(timer)
+                        resolve({ worker: worker3, data: e.data })
+                    }
+                    worker3.postMessage({ type: 'start' })
+                })
+                t.check('npm worker message type', 'result', r3.type)
+                t.check('npm worker imported value', 42, r3.value)
+                worker3.postMessage({ type: 'done' })
+                worker3.onmessage = null
+                break
+            } catch (e) {
+                if (worker3) { worker3.onmessage = null; worker3 = null }
+                if (attempt === 2) t.checkTrue('npm worker failed: ' + e, false)
+                else os.sleep(500)
+            }
         }
     }
 }

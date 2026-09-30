@@ -56,6 +56,25 @@ export const suite = {
         if (err2 !== 0) return
         assert('cache has body files', after.some(function(f: string) { return f.endsWith('.body') }))
         assert('cache has meta files', after.some(function(f: string) { return f.endsWith('.meta') }))
+
+        t.section('repeat https import (fresh url, forces TLS)')
+        // http_get_sync() short-circuits on a warm disk cache, so a second
+        // import of the same URL would never build a TLS connection. Use a
+        // distinct query string to force a real handshake into the
+        // process-wide CA store, then import once more to confirm repeated
+        // loadTrustedCerts() calls keep verifying.
+        const url2 = 'https://esm.sh/left-pad@1.3.0?twice=1'
+        let mod2: any
+        try {
+            mod2 = await import(url2)
+            assert('repeat import succeeds', true)
+            assert('repeat default is function', typeof mod2.default === 'function')
+            assert('repeat left-pad works', mod2.default('hello', 8) === '   hello')
+        } catch (e) {
+            assert('repeat import succeeds', false)
+            std.printf('  ERROR: %s\n', String(e))
+        }
+
         for (const f of after) {
             if (f.endsWith('.meta') && (err !== 0 || before.indexOf(f) < 0)) {
                 std.printf('  meta: %s\n', f)

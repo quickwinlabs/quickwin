@@ -11,12 +11,22 @@ export const suite = {
             else { t.fail++; std.printf('  FAIL: %s\n', name) }
         }
 
+        // Retry: public-site reachability (baidu/jsdelivr/esm.sh) depends on
+        // CI network conditions, and a single dropped connection must not be
+        // reported as a certificate regression. The last error is printed so a
+        // real failure is still diagnosable.
         async function safeFetch(url: any, init?: RequestInit) {
-            try {
-                return await fetch(url, init);
-            } catch {
-                return null;
+            let last = 'unknown'
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    return await fetch(url, init)
+                } catch (e) {
+                    last = String((e as Error)?.message || e)
+                    if (attempt < 2) os.sleep(500)
+                }
             }
+            std.printf('    fetch %s failed after 3 attempts: %s\n', String(url), last)
+            return null
         }
         const BASE = 'http://localhost:18923'
 
@@ -227,13 +237,39 @@ export const suite = {
 
         // ── HTTPS fetch ──
         t.section('HTTPS fetch')
-        const r11 = await safeFetch('https://localhost:18924/', { timeout: 5000 })
+        const r11 = await safeFetch('https://localhost:18924/', { timeout: 5000, rejectUnauthorized: false })
         if (r11) {
             assert('https status 200', r11.status === 200)
             const body = await r11.text()
             assert('https body matches', body === 'hello from test server')
         } else {
             assert('https endpoint reachable', false)
+        }
+
+        // ── GlobalSign R3 root chain (regression: ASN_SIG_CONFIRM_E -155) ──
+        // baidu.com and jsdelivr terminate in GlobalSign's 2018 re-keyed R3,
+        // which reuses the self-signed R3's subject-key-identifier with a
+        // different public key. Shipping the self-signed R3 in lib/certs.ts
+        // made wolfSSL match the wrong key and fail the handshake with -155.
+        t.section('GlobalSign R3 root chain')
+        {
+            const rb = await safeFetch('https://www.baidu.com/', { timeout: 10000 })
+            if (rb) {
+                assert('baidu (GlobalSign R3) status', rb.status === 200)
+                const bb = await rb.text()
+                assert('baidu (GlobalSign R3) body non-empty', bb.length > 0)
+            } else {
+                assert('baidu (GlobalSign R3) reachable', false)
+            }
+
+            const rj = await safeFetch('https://cdn.jsdelivr.net/npm/left-pad@1.3.0', { timeout: 10000 })
+            if (rj) {
+                assert('jsdelivr (GlobalSign R3) status', rj.status === 200)
+                const bj = await rj.text()
+                assert('jsdelivr (GlobalSign R3) body non-empty', bj.length > 0)
+            } else {
+                assert('jsdelivr (GlobalSign R3) reachable', false)
+            }
         }
 
         // ── large HTTPS body (wolfSSL_read null regression) ──
@@ -244,7 +280,7 @@ export const suite = {
             const LARGE = 200000
             try {
                 const r = await Promise.race([
-                    fetch(`https://localhost:18924/large/${LARGE}`, { timeout: 15000 }),
+                    fetch(`https://localhost:18924/large/${LARGE}`, { timeout: 15000, rejectUnauthorized: false }),
                     new Promise<never>((_, rej) =>
                         os.setTimeout(() => rej(new Error('Body hang watchdog 15s')), 15000)
                     )
@@ -292,7 +328,7 @@ export const suite = {
             let rejected = false
             let msg = ''
             try {
-                const r = await fetch('https://localhost:18924/stall', { timeout: 2000 })
+                const r = await fetch('https://localhost:18924/stall', { timeout: 2000, rejectUnauthorized: false })
                 await Promise.race([
                     r.arrayBuffer(),
                     new Promise<never>((_, rej) =>

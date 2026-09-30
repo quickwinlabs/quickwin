@@ -10,6 +10,7 @@
 
 #include "quickjs-http.h"
 #include "quickjs.h"
+#include "quickjs-wolfssl.h"
 #include "cutils.h"
 #include "quickjs-brotli.h"
 
@@ -696,11 +697,13 @@ char* http_get_sync(const char* url) {
         WOLFSSL_METHOD* method = wolfTLSv1_2_client_method();
         ctx = wolfSSL_CTX_new(method);
         if (!ctx) { closesocket(sock); return NULL; }
-        wolfSSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
+        wolfSSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
+        (void)qw_tls_load_trusted_certs(ctx);
         ssl = wolfSSL_new(ctx);
         if (!ssl) { wolfSSL_CTX_free(ctx); closesocket(sock); return NULL; }
         wolfSSL_set_fd(ssl, sock);
         wolfSSL_UseSNI(ssl, WOLFSSL_SNI_HOST_NAME, host, strlen(host));
+        wolfSSL_check_domain_name(ssl, host);
         if (wolfSSL_connect(ssl) != SSL_SUCCESS) {
             wolfSSL_free(ssl); wolfSSL_CTX_free(ctx); closesocket(sock);
             return NULL;

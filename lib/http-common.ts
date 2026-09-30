@@ -189,6 +189,7 @@ export class RequestImpl {
     readonly referrer: string = 'about:client'
     readonly referrerPolicy: string = ''
     readonly signal: AbortSignal | null
+    readonly rejectUnauthorized: boolean
     readonly destination: string = ''
 
     get body(): ReadableStream<Uint8Array> | null { return this._body }
@@ -211,6 +212,9 @@ export class RequestImpl {
             this.redirect = init.redirect || input.redirect
             this.timeout = init.timeout || input.timeout
             this.maxRedirects = init.maxRedirects || input.maxRedirects
+            this.rejectUnauthorized = init.rejectUnauthorized === undefined
+                ? input.rejectUnauthorized
+                : init.rejectUnauthorized
         } else {
             this.url = input
             this.method = init.method || 'GET'
@@ -219,6 +223,7 @@ export class RequestImpl {
             this.redirect = init.redirect || 'follow'
             this.timeout = init.timeout || 30000
             this.maxRedirects = init.maxRedirects || 5
+            this.rejectUnauthorized = init.rejectUnauthorized ?? true
         }
         this.signal = init.signal !== undefined
             ? init.signal
@@ -403,6 +408,9 @@ declare global {
         window?: null;
         timeout?: number;
         maxRedirects?: number;
+        /** Non-standard: when false, TLS certificate verification is skipped
+         *  (mirrors Node's https.request rejectUnauthorized option). */
+        rejectUnauthorized?: boolean;
     }
 
     interface ResponseInit {

@@ -151,6 +151,9 @@ function tryParseFrame(buffer: Uint8Array): ParsedFrame | null {
 
 interface WebSocketOptions {
     headers?: Record<string, string>
+    /** Non-standard: when false, TLS certificate verification is skipped
+     *  (mirrors Node's tls.connect rejectUnauthorized option). */
+    rejectUnauthorized?: boolean
 }
 
 
@@ -318,12 +321,22 @@ class WebSocketImpl {
                     const method = wolfssl.wolfTLSv1_2_client_method()
                     this._ctx = wolfssl.wolfSSL_CTX_new(method)
                     if (!this._ctx) { doError(new Error('SSL_CTX_new failed')); return }
-                    wolfssl.wolfSSL_CTX_set_verify(this._ctx, wolfssl.VerifyMode.SSL_VERIFY_NONE)
+                    if (this._options.rejectUnauthorized === false) {
+                        wolfssl.wolfSSL_CTX_set_verify(this._ctx, wolfssl.VerifyMode.SSL_VERIFY_NONE)
+                    } else {
+                        wolfssl.wolfSSL_CTX_set_verify(this._ctx, wolfssl.VerifyMode.SSL_VERIFY_PEER)
+                        wolfssl.loadTrustedCerts(this._ctx)
+                    }
                     this._ssl = wolfssl.wolfSSL_new(this._ctx)
                     if (!this._ssl) { doError(new Error('SSL_new failed')); return }
                     wolfssl.wolfSSL_set_fd(this._ssl, sock.get_fd(fd))
                     const sniHost = host
-                    if (sniHost) wolfssl.wolfSSL_UseSNI(this._ssl, wolfssl.SniType.WOLFSSL_SNI_HOST_NAME, sniHost)
+                    if (sniHost) {
+                        wolfssl.wolfSSL_UseSNI(this._ssl, wolfssl.SniType.WOLFSSL_SNI_HOST_NAME, sniHost)
+                        if (this._options.rejectUnauthorized !== false) {
+                            wolfssl.wolfSSL_check_domain_name(this._ssl, sniHost)
+                        }
+                    }
                     state = 'handshake'
                 } else {
                     this._sendRawStr(request)

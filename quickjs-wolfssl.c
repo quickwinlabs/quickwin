@@ -214,6 +214,119 @@ static JSValue js_wolfSSL_CTX_set_verify(JSContext *ctx, JSValueConst this_val, 
     return JS_UNDEFINED;
 }
 
+/* Process-wide trusted CA store: fixed slots, append-only, guarded by a
+ * zero-init spin lock (a PEM memcpy or short read is too short to block on
+ * a real mutex). Process scope is deliberate: worker threads run their own
+ * contexts and would never reach the JS-side registration code. Rationale
+ * for the design lives in .agents/TLS_TRUST_STORE.md. */
+
+#define QW_CA_SLOTS 8
+
+typedef struct {
+    unsigned char *data;
+    size_t len;
+} QwCaEntry;
+
+static QwCaEntry g_ca_entries[QW_CA_SLOTS];
+static int g_ca_count = 0;
+static volatile LONG g_ca_lock = 0;
+
+static void qw_ca_lock(void)
+{
+    while (InterlockedCompareExchange(&g_ca_lock, 1L, 0L) != 0)
+        Sleep(1);
+}
+
+static void qw_ca_unlock(void)
+{
+    InterlockedExchange(&g_ca_lock, 0L);
+}
+
+static int qw_ca_is_empty(const char *p, size_t len)
+{
+    size_t i;
+    for (i = 0; i < len; i++)
+        if (p[i] != ' ' && p[i] != '\t' && p[i] != '\r' && p[i] != '\n')
+            return 0;
+    return len == 0;
+}
+
+int qw_ca_store_add(const char *pem, size_t len)
+{
+    unsigned char *dup;
+    int n = -1;
+
+    if (!pem || len == 0 || qw_ca_is_empty(pem, len))
+        return -1;
+
+    dup = (unsigned char *)malloc(len);
+    if (!dup)
+        return -1;
+    memcpy(dup, pem, len);
+
+    qw_ca_lock();
+    if (g_ca_count < QW_CA_SLOTS) {
+        g_ca_entries[g_ca_count].data = dup;
+        g_ca_entries[g_ca_count].len = len;
+        g_ca_count++;
+        n = g_ca_count;
+    }
+    qw_ca_unlock();
+
+    if (n < 0)
+        free(dup);
+    return n;
+}
+
+int qw_tls_load_trusted_certs(void *ctxp)
+{
+    WOLFSSL_CTX *ctx = (WOLFSSL_CTX *)ctxp;
+    int i, loaded = 0;
+
+    if (!ctx)
+        return -1;
+
+    (void)wolfSSL_CTX_load_system_CA_certs(ctx);
+
+    qw_ca_lock();
+    for (i = 0; i < g_ca_count; i++) {
+        if (wolfSSL_CTX_load_verify_buffer(ctx, g_ca_entries[i].data,
+                                           (long)g_ca_entries[i].len,
+                                           WOLFSSL_FILETYPE_PEM) == WOLFSSL_SUCCESS)
+            loaded++;
+    }
+    qw_ca_unlock();
+    return loaded;
+}
+
+static JSValue js_wolf_ca_store_add(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    const char *pem;
+    size_t len;
+    int n;
+
+    (void)this_val; (void)argc;
+    pem = JS_ToCStringLen(ctx, &len, argv[0]);
+    if (!pem)
+        return JS_EXCEPTION;
+    n = qw_ca_store_add(pem, len);
+    JS_FreeCString(ctx, pem);
+    if (n < 0)
+        return JS_ThrowTypeError(ctx,
+                                 "addTrustedCA: empty PEM or trust store is full");
+    return JS_NewInt32(ctx, n);
+}
+
+static JSValue js_wolf_tls_load_trusted_certs(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    int64_t ctx_ptr;
+
+    (void)this_val; (void)argc;
+    if (JS_ToInt64(ctx, &ctx_ptr, argv[0]))
+        return JS_ThrowTypeError(ctx, "ctx pointer required");
+    return JS_NewInt32(ctx, qw_tls_load_trusted_certs((void *)(size_t)ctx_ptr));
+}
+
 static JSValue js_wolfSSL_CTX_load_verify_locations(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     int64_t ctx_ptr;
@@ -298,6 +411,25 @@ static JSValue js_wolfSSL_UseSNI(JSContext *ctx, JSValueConst this_val, int argc
     return JS_NewInt32(ctx, ret);
 }
 
+static JSValue js_wolfSSL_check_domain_name(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    (void)this_val; (void)argc;
+    int64_t ssl_ptr;
+    if (JS_ToInt64(ctx, &ssl_ptr, argv[0]))
+        return JS_ThrowTypeError(ctx, "ssl pointer required");
+
+    const char *name = JS_ToCString(ctx, argv[1]);
+    if (!name)
+        return JS_ThrowTypeError(ctx, "domain name required");
+
+    WOLFSSL *ssl = (WOLFSSL *)(size_t)ssl_ptr;
+    int ret = wolfSSL_check_domain_name(ssl, name);
+
+    JS_FreeCString(ctx, name);
+
+    return JS_NewInt32(ctx, ret);
+}
+
 static const JSCFunctionListEntry wolfssl_funcs[] = {
     JS_CFUNC_DEF("wolfSSL_library_init", 0, js_wolfSSL_library_init),
     JS_CFUNC_DEF("wolfSSLv23_client_method", 0, js_wolfSSLv23_client_method),
@@ -319,6 +451,9 @@ static const JSCFunctionListEntry wolfssl_funcs[] = {
     JS_CFUNC_DEF("wolfSSL_CTX_use_certificate_file", 2, js_wolfSSL_CTX_use_certificate_file),
     JS_CFUNC_DEF("wolfSSL_CTX_use_PrivateKey_file", 2, js_wolfSSL_CTX_use_PrivateKey_file),
     JS_CFUNC_DEF("wolfSSL_UseSNI", 3, js_wolfSSL_UseSNI),
+    JS_CFUNC_DEF("wolfSSL_check_domain_name", 2, js_wolfSSL_check_domain_name),
+    JS_CFUNC_DEF("addTrustedCA", 1, js_wolf_ca_store_add),
+    JS_CFUNC_DEF("loadTrustedCerts", 1, js_wolf_tls_load_trusted_certs),
 };
 
 static int wolfssl_init(JSContext *ctx, JSModuleDef *m)

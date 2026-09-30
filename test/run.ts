@@ -1,3 +1,4 @@
+import '../lib/certs.js'
 import * as std from 'std'
 import { Tester } from './test_helper.js'
 
