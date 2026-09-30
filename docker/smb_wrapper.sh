@@ -40,11 +40,17 @@ follow symlinks = yes
 wide links = yes
 # XP 只支持 SMB1，Win7 可协商更高协议，统一放开 NT1 下限
 server min protocol = NT1
+# 禁用 SMB2 lease：win7/win11 的 SMB2 客户端缓存机制，关掉后才能像 SMB1 一样
+# 让"覆盖写同路径"立刻对 guest 可见（配合 [qemu] 的 oplocks = no）
+smb2 leases = no
 [qemu]
 path=$SHARE_DIR
 read only=no
 guest ok=yes
 force user=$USER
+# 不授予客户端 oplock（读缓存），杜绝"覆盖写同路径却读到旧内容"。
+# 本环境的共享仅供测试下发，loopback 读取缓存收益可忽略，见 TODO.md。
+oplocks = no
 EOF
 
 exec /usr/sbin/smbd -l "$TMPDIR" -s "$TMPDIR/smb.conf"
