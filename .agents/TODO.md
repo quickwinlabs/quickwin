@@ -8,7 +8,7 @@
 
 ## 中优先级
 - [x] Fix `test_ffi.ts` 32-bit PRINTER_INFO_2 layout — `structSize` 硬编码 136（x64），ia32 应为 **84**（非 80；MinGW 实测 sizeof=84 name=4 port=12 drv=16 comment=20 location=24 status=72）。已按 `os.arch` 分支 structSize/偏移，`readPtr` ia32 只读 4 字节，`decodeWideAtPtr` 加 4096 WCHAR 上限防越界死循环（详见 `.agents/QEMU_NET_SUITE_TEST.md`）
-- [ ] `/exec` 命令行中文 lossy：`{"cmd":"cmd.exe /c echo 你好"}` 里中文经 `CreateProcessW` 构造命令行时被替换为 `?`（ASCII `3f`），`chcp 936/65001` 均无法挽救——`cmd /c "echo %*"` 回显为 `%* ??`，证明替换发生在进 cmd **之前**（输入侧，非输出编码）。影响"下发含中文参数的命令"（`mkdir 中文目录` 等）。规避：命令保持 ASCII，中文走文件/stdin 传。**注意 guest 侧中文能力本身完好**：Tiny11 Core 25H2 实测 `qwin -e "print('中文测试')"` → `e4b8ad e69687 e6b58b e8af95`（UTF-8 正确）、`chcp 936 & type <GBK文件>` → `c4e3bac3`（GBK 正确）、CJK 字体齐全（`msyh.ttc`/`simsun.ttc`，共 337 字体），**无需**拷字体进 `C:\Windows\Fonts`
+- [x] `/exec` 命令行中文 lossy：`{"cmd":"cmd.exe /c echo 你好"}` 中文退化为 `?`。**根因**：cmd 内部 UTF-16 无损，坏点仅在 cmd 内置输出按 ACP 编码写 stdout（Tiny11 的 ACP=1252 且缺 NLS → 中文无映射退化 `?`）；mkdir/文件系统、qwin 子进程输出本就无损。**方案**：worker 对 win11（NT major≥10）拼 `cmd /u /c`，内置输出直接 UTF-16LE 绕开 ACP，win7/xp（ACP=936）不动。验证：`echo 你好`→UTF-16LE 无损、CI `Summary: 466/471` 与基线一致（详见 `.agents/CMD_ENCODING_ACP_NLS.md` §8）
 - [ ] `test_url.ts` import cleanup: direct `import '../lib/url.js'` instead of polyfill
 - [ ] `test_fetch_wasm.ts`: integrate into Makefile or remove
 - [ ] Add `"type": "module"` to `package.json` to suppress Node.js warning

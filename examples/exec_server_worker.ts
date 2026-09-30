@@ -28,6 +28,7 @@ try {
         getLastError: bind('kernel32.dll', 'GetLastError', ' -> u32'),
         getSystemDirectoryW: bind('kernel32.dll', 'GetSystemDirectoryW', 'ptr u32 -> u32'),
         getSystemInfo: bind('kernel32.dll', 'GetSystemInfo', 'ptr -> void'),
+        rtlGetVersion: bind('ntdll.dll', 'RtlGetVersion', 'ptr -> i32'),
     }
 } catch (ex) {
     diagFile('K-BIND-FAIL: ' + String(ex))
@@ -119,6 +120,22 @@ try {
     diagFile('SYS-DIR-FAIL: ' + String(ex))
 }
 
+// win11（NT 10.x）上用 `/u` 让 cmd 内置输出直接写 UTF-16LE，绕开 ACP（Tiny11 缺
+// c_*.nls 且 ACP=1252，中文会退化成 `?`）。win7/XP 的 ACP=936 本来就无损，保持原样。
+// OSVERSIONINFOW 的 dwOSVersionInfoSize 必须填满 148（含 128 字节 szCSDVersion 尾部），
+// 分配同样 148 字节缓冲区，否则 RtlGetVersion 会越界写坏 worker 堆导致子进程挂起。
+let IS_WIN11 = false
+try {
+    const vb = zeroBuf(148)
+    u32At(ffi.bufferPtr(vb), 0, 148)
+    if (K.rtlGetVersion(ffi.bufferPtr(vb)) === 0) {
+        const maj = rdU32(ffi.bufferPtr(vb) + 4)
+        IS_WIN11 = maj >= 10
+    }
+} catch (ex) {
+    diagFile('VER-FAIL: ' + String(ex))
+}
+
 // 用 CreateProcessW + CreatePipe 直接捕获子进程 stdout（替代 winpty）。
 // 纯捕获场景（/exec 从不交互），管道方案比 winpty 少一层 agent 中转：
 //   - 流式粒度更好：探针实测 XP 上逐行实时到达（winpty 攒批 ~4s）
@@ -144,7 +161,8 @@ function runCmd(id: number, cmd: string): number {
     wrPtr(ffi.bufferPtr(si), L.hErr, hWrite)
 
     const pi = zeroBuf(L.piSize)
-    const cmdline = `${sysDir}\\cmd.exe /c ${cmd}`
+    const u = IS_WIN11 ? '/u ' : ''
+    const cmdline = `${sysDir}\\cmd.exe ${u}/c ${cmd}`
     if (!K.createProcessW(null, cmdline, 0, 0, 1, 0, 0, null, ffi.bufferPtr(si), ffi.bufferPtr(pi))) {
         K.closeHandle(hRead)
         K.closeHandle(hWrite)
