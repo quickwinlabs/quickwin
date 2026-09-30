@@ -2,6 +2,7 @@ import * as std from 'std'
 
 const GREEN = '\x1b[32m'
 const RED   = '\x1b[31m'
+const YELLOW = '\x1b[33m'
 const BOLD  = '\x1b[1m'
 const RESET = '\x1b[0m'
 
@@ -34,6 +35,7 @@ export function readWasmFile(path: string): ArrayBuffer | null {
 export class Tester {
     ok = 0
     fail = 0
+    skip = 0
     private startTime = Date.now()
     private sectionStart = this.startTime
     private lastSection = ''
@@ -67,6 +69,11 @@ export class Tester {
         this.check(name, true, actual)
     }
 
+    skipCase(name: string): void {
+        this.skip++
+        std.printf('  %sSKIP:%s %s\n', YELLOW, RESET, name)
+    }
+
     summary(): void {
         const now = Date.now()
         if (this.lastSection) {
@@ -75,6 +82,7 @@ export class Tester {
         }
         const total = now - this.startTime
         const color = this.fail > 0 ? RED : GREEN
-        std.printf('\n%s%d/%d passed (%s)%s\n', color, this.ok, this.ok + this.fail, formatDuration(total), RESET)
+        const skipped = this.skip > 0 ? ` (${this.skip} skipped)` : ''
+        std.printf('\n%s%d/%d passed%s (%s)%s\n', color, this.ok, this.ok + this.fail, skipped, formatDuration(total), RESET)
     }
 }

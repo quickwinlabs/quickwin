@@ -251,24 +251,50 @@ export const suite = {
         // which reuses the self-signed R3's subject-key-identifier with a
         // different public key. Shipping the self-signed R3 in lib/certs.ts
         // made wolfSSL match the wrong key and fail the handshake with -155.
+        // Both are public CDNs: a 500/429 or a dropped connection then counts
+        // as a retried attempt, not an immediate failure — only a persistent
+        // failure (cert regression or long-lived outage) should fail CI.
         t.section('GlobalSign R3 root chain')
         {
-            const rb = await safeFetch('https://www.baidu.com/', { timeout: 10000 })
-            if (rb) {
-                assert('baidu (GlobalSign R3) status', rb.status === 200)
-                const bb = await rb.text()
+            async function fetchR3(url: any): Promise<string | null> {
+                const init = { timeout: 10000 }
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    try {
+                        const r = await fetch(url, init)
+                        const body = await r.text()
+                        if (r.status === 200 && body.length > 0) return body
+                        std.printf('    fetch %s status=%s len=%d (attempt %d)\n',
+                            String(url), String(r.status), body.length, attempt)
+                    } catch (e) {
+                        std.printf('    fetch %s error: %s (attempt %d)\n',
+                            String(url), String((e as Error)?.message || e), attempt)
+                    }
+                    os.sleep(1000)
+                }
+                return null
+            }
+
+            const bb = await fetchR3('https://www.baidu.com/')
+            if (bb) {
+                assert('baidu (GlobalSign R3) status', true)
                 assert('baidu (GlobalSign R3) body non-empty', bb.length > 0)
             } else {
                 assert('baidu (GlobalSign R3) reachable', false)
             }
 
-            const rj = await safeFetch('https://cdn.jsdelivr.net/npm/left-pad@1.3.0', { timeout: 10000 })
-            if (rj) {
-                assert('jsdelivr (GlobalSign R3) status', rj.status === 200)
-                const bj = await rj.text()
-                assert('jsdelivr (GlobalSign R3) body non-empty', bj.length > 0)
-            } else {
-                assert('jsdelivr (GlobalSign R3) reachable', false)
+            const JSDELIVR_HOSTS = ['cdn.jsdelivr.net', 'fastly.jsdelivr.net', 'gcore.jsdelivr.net']
+            for (const host of JSDELIVR_HOSTS) {
+                const bj = await fetchR3('https://' + host + '/npm/left-pad@1.3.0')
+                if (bj) {
+                    assert('jsdelivr (GlobalSign R3) status', true)
+                    assert('jsdelivr (GlobalSign R3) body non-empty', bj.length > 0)
+                    break
+                }
+                if (host !== JSDELIVR_HOSTS[JSDELIVR_HOSTS.length - 1]) {
+                    std.printf('    jsdelivr host %s failed, trying next\n', host)
+                } else {
+                    assert('jsdelivr (GlobalSign R3) reachable', false)
+                }
             }
         }
 

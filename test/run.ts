@@ -53,8 +53,8 @@ async function main(): Promise<void> {
     std.printf('%s====== QuickWin Test Runner ======%s\n', BOLD, RESET)
     if (filter) std.printf('Filter: %s\n', filter)
 
-    const results: { name: string, ok: number, fail: number, elapsed: number }[] = []
-    let totalOk = 0, totalFail = 0
+    const results: { name: string, ok: number, fail: number, skip: number, elapsed: number }[] = []
+    let totalOk = 0, totalFail = 0, totalSkip = 0
 
     for (const def of suiteDefs) {
         if (filter) {
@@ -85,18 +85,21 @@ async function main(): Promise<void> {
         }
         const suiteElapsed = Date.now() - suiteStart
         t.summary()
-        results.push({ name: def.name, ok: t.ok, fail: t.fail, elapsed: suiteElapsed })
+        results.push({ name: def.name, ok: t.ok, fail: t.fail, skip: t.skip, elapsed: suiteElapsed })
         totalOk += t.ok
         totalFail += t.fail
+        totalSkip += t.skip
     }
 
     const color = totalFail > 0 ? RED : GREEN
     std.printf('\n%s====== Test Results ======%s\n', BOLD, RESET)
     for (const r of results) {
         const c = r.fail > 0 ? RED : GREEN
-        std.printf('  %s%-18s %s%d/%d passed  %s(%s)%s\n', c, r.name, RESET, r.ok, r.ok + r.fail, c, formatDuration(r.elapsed), RESET)
+        const skipped = r.skip > 0 ? ` (${r.skip} skipped)` : ''
+        std.printf('  %s%-18s %s%d/%d passed%s  %s(%s)%s\n', c, r.name, RESET, r.ok, r.ok + r.fail, skipped, c, formatDuration(r.elapsed), RESET)
     }
-    std.printf('%s====== Summary: %d/%d passed ======%s\n', color, totalOk, totalOk + totalFail, RESET)
+    const skipped = totalSkip > 0 ? ` (${totalSkip} skipped)` : ''
+    std.printf('%s====== Summary: %d/%d passed%s ======%s\n', color, totalOk, totalOk + totalFail, skipped, RESET)
 }
 
 main()

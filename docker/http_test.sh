@@ -98,12 +98,15 @@ OK=$(printf '%s' "$SUMMARY" | sed 's/.*: *\([0-9]*\)\/.*/\1/')
 TOTAL=$(printf '%s' "$SUMMARY" | sed 's/.*\/\([0-9]*\).*/\1/')
 FAILED=$(( TOTAL - OK ))
 echo "$SUMMARY  (failed=$FAILED)"
-# XP 打印机 ffi 环境差容忍 1
-if [ "$FAILED" -gt 1 ]; then
-  echo "::error::$FAILED test failures (tolerating 1 for XP printer diff)"
+# 任何失败就算挂——SKIP 已由 FFi 无打印机等环境用例自行跳过，
+# 不再用"容忍 1"掩盖真正的回归。
+if [ "$FAILED" -gt 0 ]; then
+  echo "::error::$FAILED test failures"
   # 失败明细在响应 body 里（run.ts 每条 FAIL: 一行），CI 上 dump 出来便于定位 flaky
   echo "--- failing test lines ---"
   grep -aE "FAIL:|SUITE FAILED" "$BODY_FILE" | head -30 || true
+  echo "--- fetch/retry diagnostics ---"
+  grep -aE "fetch .*\(attempt|host .* failed" "$BODY_FILE" | head -30 || true
   exit 1
 fi
 # popen/pclose 的 code 非 0 也提示（Summary 已主判）
