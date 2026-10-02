@@ -324,7 +324,7 @@ ffi_call(&cif, func, &ret, ffi_args);
 
 ## 6. 已验证事实清单（不必重新推导）
 
-**Closure 支持完备但未接线**（两个架构都完整，零汇编工作）：
+**libffi 的 Closure 支持完备但 quickwin 未用 libffi closures**（已自建内建实现，见 quickjs-ffi-closure.{h,c}；下表保留作 libffi 侧能力对照）：
 
 | 符号 | ia32 (`_build/deps/ia32-cross/libffi.a`) | x64 (`_build/deps/x64-cross/libffi.a`) |
 |---|---|---|
@@ -337,9 +337,15 @@ ffi_call(&cif, func, &ret, ffi_args);
 
 `FFI_CLOSURES=1`、`FFI_GO_CLOSURES=1`（`ffitarget.h:132-133`）。ia32 的 8 个 closure trampoline 符号全部可解析（`nm --undefined-only -a` 逐个比对无缺失）。
 
-**quickwin 目前完全没用回调**：
-- `quickjs-ffi.c:194-199` 只导出 4 个函数：`ffiCall` / `bufferPtr` / `readByte` / `writeByte`，**无任何 closure 引用**。
-- `examples/exec_server_worker.ts:461` 明文记录限制："本层 FFI 没有函数指针类型，EnumWindows 那类回调接口用不了"，`listWindows()` 用 `FindWindowExW` 链式遍历替代（先取 next 再查当前防句柄失效，`:475`）。
+**quickwin 的回调走自建实现**（不依赖 libffi `closure_alloc`）：
+- `quickjs-ffi-closure.{h,c}` 每闭包一个 VirtualAlloc 可执行块（trampoline 绝对跳转 + magic/ret_kind/
+  arg_bytes + 捕获的 wrapper/ctx），C→JS 桥接只调块内 wrapper（闭包捕获签名 + 用户 fn），**无 registry、
+  无跨 context 全局**；`quickjs-ffi.c` 把 `closureNew`/`closureFree` 注册进 'ffi' 模块（在 `ffiCall`/
+  `bufferPtr`/`readByte`/`writeByte` 之外）。
+- `lib/ffi-bind.ts` 的 `closure(sig, fn, {stdcall?})` → `{ptr, dispose}`：签名创建时解析、wrapper 闭包捕获
+  args/ret/fn，同步同线程回调；`closureNew(argBytes, retKind, wrapper)` 3 参（无 dispatch 参数）。
+- `listWindows()` 仍用 `FindWindowExW` 链式遍历（先取 next 再查当前防句柄失效，`:475`）；EnumWindows +
+  closure 等价能力已在 test_ffi_bind.ts 闭包用例覆盖（win11/xp 双平台全绿）。
 - `SHBrowseForFolderW` 传 `lpfn: 0`。
 
 **quickwin 没有 64 位标量 FFI 参数**（`bind` DSL 全部类型 token 统计）：

@@ -3,6 +3,7 @@
 #include <windows.h>
 #include "quickjs.h"
 #include "quickjs-ffi.h"
+#include "quickjs-ffi-closure.h"
 
 /* 内建调用器：ia32 / x64 都走本地汇编桩（REMOVE_LIBFFI_PLAN.md S3 / S5）。
    第三方 FFI 后端已不参与构建（S6）；参数打包下沉到 JS 侧（§10），本文件不再需要
@@ -94,6 +95,8 @@ static const JSCFunctionListEntry ffi_funcs[] = {
 static int js_ffi_init(JSContext *ctx, JSModuleDef *m)
 {
     JS_SetModuleExportList(ctx, m, ffi_funcs, sizeof(ffi_funcs) / sizeof(ffi_funcs[0]));
+    JS_SetModuleExportList(ctx, m, qwin_closure_funcs,
+                           sizeof(qwin_closure_funcs) / sizeof(qwin_closure_funcs[0]));
     return 0;
 }
 
@@ -104,5 +107,7 @@ JSModuleDef *js_init_module_ffi(JSContext *ctx)
     if (!m)
         return NULL;
     JS_AddModuleExportList(ctx, m, ffi_funcs, sizeof(ffi_funcs) / sizeof(ffi_funcs[0]));
+    JS_AddModuleExportList(ctx, m, qwin_closure_funcs,
+                           sizeof(qwin_closure_funcs) / sizeof(qwin_closure_funcs[0]));
     return m;
 }

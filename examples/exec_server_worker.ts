@@ -457,8 +457,8 @@ function readWide(p: number, nChars: number): string {
     return new TextDecoder('utf-16le').decode(bytes)
 }
 
-// 顶层窗口列表（不递归子控件）。用 FindWindowExW 链式遍历：
-// 本层 FFI 没有函数指针类型，EnumWindows 那类回调接口用不了。
+// 顶层窗口列表（不递归子控件）。用 FindWindowExW 链式遍历
+//（lib/ffi-bind.ts 的 closure() 已支持 EnumWindows 类回调，此处沿用既有实现）。
 function listWindows(id: number): void {
     const { u } = gdi()
     const wb = zeroBuf(16)

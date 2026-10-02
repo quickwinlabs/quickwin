@@ -558,6 +558,8 @@ declare module "ffi" {
     function bufferPtr(buf: ArrayBuffer): number;
     function readByte(ptr: number): number;
     function writeByte(ptr: number, value: number): void;
+    function closureNew(argBytes: number, retKind: number, wrapper: (frame: ArrayBuffer, retBuf: ArrayBuffer) => void): number;
+    function closureFree(ptr: number): void;
 }
 
 

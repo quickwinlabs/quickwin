@@ -1,7 +1,40 @@
 import * as std from 'std'
 import * as gui from 'gui'
+import * as ffi from 'ffi'
+import * as os from 'os'
 import { Tester } from './test_helper.js'
-import { bind, bindLib } from '../lib/ffi-bind.js'
+import { bind, bindLib, closure } from '../lib/ffi-bind.js'
+
+// 与 callPacked 相同的槽宽布局，供「ffiCall 直驱 closure」打包
+function packArgs(kinds: string[], vals: (number | bigint)[]): ArrayBuffer {
+    const is64 = os.arch === 'x64'
+    const SZ: Record<string, number> = is64
+        ? { u8: 8, i8: 8, u16: 8, i16: 8, u32: 8, i32: 8, u64: 8, i64: 8, u64n: 8, i64n: 8, f32: 8, f64: 8, ptr: 8 }
+        : { u8: 4, i8: 4, u16: 4, i16: 4, u32: 4, i32: 4, u64: 8, i64: 8, u64n: 8, i64n: 8, f32: 4, f64: 8, ptr: 4 }
+    const size = kinds.reduce((s, k) => s + SZ[k]!, 0)
+    const b = new ArrayBuffer(size)
+    const dv = new DataView(b)
+    let off = 0
+    for (let i = 0; i < kinds.length; i++) {
+        const k = kinds[i]!
+        const v = vals[i]!
+        switch (k) {
+            case 'f64': dv.setFloat64(off, Number(v), true); break
+            case 'f32': dv.setFloat32(off, Number(v), true); break
+            case 'i64n': dv.setBigInt64(off, v as bigint, true); break
+            case 'u64n': dv.setBigUint64(off, v as bigint, true); break
+            case 'u64': dv.setBigUint64(off, BigInt(Number(v)), true); break
+            case 'i64': dv.setBigInt64(off, BigInt(Number(v)), true); break
+            case 'ptr':
+                if (is64) dv.setBigUint64(off, BigInt(Number(v)), true)
+                else dv.setUint32(off, Number(v) >>> 0, true)
+                break
+            default: dv.setUint32(off, Number(v) >>> 0, true); break
+        }
+        off += SZ[k]!
+    }
+    return b
+}
 
 // ASCII 字符串 ↔ ArrayBuffer（供 msvcrt _strtoui64/_i64toa 类函数用）
 function strToBuf(s: string): ArrayBuffer {
@@ -143,5 +176,55 @@ export const suite = {
             errBig = String(e)
         }
         t.checkTrue('i64n rejects number', errBig.includes('bigint'))
+
+        t.section('closures: direct ABI drive via ffiCall')
+        const addClos = closure('i32 i32 -> i32', (a, b) => a + b)
+        const r1 = new ArrayBuffer(8)
+        ffi.ffiCall(addClos.ptr, packArgs(['i32', 'i32'], [5, 7]), r1, 0)
+        t.check('closure i32+i32 = 12', 12, new DataView(r1).getInt32(0, true))
+        addClos.dispose()
+
+        const ptrClos = closure('ptr i32 -> i32', (p, n) => (p === null ? 0 : p) + n)
+        const r2 = new ArrayBuffer(8)
+        ffi.ffiCall(ptrClos.ptr, packArgs(['ptr', 'i32'], [0x1234, 100]), r2, 0)
+        t.check('closure ptr+i32 decode', 0x1234 + 100, new DataView(r2).getInt32(0, true))
+        ptrClos.dispose()
+
+        const f64Clos = closure('f64 f64 -> f64', (a, b) => a * b)
+        const r3 = new ArrayBuffer(8)
+        ffi.ffiCall(f64Clos.ptr, packArgs(['f64', 'f64'], [2.5, 4]), r3, 1)
+        t.check('closure f64 mul = 10', 10, new DataView(r3).getFloat64(0, true))
+        f64Clos.dispose()
+
+        const bigClos = closure('i64n u64n -> i32', (a, b) =>
+            (a === 9007199254740993n && b === 18446744073709551615n) ? 1 : 0)
+        const r4 = new ArrayBuffer(8)
+        ffi.ffiCall(bigClos.ptr, packArgs(['i64n', 'u64n'], [9007199254740993n, 18446744073709551615n]), r4, 0)
+        t.check('closure bigint args exact (2^53+1 / 2^64-1)', 1, new DataView(r4).getInt32(0, true))
+        bigClos.dispose()
+
+        t.section('closures: EnumWindows (stdcall, end-to-end)')
+        const enumWindows = bind('user32.dll', 'EnumWindows', 'ptr ptr -> i32')
+        let wcount = 0
+        let wLp: number | null = null
+        const enumClos = closure('ptr ptr -> i32', (_hwnd, lParam) => { wcount++; wLp = lParam; return 1 })
+        const eok = enumWindows(enumClos.ptr, 0x5A5A)
+        t.checkTrue('EnumWindows succeeds', eok !== 0)
+        t.checkTrue('EnumWindows callback fired', wcount > 0)
+        t.check('EnumWindows lParam passthrough', 0x5A5A, wLp)
+        enumClos.dispose()
+
+        t.section('closures: qsort (cdecl, msvcrt)')
+        const qsort = bind('msvcrt.dll', 'qsort', 'buf_ptr ptr ptr ptr -> void')
+        const arr = new Uint32Array([5, 3, 8, 1])
+        const readI32 = (p: number): number =>
+            (ffi.readByte(p) | (ffi.readByte(p + 1) << 8) | (ffi.readByte(p + 2) << 16) | (ffi.readByte(p + 3) << 24))
+        const cmp = closure('ptr ptr -> i32', (a, b) => readI32(a as number) - readI32(b as number), { stdcall: false })
+        qsort(arr.buffer, 4, 4, cmp.ptr)
+        t.check('qsort [0]', 1, arr[0])
+        t.check('qsort [1]', 3, arr[1])
+        t.check('qsort [2]', 5, arr[2])
+        t.check('qsort [3]', 8, arr[3])
+        cmp.dispose()
     },
 }

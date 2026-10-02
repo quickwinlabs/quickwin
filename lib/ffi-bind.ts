@@ -1,6 +1,7 @@
 import * as ffi from 'ffi'
 import * as win from 'win'
 import * as os from 'os'
+import * as std from 'std'
 import './text-codec.js'
 
 // 声明式 FFI 绑定：把字符串签名（'ptr i32 -> i32'）解析成可调用函数（bind）
@@ -25,24 +26,25 @@ import './text-codec.js'
 type BasicKind = 'void' | 'u8' | 'i8' | 'u16' | 'i16' | 'u32' | 'i32' | 'u64' | 'i64' | 'u64n' | 'i64n' | 'f32' | 'f64' | 'ptr'
 type Kind = BasicKind | 'buf_ptr' | 'wchar_ptr'
 
-type ArgTypeOf = {
+// 原生标量（传值/地址）类型表：实参、返回共用
+type BasicTypeOf = {
     u8: number; i8: number; u16: number; i16: number
     u32: number; i32: number
     u64: number; i64: number
     u64n: bigint; i64n: bigint
     f32: number; f64: number
     ptr: number | null
+}
+
+// 实参表 = 标量表 + 引用型实参（buf_ptr/wchar_ptr 调用期 pin）
+type ArgTypeOf = BasicTypeOf & {
     buf_ptr: ArrayBuffer | null
     wchar_ptr: string | null
 }
-// 返回表 ⊂ BasicKind：返回没有封送可言
-type RetTypeOf = {
-    u8: number; i8: number; u16: number; i16: number
-    u32: number; i32: number
-    u64: number; i64: number
-    u64n: bigint; i64n: bigint
-    f32: number; f64: number
-    ptr: number | null
+
+// 返回表 = 标量表 + void（返回没有封送可言）
+type RetTypeOf = BasicTypeOf & {
+    void: void
 }
 
 // C / Windows typedef → 规范 kind。Windows x86/x64 均 LLP64：int/long 恒 32 位，
@@ -261,4 +263,101 @@ export function bindLib<const M extends Record<string, string>>(dll: string, map
         out[name] = makeFn(proc, sig)
     }
     return out as { [K in keyof M]: (...args: _Args<M[K]>) => _Ret<M[K]> }
+}
+
+/* ---- 闭包（回调）：JS 函数 → 可传给 Win32 API 的函数指针 ---- */
+
+// 回调签名约束：实参只许 BasicKind（native 传原始值/指针）；返回只许 ≤32 位整/ptr/f32/f64
+const CLOSURE_ARG_OK: ReadonlySet<string> = new Set<string>(['u8', 'i8', 'u16', 'i16', 'u32', 'i32', 'u64', 'i64', 'u64n', 'i64n', 'f32', 'f64', 'ptr'])
+const CLOSURE_RET_OK: ReadonlySet<string> = new Set<string>(['void', 'u8', 'i8', 'u16', 'i16', 'u32', 'i32', 'f32', 'f64', 'ptr'])
+
+// 从捕获 frame 解一个实参。x64: 8 字节槽（浮点取 xmm 区）；ia32: 按 ARG_SIZE 连续排列。
+function decodeArg(k: Kind, dv: DataView, off: number, w64: boolean): unknown {
+    switch (k) {
+        case 'u8': return dv.getUint32(off, true) & 0xFF
+        case 'i8': { const b = dv.getUint8(off); return (b & 0x80) ? b - 0x100 : b }
+        case 'u16': return dv.getUint32(off, true) & 0xFFFF
+        case 'i16': { const s = dv.getUint16(off, true); return (s & 0x8000) ? s - 0x10000 : s }
+        case 'u32': return dv.getUint32(off, true)
+        case 'i32': return dv.getInt32(off, true)
+        case 'u64': return Number(dv.getBigUint64(off, true))
+        case 'i64': return Number(dv.getBigInt64(off, true))
+        case 'u64n': return dv.getBigUint64(off, true)
+        case 'i64n': return dv.getBigInt64(off, true)
+        case 'f32': return dv.getFloat32(off, true)
+        case 'f64': return dv.getFloat64(off, true)
+        case 'ptr': {
+            const p = w64 ? Number(dv.getBigUint64(off, true)) : dv.getUint32(off, true)
+            return p === 0 ? null : p
+        }
+        default: return undefined
+    }
+}
+
+// 共享解码/编码助手：由每个闭包的 wrapper 调用（wrapper 闭包捕获 args/ret/fn）。
+function dispatchClosure(args: Kind[], ret: Kind, fn: (...a: unknown[]) => unknown,
+    frameBuf: ArrayBuffer, retBuf: ArrayBuffer): void {
+    const dv = new DataView(retBuf)
+    const is64 = os.arch === 'x64'
+    const fv = new DataView(frameBuf)
+    const a: unknown[] = []
+    let off = 0
+    for (let i = 0; i < args.length; i++) {
+        const k = args[i]!
+        if (is64) {
+            const fp = k === 'f32' || k === 'f64'
+            const base = fp
+                ? (i < 4 ? 128 + i * 8 : 32 + (i - 4) * 8)   // xmm 区（前 4）/ 溢出区
+                : (i < 4 ? i * 8 : 32 + (i - 4) * 8)          // 整数寄存器区 / 溢出区
+            a.push(decodeArg(k, fv, base, true))
+        } else {
+            a.push(decodeArg(k, fv, off, false))
+            off += ARG_SIZE[k]
+        }
+    }
+    let r: unknown
+    try {
+        r = fn(...a)
+    } catch (err) {
+        std.printf('[ffi] closure callback threw: %s\n', String(err))
+        return                            // 结果槽保持 0
+    }
+    if (ret !== 'void') {
+        try { writeSlot(dv, 0, ret, r, []) } catch { /* 返回类型不合法：保持 0 */ }
+    }
+}
+
+/** 把 JS 函数变成可传给 Win32 API 的函数指针（同步同线程回调）。
+ *  sig 为回调签名：实参只许 BasicKind（ptr 读回 number|null），
+ *  返回只许 void|u8..u32|i8..i32|f32|f64|ptr（ia32 回调 ABI 无 64 位整数返回）。
+ *  opts.stdcall 仅 ia32 有效（默认 true，Win32 回调标准 CALLBACK）；msvcrt 等
+ *  cdecl 库回调传 { stdcall: false }。x64 恒由调用方清栈，无需指定。
+ *  返回 { ptr, dispose }：ptr 即函数指针（传给 API 的 ptr 参数）；dispose 注销
+ *  并释放回调函数，幂等；闭包期间回调被强引用，不会被 GC 回收。
+ *  注意：dispose 后 ptr 不得再被任何 native 方引用。 */
+export function closure<S extends string>(sig: S, fn: (...args: _Args<S>) => _Ret<S>,
+    opts?: { stdcall?: boolean }): { ptr: number; dispose(): void } {
+    const { args, ret } = parseSig(sig)
+    for (const k of args) {
+        if (!CLOSURE_ARG_OK.has(k)) throw new Error(`ffi-bind: closure arg kind "${k}" not supported (BasicKind only)`)
+    }
+    if (!CLOSURE_RET_OK.has(ret)) throw new Error(`ffi-bind: closure return kind "${ret}" not supported (void|u8..u32|i8..i32|f32|f64|ptr)`)
+    const is64 = os.arch === 'x64'
+    const argBytes = (opts?.stdcall === false || is64) ? 0 : args.reduce((s, k) => s + ARG_SIZE[k], 0)
+    const retKind = ret === 'f32' ? 1 : ret === 'f64' ? 2 : 0
+    // per-closure wrapper：闭包捕获 args/ret/fn，C 侧只存它 + ctx；回调永远
+    // 回到创建它的 context（无跨 context 全局、无 registry）。
+    const wrapper = (frameBuf: ArrayBuffer, retBuf: ArrayBuffer): void => {
+        dispatchClosure(args, ret, fn as (...a: unknown[]) => unknown, frameBuf, retBuf)
+    }
+    const ptr = ffi.closureNew(argBytes, retKind, wrapper)
+    let done = false
+    return {
+        ptr,
+        dispose(): void {
+            if (done) return
+            done = true
+            ffi.closureFree(ptr)
+        },
+    }
 }

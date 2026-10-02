@@ -12,7 +12,7 @@
 | 维度 | 决策 |
 |---|---|
 | **目标** | 让 libffi **不再参与构建** —— 去掉 autotools 交叉构建链（主要动机），顺带减小产物体积、完全掌控 ABI 逻辑。**submodule 与源码保留**作 ABI 依据（§3.7） |
-| **覆盖范围** | **仅当前实际用到的**：12 个标量类型 + 整数/浮点/指针返回。不做 struct 传参、不做变参、不做 closure/回调 |
+| **覆盖范围** | **仅当前实际用到的**：12 个标量类型 + 整数/浮点/指针返回。不做 struct 传参、不做变参；closure/回调由自建内建实现提供（不依赖 libffi closures） |
 | **实现形式** | **asm + C 混合** —— 指令级只做「寄存器装载 + call + 取回返回值」，类型分类/返回值读回/错误检查全部留 C |
 | **验证策略** | 现有三套件（`ffi` / `ffi-bind` / `ffi-struct`）在 xp + win11 全绿 + **新增边界用例**；**跳过双跑对拍**，改用「ia32 全绿 → Win64 全绿 → 停用 libffi」分架构验证（§9.1） |
 | **落地拆分** | S1–S7 七步，按架构切开（§5）。ia32 与 Win64 的 ABI 风险点完全不同，混在一步里无法定位是哪一侧的错 |
@@ -21,7 +21,7 @@
 **不做的事**（明确划界，避免范围蔓延）：
 - ❌ 不实现 `FFI_TYPE_STRUCT` 传参/返回（当前零使用；`ffi-struct.ts` 走纯 TS 布局 + `readByte/writeByte`，不经过 `ffiCall`）
 - ❌ 不实现变参函数（`printf`/`wsprintfW` 等，当前零绑定；FFI_ARGS_RET_SEMANTICS.md §3 提到的变参 promotion 坑随之不需要处理）
-- ❌ 不实现 closure/回调（已判定「回调功能不做」，见 `examples/exec_server_worker.ts:461`）
+- ~~❌ 不实现 closure/回调~~ → **已自建落地**：`quickjs-ffi-closure.{h,c}` + `closure()`（wrapper 派发，无 libffi closure_alloc 依赖），EnumWindows/stdcall 与 qsort/cdecl 用例 + 双平台全绿；`listWindows()` 仍用 FindWindowExW 链式遍历
 - ❌ 不支持 bigint 精确传参（维持现状，`JS_ToInt64` 不走 BigInt）
 
 ---
@@ -36,7 +36,7 @@
 - **最大参数个数 = 10**（`CreateProcessW`）
 - **无变参函数**
 - **无 struct 传参**（`lib/ffi-struct.ts` 自算布局，用 `readByte`/`writeByte` 逐字节读写）
-- **无回调**（无 `ffi_closure_alloc` 调用点）
+- **无 libffi 回调**（无 `ffi_closure_alloc` 调用点；回调功能由自建 `quickjs-ffi-closure` 提供，不经 libffi）
 
 参数签名样例（最高频形态）：
 ```
@@ -65,7 +65,7 @@
 x64-cross/libffi.a : prep_cif.o types.o raw_api.o java_raw_api.o closures.o tramp.o ffiw64.o win64.o
 ia32-cross/libffi.a: prep_cif.o types.o raw_api.o java_raw_api.o closures.o tramp.o ffi.o    sysv.o
 ```
-其中 `raw_api.o` / `java_raw_api.o` / `closures.o` / `tramp.o` **全部未被引用**（grep `ffi_closure` 在项目 C 代码中零命中），纯死代码——靠 `--gc-sections`（`Makefile:134`）才被丢掉。
+其中 `raw_api.o` / `java_raw_api.o` / `closures.o` / `tramp.o` **全部未被引用**（libffi 的 `ffi_closure_*` 符号在项目 C 代码中零引用；项目的 `qwin_closure_*` 属自建 quickjs-ffi-closure，不经 libffi），纯死代码——靠 `--gc-sections`（`Makefile:134`）才被丢掉。
 
 ### 1.4 其他配置耦合
 
@@ -790,7 +790,7 @@ $(OBJ_DIR)/%.o: %.S | $(WOLFSSL_LIB_STATIC)
 | 整数/浮点返回 | ✅ | ✅ | 对等 |
 | struct 传参/返回 | ✅ | ❌ 明确抛异常 | 当前零使用 |
 | 变参函数 | ✅ | ❌ | 当前零使用 |
-| closure/回调 | ✅ | ❌ | 已判定不做 |
+| closure/回调 | ✅ | ✅ 自建（quickjs-ffi-closure） | 不依赖 libffi closure_alloc |
 | bigint 精确 | 需 `JS_ToInt64Ext` | ❌ 同现状 | 不在范围内 |
 | 错误检查 | 需手动查 `FFI_OK` | ✅ 内建校验 | 净改进 |
 | 链接体积（x64） | ~11KB | < 1KB | |

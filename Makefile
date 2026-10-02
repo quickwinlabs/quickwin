@@ -145,6 +145,7 @@ SRCS = main.c \
        quickjs-win.c \
        quickjs-gui.c \
        quickjs-ffi.c \
+       quickjs-ffi-closure.c \
        quickjs-brotli.c \
        quickjs-sock.c \
        quickjs-wolfssl.c \
@@ -157,14 +158,14 @@ ifeq ($(NO_WASM), 0)
 SRCS += quickjs-wamr.c
 endif
 
-# 内建 FFI 调用器的汇编桩，按架构二选一。
+# 内建 FFI 调用器 + 闭包派发器的汇编，按架构二选一。
 # 与 SRCS 分开是因为 DEPS 只对 .c 生成依赖文件（见下），.S 不参与。
 ASM_SRCS =
 ifeq ($(ARCH_TAG),ia32)
-ASM_SRCS += quickjs-ffi-call-ia32.S
+ASM_SRCS += quickjs-ffi-call-ia32.S quickjs-ffi-closure-ia32.S
 endif
 ifeq ($(ARCH_TAG),x64)
-ASM_SRCS += quickjs-ffi-call-win64.S
+ASM_SRCS += quickjs-ffi-call-win64.S quickjs-ffi-closure-win64.S
 endif
 
 OBJS = $(SRCS:%.c=$(OBJ_DIR)/%.o) $(ASM_SRCS:%.S=$(OBJ_DIR)/%.o) $(OBJ_DIR)/app.o
