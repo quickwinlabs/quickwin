@@ -17,7 +17,7 @@ cd "$(dirname "$0")"
 # ============================================================
 
 START_TIME=$(date +%s)
-VM="${1:?usage: ./run.sh <win7|xp|win11> [--fresh] [--stop] [--restart]}"
+VM="${1:?usage: ./run.sh <win7|xp|win11> [--restart] [--stop]}"
 shift
 TPM=0
 TPM_EXTRA=()
