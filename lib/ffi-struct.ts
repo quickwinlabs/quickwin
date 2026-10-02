@@ -63,12 +63,17 @@ function alignUp(v: number, a: number): number {
 function parseField(f: string): { base: FieldKind; count: number } {
     const arr = /^(.+)\[(\d+)\]$/.exec(f)
     if (arr) {
+        // 'wstr[N]' 是 ffi-struct 自有词汇（结构体内的定长 wchar 数组），
+        // 不在 ffi-bind 的签名 kind 里（签名侧是 wchar_ptr），故不经 normKind
+        if (arr[1] === 'wstr') return { base: 'wstr', count: Number(arr[2]) }
         const b = normKind(arr[1]!)
         if (b === 'void') throw new Error(`ffi-struct: "void" cannot be an array base`)
+        if (b === 'buf_ptr' || b === 'wchar_ptr') throw new Error(`ffi-struct: invalid array base "${arr[1]!}"`)
         return { base: b as FieldKind, count: Number(arr[2]) }
     }
+    if (f === 'wstr') throw new Error(`ffi-struct: invalid scalar field type "${f}"`)
     const b = normKind(f)
-    if (b === 'void' || b === 'wstr') throw new Error(`ffi-struct: invalid scalar field type "${f}"`)
+    if (b === 'void' || b === 'buf_ptr' || b === 'wchar_ptr') throw new Error(`ffi-struct: invalid scalar field type "${f}"`)
     return { base: b as FieldKind, count: 1 }
 }
 

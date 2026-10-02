@@ -1,19 +1,13 @@
 import * as std from 'std'
 import * as gui from 'gui'
 import * as win from 'win'
-import * as ffi from 'ffi'
+import { bind } from '../lib/ffi-bind.js'
 
 const user32 = win.LoadLibrary('user32.dll')
 if (!user32) { print('LoadLibrary user32 failed'); std.exit(1) }
 
-function loadProc(lib: win.HMODULE, name: string): number {
-    const ptr = win.GetProcAddress(lib, name)
-    if (!ptr) { print('GetProcAddress ' + name + ' failed'); std.exit(1) }
-    return ptr
-}
-
-const EnumDisplaySettingsA = loadProc(user32, 'EnumDisplaySettingsA')
-const ChangeDisplaySettingsA = loadProc(user32, 'ChangeDisplaySettingsA')
+const enumDisplaySettingsA = bind('user32.dll', 'EnumDisplaySettingsA', 'ptr i32 buf_ptr -> i32')
+const changeDisplaySettingsA = bind('user32.dll', 'ChangeDisplaySettingsA', 'buf_ptr u32 -> i32')
 
 /** DEVMODEA used by EnumDisplaySettings; driver reports actual dmSize (often 124). */
 const DEVMODE_SIZE = 220
@@ -41,12 +35,7 @@ function newDevMode(): ArrayBuffer {
 }
 
 function enumMode(modeNum: number, buf: ArrayBuffer): number {
-    return ffi.ffiCall(
-        EnumDisplaySettingsA,
-        [ffi.FFI_TYPE_POINTER, ffi.FFI_TYPE_SINT32, ffi.FFI_TYPE_POINTER],
-        [null, modeNum, buf],
-        ffi.FFI_TYPE_SINT32,
-    )
+    return enumDisplaySettingsA(null, modeNum, buf)
 }
 
 function getPels(dv: DataView): [number, number, number] {
@@ -73,12 +62,7 @@ function applyFromCurrent(w: number, h: number, flags: number, label: string): n
     dv.setUint32(108, w, true)
     dv.setUint32(112, h, true)
 
-    const ret = ffi.ffiCall(
-        ChangeDisplaySettingsA,
-        [ffi.FFI_TYPE_POINTER, ffi.FFI_TYPE_UINT32],
-        [dm, flags],
-        ffi.FFI_TYPE_SINT32,
-    )
+    const ret = changeDisplaySettingsA(dm, flags)
     print(label + ': ChangeDisplaySettings ' + w + 'x' + h +
         ' flags=0x' + flags.toString(16) + ' ret=' + ret + ' (' + (DISP_CHANGE[ret] ?? '?') + ')')
     return ret

@@ -164,9 +164,7 @@ jobs:
             _build/deps/*/wolfssl-build/wolfssl/
             _build/deps/*/libbrotlidec.a
             _build/deps/*/libbrotlicommon.a
-            _build/deps/*/libffi.a
-            _build/deps/*/libffi-build/include/
-          key: deps-${{ matrix.deps }}-${{ hashFiles('Makefile', 'patches/**', 'deps/wamr/**', 'deps/wolfssl/**', 'deps/brotli/**', 'deps/libffi/**') }}-v3
+          key: deps-${{ matrix.deps }}-${{ hashFiles('Makefile', 'patches/**', 'deps/wamr/**', 'deps/wolfssl/**', 'deps/brotli/**') }}-v3
 
       # cc32 会自动构建 i686 的 libiwasm.a：$(TARGET) 依赖 WAMR_LIB，
       # 且 cc32 把 CC=i686-... 和 WAMR_TARGET=X86_32 传给子 make。

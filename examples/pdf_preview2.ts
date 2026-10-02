@@ -5,11 +5,8 @@ import * as win from 'win'
 import * as ffi from 'ffi'
 import type { Document, Page, Pixmap } from '../vendor/mupdf-wasm/mupdf.js'
 import { assertNonNullable } from '../lib/assert.js'
+import { bind } from '../lib/ffi-bind.js'
 import { OPENFILENAMEW } from '../lib/win-common-structs.js'
-
-const FFI_PTR = ffi.FFI_TYPE_POINTER
-const FFI_U32 = ffi.FFI_TYPE_UINT32
-const FFI_S32 = ffi.FFI_TYPE_SINT32
 
 const _user32 = win.LoadLibrary('user32.dll')
 const _gdi32 = win.LoadLibrary('gdi32.dll')
@@ -18,17 +15,11 @@ const _comdlg32 = win.LoadLibrary('comdlg32.dll')
 type MuPdf = typeof import('../vendor/mupdf-wasm/mupdf.js')
 if (!(_user32 && _gdi32 && _comdlg32)) std.exit(0)
 
-function loadProc(lib: win.HMODULE, name: string): number {
-    const ptr = win.GetProcAddress(lib, name)
-    if (!ptr) { std.printf('Error: cannot load %s\n', name); std.exit(1) }
-    return ptr
-}
-
-const GetOpenFileNameW = loadProc(_comdlg32, 'GetOpenFileNameW')
-const SetDIBitsToDevice = loadProc(_gdi32, 'SetDIBitsToDevice')
-const GetDC = loadProc(_user32, 'GetDC')
-const ReleaseDC = loadProc(_user32, 'ReleaseDC')
-const PatBlt = loadProc(_gdi32, 'PatBlt')
+const GetOpenFileNameW = bind('comdlg32.dll', 'GetOpenFileNameW', 'buf_ptr -> u32')
+const SetDIBitsToDevice = bind('gdi32.dll', 'SetDIBitsToDevice', 'ptr i32 i32 u32 u32 i32 i32 u32 u32 buf_ptr buf_ptr u32 -> i32')
+const GetDC = bind('user32.dll', 'GetDC', 'ptr -> ptr')
+const ReleaseDC = bind('user32.dll', 'ReleaseDC', 'ptr ptr -> i32')
+const PatBlt = bind('gdi32.dll', 'PatBlt', 'ptr i32 i32 i32 i32 u32 -> u32')
 const WHITENESS = 0x00FF0062
 
 function makeBitmapInfo(w: number, h: number): ArrayBuffer {
@@ -157,7 +148,7 @@ function openPdfFileDialog(): string | null {
         FlagsEx: 0,
     })
     ofn.__keep = [fileBuf, filterWide]
-    const ret = ffi.ffiCall(GetOpenFileNameW, [FFI_PTR], [ofn], FFI_U32)
+    const ret = GetOpenFileNameW(ofn)
     return ret ? wideToStr(fileBuf) : null
 }
 
@@ -313,15 +304,11 @@ let hwndBtnNext: gui.HWND | null = null
             gui.DefWindowProc(hwnd, msg, wParam, lParam)
             const pm = currentPixmap
             if (!pm) return 0
-            const hdc = ffi.ffiCall(GetDC, [ffi.FFI_TYPE_POINTER], [hwnd], ffi.FFI_TYPE_POINTER)
+            const hdc = GetDC(hwnd)
             if (hdc) {
                 const bmi = makeBitmapInfo(pm.w, pm.h)
-                ffi.ffiCall(SetDIBitsToDevice, [
-                    ffi.FFI_TYPE_POINTER, FFI_S32, FFI_S32, FFI_U32, FFI_U32,
-                    FFI_S32, FFI_S32, FFI_U32, FFI_U32,
-                    FFI_PTR, FFI_PTR, FFI_U32
-                ], [hdc, 0, 0, pm.w, pm.h, 0, 0, 0, pm.h, pm.data, bmi, 0], FFI_S32)
-                ffi.ffiCall(ReleaseDC, [ffi.FFI_TYPE_POINTER, ffi.FFI_TYPE_POINTER], [hwnd, hdc], FFI_S32)
+                SetDIBitsToDevice(hdc, 0, 0, pm.w, pm.h, 0, 0, 0, pm.h, pm.data, bmi, 0)
+                ReleaseDC(hwnd, hdc)
             }
             return 0
         }
@@ -335,11 +322,10 @@ let hwndBtnNext: gui.HWND | null = null
             const cr = gui.GetClientRect(hwnd)
             if (cr) {
                 const cw = cr.right - cr.left, ch = cr.bottom - cr.top
-            const hdc = ffi.ffiCall(GetDC, [ffi.FFI_TYPE_POINTER], [hwnd], ffi.FFI_TYPE_POINTER)
+                const hdc = GetDC(hwnd)
                 if (hdc) {
-                    ffi.ffiCall(PatBlt, [ffi.FFI_TYPE_POINTER, FFI_S32, FFI_S32, FFI_S32, FFI_S32, FFI_U32],
-                        [hdc, 0, 0, cw, ch, WHITENESS], FFI_U32)
-                    ffi.ffiCall(ReleaseDC, [ffi.FFI_TYPE_POINTER, ffi.FFI_TYPE_POINTER], [hwnd, hdc], FFI_S32)
+                    PatBlt(hdc, 0, 0, cw, ch, WHITENESS)
+                    ReleaseDC(hwnd, hdc)
                 }
             }
             gui.DefWindowProc(hwnd, msg, wParam, lParam)

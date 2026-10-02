@@ -2,7 +2,7 @@ import { forwardRef, useRef, useEffect, type ForwardedRef } from 'react'
 import * as gui from 'gui'
 import { LvItemFlag, LvItemState, LvColumnMask } from 'gui'
 import * as ffi from 'ffi'
-import * as win from 'win'
+import { bind } from '../../ffi-bind.js'
 import { struct } from '../../ffi-struct.js'
 import { NMHDR, PTR_SIZE, nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
@@ -103,32 +103,46 @@ const LVCOLUMNW = struct({
 
 const fontCache = new Map<string, number>()
 
-let gdi32: win.HMODULE | null = null
-let createFontIndirectW: number | null = null
-let selectObjectFn: number | null = null
-let getObjectW: number | null = null
+type GdiFns = {
+  createFontIndirectW: (lf: ArrayBuffer | null) => number | null
+  selectObjectFn: (hdc: number | null, hfont: number | null) => number | null
+  getObjectW: (h: number | null, n: number, buf: ArrayBuffer | null) => number
+}
+let gdiFns: GdiFns | null = null
 
-function ensureGdi(): void {
-  if (gdi32 !== null) return
-  gdi32 = win.LoadLibrary('gdi32.dll')
-  if (!gdi32) return
-  createFontIndirectW = win.GetProcAddress(gdi32, 'CreateFontIndirectW')
-  selectObjectFn = win.GetProcAddress(gdi32, 'SelectObject')
-  getObjectW = win.GetProcAddress(gdi32, 'GetObjectW')
+function ensureGdi(): GdiFns | null {
+  if (gdiFns) return gdiFns
+  try {
+    gdiFns = {
+      createFontIndirectW: bind('gdi32.dll', 'CreateFontIndirectW', 'buf_ptr -> ptr'),
+      selectObjectFn: bind('gdi32.dll', 'SelectObject', 'ptr ptr -> ptr'),
+      getObjectW: bind('gdi32.dll', 'GetObjectW', 'ptr i32 buf_ptr -> i32'),
+    }
+  } catch {
+    return null
+  }
+  return gdiFns
 }
 
-let user32: win.HMODULE | null = null
-let loadCursorW: number | null = null
-let setCursorFn: number | null = null
-let screenToClient: number | null = null
+type User32Fns = {
+  loadCursorW: (hinst: number | null, name: number | null) => number | null
+  setCursorFn: (h: number | null) => number | null
+  screenToClient: (h: number | null, pt: ArrayBuffer | null) => number
+}
+let user32Fns: User32Fns | null = null
 
-function ensureUser32(): void {
-  if (user32 !== null) return
-  user32 = win.LoadLibrary('user32.dll')
-  if (!user32) return
-  loadCursorW = win.GetProcAddress(user32, 'LoadCursorW')
-  setCursorFn = win.GetProcAddress(user32, 'SetCursor')
-  screenToClient = win.GetProcAddress(user32, 'ScreenToClient')
+function ensureUser32(): User32Fns | null {
+  if (user32Fns) return user32Fns
+  try {
+    user32Fns = {
+      loadCursorW: bind('user32.dll', 'LoadCursorW', 'ptr ptr -> ptr'),
+      setCursorFn: bind('user32.dll', 'SetCursor', 'ptr -> ptr'),
+      screenToClient: bind('user32.dll', 'ScreenToClient', 'ptr buf_ptr -> i32'),
+    }
+  } catch {
+    return null
+  }
+  return user32Fns
 }
 
 function getCellFont(hwnd: gui.HWND, style: CellStyle): number | null {
@@ -137,14 +151,13 @@ function getCellFont(hwnd: gui.HWND, style: CellStyle): number | null {
   const cached = fontCache.get(key)
   if (cached !== undefined) return cached === 0 ? null : cached
 
-  ensureGdi()
-  if (!createFontIndirectW || !getObjectW || !hwnd) return null
+  const gdi = ensureGdi()
+  if (!gdi || !hwnd) return null
   const lf = new ArrayBuffer(92)
   const dv = new DataView(lf)
   const cur = gui.SendMessage(hwnd, gui.WmMsg.GETFONT, 0, 0)
   if (cur) {
-    const got = ffi.ffiCall(getObjectW, [ffi.FFI_TYPE_POINTER, ffi.FFI_TYPE_SINT32, ffi.FFI_TYPE_POINTER],
-      [cur, 92, lf], ffi.FFI_TYPE_SINT32)
+    const got = gdi.getObjectW(cur, 92, lf)
     if (!got) return null
   } else {
     dv.setInt32(0, -13, true)
@@ -152,7 +165,7 @@ function getCellFont(hwnd: gui.HWND, style: CellStyle): number | null {
   if (style.bold) dv.setInt32(16, gui.FontWeight.BOLD, true)
   if (style.italic) dv.setUint8(20, 1)
   if (style.underline) dv.setUint8(21, 1)
-  const h = ffi.ffiCall(createFontIndirectW, [ffi.FFI_TYPE_POINTER], [lf], ffi.FFI_TYPE_POINTER)
+  const h = gdi.createFontIndirectW(lf)
   fontCache.set(key, h ? h : 0)
   return h ? h : null
 }
@@ -171,10 +184,10 @@ function handleCustomDraw<D>(lParam: number, columns: Column<D>[], data: D[], hw
     if (style.background !== undefined) writeU32(lParam, CD_CLRTEXTBK, style.background)
 
     const hfont = getCellFont(hwnd!, style)
-    if (hfont && selectObjectFn) {
+    if (hfont && gdiFns) {
       const hdc = PTR_SIZE === 8 ? readU64(lParam, CD_HDC) : readU32(lParam, CD_HDC)
       if (hdc) {
-        ffi.ffiCall(selectObjectFn, [ffi.FFI_TYPE_POINTER, ffi.FFI_TYPE_POINTER], [hdc, hfont], ffi.FFI_TYPE_POINTER)
+        gdiFns.selectObjectFn(hdc, hfont)
         return gui.CustomDrawFlag.NEWFONT
       }
     }
@@ -390,8 +403,8 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
           if ((e.lParam & 0xFFFF) !== gui.HitTest.CLIENT) return
           const h = lvRef.current
           if (!h) return
-          ensureUser32()
-          if (!loadCursorW || !setCursorFn || !screenToClient) return
+          const u32 = ensureUser32()
+          if (!u32) return
 
           const sp = gui.GetCursorPos()
           if (!sp) return
@@ -399,7 +412,7 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
           const sdv = new DataView(sbuf)
           sdv.setInt32(0, sp[0], true)
           sdv.setInt32(4, sp[1], true)
-          ffi.ffiCall(screenToClient, [ffi.FFI_TYPE_POINTER, ffi.FFI_TYPE_POINTER], [h, sbuf], ffi.FFI_TYPE_SINT32)
+          u32.screenToClient(h, sbuf)
 
           const lvhi = new ArrayBuffer(24)
           const lvd = new DataView(lvhi)
@@ -413,10 +426,9 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
           const iSubItem = readI32(lvhiPtr, 16)
           const style = resolveCellStyle(columns, data, iItem, iSubItem)
           if (!style || style.cursor === undefined) return
-          const hc = ffi.ffiCall(loadCursorW,
-            [ffi.FFI_TYPE_POINTER, ffi.FFI_TYPE_POINTER], [0, style.cursor], ffi.FFI_TYPE_POINTER)
+          const hc = u32.loadCursorW(0, style.cursor)
           if (hc) {
-            ffi.ffiCall(setCursorFn, [ffi.FFI_TYPE_POINTER], [hc], ffi.FFI_TYPE_POINTER)
+            u32.setCursorFn(hc)
             return 1
           }
           return

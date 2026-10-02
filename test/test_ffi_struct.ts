@@ -36,7 +36,7 @@ export const suite = {
         t.check('offsetOf bottom', 12, RECT.offsetOf('bottom'))
 
         t.section('GetWindowRect fills RECT buffer')
-        const getWindowRect = bind('user32.dll', 'GetWindowRect', 'ptr ptr -> int')
+        const getWindowRect = bind('user32.dll', 'GetWindowRect', 'ptr buf_ptr -> int')
         const getDesktopWindow = bind('user32.dll', 'GetDesktopWindow', ' -> ptr')
         const hwnd = getDesktopWindow()
         const wrect = new ArrayBuffer(16)

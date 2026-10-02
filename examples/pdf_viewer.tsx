@@ -6,6 +6,7 @@ import * as ffi from 'ffi'
 import type { Document, Page, Pixmap } from '../vendor/mupdf-wasm/mupdf.js'
 import { useState } from 'react'
 import { render, Button, Input, ScrollView } from '../lib/react-qw/index.js'
+import { bind } from '../lib/ffi-bind.js'
 import { PdfCanvas } from './PdfCanvas.js'
 import { OPENFILENAMEW } from '../lib/win-common-structs.js'
 
@@ -19,15 +20,7 @@ if (!_user32 || !_gdi32 || !_comdlg32) {
   std.exit(0)
 }
 
-function loadProc(lib: win.HMODULE, name: string): number {
-  const ptr = win.GetProcAddress(lib, name)
-  if (!ptr) throw new Error('Failed to load ' + name)
-  return ptr
-}
-
-const GetOpenFileNameW_ = loadProc(_comdlg32, 'GetOpenFileNameW')
-const FFI_PTR = ffi.FFI_TYPE_POINTER
-const FFI_U32 = ffi.FFI_TYPE_UINT32
+const GetOpenFileNameW_ = bind('comdlg32.dll', 'GetOpenFileNameW', 'buf_ptr -> u32')
 
 function strToWide(str: string): ArrayBuffer {
   const buf = new ArrayBuffer((str.length + 1) * 2)
@@ -77,7 +70,7 @@ function openPdfFileDialog(owner: number): string | null {
   })
   ofn.__keep = [fileBuf, filterWide]
 
-  const ret = ffi.ffiCall(GetOpenFileNameW_, [FFI_PTR], [ofn], FFI_U32)
+  const ret = GetOpenFileNameW_(ofn)
   if (!ret) return null
 
   const path = wideToStr(fileBuf)

@@ -1,30 +1,30 @@
 import { forwardRef, useState, useRef } from 'react'
 import * as gui from 'gui'
 import * as ffi from 'ffi'
-import * as win from 'win'
+import { bind } from '../../ffi-bind.js'
 import { OPENFILENAMEW, BROWSEINFOW } from '../../win-common-structs.js'
 import type { WStyle } from '../jsx.d.ts'
 
-const FFI_PTR = ffi.FFI_TYPE_POINTER
-const FFI_U32 = ffi.FFI_TYPE_UINT32
+function makeBindings() {
+  return {
+    GetOpenFileNameW: bind('comdlg32.dll', 'GetOpenFileNameW', 'buf_ptr -> u32'),
+    SHBrowseForFolderW: bind('shell32.dll', 'SHBrowseForFolderW', 'buf_ptr -> ptr'),
+    SHGetPathFromIDListW: bind('shell32.dll', 'SHGetPathFromIDListW', 'ptr buf_ptr -> u32'),
+    CoTaskMemFree: bind('ole32.dll', 'CoTaskMemFree', 'ptr -> void'),
+  }
+}
+type DllBindings = ReturnType<typeof makeBindings>
 
-let _GetOpenFileNameW = 0
-let _SHBrowseForFolderW = 0
-let _SHGetPathFromIDListW = 0
-let _CoTaskMemFree = 0
+let _bindings: DllBindings | null = null
 
-function ensureDlls(): boolean {
-  if (_GetOpenFileNameW) return true
-  const comdlg32 = win.LoadLibrary('comdlg32.dll')
-  const shell32 = win.LoadLibrary('shell32.dll')
-  const ole32 = win.LoadLibrary('ole32.dll')
-  if (!comdlg32 || !shell32 || !ole32) return false
-  const load = (lib: win.HMODULE, name: string): number => win.GetProcAddress(lib, name) || 0
-  _GetOpenFileNameW = load(comdlg32, 'GetOpenFileNameW')
-  _SHBrowseForFolderW = load(shell32, 'SHBrowseForFolderW')
-  _SHGetPathFromIDListW = load(shell32, 'SHGetPathFromIDListW')
-  _CoTaskMemFree = load(ole32, 'CoTaskMemFree')
-  return !!_GetOpenFileNameW && !!_SHBrowseForFolderW && !!_SHGetPathFromIDListW && !!_CoTaskMemFree
+function ensureDlls(): DllBindings | null {
+  if (_bindings) return _bindings
+  try {
+    _bindings = makeBindings()
+  } catch {
+    return null
+  }
+  return _bindings
 }
 
 function strToWide(s: string): ArrayBuffer {
@@ -45,7 +45,8 @@ function openFileDialog(
   title: string | undefined,
   multiple: boolean,
 ): string | string[] | null {
-  if (!ensureDlls()) return null
+  const dll = ensureDlls()
+  if (!dll) return null
 
   const fileBuf = new ArrayBuffer(260 * 2)
   const filterWide = strToWide(filter)
@@ -81,7 +82,7 @@ function openFileDialog(
     FlagsEx: 0,
   })
 
-  const ret = ffi.ffiCall(_GetOpenFileNameW, [FFI_PTR], [ofn], FFI_U32)
+  const ret = dll.GetOpenFileNameW(ofn)
   if (!ret) return null
 
   if (!multiple) {
@@ -103,7 +104,8 @@ function openFileDialog(
 }
 
 function openFolderDialog(owner: gui.HWND, title: string | undefined): string | null {
-  if (!ensureDlls()) return null
+  const dll = ensureDlls()
+  if (!dll) return null
 
   const titleWide = title ? strToWide(title) : null
 
@@ -118,12 +120,12 @@ function openFolderDialog(owner: gui.HWND, title: string | undefined): string | 
     iImage: 0,
   })
 
-  const pidl = ffi.ffiCall(_SHBrowseForFolderW, [FFI_PTR], [bi], FFI_PTR)
+  const pidl = dll.SHBrowseForFolderW(bi)
   if (!pidl) return null
 
   const pathBuf = new ArrayBuffer(260 * 2)
-  const ok = ffi.ffiCall(_SHGetPathFromIDListW, [ffi.FFI_TYPE_POINTER, FFI_PTR], [pidl, pathBuf], FFI_U32)
-  ffi.ffiCall(_CoTaskMemFree, [ffi.FFI_TYPE_POINTER], [pidl], ffi.FFI_TYPE_VOID)
+  const ok = dll.SHGetPathFromIDListW(pidl, pathBuf)
+  dll.CoTaskMemFree(pidl)
 
   return ok ? wideToStr(pathBuf) : null
 }

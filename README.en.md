@@ -30,7 +30,7 @@ The npm package ships 4 executables: `qwin.exe` (64-bit) / `qwin-x86.exe` (32-bi
 - **HTTP/HTTPS** — `fetch()` API, Brotli decompression, chunked transfer, conditional caching
 - **WebSocket** — full RFC 6455 implementation, ws:// + wss://
 - **WebAssembly** — WAMR-based, supports `WebAssembly.*` standard API
-- **FFI** — call any DLL function via libffi
+- **FFI** — call any DLL function via a built-in asm stub and declarative `bind()` signatures (no third-party dependency)
 - **Polyfills** — `TextEncoder`, `URL`, `URLSearchParams`, `btoa`/`atob`, `crypto.subtle`, `setTimeout`
 - **Dynamic import** — `import('https://esm.sh/...')`, no dependency installation needed
 

@@ -90,7 +90,7 @@
 - net-fetch 在 portproxy 未配时挂起（localhost 连不上）；配好后应可过（完整 -net 不含 net suites，待测）。
 
 ### 构建（32 位 / XP）
-- 清 wolfssl/brotli/libffi 的 64 位产物后 `make cc32` 成功：
+- 清 wolfssl/brotli 的 64 位产物后 `make cc32` 成功：
   PE32 i386 console, DLL 全为 XP 可用（无 KERNELBASE/UCRT），导入表无
   AcquireSRWLock/inet_pton/SetProcessDPIAware（WAMR/wolfSSL XP 补丁生效）。
 - distclean 会清 _build JS 产物，需重跑 `make js` 和 `make wasm`。

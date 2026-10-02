@@ -2,6 +2,7 @@ import * as std from 'std'
 import * as win from 'win'
 import * as ffi from 'ffi'
 import * as os from 'os'
+import { bind, bindLib } from '../lib/ffi-bind.js'
 import { Tester } from './test_helper.js'
 
 const MAX_WCHARS = 4096
@@ -81,33 +82,16 @@ export const suite = {
         t.checkTrue('GetProcAddress("EnumPrintersW") succeeds', enumPrinters !== null)
         if (!enumPrinters) return
 
+        const { EnumPrintersW } = bindLib('winspool.drv', {
+            EnumPrintersW: 'u32 ptr u32 buf_ptr u32 buf_ptr buf_ptr -> i32',
+        })
+
         const flags = 0x06
         const level = 2
         const neededBuf = new Uint32Array(new ArrayBuffer(4))
         const returnedBuf = new Uint32Array(new ArrayBuffer(4))
 
-        const ret1 = ffi.ffiCall(
-            enumPrinters,
-            [
-                ffi.FFI_TYPE_UINT32,
-                ffi.FFI_TYPE_POINTER,
-                ffi.FFI_TYPE_UINT32,
-                ffi.FFI_TYPE_POINTER,
-                ffi.FFI_TYPE_UINT32,
-                ffi.FFI_TYPE_POINTER,
-                ffi.FFI_TYPE_POINTER,
-            ],
-            [
-                flags,
-                null,
-                level,
-                null,
-                0,
-                neededBuf.buffer,
-                returnedBuf.buffer,
-            ],
-            ffi.FFI_TYPE_SINT32
-        )
+        const ret1 = EnumPrintersW(flags, null, level, null, 0, neededBuf.buffer, returnedBuf.buffer)
         std.printf('  first call: ret=%d needed=%d returned=%d\n', ret1, neededBuf[0], returnedBuf[0])
         if (neededBuf[0]! > 0) {
             t.checkTrue('pcbNeeded > 0', neededBuf[0]! > 0)
@@ -119,27 +103,14 @@ export const suite = {
         }
 
         const printerBuf = new ArrayBuffer(neededBuf[0]!)
-        const ret2 = ffi.ffiCall(
-            enumPrinters,
-            [
-                ffi.FFI_TYPE_UINT32,
-                ffi.FFI_TYPE_POINTER,
-                ffi.FFI_TYPE_UINT32,
-                ffi.FFI_TYPE_POINTER,
-                ffi.FFI_TYPE_UINT32,
-                ffi.FFI_TYPE_POINTER,
-                ffi.FFI_TYPE_POINTER,
-            ],
-            [
-                flags,
-                null,
-                level,
-                printerBuf,
-                neededBuf[0]!,
-                neededBuf.buffer,
-                returnedBuf.buffer,
-            ],
-            ffi.FFI_TYPE_SINT32
+        const ret2 = EnumPrintersW(
+            flags,
+            null,
+            level,
+            printerBuf,
+            neededBuf[0]!,
+            neededBuf.buffer,
+            returnedBuf.buffer
         )
         t.checkTrue('EnumPrintersW succeeds', ret2 !== 0)
         if (ret2 === 0) return
@@ -186,9 +157,10 @@ export const suite = {
             const getDC = win.GetProcAddress(hUser32, 'GetDC')
             t.checkTrue('GetProcAddress("GetDC") succeeds', getDC !== null)
             if (getDC) {
-                const screenDc = ffi.ffiCall(getDC, [ffi.FFI_TYPE_POINTER], [0], ffi.FFI_TYPE_POINTER)
+                const GetDC = bind('user32.dll', 'GetDC', 'ptr -> ptr')
+                const screenDc = GetDC(0)
                 t.checkTrue('PTR slot takes number (NULL hwnd) and returns a DC handle', screenDc !== 0 && screenDc !== null)
-                const bogus = ffi.ffiCall(getDC, [ffi.FFI_TYPE_POINTER], [0x12345678], ffi.FFI_TYPE_POINTER)
+                const bogus = GetDC(0x12345678)
                 t.checkTrue('PTR slot takes non-zero number without throwing', bogus === 0 || bogus === null)
             }
         }

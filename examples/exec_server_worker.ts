@@ -20,7 +20,7 @@ try {
     K = {
         createPipe: bind('kernel32.dll', 'CreatePipe', 'ptr ptr ptr u32 -> i32'),
         setHandleInformation: bind('kernel32.dll', 'SetHandleInformation', 'ptr u32 u32 -> i32'),
-        createProcessW: bind('kernel32.dll', 'CreateProcessW', 'wstr wstr ptr ptr i32 u32 ptr wstr ptr ptr -> i32'),
+        createProcessW: bind('kernel32.dll', 'CreateProcessW', 'wchar_ptr wchar_ptr ptr ptr i32 u32 ptr wchar_ptr ptr ptr -> i32'),
         waitForSingleObject: bind('kernel32.dll', 'WaitForSingleObject', 'ptr u32 -> u32'),
         getExitCodeProcess: bind('kernel32.dll', 'GetExitCodeProcess', 'ptr ptr -> i32'),
         readFile: bind('kernel32.dll', 'ReadFile', 'ptr ptr u32 ptr ptr -> i32'),
@@ -226,7 +226,7 @@ function gdi(): { u: any; g: any } {
             isIconic: bind('user32.dll', 'IsIconic', 'HWND -> BOOL'),
             getWindowTextW: bind('user32.dll', 'GetWindowTextW', 'HWND ptr u32 -> i32'),
             getClassNameW: bind('user32.dll', 'GetClassNameW', 'HWND ptr u32 -> i32'),
-            findWindowExW: bind('user32.dll', 'FindWindowExW', 'HWND HWND wstr wstr -> HWND'),
+            findWindowExW: bind('user32.dll', 'FindWindowExW', 'HWND HWND wchar_ptr wchar_ptr -> HWND'),
             // PrintWindow 第 4 参是 Windows 8.1+ 的 PW_* flags；XP/Win7 忽略之。
             // 多传一个参数在 __cdecl 下无害（调用者清栈），且在 8.1+ 上传 0 即普通行为。
             printWindow: bind('user32.dll', 'PrintWindow', 'HWND HDC i32 u32 -> BOOL'),

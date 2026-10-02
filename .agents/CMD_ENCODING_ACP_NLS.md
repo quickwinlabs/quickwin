@@ -50,7 +50,7 @@ Tiny11 同时犯两错（ACP=1252 且删光 nls），表象上"缺表"似为主�
 | 1. Host curl 请求体 | HTTP body（UTF-8 JSON） | `7b 22 63 6d 64 22 3a 22 ... e4 bd a0 e5 a5 bd ... 22 7d`（「你好」UTF-8 = `e4 bd a0 e5 a5 bd`） |
 | 2. exec_server 解析 | JS string（内部 UTF-16） | `exec_server.tsx:434` `req.json()`，无损 |
 | 3. worker 拼命令行 | JS string | `exec_server_worker.ts:147` `sysDir + "\cmd.exe /c " + cmd` |
-| 4. CreateProcessW 传参 | UTF-16LE 内存 | `exec_server_worker.ts:148`（绑定 `wstr`）「你好」=`60 4f 7d 59`，**无损** |
+| 4. CreateProcessW 传参 | UTF-16LE 内存 | `exec_server_worker.ts:148`（绑定 `wchar_ptr`）「你好」=`60 4f 7d 59`，**无损** |
 | 5. cmd 接收 | cmd 内部 UTF-16 | 同上无损（未修复环境下 `cmd /u /c echo 你好` 探针 → 输出 `60 4f 7d 59 0d 00 0a 00`，即**内部保有 UTF-16**） |
 | 6. cmd 输出编码 | 按目标码页编码成字节 | 写 stdout 时才编码：936 → `c4 e3 ba c3`（GBK）；1252+缺表 → `3f 3f` |
 | 7. readFile 原样回传 | 字节流直通 | `exec_server_worker.ts:165`，零转换，连流式都不做 |
@@ -133,7 +133,7 @@ cmd 收到命令行 ──► UTF-16 内存（无损，CreateProcessW 直通）
 | 中文系统（ACP=936） | 收到 GBK（特性，非 bug） | 输出 GBK，正常 |
 | Tiny11（ACP=1252+缺 NLS） | 收到 `?`（参数侧坏了） | 输出 `??`（回显坏了，参数/文件系统仍无损） |
 
-**统一认识**：命令行的"原生"形态是 UTF-16（`RTL_USER_PROCESS_PARAMETERS.CommandLine`）。**A 面路径**（`GetCommandLineA`/`CreateProcessA`/目标进程 ANSI 入口/右键 `%1`）在**入参方向**按 ACP 转换并受 NLS 控制，会真正毁掉参数；**W 面路径**（`GetCommandLineW`/`wWinMain`/`wmain`/`CreateProcessW` 传 `wstr`/`cmd /u`）入参无损，但 **cmd 的默认输出**仍按代码页编码成字节（exec_server 场景读到的是编码后的字节）。两条路都受 ACP+NLS 控制，只是作用点不同。
+**统一认识**：命令行的"原生"形态是 UTF-16（`RTL_USER_PROCESS_PARAMETERS.CommandLine`）。**A 面路径**（`GetCommandLineA`/`CreateProcessA`/目标进程 ANSI 入口/右键 `%1`）在**入参方向**按 ACP 转换并受 NLS 控制，会真正毁掉参数；**W 面路径**（`GetCommandLineW`/`wWinMain`/`wmain`/`CreateProcessW` 传 `wchar_ptr`/`cmd /u`）入参无损，但 **cmd 的默认输出**仍按代码页编码成字节（exec_server 场景读到的是编码后的字节）。两条路都受 ACP+NLS 控制，只是作用点不同。
 
 qwin 自身免疫：`main.c:164` 弃用 `WinMain` 的 `LPSTR lpCmdLine`，改走 `CommandLineToArgvW(GetCommandLineW())` + `WideCharToMultiByte(CP_UTF8)` → argv 永远 UTF-8 无损（仅 W 面入口，不涉及任何代码页）。
 

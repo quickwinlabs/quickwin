@@ -94,7 +94,7 @@ make test              # 全量（含外网，慢）
 ```
 _build/
   obj/{x64,ia32}-{cross,native}/   # .o .d libquickjs.a
-  deps/{x64,ia32}-{cross,native}/  # libiwasm.a libwolfssl.a libbrotli*.a libffi.a + cmake build/
+  deps/{x64,ia32}-{cross,native}/  # libiwasm.a libwolfssl.a libbrotli*.a + cmake build/
   version.h                        # 由 package.json 生成
   gen_const.exe                    # make gen-const 产物（在 VM 里运行以重生成 d.ts）
   *.exe                            # 最终目标
@@ -102,7 +102,7 @@ _build/
 
 `make clean`（= `distclean`）清掉整个 `_build/`；源码树 `deps/` 下不再产生任何构建产物。
 
-**不要单独跑 `make wamr`**（native 路径）：不带 `CROSS=1` 会用本机 gcc 建 ELF `.a`，之后 `cc64` 发现 `.a` 比源文件新就跳过重建，链接必挂（已按 `VARIANT=x64-native` 与 `x64-cross` 隔离，不会覆盖交叉产物，但对 cross 无用）。WAMR/WolfSSL/Brotli/libffi 由 `cc64`/`cc32` 目标自动按正确架构构建。
+**不要单独跑 `make wamr`**（native 路径）：不带 `CROSS=1` 会用本机 gcc 建 ELF `.a`，之后 `cc64` 发现 `.a` 比源文件新就跳过重建，链接必挂（已按 `VARIANT=x64-native` 与 `x64-cross` 隔离，不会覆盖交叉产物，但对 cross 无用）。WAMR/WolfSSL/Brotli 由 `cc64`/`cc32` 目标自动按正确架构构建。
 
 XP 32 位另有子模块 patch（`patches/wamr-xp-compat.patch`、`patches/wolfssl-xp-compat.patch`、`patches/quickjs-export-from-base64.patch`），构建前由 Makefile 自动调 `patches/apply-submodule-patches.sh` 幂等 apply（git apply + reverse check）。**子模块改动不直接提交**，一律以 patch 文件管理。
 

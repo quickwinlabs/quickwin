@@ -16,7 +16,6 @@ ifeq ($(CROSS),1)
   SYSROOT32 = /usr/i686-w64-mingw32
   LIBBROTLIDEC = $(BROTLI_LIB)
   LIBBROTLICOMMON = $(BROTLI_COMMON_LIB)
-  LIBFFI = $(LIBFFI_LIB)
 else
   CC64  = gcc
   CC32  = gcc
@@ -28,7 +27,6 @@ else
   SYSROOT32 = C:/msys64/mingw32
   LIBBROTLIDEC = -lbrotlidec
   LIBBROTLICOMMON = -lbrotlicommon
-  LIBFFI = -lffi
 endif
 
 CC = $(CC64)
@@ -103,12 +101,8 @@ BROTLI_BUILD_DIR = $(DEPS_BUILD)/brotli-build
 BROTLI_LIB = $(DEPS_LIB)/libbrotlidec.a
 BROTLI_COMMON_LIB = $(DEPS_LIB)/libbrotlicommon.a
 
-LIBFFI_DIR = deps/libffi
-LIBFFI_BUILD_DIR = $(DEPS_BUILD)/libffi-build
-LIBFFI_LIB = $(DEPS_LIB)/libffi.a
-
 ifeq ($(CROSS),1)
-CROSS_BUILD_LIBS = $(BROTLI_LIB) $(BROTLI_COMMON_LIB) $(LIBFFI_LIB)
+CROSS_BUILD_LIBS = $(BROTLI_LIB) $(BROTLI_COMMON_LIB)
 else
 CROSS_BUILD_LIBS =
 endif
@@ -123,7 +117,6 @@ else
     CFLAGS += $(WAMR_DEFS)
 endif
 CFLAGS += $(WOLFSSL_INC)
-CFLAGS += -I$(LIBFFI_BUILD_DIR)/include
 CFLAGS += -I$(BROTLI_DIR)/c/include
 
 LDFLAGS = -L$(MSYS2_PREFIX)/lib -static
@@ -133,7 +126,7 @@ ifneq ($(BUILD), debug)
   endif
     LDFLAGS += -Wl,--gc-sections -mwindows
 endif
-LIBS = $(LIBBROTLIDEC) $(LIBBROTLICOMMON) $(WOLFSSL_LIB) -lws2_32 -lbcrypt -lcrypt32 -lm -luser32 -lgdi32 -lcomctl32 $(LIBFFI) -lntdll -lshell32 -lwininet
+LIBS = $(LIBBROTLIDEC) $(LIBBROTLICOMMON) $(WOLFSSL_LIB) -lws2_32 -lbcrypt -lcrypt32 -lm -luser32 -lgdi32 -lcomctl32 -lntdll -lshell32 -lwininet
 
 TARGET_NAME ?= qwin.exe
 TARGET = $(BUILD_DIR)/$(TARGET_NAME)
@@ -164,7 +157,17 @@ ifeq ($(NO_WASM), 0)
 SRCS += quickjs-wamr.c
 endif
 
-OBJS = $(SRCS:%.c=$(OBJ_DIR)/%.o) $(OBJ_DIR)/app.o
+# 内建 FFI 调用器的汇编桩，按架构二选一。
+# 与 SRCS 分开是因为 DEPS 只对 .c 生成依赖文件（见下），.S 不参与。
+ASM_SRCS =
+ifeq ($(ARCH_TAG),ia32)
+ASM_SRCS += quickjs-ffi-call-ia32.S
+endif
+ifeq ($(ARCH_TAG),x64)
+ASM_SRCS += quickjs-ffi-call-win64.S
+endif
+
+OBJS = $(SRCS:%.c=$(OBJ_DIR)/%.o) $(ASM_SRCS:%.S=$(OBJ_DIR)/%.o) $(OBJ_DIR)/app.o
 DEPS = $(SRCS:%.c=$(OBJ_DIR)/%.d)
 
 .PHONY: cc64 cc32 cc64-nowasm cc32-nowasm apply-submodule-patches \
@@ -227,6 +230,13 @@ endif
 
 $(OBJ_DIR)/%.o: %.c | $(WOLFSSL_LIB_STATIC) $(CROSS_BUILD_LIBS)
 	@echo "Compiling $<..."
+	mkdir -p $(OBJ_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# 汇编桩。走 gcc 驱动以便复用 $(CFLAGS) 的 include/defines；
+# 必须用大写 .S（.s 不做预处理）。
+$(OBJ_DIR)/%.o: %.S
+	@echo "Assembling $<..."
 	mkdir -p $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
@@ -382,19 +392,6 @@ $(BROTLI_LIB) $(BROTLI_COMMON_LIB):
 	cp $(BROTLI_BUILD_DIR)/libbrotlidec.a $(BROTLI_LIB)
 	cp $(BROTLI_BUILD_DIR)/libbrotlicommon.a $(BROTLI_COMMON_LIB)
 	@echo "brotli build complete"
-
-$(LIBFFI_LIB):
-	@echo "Building libffi ($(VARIANT))..."
-	@if [ ! -f "$(LIBFFI_DIR)/LICENSE" ]; then git submodule update --init --depth 1 $(LIBFFI_DIR); fi
-	@if [ ! -f "$(LIBFFI_DIR)/configure" ]; then cd $(LIBFFI_DIR) && autoreconf -fiv; fi
-	@mkdir -p $(LIBFFI_BUILD_DIR) $(DEPS_LIB)
-	cd $(LIBFFI_BUILD_DIR) && \
-		$(abspath $(LIBFFI_DIR))/configure \
-			--host=$(CROSS_HOST) --build=x86_64-pc-linux-gnu \
-			--disable-shared --enable-static --disable-doc --disable-tests \
-			&& make libffi.la
-	cp $(LIBFFI_BUILD_DIR)/.libs/libffi.a $(LIBFFI_LIB)
-	@echo "libffi build complete"
 
 wasm: $(WASM_OBJS)
 

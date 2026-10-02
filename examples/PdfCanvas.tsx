@@ -1,26 +1,11 @@
 import { forwardRef, useRef } from 'react'
 import * as gui from 'gui'
-import * as win from 'win'
-import * as ffi from 'ffi'
+import { bind } from '../lib/ffi-bind.js'
 import type { WStyle } from '../lib/react-qw/jsx.d.ts'
 
-const _user32 = win.LoadLibrary('user32.dll')
-const _gdi32 = win.LoadLibrary('gdi32.dll')
-if (!_user32 || !_gdi32) throw new Error('Failed to load user32/gdi32')
-
-function loadProc(lib: win.HMODULE, name: string): number {
-  const ptr = win.GetProcAddress(lib, name)
-  if (!ptr) throw new Error('Failed to load ' + name)
-  return ptr
-}
-
-const GetDC_ = loadProc(_user32, 'GetDC')
-const ReleaseDC_ = loadProc(_user32, 'ReleaseDC')
-const SetDIBitsToDevice_ = loadProc(_gdi32, 'SetDIBitsToDevice')
-
-const FFI_PTR = ffi.FFI_TYPE_POINTER
-const FFI_U32 = ffi.FFI_TYPE_UINT32
-const FFI_S32 = ffi.FFI_TYPE_SINT32
+const GetDC_ = bind('user32.dll', 'GetDC', 'ptr -> ptr')
+const ReleaseDC_ = bind('user32.dll', 'ReleaseDC', 'ptr ptr -> i32')
+const SetDIBitsToDevice_ = bind('gdi32.dll', 'SetDIBitsToDevice', 'ptr i32 i32 u32 u32 i32 i32 u32 u32 buf_ptr buf_ptr u32 -> i32')
 
 function makeBitmapInfo(w: number, h: number): ArrayBuffer {
   const bmi = new ArrayBuffer(40)
@@ -59,19 +44,11 @@ export const PdfCanvas = forwardRef<gui.HWND, PdfCanvasProps>(
           if (e.msg === gui.WmMsg.PAINT) {
             const pm = pixmapRef.current
             if (!pm) return 0
-            const hdc = ffi.ffiCall(GetDC_, [ffi.FFI_TYPE_POINTER], [hwnd], ffi.FFI_TYPE_POINTER)
+            const hdc = GetDC_(hwnd)
             if (hdc) {
               const bmi = makeBitmapInfo(pm.w, pm.h)
-              ffi.ffiCall(SetDIBitsToDevice_, [
-                ffi.FFI_TYPE_POINTER, FFI_S32, FFI_S32, FFI_U32, FFI_U32,
-                FFI_S32, FFI_S32, FFI_U32, FFI_U32,
-                FFI_PTR, FFI_PTR, FFI_U32
-              ], [
-                hdc, 0, 0, pm.w, pm.h,
-                0, 0, 0, pm.h,
-                pm.data, bmi, 0
-              ], FFI_S32)
-              ffi.ffiCall(ReleaseDC_, [ffi.FFI_TYPE_POINTER, ffi.FFI_TYPE_POINTER], [hwnd, hdc], FFI_S32)
+              SetDIBitsToDevice_(hdc, 0, 0, pm.w, pm.h, 0, 0, 0, pm.h, pm.data, bmi, 0)
+              ReleaseDC_(hwnd, hdc)
             }
             return 0
           }
