@@ -9,10 +9,10 @@ cd "$(dirname "$0")"
 #  测试经 hostfwd HTTP 下发（win7:8007 / xp:8005 / win11:8011 → guest:8080）。
 #  端口助记：HTTP = 8000+版本号，noVNC = 6000+版本号（8009/6009 留空，Win9 未发布）。
 #
-#  用法: ./run.sh <win7|xp|win11> [--fresh] [--stop] [--restart]
-#    默认：已在跑则只做健康检查后退出（真常驻）
-#    --restart：先停再起
-#    --fresh：重建 overlay 后启动
+#  用法: ./run.sh <win7|xp|win11> [--restart] [--stop]
+#    默认：已在跑则只做健康检查后退出（真常驻）；实际启动时无条件重建
+#          overlay 与 OVMF VARS（不吃旧脏状态，跨 job/会话不残留）
+#    --restart：先停再起（等价默认开机路径，兼容保留）
 #    --stop：ACPI 关机
 # ============================================================
 
@@ -67,10 +67,9 @@ SHARE_DIR="${SHARE_DIR:-/workspace/_build}"
 LINK=ci_share/quickwin
 LOGFILE=ci_share/run-$VM.log
 
-FRESH=false; STOP=false; RESTART=false
+STOP=false; RESTART=false
 for a in "$@"; do
     case "$a" in
-        --fresh) FRESH=true ;;
         --stop) STOP=true ;;
         --restart) RESTART=true ;;
         *) echo "未知参数: $a"; exit 1 ;;
@@ -110,8 +109,8 @@ if $STOP; then
 fi
 
 # ── 已在跑：不杀，只报健康状态（常驻语义）──
-# --restart / --fresh 才强制重启。
-if [ -f qemu-$VM.pid ] && ! $RESTART && ! $FRESH; then
+# --restart 才强制重启；实际启动路径（下方）无条件重建 overlay/VARS。
+if [ -f qemu-$VM.pid ] && ! $RESTART; then
     echo "VM 已在运行 (PID=$(cat qemu-$VM.pid))，检查健康..."
     for i in $(seq 1 12); do
         if health; then
@@ -141,16 +140,13 @@ if [ "$TPM" = 1 ] && [ -f "$TPM_PID" ]; then
 fi
 rm -f qemu-$VM.pid "$LOGFILE"
 
-# ── 创建 overlay ──
-if $FRESH || [ ! -f "$OVERLAY" ]; then
-    rm -f "$OVERLAY"
-    echo "创建 overlay..."
-    qemu-img create -f qcow2 -b "$SNAPSHOT" -F qcow2 "$OVERLAY" >/dev/null
-fi
+# ── 创建 overlay（无条件重建：不吃旧脏状态）──
+rm -f "$OVERLAY"
+echo "创建 overlay..."
+qemu-img create -f qcow2 -b "$SNAPSHOT" -F qcow2 "$OVERLAY" >/dev/null
 
-# ── OVMF VARS（win11）──
-# 与 overlay 同语义：--fresh 重建（Secure Boot 密钥归位），缺文件从模板复制
-if [ "$TPM" = 1 ] && { [ "$FRESH" = true ] || [ ! -f "$VARS" ]; }; then
+# ── OVMF VARS（win11，恒重置：Secure Boot 密钥归位）──
+if [ "$TPM" = 1 ]; then
     rm -f "$VARS"
     cp "$OVMF_VARS_TEMPLATE" "$VARS"
     echo "重置 OVMF VARS: $VARS"
