@@ -1,9 +1,13 @@
 import * as os from 'os'
 import { Tester } from './test_helper.js'
-import { struct } from '../lib/ffi-struct.js'
-import { bind } from '../lib/ffi-bind.js'
+import { struct, arrayOf } from '../lib/ffi/struct.js'
+import { bind } from '../lib/ffi/bind.js'
 
-const RECT = struct({ left: 'i32', top: 'i32', right: 'i32', bottom: 'i32' })
+// 编译期断言工具（仅类型层，运行时无开销）
+type Equal<A, B> = (<G>() => G extends A ? 1 : 2) extends (<G>() => G extends B ? 1 : 2) ? true : false
+function expectType<T extends true>(_value?: T): void {}
+
+const RECT = struct('RECT', { left: 'i32', top: 'i32', right: 'i32', bottom: 'i32' })
 
 const TVITEM = struct({
     mask: 'u32',
@@ -26,8 +30,8 @@ export const suite = {
 
         t.section('RECT layout & roundtrip')
         t.check('RECT.size == 16', 16, RECT.size)
-        const rbuf = RECT.write({ left: 10, top: 20, right: 30, bottom: 40 })
-        const r = RECT.read(rbuf)
+        const rbuf = RECT.encode({ left: 10, top: 20, right: 30, bottom: 40 })
+        const r = RECT.decode(rbuf)
         t.check('left', 10, r.left)
         t.check('top', 20, r.top)
         t.check('right', 30, r.right)
@@ -36,14 +40,23 @@ export const suite = {
         t.check('offsetOf bottom', 12, RECT.offsetOf('bottom'))
 
         t.section('GetWindowRect fills RECT buffer')
-        const getWindowRect = bind('user32.dll', 'GetWindowRect', 'ptr buf_ptr -> int')
+        const getWindowRect = bind('user32.dll', 'GetWindowRect', 'ptr <VOID>ptr -> int')
+        const getWindowRectLayout = bind('user32.dll', 'GetWindowRect', 'ptr <RECT>ptr -> int', { RECT })
         const getDesktopWindow = bind('user32.dll', 'GetDesktopWindow', ' -> ptr')
         const hwnd = getDesktopWindow()
         const wrect = new ArrayBuffer(16)
         const ok = getWindowRect(hwnd, wrect)
         t.checkTrue('GetWindowRect succeeds', ok !== 0)
-        const wr = RECT.read(wrect)
+        const wr = RECT.decode(wrect)
         t.checkTrue('screen RECT non-empty', wr.right > 0 && wr.bottom > 0)
+
+        // out 参数：命名 struct 的 alloc() 句柄 → .ptr 为 StructPtr<'RECT'>，直接喂 <RECT>ptr
+        t.section('RECT.alloc() out-param handle')
+        const out = RECT.alloc()
+        t.checkTrue('alloc() exposes buffer + ptr', out.buffer instanceof ArrayBuffer && typeof out.ptr === 'number')
+        t.checkTrue('GetWindowRect(hwnd, out.ptr) succeeds', getWindowRectLayout(hwnd, out.ptr) !== 0)
+        const or = out.decode()
+        t.checkTrue('alloc().decode() decodes out-param', or.right > 0 && or.bottom > 0)
 
         t.section('ptr layout matches arch')
         t.check(`TVITEM.size (${os.arch})`, is64 ? 56 : 40, TVITEM.size)
@@ -52,7 +65,7 @@ export const suite = {
         t.check('TVINSERTSTRUCT.offsetOf item', is64 ? 16 : 8, TVINSERTSTRUCT.offsetOf('item'))
 
         t.section('nested struct roundtrip')
-        const ins = TVINSERTSTRUCT.write({
+        const ins = TVINSERTSTRUCT.encode({
             hParent: 0x11111111,
             hInsertAfter: 0x22222222,
             item: {
@@ -61,7 +74,7 @@ export const suite = {
                 iImage: 0, iSelectedImage: 0, cChildren: 5, lParam: 0x55555555,
             },
         })
-        const got = TVINSERTSTRUCT.read(ins)
+        const got = TVINSERTSTRUCT.decode(ins)
         t.check('nested hParent', 0x11111111, got.hParent)
         t.check('nested hInsertAfter', 0x22222222, got.hInsertAfter)
         t.check('nested cChildren', 5, got.item.cChildren)
@@ -70,37 +83,83 @@ export const suite = {
         t.section('C typedef aliases (int/DWORD/LPARAM/LONG_PTR/short)')
         const M = struct({ n: 'int', d: 'DWORD', w: 'LPARAM', s: 'short', q: 'LONG_PTR' })
         t.check(`aliased size (${os.arch})`, is64 ? 32 : 20, M.size)
-        const mb = M.write({ n: -5, d: 0xFFFFFFFF, w: 0xAABBCCDD, s: -7, q: 0x11223344 })
-        const m = M.read(mb)
+        const mb = M.encode({ n: -5, d: 0xFFFFFFFF, w: 0xAABBCCDD, s: -7, q: 0x11223344 })
+        const m = M.decode(mb)
         t.check('int -5', -5, m.n)
         t.check('DWORD', 0xFFFFFFFF, m.d)
         t.check('LPARAM', 0xAABBCCDD, m.w)
         t.check('short -7', -7, m.s)
         t.check('LONG_PTR', 0x11223344, m.q)
 
-        t.section('wstr[8] roundtrip & truncation')
-        const W = struct({ name: 'wstr[8]' })
-        t.check('wstr[8].size == 16', 16, W.size)
-        const wb = W.write({ name: 'hello' })
-        t.check('read back "hello"', 'hello', W.read(wb).name)
-        const lb = W.write({ name: 'a very long string over' })
-        t.check('truncated to 7 chars', 'a very ', W.read(lb).name)
+        t.section("arrayOf('u16', 8, 'utf16') roundtrip & truncation")
+        const W = struct({ name: arrayOf('u16', 8, 'utf16') })
+        t.check('utf16[8].size == 16', 16, W.size)
+        const wb = W.encode({ name: 'hello' })
+        t.check('read back "hello"', 'hello', W.decode(wb).name)
+        const lb = W.encode({ name: 'a very long string over' })
+        t.check('truncated to 7 chars', 'a very ', W.decode(lb).name)
 
-        t.section('numeric arrays roundtrip')
+        t.section("arrayOf('char', 8, 'latin1') roundtrip & truncation")
+        const C = struct({ name: arrayOf('char', 8, 'latin1') })
+        t.check('char[8].size == 8', 8, C.size)
+        const cb = C.encode({ name: 'hi' })
+        t.check('read back "hi"', 'hi', C.decode(cb).name)
+        t.check('NUL at [2]', 0, new DataView(cb).getUint8(2))
+        const ctrunc = C.encode({ name: '1234567890' })
+        t.check('truncated to 7 chars', '1234567', C.decode(ctrunc).name)
+
+        t.section('numeric arrays roundtrip (T[N] sugar)')
         const A = struct({ v: 'u16[4]', k: 'i32[2]' })
         t.check('size == 16', 16, A.size)
-        const ab = A.write({ v: [1, 2, 3, 4], k: [-1, 300000] })
-        const ad = A.read(ab)
+        const ab = A.encode({ v: [1, 2, 3, 4], k: [-1, 300000] })
+        const ad = A.decode(ab)
         t.check('u16[0]', 1, ad.v[0])
         t.check('u16[3]', 4, ad.v[3])
         t.check('i32[0] -1', -1, ad.k[0])
         t.check('i32[1]', 300000, ad.k[1])
 
+        t.section('T[1] stays an array (no scalar degradation)')
+        const ONE = struct({ v: 'u16[1]' })
+        t.check('size == 2', 2, ONE.size)
+        const one = ONE.decode(ONE.encode({ v: [42] }))
+        t.check('length 1', 1, one.v.length)
+        t.check('[0]', 42, one.v[0])
+
+        t.section('arrayOf struct roundtrip (stride = child size)')
+        const PT = struct({ x: 'i32', y: 'i32' })
+        const POLY = struct({ count: 'u32', pts: arrayOf(PT, 3) })
+        t.check('POLY.size == 28', 28, POLY.size)
+        t.check('POLY.offsetOf pts', 4, POLY.offsetOf('pts'))
+        const poly = POLY.decode(POLY.encode({ count: 3, pts: [{ x: 1, y: 2 }, { x: 3, y: 4 }, { x: 5, y: 6 }] }))
+        t.check('count', 3, poly.count)
+        t.check('pts[0].x', 1, poly.pts[0].x)
+        t.check('pts[2].y', 6, poly.pts[2].y)
+
+        // 编译期断言：定长数组推导为元组、encoding 数组推导为 string
+        expectType<Equal<ReturnType<typeof W.decode>['name'], string>>()
+        expectType<Equal<ReturnType<typeof A.decode>['v'], [number, number, number, number]>>()
+        expectType<Equal<ReturnType<typeof A.decode>['k'], [number, number]>>()
+        expectType<Equal<ReturnType<typeof ONE.decode>['v'], [number]>>()
+        expectType<Equal<ReturnType<typeof POLY.decode>['pts']['length'], 3>>()
+        expectType<Equal<ReturnType<typeof POLY.decode>['pts'][0], ReturnType<typeof PT.decode>>>()
+
+        let rejected = false
+        try { arrayOf('i32', 0) } catch { rejected = true }
+        t.check('arrayOf count=0 rejected', true, rejected)
+
+        rejected = false
+        try { struct({ v: 'i32[0]' }) } catch { rejected = true }
+        t.check('sugar [0] rejected', true, rejected)
+
+        rejected = false
+        try { struct({ v: arrayOf('u8', 4, 'utf16') }) } catch { rejected = true }
+        t.check('utf16 on 1-byte element rejected', true, rejected)
+
         t.section('f32/f64 layout (MSVC: f@0, double@8)')
         const FL = struct({ f: 'float', d: 'double' })
         t.check('size == 16 (f@0, double aligned @8)', 16, FL.size)
-        const fb = FL.write({ f: 1.5, d: -2.25 })
-        const fr = FL.read(fb)
+        const fb = FL.encode({ f: 1.5, d: -2.25 })
+        const fr = FL.decode(fb)
         t.check('float', 1.5, fr.f)
         t.check('double', -2.25, fr.d)
 
@@ -215,8 +274,8 @@ export const suite = {
         t.check('NMDATETIMECHANGE.offsetOf st', is64 ? 28 : 16, NMDATETIMECHANGE.offsetOf('st'))
 
         t.section('NMLINK szUrl offset')
-        const LITEM = struct({ mask: 'u32', iLink: 'i32', state: 'u32', stateMask: 'u32', szID: 'wstr[48]' })
-        const NMLINK = struct({ hdr: NMHDR, item: LITEM, szUrl: 'wstr[2084]' })
+        const LITEM = struct({ mask: 'u32', iLink: 'i32', state: 'u32', stateMask: 'u32', szID: arrayOf('u16', 48, 'utf16') })
+        const NMLINK = struct({ hdr: NMHDR, item: LITEM, szUrl: arrayOf('u16', 2084, 'utf16') })
         t.check('LITEM.offsetOf szID', 16, LITEM.offsetOf('szID'))
         t.check('NMLINK.offsetOf szUrl', is64 ? 136 : 124, NMLINK.offsetOf('szUrl'))
     },

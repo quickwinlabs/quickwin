@@ -312,7 +312,7 @@ ffi_call(&cif, func, &ret, ffi_args);
 ### 分工
 
 - **libffi** = 机器相关的 ABI 分发（`deps/libffi/src/x86/` 约 5570 行 C/asm，29 个架构共用一套抽象）
-- **`lib/ffi-bind.ts`** = 类型安全（TS 泛型重载）
+- **`lib/ffi/bind.ts`** = 类型安全（TS 泛型重载）
 - 两层互不污染。类型安全放在 DSL 层是对的，因为 ABI 层不可能做静态检查。
 
 ### 相关文档
@@ -342,7 +342,7 @@ ffi_call(&cif, func, &ret, ffi_args);
   arg_bytes + 捕获的 wrapper/ctx），C→JS 桥接只调块内 wrapper（闭包捕获签名 + 用户 fn），**无 registry、
   无跨 context 全局**；`quickjs-ffi.c` 把 `closureNew`/`closureFree` 注册进 'ffi' 模块（在 `ffiCall`/
   `bufferPtr`/`readByte`/`writeByte` 之外）。
-- `lib/ffi-bind.ts` 的 `closure(sig, fn, {stdcall?})` → `{ptr, dispose}`：签名创建时解析、wrapper 闭包捕获
+- `lib/ffi/bind.ts` 的 `closure(sig, fn, {stdcall?})` → `{ptr, dispose}`：签名创建时解析、wrapper 闭包捕获
   args/ret/fn，同步同线程回调；`closureNew(argBytes, retKind, wrapper)` 3 参（无 dispatch 参数）。
 - `listWindows()` 仍用 `FindWindowExW` 链式遍历（先取 next 再查当前防句柄失效，`:475`）；EnumWindows +
   closure 等价能力已在 test_ffi_bind.ts 闭包用例覆盖（win11/xp 双平台全绿）。
@@ -355,7 +355,7 @@ ffi_call(&cif, func, &ret, ffi_args);
 | `ptr` | 23 |
 | `i32` | 14 |
 | `u32` | 12 |
-| `wchar_ptr` | 6 |
+| `<WCHAR>ptr` | 6 |
 | `UINT` / `HDC` / `HBITMAP` / `HWND` | 别名 → ptr / u32 |
 
 `u64` / `i64` = **0**。这使 `feat/ffi-phase0` 分支的 `qw_call`（ia32 上 `intptr_t` wrapper 无法传 64 位整型）的缺陷对 quickwin **不构成约束**，但它仍是 660 行 vs 当前 234 行的手写、每架构维护一份的汇编 —— 不是替代路线，建议保留作参考。
@@ -418,12 +418,12 @@ S1–S6 后，运行时 FFI 由本地汇编桩实现，libffi 已移出构建。
 | `quickjs-ffi-call-win64.S` | Win64 调用桩：前 4 槽 `movq`+`movsd` 双读进 RCX/RDX/R8/R9 与 XMM0-3，溢出参数置于 32 字节影子空间之后，返回恒写 RAX+XMM0 |
 | `quickjs-ffi-call.h` | `.S` 桩的声明 + `qwin_ffi_arg_size[]` 契约 |
 | `quickjs-ffi.c` | 唯一入口 `ffiCall(func, argFrame, retBuf, retIsFp)`：按架构把 JS 预打包的 `argFrame` 喂给桩，取原始返回写进 `retBuf`；另有 `bufferPtr/readByte/writeByte` |
-| `lib/ffi-bind.ts` | `bind()`/`bindLib()` 声明式签名解析、`DataView` 打包 `argFrame`、`readRet()` 按声明宽度截断/符号扩展 |
+| `lib/ffi/bind.ts` | `bind()`/`bindLib()` 声明式签名解析、`DataView` 打包 `argFrame`、`readRet()` 按声明宽度截断/符号扩展 |
 
 关键对应关系：
 - libffi 的 `ffi_prep_cif`「算 `bytes`/`flags`」→ JS `ARG_SIZE[]` + 各桩的固定布局。
 - libffi 的返回跳转表（`CLASS_X87_RET` 等）→ ia32 桩的 `ret_fp` 分支 + JS `readRet()`；Win64 桩恒写 RAX/XMM0，由 JS 选一个。
-- libffi 的类型表 `ffi_type`/`arg_types` → `kinds` 字符串（`'ptr wchar_ptr i32 ptr -> i32'`）。
+- libffi 的类型表 `ffi_type`/`arg_types` → `kinds` 字符串（`'ptr <WCHAR>ptr i32 ptr -> i32'`）。
 - 未支持：struct by-value、varargs（见计划 §10.4）。
 
 回归网：`test/test_ffi.ts`、`test/test_ffi_bind.ts`、`test/test_ffi_abi.ts`（ABI 边界 31 项）、

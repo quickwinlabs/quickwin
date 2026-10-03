@@ -4,7 +4,7 @@
 
 **ABI 只按字节数（宽度）分类参数/返回值；"符号"只是读回时如何解释同一组位。所有符号相关的差异只存在于返回值 read-back 方向。**
 
-对应代码：`lib/ffi-bind.ts`（`ARG_SIZE` 槽宽表、`writeSlot` 打包、`readRet` 读回、kind 与 `'ptr'` 归一、签名 DSL）、`quickjs-ffi.c`（`ffiCall` 只做「搬运 + call + 取原始返回」）、`test/test_ffi_bind.ts` + `test/test_ffi_abi.ts`（signedness/边界回归锚点）。
+对应代码：`lib/ffi/bind.ts`（`ARG_SIZE` 槽宽表、`writeSlot` 打包、`readRet` 读回、kind 与 `'ptr'` 归一、签名 DSL）、`quickjs-ffi.c`（`ffiCall` 只做「搬运 + call + 取原始返回」）、`test/test_ffi_bind.ts` + `test/test_ffi_abi.ts`（signedness/边界回归锚点）。
 
 ## 1. 传参方向：只关心宽度，符号无关
 
@@ -38,7 +38,7 @@
 
 ### ffi-struct 字段顺序 = object 字面量顺序（ES [[OwnPropertyKeys]]）
 
-`lib/ffi-struct.ts` 的 `layout()` 用 `Object.keys(def)` 迭代字段并按该顺序算 offset，所以**布局顺序 = 字面量写法顺序**。这不是约定俗成，而是 ECMA-262 `[[OwnPropertyKeys]]`（`OrdinaryOwnPropertyKeys`）的确定顺序：整数索引键先按数值升序，其余字符串键按插入顺序，最后 Symbol。`Object.keys`/`for-in` 均遵循。
+`lib/ffi/struct.ts` 的 `layout()` 用 `Object.keys(def)` 迭代字段并按该顺序算 offset，所以**布局顺序 = 字面量写法顺序**。这不是约定俗成，而是 ECMA-262 `[[OwnPropertyKeys]]`（`OrdinaryOwnPropertyKeys`）的确定顺序：整数索引键先按数值升序，其余字符串键按插入顺序，最后 Symbol。`Object.keys`/`for-in` 均遵循。
 
 **唯一陷阱**：字段名若是数字类字符串（如 `'0'`、`'1'`），会被规范按数值升序排到最前，破坏写法顺序。struct 字段名避免用数字键即可；布局可加校验拒绝。
 
@@ -55,7 +55,7 @@
 - **x86**：窄整数返回只有 EAX 有效、EDX 是残留垃圾。`readRet` 只取需要的低 N 字节，故不受高字节垃圾影响；64 位返回则用满 8 字节。
 - **x64**：Win64 ABI 要求被调方扩展 RAX；`readRet` 仍按声明类型显式截断，不依赖被调方扩展。
 
-### 正确读回（`lib/ffi-bind.ts` `readRet`）
+### 正确读回（`lib/ffi/bind.ts` `readRet`）
 
 | 返回类型 | 写法 | 说明 |
 |---|---|---|

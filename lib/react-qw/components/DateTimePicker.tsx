@@ -1,7 +1,7 @@
 import { forwardRef, useRef, useEffect, useState, type Ref } from 'react'
 import * as gui from 'gui'
 import * as ffi from 'ffi'
-import { struct } from '../../ffi-struct.js'
+import { struct } from '../../ffi/struct.js'
 import { NMHDR, nmCode, readI32At, readU16At } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
 

@@ -1,7 +1,7 @@
 import { forwardRef, useRef, useEffect, useState, type ReactNode } from 'react'
 import * as gui from 'gui'
 import * as ffi from 'ffi'
-import { struct } from '../../ffi-struct.js'
+import { struct } from '../../ffi/struct.js'
 import { nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
 
@@ -44,7 +44,7 @@ export const Tab = forwardRef<gui.HWND, TabProps>(
       gui.SendMessage(h, gui.TcMsg.DELETEALLITEMS, 0, 0)
       for (let i = 0; i < tabs.length; i++) {
         const titleBuf = textToUtf16(tabs[i]!.title)
-        const tci = TCITEMW.write({
+        const tci = TCITEMW.encode({
           mask: gui.TcItemFlag.TEXT,
           dwState: 0,
           dwStateMask: 0,

@@ -3,7 +3,7 @@
 
 /* 本文件已不参与编译（quickjs-ffi.c 不再 include 它），仅作 ABI 文档参照：
    FFI_TYPE_* 的数值与 qwin_ffi_arg_size[] 的槽宽规则是 JS↔汇编桩之间的契约，
-   lib/ffi-bind.ts 的 ARG_SIZE 表必须与之逐值一致。改动任一侧都会导致传参
+   lib/ffi/bind.ts 的 ARG_SIZE 表必须与之逐值一致。改动任一侧都会导致传参
    静默错位。原始数值来源见下。 */
 
 /* FFI_TYPE_* 的数值来自 libffi 的 ffi.h.in:60-81（其值来自生成的

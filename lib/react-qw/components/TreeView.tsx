@@ -1,7 +1,7 @@
 import { forwardRef, useRef, useEffect, useState } from 'react'
 import * as gui from 'gui'
 import * as ffi from 'ffi'
-import { struct } from '../../ffi-struct.js'
+import { struct } from '../../ffi/struct.js'
 import { nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
 
@@ -48,7 +48,7 @@ function bufPtr(buf: ArrayBuffer): number {
 function buildTvItem(textPtr: number, cChildren: number): ArrayBuffer {
     let mask = gui.TvIfFlag.TEXT
     if (cChildren > 0) mask |= gui.TvIfFlag.CHILDREN
-    return TVITEM.write({
+    return TVITEM.encode({
         mask, hItem: 0, state: 0, stateMask: 0,
         pszText: textPtr, cchTextMax: 260,
         iImage: 0, iSelectedImage: 0, cChildren, lParam: 0,
@@ -63,8 +63,8 @@ function insertItems(
     const cChildren = node.children && node.children.length > 0 ? 1 : 0
     const textBuf = textToUtf16(node.label)
     const itemBuf = buildTvItem(bufPtr(textBuf), cChildren)
-    const item = TVITEM.read(itemBuf)
-    const tvins = TVINSERTSTRUCT.write({ hParent: parentHandle, hInsertAfter: gui.TvInsertAfter.ROOT, item })
+    const item = TVITEM.decode(itemBuf)
+    const tvins = TVINSERTSTRUCT.encode({ hParent: parentHandle, hInsertAfter: gui.TvInsertAfter.ROOT, item })
     const hItem = gui.SendMessage(hTree, gui.TvMsg.INSERTITEMW, 0, bufPtr(tvins))
     hItemMap.set(hItem, node)
     if (node.key) keyMap.set(node.key, hItem)

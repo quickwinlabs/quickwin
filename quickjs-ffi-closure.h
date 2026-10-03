@@ -7,7 +7,7 @@
 /* 内建 FFI 闭包（回调）：把 JS 函数变成可传给 Win32/C API 的函数指针。
  *
  * 分层约定与调用桩一致（.agents/REMOVE_LIBFFI_PLAN.md §10）：
- *   - JS 侧（lib/ffi-bind.ts closure()）解析回调签名、注册用户函数、注册派发函数
+ *   - JS 侧（lib/ffi/bind.ts closure()）解析回调签名、注册用户函数、注册派发函数
  *   - C 侧（quickjs-ffi-closure.c）每闭包一个 VirtualAlloc 可执行块（自包含），
  *     闭包触发时把捕获的实参打包成 JS ArrayBuffer、桥接回 JS 执行用户回调、拷回返回
  *   - asm 侧只做「按 ABI 捕获入参 + 调 C 转发 + 按 ABI 装填返回」

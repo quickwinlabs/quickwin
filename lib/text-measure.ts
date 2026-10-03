@@ -1,9 +1,9 @@
 import * as ffi from 'ffi'
 import * as gui from 'gui'
-import { bindLib } from './ffi-bind.js'
+import { bindLib } from './ffi/bind.js'
 
 const user32 = bindLib('user32.dll', {
-    DrawTextW: 'ptr wchar_ptr i32 buf_ptr i32 -> i32',
+    DrawTextW: 'ptr <WCHAR>ptr i32 <VOID>ptr i32 -> i32',
     GetDC: 'ptr -> ptr',
     ReleaseDC: 'ptr ptr -> i32',
 })

@@ -2,29 +2,32 @@ import * as ffi from 'ffi'
 import * as win from 'win'
 import * as os from 'os'
 import * as std from 'std'
-import './text-codec.js'
+import '../text-codec.js'
+import { type Kind, type Norm, type StructPtr, PTR_SIZE, normKind, ptrLayoutName } from './kind.js'
+
+// 标量 kind / C 别名表见 ./kind.js；此处透传其公共类型与函数，保持 bind.js 深导入面不变。
+export * from './kind.js'
 
 // 声明式 FFI 绑定：把字符串签名（'ptr i32 -> i32'）解析成可调用函数（bind）
 // 或一个 dll 的签名表（bindLib）。
 // kind：
 //   BasicKind = void u8 i8 u16 i16 u32 i32 u64 i64 u64n i64n f32 f64 ptr
-//   Kind      = BasicKind | buf_ptr | wchar_ptr
-//     ptr       number|null —— 裸地址；buffer 用 ffi.bufferPtr 取址或改用 buf_ptr
-//     buf_ptr   ArrayBuffer|null —— 调用期 pin，按指针宽写槽
-//     wchar_ptr string|null —— utf-16le+'\0' 编码 + 调用期 pin（仅参数）
+//     ptr       number|null —— 裸地址；buffer 用 ffi.bufferPtr 取址或改用 <VOID>ptr
+//   指针布局 <NAME>ptr（调用期 pin，按指针宽读写）：
+//     <VOID>ptr     ArrayBuffer|null —— 原样传 JS 缓冲（仅参数）
+//     <WCHAR>ptr    string|null —— utf-16le+'\0' 编码（仅参数）
+//     <STRUCT>ptr   参数：布局 JS 形（编码成 buffer）或 StructPtr<STRUCT>（裸地址透传）；
+//                   返回：StructPtr<STRUCT>（指针，品牌在类型层，不解码内容）
 //   u64/i64 收 number（0..2^53 连续无损，之上有空洞即 lossy）；u64n/i64n 收
 //   bigint、端到端 64 位全精确（恰 64 位，DataView 天然范围护栏）。裸 bigint
 //   类型会误读为任意精度，故用 i64n/u64n 显式钉死「恰 64 位」语义。
 //   指针/缓冲/字符串实参一一对应各自类型，运行时严格校验；null 恒 →0。
-//   buf_ptr/wchar_ptr 不可作返回类型（返回恒原始值/地址）。
+//   <VOID>ptr/<WCHAR>ptr 不可作返回类型（返回裸地址/宽串指针请用 ptr）。
 //   可用 C/Windows typedef 别名：int long short char float double
 //     + DWORD UINT LONG BOOL HRESULT ... + *_PTR WPARAM LPARAM SIZE_T
 //     + HANDLE HWND HDC ... (+ LPVOID 等指针 typedef)
-//   别名在 token 层归一化到规范 kind（C_ALIAS as const 单源，CTypeOf 由它派生）；
-//   LPCWSTR/PCWSTR/LPWSTR → wchar_ptr，其余指针 typedef → ptr。
-
-type BasicKind = 'void' | 'u8' | 'i8' | 'u16' | 'i16' | 'u32' | 'i32' | 'u64' | 'i64' | 'u64n' | 'i64n' | 'f32' | 'f64' | 'ptr'
-type Kind = BasicKind | 'buf_ptr' | 'wchar_ptr'
+//   别名在 token 层归一化到规范形式（C_ALIAS as const 单源，见 ./kind.js）；
+//   LPCWSTR/PCWSTR/LPWSTR → '<WCHAR>ptr'，其余指针 typedef → ptr。
 
 // 原生标量（传值/地址）类型表：实参、返回共用
 type BasicTypeOf = {
@@ -36,53 +39,45 @@ type BasicTypeOf = {
     ptr: number | null
 }
 
-// 实参表 = 标量表 + 引用型实参（buf_ptr/wchar_ptr 调用期 pin）
-type ArgTypeOf = BasicTypeOf & {
-    buf_ptr: ArrayBuffer | null
-    wchar_ptr: string | null
-}
+type ArgTypeOf = BasicTypeOf
 
 // 返回表 = 标量表 + void（返回没有封送可言）
 type RetTypeOf = BasicTypeOf & {
     void: void
 }
 
-// C / Windows typedef → 规范 kind。Windows x86/x64 均 LLP64：int/long 恒 32 位，
-// long long 恒 64 位；LONG_PTR/WPARAM/SIZE_T 等指针宽随 arch 走 'ptr' 槽。
-// 单源常量（as const）：类型层 CTypeOf = typeof C_ALIAS 派生，无需手同步。
-const C_ALIAS = {
-    int: 'i32', long: 'i32', short: 'i16', char: 'i8', float: 'f32', double: 'f64',
-    DWORD: 'u32', UINT: 'u32', ULONG: 'u32', LONG: 'i32', BOOL: 'i32', HRESULT: 'i32',
-    SHORT: 'i16', USHORT: 'u16', BYTE: 'u8',
-    LONG_PTR: 'ptr', ULONG_PTR: 'ptr', INT_PTR: 'ptr', UINT_PTR: 'ptr', DWORD_PTR: 'ptr',
-    SIZE_T: 'ptr', WPARAM: 'ptr', LPARAM: 'ptr',
-    HANDLE: 'ptr', HWND: 'ptr', HDC: 'ptr', HMODULE: 'ptr', HFONT: 'ptr', HBRUSH: 'ptr',
-    HICON: 'ptr', HBITMAP: 'ptr', LPVOID: 'ptr', LPCVOID: 'ptr',
-    LPCWSTR: 'wchar_ptr', PCWSTR: 'wchar_ptr', LPWSTR: 'wchar_ptr',
-} as const
-
-export type CTypeOf = typeof C_ALIAS
-
-export type Norm<T extends string> = T extends keyof CTypeOf ? CTypeOf[T] : T
-
-type ArgsOf<T extends string> =
-    T extends '' ? []
-        : T extends `${infer H} ${infer R}` ? [ArgTypeOf[Norm<H> & keyof ArgTypeOf], ...ArgsOf<R>]
-        : [ArgTypeOf[Norm<T> & keyof ArgTypeOf]]
-
-type _Args<S extends string> = S extends `${infer P} -> ${string}` ? ArgsOf<P> : never
-type _Ret<S extends string> = S extends `${string} -> ${infer R}` ? RetTypeOf[Norm<R> & keyof RetTypeOf] : never
-
-const KIND_SET: ReadonlySet<Kind> = new Set<Kind>([
-    'void', 'u8', 'i8', 'u16', 'i16', 'u32', 'i32',
-    'u64', 'i64', 'u64n', 'i64n', 'f32', 'f64', 'ptr', 'buf_ptr', 'wchar_ptr',
-])
-
-export function normKind(t: string): Kind {
-    const k = (C_ALIAS as Record<string, Kind>)[t] ?? t
-    if (!KIND_SET.has(k as Kind)) throw new Error(`ffi-bind: invalid kind "${t}"`)
-    return k as Kind
+// 用户布局：把 JS 形编码成 buffer 供 <NAME>ptr 输入。ffi-struct 的 struct()
+// 结果（StructDef）结构上即满足（encode(v) -> ArrayBuffer）。
+export type Layout<V = unknown> = {
+    encode(v: V, buf?: ArrayBuffer, offset?: number): ArrayBuffer
 }
+export type LayoutMap = Record<string, Layout<any>>
+export type LayoutValue<T> = T extends Layout<infer V> ? V : never
+
+// <NAME>ptr 实参：内建布局（VOID/WCHAR）或用户布局 —— 结构形（编码）或 StructPtr（透传）。
+type PtrArgType<N extends string, L> =
+    N extends 'VOID' ? ArrayBuffer | null
+        : N extends 'WCHAR' ? string | null
+            : StructPtr<N> | null | (N extends keyof L ? LayoutValue<L[N]> : never)
+
+type ArgToken<T extends string, L> =
+    Norm<T> extends `<${infer N}>ptr` ? PtrArgType<N, L>
+        : ArgTypeOf[Norm<T> & keyof ArgTypeOf]
+
+type ArgsOf<T extends string, L> =
+    T extends '' ? []
+        : T extends `${infer H} ${infer R}` ? [ArgToken<H, L>, ...ArgsOf<R, L>]
+            : [ArgToken<T, L>]
+
+type _Args<S extends string, L = {}> = S extends `${infer P} -> ${string}` ? ArgsOf<P, L> : never
+
+// 返回位：用户 <STRUCT>ptr → StructPtr<N>（指针，不解码）；VOID/WCHAR 返回非法。
+type RetToken<T extends string> =
+    Norm<T> extends `<${infer N}>ptr`
+        ? N extends 'VOID' | 'WCHAR' ? never : StructPtr<N> | null
+        : RetTypeOf[Norm<T> & keyof RetTypeOf]
+
+type _Ret<S extends string> = S extends `${string} -> ${infer R}` ? RetToken<R> : never
 
 const _dllCache: Map<string, win.HMODULE> = new Map()
 
@@ -95,72 +90,153 @@ function loadDll(dll: string): win.HMODULE {
     return loaded
 }
 
-function parseSig(sig: string): { args: Kind[]; ret: Kind } {
+/* ---- 指针布局 codec：把 JS 值编码成原生指针 ---- */
+
+type PtrCodec = {
+    name: string
+    encode(v: unknown, held: ArrayBuffer[]): number
+}
+
+const VOID_PTR: PtrCodec = {
+    name: 'VOID',
+    encode(v, held) {
+        if (v === null || v === undefined) return 0
+        if (!(v instanceof ArrayBuffer)) {
+            throw new Error(`ffi-bind: <VOID>ptr expects ArrayBuffer|null, got ${typeof v}; use kind "ptr" for a raw address, or ffi.bufferPtr(buf)`)
+        }
+        held.push(v)  // 调用期 pin：GC 在 ffiCall 返回前不可回收
+        return ffi.bufferPtr(v)
+    },
+}
+
+const WCHAR_PTR: PtrCodec = {
+    name: 'WCHAR',
+    encode(v, held) {
+        if (v === null || v === undefined) return 0
+        if (typeof v !== 'string') {
+            throw new Error(`ffi-bind: <WCHAR>ptr expects string|null, got ${typeof v}; use kind "ptr" for a raw address`)
+        }
+        const enc = new TextEncoder('utf-16le').encode(v + '\0')
+        const buf = enc.buffer as ArrayBuffer
+        held.push(buf)
+        return ffi.bufferPtr(buf)
+    },
+}
+
+const BUILTIN_PTR_CODECS: Record<string, PtrCodec> = { VOID: VOID_PTR, WCHAR: WCHAR_PTR }
+
+// 用户布局 codec：延迟解析 —— 只有真的收到「结构形」实参时才要求 layouts 里存在该布局；
+// 纯 brand number / null 透传不需要 layout（与参数类型层一致，bind 期不再抛）。
+function userPtrCodec(name: string, layouts: LayoutMap | undefined): PtrCodec {
+    return {
+        name,
+        encode(v, held) {
+            if (v === null || v === undefined) return 0
+            if (typeof v === 'number') return v  // StructPtr 品牌指针 → 裸地址透传
+            const lay = layouts?.[name]
+            if (!lay) {
+                const avail = [...Object.keys(BUILTIN_PTR_CODECS), ...Object.keys(layouts ?? {})]
+                throw new Error(`ffi-bind: unknown layout "<${name}>ptr" (available: ${avail.join(', ') || 'none'})`)
+            }
+            const buf = lay.encode(v)
+            held.push(buf)  // 调用期 pin
+            return ffi.bufferPtr(buf)
+        },
+    }
+}
+
+// 解析一个 <NAME>ptr codec：内建（VOID/WCHAR）即时取 —— 保持其严格类型校验；
+// 用户布局延迟到 encode（收到结构形）时才查。
+function ptrCodec(name: string, layouts: LayoutMap | undefined): PtrCodec {
+    return BUILTIN_PTR_CODECS[name] ?? userPtrCodec(name, layouts)
+}
+
+// 解析后的实参规格：'val' = 标量 kind；'ptr' = <NAME>ptr 指针布局 codec。
+type ArgSpec = { t: 'val'; k: Kind } | { t: 'ptr'; c: PtrCodec }
+// 返回规格：'val' 标量；'ptr' = 用户 <STRUCT>ptr 返回（只读指针，品牌在类型层）。
+type RetSpec = { t: 'val'; k: Kind } | { t: 'ptr'; name: string }
+
+function parseSig(sig: string, layouts?: LayoutMap): { args: ArgSpec[]; ret: RetSpec } {
     const parts = sig.split(' -> ')
     const ret = parts[1]
     if (ret === undefined || parts.length > 2) {
         throw new Error(`ffi-bind: invalid signature "${sig}" (expected "arg1 arg2 -> ret")`)
     }
-    const retK = normKind(ret)
-    if (retK === 'buf_ptr' || retK === 'wchar_ptr') {
-        throw new Error(`ffi-bind: "${retK}" cannot be a return type`)
+    let retSpec: RetSpec
+    const retName = ptrLayoutName(ret)
+    if (retName !== undefined) {
+        if (retName === 'VOID' || retName === 'WCHAR') {
+            throw new Error(`ffi-bind: "<${retName}>ptr" cannot be a return type (use "ptr")`)
+        }
+        // 宽松：返回只读指针，不要求 layouts 里注册该布局（品牌是编译期的）。
+        retSpec = { t: 'ptr', name: retName }
+    } else {
+        retSpec = { t: 'val', k: normKind(ret) }
     }
     const tokens = (parts[0] ?? '') === '' ? [] : (parts[0] as string).split(' ')
-    const args = tokens.map((t) => normKind(t))
-    return { args, ret: retK }
+    const args = tokens.map((t): ArgSpec => {
+        const name = ptrLayoutName(t)
+        if (name !== undefined) return { t: 'ptr', c: ptrCodec(name, layouts) }
+        return { t: 'val', k: normKind(t) }
+    })
+    return { args, ret: retSpec }
 }
 
-function makeFn(proc: number, sig: string): (...a: unknown[]) => unknown {
-    const { args, ret } = parseSig(sig)
+function makeFn(proc: number, sig: string, layouts?: LayoutMap): (...a: unknown[]) => unknown {
+    const { args, ret } = parseSig(sig, layouts)
     return (...a: unknown[]) => callPacked(proc, args, ret, a)
 }
 
 // 每个参数在 argFrame 里占的字节数。与 quickjs-ffi-type.h 的 qwin_ffi_arg_size[]
 // 保持一致（ia32：≤4B 类型进 4 字节、更大的进 8 字节；x64：恒 8 字节槽）。
-// 注意这是「槽宽」，不是类型的 sizeof——同一定义也用于返回槽。
-const PTR_SIZE = os.arch === 'x64' ? 8 : 4
+// 注意这是「槽宽」，不是类型的 sizeof——同一定义也用于返回槽。指针布局恒指针宽。
 const ARG_SIZE: Record<Kind, number> = {
     void: 0, u8: 4, i8: 4, u16: 4, i16: 4, u32: 4, i32: 4,
     u64: 8, i64: 8, u64n: 8, i64n: 8, f32: 4, f64: 8,
-    ptr: PTR_SIZE, buf_ptr: PTR_SIZE, wchar_ptr: PTR_SIZE,
+    ptr: PTR_SIZE,
 }
 // x64 桩无条件双读 slots[0..3]，故 argFrame 至少 4 个槽（32 字节）
 const X64_MIN_SLOTS = 4
 
-function callPacked(proc: number, args: Kind[], ret: Kind, a: unknown[]): unknown {
+function specWidth(s: ArgSpec, is64: boolean): number {
+    if (is64) return 8
+    return s.t === 'val' ? ARG_SIZE[s.k] : PTR_SIZE
+}
+
+function callPacked(proc: number, args: ArgSpec[], ret: RetSpec, a: unknown[]): unknown {
     const is64 = os.arch === 'x64'
     // 先算总槽宽；x64 固定 8 字节/槽
     let total = 0
-    for (const k of args) total += is64 ? 8 : ARG_SIZE[k]
+    for (const s of args) total += specWidth(s, is64)
     if (is64 && args.length < X64_MIN_SLOTS) total = X64_MIN_SLOTS * 8
 
     const argFrame = new ArrayBuffer(total)
     const dv = new DataView(argFrame)
-    const held: ArrayBuffer[] = []  // buf_ptr/wchar 编码缓冲需存活到调用结束
+    const held: ArrayBuffer[] = []  // 指针布局编码缓冲需存活到调用结束
 
     let off = 0
     for (let i = 0; i < args.length; i++) {
-        const k = args[i]!
-        const v = a[i]
-        if (is64) {
-            const w = 8
-            writeSlot(dv, off, k, v, held)
-            off += w
-        } else {
-            const w = ARG_SIZE[k]
-            writeSlot(dv, off, k, v, held)
-            off += w
-        }
+        const s = args[i]!
+        if (s.t === 'ptr') writePtrSlot(dv, off, s.c, a[i], held)
+        else writeSlot(dv, off, s.k, a[i])
+        off += specWidth(s, is64)
     }
 
     const retBuf = new ArrayBuffer(8)
-    const retIsFp = ret === 'f32' || ret === 'f64'
+    const retIsFp = ret.t === 'val' && (ret.k === 'f32' || ret.k === 'f64')
     ffi.ffiCall(proc, argFrame, retBuf, retIsFp ? 1 : 0)
     return readRet(ret, retBuf)
 }
 
-// 把第 i 个参数写进 argFrame 槽位。指针系槽宽=指针宽，封送见 slotPtrArg。
-function writeSlot(dv: DataView, off: number, k: Kind, v: unknown, held: ArrayBuffer[]): void {
+// 指针布局参数：codec.encode 出指针整数，按指针宽写槽；编码缓冲由 held 保活。
+function writePtrSlot(dv: DataView, off: number, c: PtrCodec, v: unknown, held: ArrayBuffer[]): void {
+    const p = c.encode(v, held)
+    if (PTR_SIZE === 8) dv.setBigUint64(off, BigInt(p), true)
+    else dv.setUint32(off, p >>> 0, true)
+}
+
+// 把标量参数写进 argFrame 槽位。ptr 为裸地址直通；引用型参数见 writePtrSlot。
+function writeSlot(dv: DataView, off: number, k: Kind, v: unknown): void {
     const ptrW = PTR_SIZE
     switch (k) {
         case 'u8': dv.setUint32(off, Number(v) >>> 0, true); break
@@ -183,10 +259,8 @@ function writeSlot(dv: DataView, off: number, k: Kind, v: unknown, held: ArrayBu
         }
         case 'f32': dv.setFloat32(off, Number(v), true); break
         case 'f64': dv.setFloat64(off, Number(v), true); break
-        case 'ptr':
-        case 'buf_ptr':
-        case 'wchar_ptr': {
-            const p = slotPtrArg(k, v, held)
+        case 'ptr': {
+            const p = slotRawPtr(v)
             if (ptrW === 8) dv.setBigUint64(off, BigInt(p), true)
             else dv.setUint32(off, p >>> 0, true)
             break
@@ -195,37 +269,22 @@ function writeSlot(dv: DataView, off: number, k: Kind, v: unknown, held: ArrayBu
     }
 }
 
-// 指针系参数 → 指针整数。三 kind 各守各的类型，运行时严格校验：
-//   ptr       number→裸地址直通；ArrayBuffer/others 报错（提示 buf_ptr / ffi.bufferPtr）
-//   buf_ptr   ArrayBuffer→调用期 pin（held 撑到 ffiCall 返回）+ 取址；number/others 报错
-//   wchar_ptr string→utf-16le+'\0' 编码 + 调用期 pin；number/others 报错（裸地址请用 ptr）
-//   null/undefined→0（三者同）
-function slotPtrArg(k: 'ptr' | 'buf_ptr' | 'wchar_ptr', v: unknown, held: ArrayBuffer[]): number {
+// ptr 参数 → 裸地址整数；number 直通，null/undefined →0，其余报错并提示 <VOID>ptr。
+function slotRawPtr(v: unknown): number {
     if (v === null || v === undefined) return 0
-    if (k === 'ptr' && typeof v === 'number') return v
-    if (k === 'buf_ptr' && v instanceof ArrayBuffer) {
-        held.push(v)  // 调用期 pin：GC 在 ffiCall 返回前不可回收
-        return ffi.bufferPtr(v)
-    }
-    if (k === 'wchar_ptr' && typeof v === 'string') {
-        const enc = new TextEncoder('utf-16le').encode(v + '\0')
-        const buf = enc.buffer as ArrayBuffer
-        held.push(buf)
-        return ffi.bufferPtr(buf)
-    }
-    const expect = k === 'ptr' ? 'number|null'
-        : k === 'buf_ptr' ? 'ArrayBuffer|null' : 'string|null'
-    const hint = k === 'ptr'
-        ? '; use kind "buf_ptr" to pass an ArrayBuffer, or ffi.bufferPtr(buf)'
-        : '; use kind "ptr" to pass a raw address'
-    throw new Error(`ffi-bind: ${k} expects ${expect}${hint}, got ${typeof v}`)
+    if (typeof v === 'number') return v
+    throw new Error(`ffi-bind: ptr expects number|null, got ${typeof v}; use <VOID>ptr to pass an ArrayBuffer, or ffi.bufferPtr(buf)`)
 }
 
-// 从 retBuf 按返回类型解码。指针槽读指针宽；NULL→null；数值按声明宽度截断/扩展。
-function readRet(ret: Kind, retBuf: ArrayBuffer): unknown {
+// 从 retBuf 按返回类型解码。'ptr' 布局返回读指针宽、NULL→null；标量按声明宽度截断/扩展。
+function readRet(ret: RetSpec, retBuf: ArrayBuffer): unknown {
     const dv = new DataView(retBuf)
     const ptrW = PTR_SIZE
-    switch (ret) {
+    if (ret.t === 'ptr') {
+        const p = ptrW === 8 ? Number(dv.getBigUint64(0, true)) : dv.getUint32(0, true)
+        return p === 0 ? null : p
+    }
+    switch (ret.k) {
         case 'void': return undefined
         case 'u8': return dv.getUint32(0, true) & 0xFF
         case 'i8': { const b = dv.getUint8(0); return (b & 0x80) ? b - 0x100 : b }
@@ -244,25 +303,27 @@ function readRet(ret: Kind, retBuf: ArrayBuffer): unknown {
             return p === 0 ? null : p
         }
     }
-    throw new Error(`ffi-bind: unsupported return kind "${ret}"`)
+    throw new Error(`ffi-bind: unsupported return kind "${ret.k}"`)
 }
 
-export function bind<const S extends string>(dll: string, name: string, sig: S): (...args: _Args<S>) => _Ret<S> {
+export function bind<const S extends string, const L extends LayoutMap = {}>(
+    dll: string, name: string, sig: S, layouts?: L): (...args: _Args<S, L>) => _Ret<S> {
     const proc = win.GetProcAddress(loadDll(dll), name)
     if (!proc) throw new Error(`ffi-bind: proc "${name}" not found in ${dll}`)
-    return makeFn(proc, sig) as unknown as (...args: _Args<S>) => _Ret<S>
+    return makeFn(proc, sig, layouts) as unknown as (...args: _Args<S, L>) => _Ret<S>
 }
 
-export function bindLib<const M extends Record<string, string>>(dll: string, map: M):
-    { [K in keyof M]: (...args: _Args<M[K]>) => _Ret<M[K]> } {
+export function bindLib<const M extends Record<string, string>, const L extends LayoutMap = {}>(
+    dll: string, map: M, layouts?: L):
+    { [K in keyof M]: (...args: _Args<M[K], L>) => _Ret<M[K]> } {
     const out: Record<string, (...a: unknown[]) => unknown> = {}
     const h = loadDll(dll)
     for (const [name, sig] of Object.entries(map)) {
         const proc = win.GetProcAddress(h, name)
         if (!proc) throw new Error(`ffi-bind: proc "${name}" not found in ${dll}`)
-        out[name] = makeFn(proc, sig)
+        out[name] = makeFn(proc, sig, layouts)
     }
-    return out as { [K in keyof M]: (...args: _Args<M[K]>) => _Ret<M[K]> }
+    return out as { [K in keyof M]: (...args: _Args<M[K], L>) => _Ret<M[K]> }
 }
 
 /* ---- 闭包（回调）：JS 函数 → 可传给 Win32 API 的函数指针 ---- */
@@ -323,7 +384,7 @@ function dispatchClosure(args: Kind[], ret: Kind, fn: (...a: unknown[]) => unkno
         return                            // 结果槽保持 0
     }
     if (ret !== 'void') {
-        try { writeSlot(dv, 0, ret, r, []) } catch { /* 返回类型不合法：保持 0 */ }
+        try { writeSlot(dv, 0, ret, r) } catch { /* 返回类型不合法：保持 0 */ }
     }
 }
 
@@ -338,17 +399,20 @@ function dispatchClosure(args: Kind[], ret: Kind, fn: (...a: unknown[]) => unkno
 export function closure<S extends string>(sig: S, fn: (...args: _Args<S>) => _Ret<S>,
     opts?: { stdcall?: boolean }): { ptr: number; dispose(): void } {
     const { args, ret } = parseSig(sig)
-    for (const k of args) {
-        if (!CLOSURE_ARG_OK.has(k)) throw new Error(`ffi-bind: closure arg kind "${k}" not supported (BasicKind only)`)
-    }
-    if (!CLOSURE_RET_OK.has(ret)) throw new Error(`ffi-bind: closure return kind "${ret}" not supported (void|u8..u32|i8..i32|f32|f64|ptr)`)
+    const argKinds: Kind[] = args.map((s) => {
+        if (s.t === 'ptr') throw new Error(`ffi-bind: closure arg layout "<${s.c.name}>ptr" not supported (BasicKind only)`)
+        if (!CLOSURE_ARG_OK.has(s.k)) throw new Error(`ffi-bind: closure arg kind "${s.k}" not supported (BasicKind only)`)
+        return s.k
+    })
+    if (ret.t === 'ptr') throw new Error(`ffi-bind: closure return layout "<${ret.name}>ptr" not supported (BasicKind only)`)
+    if (!CLOSURE_RET_OK.has(ret.k)) throw new Error(`ffi-bind: closure return kind "${ret.k}" not supported (void|u8..u32|i8..i32|f32|f64|ptr)`)
     const is64 = os.arch === 'x64'
-    const argBytes = (opts?.stdcall === false || is64) ? 0 : args.reduce((s, k) => s + ARG_SIZE[k], 0)
-    const retKind = ret === 'f32' ? 1 : ret === 'f64' ? 2 : 0
+    const argBytes = (opts?.stdcall === false || is64) ? 0 : argKinds.reduce((s, k) => s + ARG_SIZE[k], 0)
+    const retKind = ret.k === 'f32' ? 1 : ret.k === 'f64' ? 2 : 0
     // per-closure wrapper：闭包捕获 args/ret/fn，C 侧只存它 + ctx；回调永远
     // 回到创建它的 context（无跨 context 全局、无 registry）。
     const wrapper = (frameBuf: ArrayBuffer, retBuf: ArrayBuffer): void => {
-        dispatchClosure(args, ret, fn as (...a: unknown[]) => unknown, frameBuf, retBuf)
+        dispatchClosure(argKinds, ret.k, fn as (...a: unknown[]) => unknown, frameBuf, retBuf)
     }
     const ptr = ffi.closureNew(argBytes, retKind, wrapper)
     let done = false

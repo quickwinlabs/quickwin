@@ -2,7 +2,7 @@ import * as os from 'os'
 import * as std from 'std'
 import * as ffi from 'ffi'
 import '../lib/text-codec.js'
-import { bind } from '../lib/ffi-bind.js'
+import { bind } from '../lib/ffi/bind.js'
 
 // worker 没有可观测的输出通道：绑定失败会静默中断 worker 脚本，主线程永远等不到消息。
 // 失败原因落盘 diag.log 以便定位（典型：DLL 位数与进程不匹配 -> ERROR_BAD_EXE_FORMAT 193）。
@@ -20,7 +20,7 @@ try {
     K = {
         createPipe: bind('kernel32.dll', 'CreatePipe', 'ptr ptr ptr u32 -> i32'),
         setHandleInformation: bind('kernel32.dll', 'SetHandleInformation', 'ptr u32 u32 -> i32'),
-        createProcessW: bind('kernel32.dll', 'CreateProcessW', 'wchar_ptr wchar_ptr ptr ptr i32 u32 ptr wchar_ptr ptr ptr -> i32'),
+        createProcessW: bind('kernel32.dll', 'CreateProcessW', '<WCHAR>ptr <WCHAR>ptr ptr ptr i32 u32 ptr <WCHAR>ptr ptr ptr -> i32'),
         waitForSingleObject: bind('kernel32.dll', 'WaitForSingleObject', 'ptr u32 -> u32'),
         getExitCodeProcess: bind('kernel32.dll', 'GetExitCodeProcess', 'ptr ptr -> i32'),
         readFile: bind('kernel32.dll', 'ReadFile', 'ptr ptr u32 ptr ptr -> i32'),
@@ -226,7 +226,7 @@ function gdi(): { u: any; g: any } {
             isIconic: bind('user32.dll', 'IsIconic', 'HWND -> BOOL'),
             getWindowTextW: bind('user32.dll', 'GetWindowTextW', 'HWND ptr u32 -> i32'),
             getClassNameW: bind('user32.dll', 'GetClassNameW', 'HWND ptr u32 -> i32'),
-            findWindowExW: bind('user32.dll', 'FindWindowExW', 'HWND HWND wchar_ptr wchar_ptr -> HWND'),
+            findWindowExW: bind('user32.dll', 'FindWindowExW', 'HWND HWND <WCHAR>ptr <WCHAR>ptr -> HWND'),
             // PrintWindow 第 4 参是 Windows 8.1+ 的 PW_* flags；XP/Win7 忽略之。
             // 多传一个参数在 __cdecl 下无害（调用者清栈），且在 8.1+ 上传 0 即普通行为。
             printWindow: bind('user32.dll', 'PrintWindow', 'HWND HDC i32 u32 -> BOOL'),
@@ -458,7 +458,7 @@ function readWide(p: number, nChars: number): string {
 }
 
 // 顶层窗口列表（不递归子控件）。用 FindWindowExW 链式遍历
-//（lib/ffi-bind.ts 的 closure() 已支持 EnumWindows 类回调，此处沿用既有实现）。
+//（lib/ffi/bind.ts 的 closure() 已支持 EnumWindows 类回调，此处沿用既有实现）。
 function listWindows(id: number): void {
     const { u } = gdi()
     const wb = zeroBuf(16)

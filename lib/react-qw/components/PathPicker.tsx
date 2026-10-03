@@ -1,15 +1,15 @@
 import { forwardRef, useState, useRef } from 'react'
 import * as gui from 'gui'
 import * as ffi from 'ffi'
-import { bind } from '../../ffi-bind.js'
+import { bind } from '../../ffi/bind.js'
 import { OPENFILENAMEW, BROWSEINFOW } from '../../win-common-structs.js'
 import type { WStyle } from '../jsx.d.ts'
 
 function makeBindings() {
   return {
-    GetOpenFileNameW: bind('comdlg32.dll', 'GetOpenFileNameW', 'buf_ptr -> u32'),
-    SHBrowseForFolderW: bind('shell32.dll', 'SHBrowseForFolderW', 'buf_ptr -> ptr'),
-    SHGetPathFromIDListW: bind('shell32.dll', 'SHGetPathFromIDListW', 'ptr buf_ptr -> u32'),
+    GetOpenFileNameW: bind('comdlg32.dll', 'GetOpenFileNameW', '<VOID>ptr -> u32'),
+    SHBrowseForFolderW: bind('shell32.dll', 'SHBrowseForFolderW', '<VOID>ptr -> ptr'),
+    SHGetPathFromIDListW: bind('shell32.dll', 'SHGetPathFromIDListW', 'ptr <VOID>ptr -> u32'),
     CoTaskMemFree: bind('ole32.dll', 'CoTaskMemFree', 'ptr -> void'),
   }
 }
@@ -56,7 +56,7 @@ function openFileDialog(
   if (multiple) flags |= 0x0200
   flags |= 0x80000
 
-  const ofn = OPENFILENAMEW.write({
+  const ofn = OPENFILENAMEW.encode({
     lStructSize: OPENFILENAMEW.size,
     hwndOwner: owner,
     hInstance: 0,
@@ -109,7 +109,7 @@ function openFolderDialog(owner: gui.HWND, title: string | undefined): string | 
 
   const titleWide = title ? strToWide(title) : null
 
-  const bi = BROWSEINFOW.write({
+  const bi = BROWSEINFOW.encode({
     hwndOwner: owner,
     pidlRoot: 0,
     pszDisplayName: 0,

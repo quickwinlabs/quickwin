@@ -19,7 +19,7 @@
 | **后续演进** | 把 ABI 复杂度移到 JS 侧（JS 用 `DataView` 预打包 `argFrame`）——**已落地**（§10） |
 
 **不做的事**（明确划界，避免范围蔓延）：
-- ❌ 不实现 `FFI_TYPE_STRUCT` 传参/返回（当前零使用；`ffi-struct.ts` 走纯 TS 布局 + `readByte/writeByte`，不经过 `ffiCall`）
+- ❌ 不实现 `FFI_TYPE_STRUCT` 传参/返回（当前零使用；`ffi/struct.ts` 走纯 TS 布局 + `readByte/writeByte`，不经过 `ffiCall`）
 - ❌ 不实现变参函数（`printf`/`wsprintfW` 等，当前零绑定；FFI_ARGS_RET_SEMANTICS.md §3 提到的变参 promotion 坑随之不需要处理）
 - ~~❌ 不实现 closure/回调~~ → **已自建落地**：`quickjs-ffi-closure.{h,c}` + `closure()`（wrapper 派发，无 libffi closure_alloc 依赖），EnumWindows/stdcall 与 qsort/cdecl 用例 + 双平台全绿；`listWindows()` 仍用 FindWindowExW 链式遍历
 - ❌ 不支持 bigint 精确传参（维持现状，`JS_ToInt64` 不走 BigInt）
@@ -35,14 +35,14 @@
 - **被绑定的函数共 31 个**，全部是 Win32 API + 3 个 CRT（`msvcrt!sqrt` / `msvcrt!atan2` / `msvcrt!lstrcmpW`）
 - **最大参数个数 = 10**（`CreateProcessW`）
 - **无变参函数**
-- **无 struct 传参**（`lib/ffi-struct.ts` 自算布局，用 `readByte`/`writeByte` 逐字节读写）
+- **无 struct 传参**（`lib/ffi/struct.ts` 自算布局，用 `readByte`/`writeByte` 逐字节读写）
 - **无 libffi 回调**（无 `ffi_closure_alloc` 调用点；回调功能由自建 `quickjs-ffi-closure` 提供，不经 libffi）
 
 参数签名样例（最高频形态）：
 ```
-'ptr wchar_ptr i32 ptr i32 -> i32'  5 参数（CloseHandle 类、GetClassNameW 类）
+'ptr <WCHAR>ptr i32 ptr i32 -> i32'  5 参数（CloseHandle 类、GetClassNameW 类）
 'ptr i32 i32 u32 f32 f32 -> i32'   6 参数（gdi32!AngleArc，f32）
-'wchar_ptr wchar_ptr ptr ptr i32 u32 ptr wchar_ptr ptr ptr -> i32'   10 参数（CreateProcessW）
+'<WCHAR>ptr <WCHAR>ptr ptr ptr i32 u32 ptr <WCHAR>ptr ptr ptr -> i32'   10 参数（CreateProcessW）
 ```
 
 ### 1.2 构建链耦合（`Makefile`，9 处）
@@ -584,7 +584,7 @@ $(OBJ_DIR)/%.o: %.S | $(WOLFSSL_LIB_STATIC)
 | **整浮混合** | `(f64, i32)` / `(f64, ptr)` | 验证「同槽双读」后 GPR/XMM 各自就位，且不互相污染 | `ldexp`(f64,i32)、`frexp`/`modf`(f64,ptr)、`AngleArc`(f32×2) ✅ |
 | **前 4 全浮点** | `(f64 f64 f64 f64 -> f64)` | 只走 XMM0-3，GPR 全空 | ⚠️ 无三平台通用 4-double CRT 函数；由 `atan2`(XMM0-1) + `AngleArc f32×2` 部分覆盖，缺口已记录 |
 | **前 4 全整数/混整** | 4 个参数填满 RCX-R9 | 只走 GPR | `GetLocaleInfoA(u32 u32 ptr i32)` ✅（第 4 参在 R9） |
-| **负数返回** | `sint32/16/8` 返回负值；`sint64` 负值 | 解码在 `lib/ffi-bind.ts` 的 `readRet()`（旧 C 截断逻辑已迁走） | `lstrcmpW -> i32/i16/i8` 均 <0；`InterlockedIncrement64(-2) -> i64 = -1` ✅ |
+| **负数返回** | `sint32/16/8` 返回负值；`sint64` 负值 | 解码在 `lib/ffi/bind.ts` 的 `readRet()`（旧 C 截断逻辑已迁走） | `lstrcmpW -> i32/i16/i8` 均 <0；`InterlockedIncrement64(-2) -> i64 = -1` ✅ |
 | **窄整型传参** | `u8/i8/u16/i16` 传负值/大值 | 验证槽内低 N 字节按 2 的补码填、高位语义正确 | `abs(i8 -128/-5)`、`abs(u8 200)`、`abs(i16 -300)`、`abs(u16 60000)` ✅ |
 | **指针 NULL** | `ptr` 参数传 `null` / `undefined` | `slotPtr()` 归一化为 0 | `GetDC(null/undefined)` 非空、`IsWindow(null)=FALSE` ✅ |
 | **大 64 位** | `i64/u64` 传 `2^32+1` 与全 1 | 验证 8 字节槽（ia32 占两槽） | `InterlockedExchange64` 传 `2^32+1`/`-1` 后取回原值 ✅ |
@@ -731,7 +731,7 @@ $(OBJ_DIR)/%.o: %.S | $(WOLFSSL_LIB_STATIC)
 1. ✅ `LIBFFI_PRINCIPLES.md` 标题下加横幅「已不参与构建，源码仅作 ABI 参考保留」，
    文末新增「9. 手写替代实现（本项目现状）」：文件职责表 + libffi 概念到本地实现的对应关系。
 2. ✅ `FFI_ARGS_RET_SEMANTICS.md` 全篇改为通用 ABI 描述：传参/返回值代码指向
-   `lib/ffi-bind.ts`（`ARG_SIZE`/`writeSlot`/`readRet`），历史 `FFI_TYPE_*` 教训保留但
+   `lib/ffi/bind.ts`（`ARG_SIZE`/`writeSlot`/`readRet`），历史 `FFI_TYPE_*` 教训保留但
    修复描述改为 `'ptr'`；测试锚点补 `test_ffi_abi.ts`；win7 表述改为 xp/win11。
 3. ✅ README / `README.en.md` / `docs/quickwin-intro.md` 的 FFI 条目改为「内置汇编调用桩 + `bind()`」；
    `DEVELOPMENT_WORKFLOW.md` 去掉 deps 产物与构建库清单里的 `libffi.a`；
@@ -831,7 +831,7 @@ $(OBJ_DIR)/%.o: %.S | $(WOLFSSL_LIB_STATIC)
 > 起因：实施过程中发现 C 侧的参数打包逻辑（§3.4.1 的 VLA + `memcpy` 逐槽）虽然只有
 > 几十行，但它是整条链路里**唯一需要同时理解「类型宽度表」和「平台 ABI」**的地方，
 > 也是唯一一处出错时会静默传错值的热路径。把它下沉到 JS 后，C 侧退化成纯粹的
-> 「memcpy + call」，ABI 知识全部集中在 `lib/ffi-bind.ts`（TS，可读性远高于 C）。
+> 「memcpy + call」，ABI 知识全部集中在 `lib/ffi/bind.ts`（TS，可读性远高于 C）。
 
 ### 10.1 目标接口
 
@@ -860,7 +860,7 @@ static JSValue js_ffi_call(JSContext *ctx, JSValueConst this_val,
 | 项 | 说明 |
 |---|---|
 | C 侧简化 | `quickjs-ffi.c` 删掉 VLA + 逐槽 `memcpy`；只保留 `memcpy(out, argFrame, n)` + 一次 `call` |
-| ABI 知识收敛 | 宽度表 / 槽对齐 / string 编码全部只在 `lib/ffi-bind.ts` 一处 |
+| ABI 知识收敛 | 宽度表 / 槽对齐 / string 编码全部只在 `lib/ffi/bind.ts` 一处 |
 | 可测试性 | 参数打包变成纯 TS 函数，可直接单测（当前 C 侧打包只能靠真实 Win32 调用间接验证） |
 | 调试成本 | 出错时可以在 JS 侧 `DataView` dump 整个 `argFrame`，而不用 gdb 看 C 的栈 |
 
@@ -875,7 +875,7 @@ static JSValue js_ffi_call(JSContext *ctx, JSValueConst this_val,
    或者后续给 stub 增加「返回宽度」参数。**这一点在实现时必须显式校验，不能靠约定。**
 3. **`argFrame` 布局必须写死在 TS 里并加注释**，且与 `quickjs-ffi-type.h` 的宽度表
    做一致性断言（可在构建期或启动期 `assert`）。
-4. **string / ArrayBuffer 参数的编码保持不变** —— 那是 `lib/ffi-bind.ts` 现有职责，
+4. **string / ArrayBuffer 参数的编码保持不变** —— 那是 `lib/ffi/bind.ts` 现有职责，
    本次重构只是把编码结果从 C 的 VLA 搬到 TS 的 `DataView`。
 
 ### 10.4 struct by-value（尚未设计）
@@ -895,12 +895,12 @@ static JSValue js_ffi_call(JSContext *ctx, JSValueConst this_val,
   `FillConsoleOutputCharacter(A/W)` / `FillConsoleOutputAttribute`（`COORD`，4B）。
 - 返回按值的真例子：`COORD GetLargestConsoleWindowSize(HANDLE)` —— Win32 下 ≤8B struct
   走 `EAX(:EDX)`，恰落在现有 `EAX:EDX → out` 通路上，不需要 hidden pointer。
-- 绝大多数 API 传 `RECT*`/`MSG*` 等**指针** → 走现有 `ptr` + `ffi-struct.ts` 已覆盖；
+- 绝大多数 API 传 `RECT*`/`MSG*` 等**指针** → 走现有 `ptr` + `ffi/struct.ts` 已覆盖；
   项目与测试中按值 struct 用量为零（`rg WindowFromPoint|COORD|POINT` 在 test/、lib/ 无匹配）。
 
 **关键结论：≤8B struct by-value 在 ABI 上与「按位打包的 u32/u64」等价，现有 FFI 可
 bit-cast 零改动绑定。** cdecl 就是把 struct 字节压栈；`writeSlot` 的
-`setUint32/setBigUint64(…, true)` 写的正是同一段 LE 内存镜像（`lib/ffi-bind.ts`）。
+`setUint32/setBigUint64(…, true)` 写的正是同一段 LE 内存镜像（`lib/ffi/bind.ts`）。
 x64 ≤8B 同理（单槽整块 INTEGER 或 SSE，桩本来就双读 GPR+XMM）。
 分档注意：
 - 9–16B（MSVC 拆两个寄存器块）在 x64 上**需实测**确认 mingw caller 与 MSVC callee 分类一致；
@@ -929,18 +929,18 @@ x64 ≤8B 同理（单槽整块 INTEGER 或 SSE，桩本来就双读 GPR+XMM）�
   - `retIsFp` 恒传递（ia32 需要避免整数返回时碰空 x87；x64 无此问题但接口一致）
   - 显式校验 `af_size <= 64*8`、`retBuf >= 8`（§10.3 #2）
   - 上限与 `retBuf >= 8` 错误信息统一为 `ffiCall:` 前缀
-- **JS 侧 `lib/ffi-bind.ts`**：`makeFn` 改走 `callPacked()`——
+- **JS 侧 `lib/ffi/bind.ts`**：`makeFn` 改走 `callPacked()`——
   - `ARG_SIZE[]` 宽度表（与 `quickjs-ffi-type.h` 的 `qwin_ffi_arg_size[]` 逐项一致）
   - `DataView` 打包 `argFrame`；x64 补齐到 ≥4 槽（`X64_MIN_SLOTS`，对应桩无条件双读）
   - `retBuf` 恒 8 字节；`readRet()` 按返回类型从 retBuf 解码（含窄整型符号扩展、ptr NULL→null）
-  - wchar_ptr 编码逻辑原样保留（utf-16le + '\0'，`held[]` 保活）
+  - <WCHAR>ptr 编码逻辑原样保留（utf-16le + '\0'，`held[]` 保活）
 - **删除旧 API、统一命名**：
   - 旧 `js_ffi_call`（C 侧数组打包 + 返回解码，原 `ffiCall`）整体删除；新导出改名
     `ffiCallRaw` → `ffiCall`，**`ffiCall` 现在只有 4 参预打包签名**。
   - C 侧 `ffi_consts[]`（`FFI_TYPE_*` 数值导出）删除——JS 侧不再依赖这些数值，
     `quickwin.d.ts` 的 `FfiType`/`TypeArg`/`TypeArgs`/`FFI_TYPE_*` 声明同步移除。
   - `quickjs-ffi-type.h` 不再被 include，仅保留为 ABI 文档参照（JS `ARG_SIZE[]` 的对照源）。
-  - `lib/ffi-bind.ts` 的 `KIND_TO_FFI` 表换成 `KIND_SET`（仅做 kind 合法性校验）。
+  - `lib/ffi/bind.ts` 的 `KIND_TO_FFI` 表换成 `KIND_SET`（仅做 kind 合法性校验）。
 - **调用方全部迁移到 `bind()`/`bindLib()`**：
   - `test/test_ffi.ts`（`EnumPrintersW`、`GetDC`）
   - `examples/setres.ts`、`examples/pdf_preview2.ts`、`examples/PdfCanvas.tsx`、`examples/pdf_viewer.tsx`
@@ -951,5 +951,5 @@ x64 ≤8B 同理（单槽整块 INTEGER 或 SSE，桩本来就双读 GPR+XMM）�
 - Win11 x64：`ffi` 过滤组 **88/88**、全量 **557/557**
 - XP ia32：全量 **557/557**
 - `make js` / `npx tsc` 通过；`make cc64` / `make cc32` 通过（仅原有 `-Wunused-parameter` 警告）
-- 差分探针（两架构）：0 参/1 参/2 参 wchar_ptr/5 参 SetRect/f64 sqrt/atan2/f32+i32 混合/
+- 差分探针（两架构）：0 参/1 参/2 参 <WCHAR>ptr/5 参 SetRect/f64 sqrt/atan2/f32+i32 混合/
   6 参 AngleArc/ptr 返回/u32 全过

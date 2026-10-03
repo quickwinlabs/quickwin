@@ -1,6 +1,6 @@
 import * as os from 'os'
 import * as ffi from 'ffi'
-import { struct } from '../ffi-struct.js'
+import { struct } from '../ffi/struct.js'
 
 // 架构相关常量：32 位(ia32)/64 位(x64) Windows ABI
 export const IS64 = os.arch === 'x64'

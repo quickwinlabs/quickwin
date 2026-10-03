@@ -5,7 +5,7 @@ import * as win from 'win'
 import * as ffi from 'ffi'
 import type { Document, Page, Pixmap } from '../vendor/mupdf-wasm/mupdf.js'
 import { assertNonNullable } from '../lib/assert.js'
-import { bind } from '../lib/ffi-bind.js'
+import { bind } from '../lib/ffi/bind.js'
 import { OPENFILENAMEW } from '../lib/win-common-structs.js'
 
 const _user32 = win.LoadLibrary('user32.dll')
@@ -15,8 +15,8 @@ const _comdlg32 = win.LoadLibrary('comdlg32.dll')
 type MuPdf = typeof import('../vendor/mupdf-wasm/mupdf.js')
 if (!(_user32 && _gdi32 && _comdlg32)) std.exit(0)
 
-const GetOpenFileNameW = bind('comdlg32.dll', 'GetOpenFileNameW', 'buf_ptr -> u32')
-const SetDIBitsToDevice = bind('gdi32.dll', 'SetDIBitsToDevice', 'ptr i32 i32 u32 u32 i32 i32 u32 u32 buf_ptr buf_ptr u32 -> i32')
+const GetOpenFileNameW = bind('comdlg32.dll', 'GetOpenFileNameW', '<VOID>ptr -> u32')
+const SetDIBitsToDevice = bind('gdi32.dll', 'SetDIBitsToDevice', 'ptr i32 i32 u32 u32 i32 i32 u32 u32 <VOID>ptr <VOID>ptr u32 -> i32')
 const GetDC = bind('user32.dll', 'GetDC', 'ptr -> ptr')
 const ReleaseDC = bind('user32.dll', 'ReleaseDC', 'ptr ptr -> i32')
 const PatBlt = bind('gdi32.dll', 'PatBlt', 'ptr i32 i32 i32 i32 u32 -> u32')
@@ -122,7 +122,7 @@ function openPdfFileDialog(): string | null {
     assertNonNullable(hwndMain)
     const fileBuf = new ArrayBuffer(260 * 2)
     const filterWide = strToWide('PDF Files\0*.pdf\0All Files\0*.*\0\0')
-    const ofn: ArrayBuffer & { __keep?: ArrayBuffer[] } = OPENFILENAMEW.write({
+    const ofn: ArrayBuffer & { __keep?: ArrayBuffer[] } = OPENFILENAMEW.encode({
         lStructSize: OPENFILENAMEW.size,
         hwndOwner: hwndMain,
         hInstance: 0,

@@ -2,7 +2,7 @@ import * as std from 'std'
 import * as win from 'win'
 import * as ffi from 'ffi'
 import * as os from 'os'
-import { bind, bindLib } from '../lib/ffi-bind.js'
+import { bind, bindLib } from '../lib/ffi/bind.js'
 import { Tester } from './test_helper.js'
 
 const MAX_WCHARS = 4096
@@ -83,7 +83,7 @@ export const suite = {
         if (!enumPrinters) return
 
         const { EnumPrintersW } = bindLib('winspool.drv', {
-            EnumPrintersW: 'u32 ptr u32 buf_ptr u32 buf_ptr buf_ptr -> i32',
+            EnumPrintersW: 'u32 ptr u32 <VOID>ptr u32 <VOID>ptr <VOID>ptr -> i32',
         })
 
         const flags = 0x06

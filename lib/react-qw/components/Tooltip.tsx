@@ -1,7 +1,7 @@
 import { useRef, useEffect, Children, cloneElement } from 'react'
 import * as gui from 'gui'
 import * as ffi from 'ffi'
-import { struct } from '../../ffi-struct.js'
+import { struct } from '../../ffi/struct.js'
 
 export interface TooltipProps {
   text: string
@@ -25,7 +25,7 @@ function buildToolInfo(hTarget: number, text: string): ArrayBuffer {
   const size = TTTOOLINFOW.size
   const textLen = (text.length + 1) * 2
   const buf = new ArrayBuffer(size + textLen)
-  TTTOOLINFOW.write({
+  TTTOOLINFOW.encode({
     cbSize: size,
     uFlags: gui.TtToolFlag.SUBCLASS | gui.TtToolFlag.IDISHWND,
     hwnd: hTarget,

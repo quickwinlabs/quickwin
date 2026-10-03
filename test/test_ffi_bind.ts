@@ -3,7 +3,8 @@ import * as gui from 'gui'
 import * as ffi from 'ffi'
 import * as os from 'os'
 import { Tester } from './test_helper.js'
-import { bind, bindLib, closure } from '../lib/ffi-bind.js'
+import { bind, bindLib, closure } from '../lib/ffi/bind.js'
+import { struct, structFromPtr } from '../lib/ffi/struct.js'
 
 // 与 callPacked 相同的槽宽布局，供「ffiCall 直驱 closure」打包
 function packArgs(kinds: string[], vals: (number | bigint)[]): ArrayBuffer {
@@ -51,6 +52,18 @@ function bufToString(buf: ArrayBuffer): string {
     return s
 }
 
+// 读取 native 指针指向的 C 字符串（\0 结尾）；null → 空串
+function readCStr(p: number | null): string {
+    if (p === null) return ''
+    let s = ''
+    for (let i = 0; ; i++) {
+        const b = ffi.readByte(p + i)
+        if (b === 0) break
+        s += String.fromCharCode(b)
+    }
+    return s
+}
+
 export const suite = {
     name: 'ffi-bind',
     run: (t: Tester) => {
@@ -59,9 +72,9 @@ export const suite = {
         const dc = getDC(0)
         t.checkTrue('bind GetDC(NULL) returns screen DC', !!dc)
 
-        t.section('bindLib batch with wchar_ptr auto-encode')
+        t.section('bindLib batch with <WCHAR>ptr auto-encode')
         const user32 = bindLib('user32.dll', {
-            DrawTextW: 'ptr wchar_ptr i32 buf_ptr i32 -> i32',
+            DrawTextW: 'ptr <WCHAR>ptr i32 <VOID>ptr i32 -> i32',
             ReleaseDC: 'ptr ptr -> i32',
         })
         const rect = new ArrayBuffer(16)
@@ -74,8 +87,8 @@ export const suite = {
         if (dc) user32.ReleaseDC(0, dc)
 
         t.section('signedness read-back: i32 vs u32')
-        const lstrcmpI = bind('kernel32.dll', 'lstrcmpW', 'wchar_ptr wchar_ptr -> i32')
-        const lstrcmpU = bind('kernel32.dll', 'lstrcmpW', 'wchar_ptr wchar_ptr -> u32')
+        const lstrcmpI = bind('kernel32.dll', 'lstrcmpW', '<WCHAR>ptr <WCHAR>ptr -> i32')
+        const lstrcmpU = bind('kernel32.dll', 'lstrcmpW', '<WCHAR>ptr <WCHAR>ptr -> u32')
         const setLastError = bind('kernel32.dll', 'SetLastError', 'u32 -> void')
         const getErrU = bind('kernel32.dll', 'GetLastError', ' -> u32')
         const getErrI = bind('kernel32.dll', 'GetLastError', ' -> i32')
@@ -115,14 +128,14 @@ export const suite = {
             releaseDCF(0, hdcF)
         }
 
-        t.section('kind strictness: ptr / buf_ptr / wchar_ptr')
-        const setRectB = bind('user32.dll', 'SetRect', 'buf_ptr i32 i32 i32 i32 -> i32')
+        t.section('kind strictness: ptr / <VOID>ptr / <WCHAR>ptr')
+        const setRectB = bind('user32.dll', 'SetRect', '<VOID>ptr i32 i32 i32 i32 -> i32')
         const rb = new ArrayBuffer(16)
         const okR = setRectB(rb, 1, 2, 3, 4)
-        t.checkTrue('buf_ptr accepts ArrayBuffer', okR !== 0)
+        t.checkTrue('<VOID>ptr accepts ArrayBuffer', okR !== 0)
         const rbv = new DataView(rb)
-        t.check('buf_ptr writes through (left)', 1, rbv.getInt32(0, true))
-        t.check('buf_ptr writes through (bottom)', 4, rbv.getInt32(12, true))
+        t.check('<VOID>ptr writes through (left)', 1, rbv.getInt32(0, true))
+        t.check('<VOID>ptr writes through (bottom)', 4, rbv.getInt32(12, true))
 
         let errPtr = ''
         try {
@@ -130,7 +143,7 @@ export const suite = {
         } catch (e) {
             errPtr = String(e)
         }
-        t.checkTrue('ptr rejects ArrayBuffer, hint mentions buf_ptr', errPtr.includes('buf_ptr'))
+        t.checkTrue('ptr rejects ArrayBuffer, hint mentions <VOID>ptr', errPtr.includes('<VOID>ptr'))
 
         let errBuf = ''
         try {
@@ -138,7 +151,7 @@ export const suite = {
         } catch (e) {
             errBuf = String(e)
         }
-        t.checkTrue('buf_ptr rejects number, hint mentions raw address', errBuf.includes('raw address'))
+        t.checkTrue('<VOID>ptr rejects number, hint mentions raw address', errBuf.includes('raw address'))
 
         let errWstr = ''
         try {
@@ -146,25 +159,25 @@ export const suite = {
         } catch (e) {
             errWstr = String(e)
         }
-        t.checkTrue('wchar_ptr rejects number, expects string|null', errWstr.includes('string|null'))
+        t.checkTrue('<WCHAR>ptr rejects number, expects string|null', errWstr.includes('string|null'))
 
         t.section('bigint 64-bit kinds: u64n / i64n')
         // 用 msvcrt 的 64 位字符串转换：win11(x64) kernel32 不导出 Interlocked*64
         //（编译器 intrinsic），msvcrt.dll 三平台必有。
-        const strtoui64 = bind('msvcrt.dll', '_strtoui64', 'buf_ptr buf_ptr i32 -> u64n')
+        const strtoui64 = bind('msvcrt.dll', '_strtoui64', '<VOID>ptr <VOID>ptr i32 -> u64n')
         const u64Max = strtoui64(strToBuf('18446744073709551615'), null, 10)
         t.check('u64n return 2^64-1', 18446744073709551615n, u64Max)
         const u64Prec = strtoui64(strToBuf('9007199254740993'), null, 10)
         t.check('u64n return 2^53+1', 9007199254740993n, u64Prec)
 
-        const i64toa = bind('msvcrt.dll', '_i64toa', 'i64n buf_ptr i32 -> ptr')
+        const i64toa = bind('msvcrt.dll', '_i64toa', 'i64n <VOID>ptr i32 -> ptr')
         const outI = new ArrayBuffer(64)
         i64toa(-9223372036854775808n, outI, 10)
         t.check('i64n arg -2^63 toa', '-9223372036854775808', bufToString(outI))
         i64toa(9007199254740993n, outI, 10)
         t.check('i64n arg 2^53+1 toa', '9007199254740993', bufToString(outI))
 
-        const ui64toa = bind('msvcrt.dll', '_ui64toa', 'u64n buf_ptr i32 -> ptr')
+        const ui64toa = bind('msvcrt.dll', '_ui64toa', 'u64n <VOID>ptr i32 -> ptr')
         const outU = new ArrayBuffer(64)
         ui64toa(18446744073709551615n, outU, 10)
         t.check('u64n arg 2^64-1 toa', '18446744073709551615', bufToString(outU))
@@ -176,6 +189,90 @@ export const suite = {
             errBig = String(e)
         }
         t.checkTrue('i64n rejects number', errBig.includes('bigint'))
+
+        t.section('struct layout <NAME>ptr (explicit layouts; param encode + branded ptr return)')
+        // 内建 <VOID>ptr/<WCHAR>ptr 无需 layouts；用户 struct 由 ffi-struct 的
+        // struct() 定义、显式传入（import 谁传谁，未用布局可被 tree-shake）。
+        const LOGBRUSH = struct({ lbStyle: 'u32', lbColor: 'u32', lbHatch: 'ptr' })
+        const deleteObject = bind('gdi32.dll', 'DeleteObject', 'ptr -> i32')
+        const createBrushIndirect = bind('gdi32.dll', 'CreateBrushIndirect', '<LOGBRUSH>ptr -> ptr', { LOGBRUSH })
+        const brush = createBrushIndirect({ lbStyle: 0, lbColor: 0x00ff0000, lbHatch: 0 })
+        t.checkTrue('CreateBrushIndirect(<LOGBRUSH>ptr) returns HBRUSH', !!brush)
+        if (brush) t.checkTrue('DeleteObject(HBRUSH) succeeds', deleteObject(brush) !== 0)
+
+        // 嵌套 struct（LOGPEN 内含 POINT）验证 ShapeOf 递归 + 子结构写入
+        const POINT = struct({ x: 'i32', y: 'i32' })
+        const LOGPEN = struct({ lopnStyle: 'u32', lopnWidth: POINT, lopnColor: 'u32' })
+        const createPenIndirect = bind('gdi32.dll', 'CreatePenIndirect', '<LOGPEN>ptr -> ptr', { LOGPEN })
+        const pen = createPenIndirect({ lopnStyle: 0, lopnWidth: { x: 1, y: 1 }, lopnColor: 0x000000ff })
+        t.checkTrue('CreatePenIndirect(<LOGPEN>ptr nested) returns HPEN', !!pen)
+        if (pen) t.checkTrue('DeleteObject(HPEN) succeeds', deleteObject(pen) !== 0)
+
+        // C typedef LPCWSTR 归一化到 '<WCHAR>ptr'
+        const lstrcmpAlias = bind('kernel32.dll', 'lstrcmpW', 'LPCWSTR LPCWSTR -> i32')
+        const rAlias = lstrcmpAlias('a', 'b')
+        t.checkTrue('LPCWSTR alias normalizes to <WCHAR>ptr', rAlias < 0)
+
+        // 未知布局：延迟解析 —— bind 期不再抛；仅当真的收到「结构形」实参时才报错，
+        // 并列出内建 + 已传入的可选项。纯 number/null 透传不需要布局。
+        const deleteObjectLazy = bind('gdi32.dll', 'DeleteObject', '<NOPE>ptr -> i32')
+        t.checkTrue('unknown layout <NOPE>ptr bound lazily (no bind-time throw)', typeof deleteObjectLazy === 'function')
+        t.checkTrue('<NOPE>ptr accepts null without layout (passthrough)', deleteObjectLazy(null) === 0)
+        let errLayout = ''
+        const nopeBrush = bind('gdi32.dll', 'CreateBrushIndirect', '<NOPE>ptr -> ptr') as unknown as (v: unknown) => number
+        try {
+            nopeBrush({})
+        } catch (e) {
+            errLayout = String(e)
+        }
+        t.checkTrue('unknown layout <NOPE>ptr rejected on struct-shape call', errLayout.includes('unknown layout') && errLayout.includes('VOID'))
+
+        // out 参数：命名 struct 的 alloc() 句柄，.ptr 即 StructPtr<'RECT'>，直接喂 <RECT>ptr。
+        const RECT = struct('RECT', { left: 'i32', top: 'i32', right: 'i32', bottom: 'i32' })
+        const getWindowRect = bind('user32.dll', 'GetWindowRect', 'ptr <RECT>ptr -> i32', { RECT })
+        const getDesktopWindow = bind('user32.dll', 'GetDesktopWindow', ' -> ptr')
+        const desktop = getDesktopWindow()
+        const rectOut = RECT.alloc()
+        t.checkTrue('GetWindowRect(hwnd, RECT.alloc().ptr) succeeds', getWindowRect(desktop, rectOut.ptr) !== 0)
+        const rectV = rectOut.decode()
+        t.checkTrue('alloc() handle read() decodes out-param', rectV.right > rectV.left && rectV.bottom > rectV.top)
+
+        t.section('struct ptr return + branded passthrough')
+        // 返回位 <NAME>ptr → StructPtr<NAME>（number|null，只读指针，品牌在类型层）。
+        // 该品牌指针可直接喂给另一函数的 <NAME>ptr 形参（裸地址透传，不重编码）。
+        // 链条：localtime(&t) 返回 struct tm* → asctime(tm*) 消费之。
+        const TM = struct({
+            tm_sec: 'i32', tm_min: 'i32', tm_hour: 'i32',
+            tm_mday: 'i32', tm_mon: 'i32', tm_year: 'i32',
+            tm_wday: 'i32', tm_yday: 'i32', tm_isdst: 'i32',
+        })
+        const localtime = bind('msvcrt.dll', 'localtime', '<VOID>ptr -> <TM>ptr')
+        const asctime = bind('msvcrt.dll', 'asctime', '<TM>ptr -> ptr', { TM })
+        const tbuf = new ArrayBuffer(8)   // time_t=0（32/64 位 time_t 都读起始字节）
+        const tm = localtime(tbuf)
+        t.checkTrue('localtime -> <TM>ptr returns branded pointer', tm !== null)
+        const asc = readCStr(asctime(tm))
+        std.printf('  asctime(localtime(0)) = %s', asc.replace(/\n$/, ''))
+        t.checkTrue('asctime(<TM>ptr) accepts branded pointer (passthrough)', asc.includes(':') && asc.length >= 20)
+
+        // structFromPtr：不消费只读指针，而是显式拷贝+解码 native 拥有的 <TM>ptr。
+        const tmDecoded = structFromPtr(TM, tm)
+        t.checkTrue('structFromPtr(<TM>ptr) decodes native-owned struct', tmDecoded !== null && tmDecoded.tm_sec === 0)
+
+        // 编译期：裸 number 不是 StructPtr<'TM'>，被类型层拒绝（此处永不执行）
+        if (false) {
+            // @ts-expect-error plain number is not assignable to StructPtr<'TM'>
+            asctime(123)
+        }
+
+        // 内建 <VOID>ptr/<WCHAR>ptr 不可作返回类型
+        let errRet = ''
+        try {
+            bind('kernel32.dll', 'GetLastError', ' -> <VOID>ptr')
+        } catch (e) {
+            errRet = String(e)
+        }
+        t.checkTrue('<VOID>ptr rejected as return type', errRet.includes('cannot be a return type'))
 
         t.section('closures: direct ABI drive via ffiCall')
         const addClos = closure('i32 i32 -> i32', (a, b) => a + b)
@@ -215,7 +312,7 @@ export const suite = {
         enumClos.dispose()
 
         t.section('closures: qsort (cdecl, msvcrt)')
-        const qsort = bind('msvcrt.dll', 'qsort', 'buf_ptr ptr ptr ptr -> void')
+        const qsort = bind('msvcrt.dll', 'qsort', '<VOID>ptr ptr ptr ptr -> void')
         const arr = new Uint32Array([5, 3, 8, 1])
         const readI32 = (p: number): number =>
             (ffi.readByte(p) | (ffi.readByte(p + 1) << 8) | (ffi.readByte(p + 2) << 16) | (ffi.readByte(p + 3) << 24))

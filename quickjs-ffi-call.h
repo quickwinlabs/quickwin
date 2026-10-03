@@ -6,7 +6,7 @@
 /* 内建 FFI 调用桩：取代历史上第三方 FFI 后端的 prep_cif + call。
  *
  * 分层约定（.agents/REMOVE_LIBFFI_PLAN.md §3.2 / §10）：
- *   - 类型分类、宽度计算、参数打包、返回值读回、错误检查 全在 JS 侧（lib/ffi-bind.ts）
+ *   - 类型分类、宽度计算、参数打包、返回值读回、错误检查 全在 JS 侧（lib/ffi/bind.ts）
  *   - C 侧（quickjs-ffi.c）只把 JS 预打包的 argFrame 转交桩、取回原始返回
  *   - asm 侧只做「按 ABI 搬运参数 + call + 取回原始返回值」
  * 因此 asm 不需要知道任何类型信息，两个架构的 .S 共用同一套内部调用约定。

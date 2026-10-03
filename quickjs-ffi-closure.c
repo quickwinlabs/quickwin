@@ -4,7 +4,7 @@
  * 分层（见 quickjs-ffi-closure.h）：
  *   - 每闭包一个 VirtualAlloc 的可执行块（自包含）：trampoline + 元数据 + wrapper + ctx
  *   - 汇编派发器在 quickjs-ffi-closure-{win64,ia32}.S
- *   - JS 侧（lib/ffi-bind.ts closure()）为每个闭包包一个 wrapper：闭包捕获
+ *   - JS 侧（lib/ffi/bind.ts closure()）为每个闭包包一个 wrapper：闭包捕获
  *     args/ret/fn，负责解码 frame + 调用户回调 + 编码返回；C 侧只存 wrapper。
  *
  * 块布局（128 字节）：

@@ -2,8 +2,8 @@ import { forwardRef, useRef, useEffect, type ForwardedRef } from 'react'
 import * as gui from 'gui'
 import { LvItemFlag, LvItemState, LvColumnMask } from 'gui'
 import * as ffi from 'ffi'
-import { bind } from '../../ffi-bind.js'
-import { struct } from '../../ffi-struct.js'
+import { bind } from '../../ffi/bind.js'
+import { struct } from '../../ffi/struct.js'
 import { NMHDR, PTR_SIZE, nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
 
@@ -114,9 +114,9 @@ function ensureGdi(): GdiFns | null {
   if (gdiFns) return gdiFns
   try {
     gdiFns = {
-      createFontIndirectW: bind('gdi32.dll', 'CreateFontIndirectW', 'buf_ptr -> ptr'),
+      createFontIndirectW: bind('gdi32.dll', 'CreateFontIndirectW', '<VOID>ptr -> ptr'),
       selectObjectFn: bind('gdi32.dll', 'SelectObject', 'ptr ptr -> ptr'),
-      getObjectW: bind('gdi32.dll', 'GetObjectW', 'ptr i32 buf_ptr -> i32'),
+      getObjectW: bind('gdi32.dll', 'GetObjectW', 'ptr i32 <VOID>ptr -> i32'),
     }
   } catch {
     return null
@@ -137,7 +137,7 @@ function ensureUser32(): User32Fns | null {
     user32Fns = {
       loadCursorW: bind('user32.dll', 'LoadCursorW', 'ptr ptr -> ptr'),
       setCursorFn: bind('user32.dll', 'SetCursor', 'ptr -> ptr'),
-      screenToClient: bind('user32.dll', 'ScreenToClient', 'ptr buf_ptr -> i32'),
+      screenToClient: bind('user32.dll', 'ScreenToClient', 'ptr <VOID>ptr -> i32'),
     }
   } catch {
     return null
@@ -252,7 +252,7 @@ function resolveCellStyle<D>(columns: Column<D>[], data: D[], row: number, colIn
 
 function makeLVItem(i: number, sub: number, text: string, image?: number): ArrayBuffer {
   const textBuf = textToUtf16(text)
-  const b: ArrayBuffer & { __textBuf?: ArrayBuffer } = LVITEMW.write({
+  const b: ArrayBuffer & { __textBuf?: ArrayBuffer } = LVITEMW.encode({
     mask: LvItemFlag.TEXT | (image !== undefined ? LvItemFlag.IMAGE : 0),
     iItem: i,
     iSubItem: sub,
@@ -322,7 +322,7 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
     const n = columns.length
     for (let j = 0; j < n; j++) {
       const titleBuf = textToUtf16(columns[j]!.name)
-      const lvc: ArrayBuffer & { __titleBuf?: ArrayBuffer } = LVCOLUMNW.write({
+      const lvc: ArrayBuffer & { __titleBuf?: ArrayBuffer } = LVCOLUMNW.encode({
         mask: LvColumnMask.TEXT | LvColumnMask.WIDTH | LvColumnMask.FORMAT,
         fmt: alignToFmt(columns[j]!.align),
         cx: columns[j]!.width ?? 100,

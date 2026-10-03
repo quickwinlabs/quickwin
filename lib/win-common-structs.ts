@@ -1,4 +1,4 @@
-import { struct } from './ffi-struct.js'
+import { struct } from './ffi/struct.js'
 
 // 跨组件/示例共享的 Windows 结构体（ffi-struct 按本机架构 MSVC 对齐布局）。
 // OPENFILENAMEW（GetOpenFileNameW）。Win2000+ 定义含尾部 pvReserved/dwReserved/FlagsEx（即 XP 系统上的真实 sizeof=152/88）：

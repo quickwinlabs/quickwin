@@ -1,11 +1,11 @@
 import { forwardRef, useRef } from 'react'
 import * as gui from 'gui'
-import { bind } from '../lib/ffi-bind.js'
+import { bind } from '../lib/ffi/bind.js'
 import type { WStyle } from '../lib/react-qw/jsx.d.ts'
 
 const GetDC_ = bind('user32.dll', 'GetDC', 'ptr -> ptr')
 const ReleaseDC_ = bind('user32.dll', 'ReleaseDC', 'ptr ptr -> i32')
-const SetDIBitsToDevice_ = bind('gdi32.dll', 'SetDIBitsToDevice', 'ptr i32 i32 u32 u32 i32 i32 u32 u32 buf_ptr buf_ptr u32 -> i32')
+const SetDIBitsToDevice_ = bind('gdi32.dll', 'SetDIBitsToDevice', 'ptr i32 i32 u32 u32 i32 i32 u32 u32 <VOID>ptr <VOID>ptr u32 -> i32')
 
 function makeBitmapInfo(w: number, h: number): ArrayBuffer {
   const bmi = new ArrayBuffer(40)
