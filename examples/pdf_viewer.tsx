@@ -20,7 +20,7 @@ if (!_user32 || !_gdi32 || !_comdlg32) {
   std.exit(0)
 }
 
-const GetOpenFileNameW_ = bind('comdlg32.dll', 'GetOpenFileNameW', '<VOID>ptr -> u32')
+const GetOpenFileNameW_ = bind('comdlg32.dll', 'GetOpenFileNameW', '<BYTE>ptr -> u32')
 
 function strToWide(str: string): ArrayBuffer {
   const buf = new ArrayBuffer((str.length + 1) * 2)

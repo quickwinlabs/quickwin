@@ -1,51 +1,9 @@
 import * as ffi from 'ffi'
-import * as win from 'win'
 import * as os from 'os'
 import * as std from 'std'
+import * as win from 'win'
 import '../text-codec.js'
-import { type Kind, type Norm, type Ptr, PTR_SIZE, normKind, normToken, ptrLayoutName } from './ctype.js'
-
-// 标量 kind / C 别名表见 ./ctype.js；此处透传其公共类型与函数，保持 bind.js 深导入面不变。
-export * from './ctype.js'
-
-// 声明式 FFI 绑定：把字符串签名（'<>ptr i32 -> i32'）解析成可调用函数（bind）
-// 或一个 dll 的签名表（bindLib）。
-// kind：
-//   BasicKind = void u8 i8 u16 i16 u32 i32 u64 i64 u64n i64n f32 f64 ptr（内部 kind）
-//   '<>ptr'   裸地址 —— number|null（raw，不 pin）；buffer 用 ffi.bufferPtr 取址或改用 <VOID>ptr
-//   指针布局 <NAME>ptr（调用期 pin，按指针宽读写）：
-//     <VOID>ptr     ArrayBuffer|null —— 原样传 JS 缓冲（仅参数）
-//     <WCHAR>ptr    string|null —— utf-16le+'\0' 编码（仅参数）
-//     <STRUCT>ptr   参数：布局 JS 形（编码成 buffer）或 Ptr<STRUCT>（裸地址透传）；
-//                   返回：Ptr<STRUCT>（指针，品牌在类型层，不解码内容）
-//   u64/i64 收 number（0..2^53 连续无损，之上有空洞即 lossy）；u64n/i64n 收
-//   bigint、端到端 64 位全精确（恰 64 位，DataView 天然范围护栏）。裸 bigint
-//   类型会误读为任意精度，故用 i64n/u64n 显式钉死「恰 64 位」语义。
-//   指针/缓冲/字符串实参一一对应各自类型，运行时严格校验；null 恒 →0。
-//   裸 'ptr' 已被拒绝：一律写 '<>ptr' 或 '<NAME>ptr'。<VOID>ptr/<WCHAR>ptr 不可作
-//   返回类型（返回裸地址/宽串指针请用 '<>ptr'）。
-//   可用 C/Windows typedef 别名：int long short char float double
-//     + DWORD UINT LONG BOOL HRESULT ... + *_PTR WPARAM LPARAM SIZE_T
-//     + HANDLE HWND HDC ... (+ LPVOID 等指针 typedef)
-//   别名在 token 层归一化到规范形式（C_ALIAS as const 单源，见 ./ctype.js）；
-//   LPCWSTR/PCWSTR/LPWSTR → '<WCHAR>ptr'，其余指针 typedef → '<>ptr'。
-
-// 原生标量（传值/地址）类型表：实参、返回共用
-type BasicTypeOf = {
-    u8: number; i8: number; u16: number; i16: number
-    u32: number; i32: number
-    u64: number; i64: number
-    u64n: bigint; i64n: bigint
-    f32: number; f64: number
-    ptr: number | null
-}
-
-type ArgTypeOf = BasicTypeOf
-
-// 返回表 = 标量表 + void（返回没有封送可言）
-type RetTypeOf = BasicTypeOf & {
-    void: void
-}
+import { type Kind, TokenJsTypeMap, TokenReturnJsTypeMap, JsTypeOfToken, PTR_SIZE, normKind, normToken, ptrLayoutName } from './ctype.js'
 
 // 用户布局：把 JS 形编码成 buffer 供 <NAME>ptr 输入。ffi-struct 的 struct()
 // 结果（StructDef）结构上即满足（encode(v) -> ArrayBuffer）。
@@ -55,38 +13,7 @@ export type Layout<V = unknown> = {
 export type LayoutMap = Record<string, Layout<any>>
 export type LayoutValue<T> = T extends Layout<infer V> ? V : never
 
-// <NAME>ptr 实参：'<>ptr' → 裸地址（number|null，直通）；内建布局（VOID/WCHAR）或
-// 用户布局 —— 结构形（编码）或 Ptr 品牌（透传）。
-type PtrArgType<N extends string, L> =
-    N extends '' ? number | null
-        : N extends 'VOID' ? ArrayBuffer | null
-        : N extends 'WCHAR' ? string | null
-            : Ptr<N> | null | (N extends keyof L ? LayoutValue<L[N]> : never)
 
-// 裸 'ptr' 编译期拒绝（never）；'<>ptr' → 裸地址；<NAME>ptr → 布局；否则标量。
-type ArgToken<T extends string, L> =
-    Norm<T> extends '<>ptr' ? number | null
-        : Norm<T> extends 'ptr' ? never
-        : Norm<T> extends `<${infer N}>ptr` ? PtrArgType<N, L>
-        : ArgTypeOf[Norm<T> & keyof ArgTypeOf]
-
-type ArgsOf<T extends string, L> =
-    T extends '' ? []
-        : T extends `${infer H} ${infer R}` ? [ArgToken<H, L>, ...ArgsOf<R, L>]
-            : [ArgToken<T, L>]
-
-type _Args<S extends string, L = {}> = S extends `${infer P} -> ${string}` ? ArgsOf<P, L> : never
-
-// 返回位：'<>ptr' → number|null（裸地址）；用户 <STRUCT>ptr → Ptr<N>（不解码）；
-// VOID/WCHAR 返回非法；裸 'ptr' 编译期拒绝（never）。
-type RetToken<T extends string> =
-    Norm<T> extends '<>ptr' ? number | null
-        : Norm<T> extends 'ptr' ? never
-        : Norm<T> extends `<${infer N}>ptr`
-            ? N extends 'VOID' | 'WCHAR' ? never : Ptr<N> | null
-        : RetTypeOf[Norm<T> & keyof RetTypeOf]
-
-type _Ret<S extends string> = S extends `${string} -> ${infer R}` ? RetToken<R> : never
 
 const _dllCache: Map<string, win.HMODULE> = new Map()
 
@@ -99,19 +26,27 @@ function loadDll(dll: string): win.HMODULE {
     return loaded
 }
 
-/* ---- 指针布局 codec：把 JS 值编码成原生指针 ---- */
+/* ---- 指针布局 codec：把 JS 值编码成原生指针 ----
+ * ABI 上一律是 PTR_SIZE 槽装一个地址；codec 只负责「怎么从 JS 值造出这个地址」。
+ * <NAME>ptr 的 NAME 即点向的 C 类型，NAME 顺带选定 codec：
+ *   <BYTE>ptr   BYTE*   —— 收 ArrayBuffer，自动 bufferPtr + 调用期 pin
+ *   <WCHAR>ptr  WCHAR*  —— 收 string，utf-16le + '\0' 编码后 pin
+ *   <RECT>ptr   RECT*   —— 收布局形（编码成 buffer）或 Ptr<'RECT'>（裸地址透传）
+ *   <>ptr       void*   —— 收裸地址 number|null，不编码不 pin
+ * BYTE/WCHAR 只有内建 codec，运行期不接受裸 number（无句柄可 pin），也不可作返回类型。
+ */
 
 type PtrCodec = {
     name: string
     encode(v: unknown, held: ArrayBuffer[]): number
 }
 
-const VOID_PTR: PtrCodec = {
-    name: 'VOID',
+const BYTE_PTR: PtrCodec = {
+    name: 'BYTE',
     encode(v, held) {
         if (v === null || v === undefined) return 0
         if (!(v instanceof ArrayBuffer)) {
-            throw new Error(`ffi-bind: <VOID>ptr expects ArrayBuffer|null, got ${typeof v}; use "<>ptr" for a raw address, or ffi.bufferPtr(buf)`)
+            throw new Error(`ffi-bind: <BYTE>ptr expects ArrayBuffer|null, got ${typeof v}; use "<>ptr" for a raw address, or ffi.bufferPtr(buf)`)
         }
         held.push(v)  // 调用期 pin：GC 在 ffiCall 返回前不可回收
         return ffi.bufferPtr(v)
@@ -132,7 +67,7 @@ const WCHAR_PTR: PtrCodec = {
     },
 }
 
-const BUILTIN_PTR_CODECS: Record<string, PtrCodec> = { VOID: VOID_PTR, WCHAR: WCHAR_PTR }
+const BUILTIN_PTR_CODECS: Record<string, PtrCodec> = { BYTE: BYTE_PTR, WCHAR: WCHAR_PTR }
 
 // 用户布局 codec：延迟解析 —— 只有真的收到「结构形」实参时才要求 layouts 里存在该布局；
 // 纯 brand number / null 透传不需要 layout（与参数类型层一致，bind 期不再抛）。
@@ -154,7 +89,7 @@ function userPtrCodec(name: string, layouts: LayoutMap | undefined): PtrCodec {
     }
 }
 
-// 解析一个 <NAME>ptr codec：内建（VOID/WCHAR）即时取 —— 保持其严格类型校验；
+// 解析一个 <NAME>ptr codec：内建（BYTE/WCHAR）即时取 —— 保持其严格类型校验；
 // 用户布局延迟到 encode（收到结构形）时才查。
 function ptrCodec(name: string, layouts: LayoutMap | undefined): PtrCodec {
     return BUILTIN_PTR_CODECS[name] ?? userPtrCodec(name, layouts)
@@ -176,7 +111,7 @@ function argSpecOf(tok: string, layouts?: LayoutMap): ArgSpec {
     return { t: 'val', k: normKind(norm) }
 }
 
-// token → RetSpec：裸 'ptr' 拒绝；'<>ptr' → 裸地址；<NAME>ptr → 只读指针（VOID/WCHAR 非法）。
+// token → RetSpec：裸 'ptr' 拒绝；'<>ptr' → 裸地址；<NAME>ptr → 只读指针（BYTE/WCHAR 非法）。
 function retSpecOf(tok: string): RetSpec {
     const norm = normToken(tok)
     if (norm === 'ptr')
@@ -184,7 +119,7 @@ function retSpecOf(tok: string): RetSpec {
     if (norm === '<>ptr') return { t: 'val', k: 'ptr' }
     const name = ptrLayoutName(norm)
     if (name !== undefined) {
-        if (name === 'VOID' || name === 'WCHAR')
+        if (name === 'BYTE' || name === 'WCHAR')
             throw new Error(`ffi-bind: "<${name}>ptr" cannot be a return type (use "<>ptr")`)
         // 宽松：返回只读指针，不要求 layouts 里注册该布局（品牌是编译期的）。
         return { t: 'ptr', name }
@@ -289,11 +224,11 @@ function writeSlot(dv: DataView, off: number, k: Kind, v: unknown): void {
     }
 }
 
-// <>ptr 参数 → 裸地址整数；number 直通，null/undefined →0，其余报错并提示 <VOID>ptr。
+// <>ptr 参数 → 裸地址整数；number 直通，null/undefined →0，其余报错并提示 <BYTE>ptr。
 function slotRawPtr(v: unknown): number {
     if (v === null || v === undefined) return 0
     if (typeof v === 'number') return v
-    throw new Error(`ffi-bind: <>ptr expects number|null, got ${typeof v}; use <VOID>ptr to pass an ArrayBuffer, or ffi.bufferPtr(buf)`)
+    throw new Error(`ffi-bind: <>ptr expects number|null, got ${typeof v}; use <BYTE>ptr to pass an ArrayBuffer, or ffi.bufferPtr(buf)`)
 }
 
 // 从 retBuf 按返回类型解码。'ptr' 布局返回读指针宽、NULL→null；标量按声明宽度截断/扩展。
@@ -326,16 +261,33 @@ function readRet(ret: RetSpec, retBuf: ArrayBuffer): unknown {
     throw new Error(`ffi-bind: unsupported return kind "${ret.k}"`)
 }
 
+type ParseArgStr<S extends string, L, Acc extends unknown[] = []> =
+    S extends `${infer F} ${infer R}`
+    ? ParseArgStr<R, L, [...Acc, JsTypeOfToken<F, TokenJsTypeMap, L, never>]>
+    : S extends ''
+    ? Acc : [...Acc, JsTypeOfToken<S, TokenJsTypeMap, L, never>]
+
+// 布局表：用户布局解包成 JS 形，并注入两个内建 codec 的值域，
+// 使 <BYTE>ptr / <WCHAR>ptr 形参在类型层拿到 ArrayBuffer / string。
+type BindLayouts<L> = {
+    [K in keyof L]: L[K] extends Layout<infer V> ? V : never
+} & {
+    WCHAR: string;
+    BYTE: ArrayBuffer;
+}
+
+type BindFn<S extends string, L> =
+    S extends `${infer ArgStr} -> ${infer RetStr}` ? ((...args: ParseArgStr<ArgStr, L>) => JsTypeOfToken<RetStr, TokenReturnJsTypeMap, {}, unknown>) : never
+
 export function bind<const S extends string, const L extends LayoutMap = {}>(
-    dll: string, name: string, sig: S, layouts?: L): (...args: _Args<S, L>) => _Ret<S> {
+    dll: string, name: string, sig: S, layouts?: L) {
     const proc = win.GetProcAddress(loadDll(dll), name)
     if (!proc) throw new Error(`ffi-bind: proc "${name}" not found in ${dll}`)
-    return makeFn(proc, sig, layouts) as unknown as (...args: _Args<S, L>) => _Ret<S>
+    return makeFn(proc, sig, layouts) as unknown as BindFn<S, BindLayouts<L>>
 }
 
 export function bindLib<const M extends Record<string, string>, const L extends LayoutMap = {}>(
-    dll: string, map: M, layouts?: L):
-    { [K in keyof M]: (...args: _Args<M[K], L>) => _Ret<M[K]> } {
+    dll: string, map: M, layouts?: L) {
     const out: Record<string, (...a: unknown[]) => unknown> = {}
     const h = loadDll(dll)
     for (const [name, sig] of Object.entries(map)) {
@@ -343,7 +295,7 @@ export function bindLib<const M extends Record<string, string>, const L extends 
         if (!proc) throw new Error(`ffi-bind: proc "${name}" not found in ${dll}`)
         out[name] = makeFn(proc, sig, layouts)
     }
-    return out as { [K in keyof M]: (...args: _Args<M[K], L>) => _Ret<M[K]> }
+    return out as { [K in keyof M]: BindFn<M[K], BindLayouts<L>> }
 }
 
 /* ---- 闭包（回调）：JS 函数 → 可传给 Win32 API 的函数指针 ---- */
@@ -416,7 +368,7 @@ function dispatchClosure(args: Kind[], ret: Kind, fn: (...a: unknown[]) => unkno
  *  返回 { ptr, dispose }：ptr 即函数指针（传给 API 的 ptr 参数）；dispose 注销
  *  并释放回调函数，幂等；闭包期间回调被强引用，不会被 GC 回收。
  *  注意：dispose 后 ptr 不得再被任何 native 方引用。 */
-export function closure<S extends string>(sig: S, fn: (...args: _Args<S>) => _Ret<S>,
+export function closure<S extends string>(sig: S, fn: BindFn<S, {}>,
     opts?: { stdcall?: boolean }): { ptr: number; dispose(): void } {
     const { args, ret } = parseSig(sig)
     const argKinds: Kind[] = args.map((s) => {

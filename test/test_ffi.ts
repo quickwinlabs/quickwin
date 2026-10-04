@@ -83,7 +83,7 @@ export const suite = {
         if (!enumPrinters) return
 
         const { EnumPrintersW } = bindLib('winspool.drv', {
-            EnumPrintersW: 'u32 <>ptr u32 <VOID>ptr u32 <VOID>ptr <VOID>ptr -> i32',
+            EnumPrintersW: 'u32 <>ptr u32 <BYTE>ptr u32 <BYTE>ptr <BYTE>ptr -> i32',
         })
 
         const flags = 0x06

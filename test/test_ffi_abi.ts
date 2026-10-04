@@ -52,9 +52,9 @@ export const suite = {
             t.check('fabs(-3.5)', 3.5, fabs(-3.5))
         } else t.skipCase('fabs missing')
 
-        t.section('param count 3 (<VOID>ptr <VOID>ptr u32 -> ptr)')
+        t.section('param count 3 (<BYTE>ptr <BYTE>ptr u32 -> ptr)')
         if (has(crt, 'memcpy')) {
-            const memcpy = bind('msvcrt.dll', 'memcpy', '<VOID>ptr <VOID>ptr u32 -> <>ptr')
+            const memcpy = bind('msvcrt.dll', 'memcpy', '<BYTE>ptr <BYTE>ptr u32 -> <>ptr')
             const src = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8])
             const dst = new Uint8Array(8)
             const r = memcpy(dst.buffer as ArrayBuffer, src.buffer as ArrayBuffer, 8)
@@ -63,9 +63,9 @@ export const suite = {
             t.checkTrue('memcpy returns dest ptr', typeof r === 'number' && r !== 0)
         } else t.skipCase('memcpy missing')
 
-        t.section('param count 4 + all-int-regs (u32 u32 <VOID>ptr i32 -> i32)')
+        t.section('param count 4 + all-int-regs (u32 u32 <BYTE>ptr i32 -> i32)')
         if (has(k32, 'GetLocaleInfoA')) {
-            const getLocaleInfoA = bind('kernel32.dll', 'GetLocaleInfoA', 'u32 u32 <VOID>ptr i32 -> i32')
+            const getLocaleInfoA = bind('kernel32.dll', 'GetLocaleInfoA', 'u32 u32 <BYTE>ptr i32 -> i32')
             const buf = new ArrayBuffer(64)
             const n = getLocaleInfoA(0x0409, 0x00001001 /* LOCALE_SENGLANGUAGE */, buf, 64)
             if (n > 0) {
@@ -75,9 +75,9 @@ export const suite = {
             } else t.skipCase('en-US locale unavailable')
         } else t.skipCase('GetLocaleInfoA missing')
 
-        t.section('param count 5 (<VOID>ptr i32 i32 i32 i32 -> i32)')
+        t.section('param count 5 (<BYTE>ptr i32 i32 i32 i32 -> i32)')
         if (has(usr, 'SetRect')) {
-            const setRect = bind('user32.dll', 'SetRect', '<VOID>ptr i32 i32 i32 i32 -> i32')
+            const setRect = bind('user32.dll', 'SetRect', '<BYTE>ptr i32 i32 i32 i32 -> i32')
             const rc = new ArrayBuffer(16)
             const ok = setRect(rc, 1, 2, 30, 40)
             const dv = new DataView(rc)
@@ -95,9 +95,9 @@ export const suite = {
             t.check('CompareStringW("abc","abd") = CSTR_LESS_THAN', 1, r)
         } else t.skipCase('CompareStringW missing')
 
-        t.section('param count 8 (u32 u32 <WCHAR>ptr i32 <VOID>ptr i32 <>ptr <>ptr -> i32)')
+        t.section('param count 8 (u32 u32 <WCHAR>ptr i32 <BYTE>ptr i32 <>ptr <>ptr -> i32)')
         if (has(k32, 'WideCharToMultiByte')) {
-            const wideCharToMultiByte = bind('kernel32.dll', 'WideCharToMultiByte', 'u32 u32 <WCHAR>ptr i32 <VOID>ptr i32 <>ptr <>ptr -> i32')
+            const wideCharToMultiByte = bind('kernel32.dll', 'WideCharToMultiByte', 'u32 u32 <WCHAR>ptr i32 <BYTE>ptr i32 <>ptr <>ptr -> i32')
             const out = new ArrayBuffer(16)
             // 显式给长度（cchWideChar=2）避免 -1 空终止语义下返回值是否含 '\0' 的版本差异。
             const n = wideCharToMultiByte(0 /* CP_ACP */, 0, 'AB', 2, out, 16, null, null)
@@ -111,7 +111,7 @@ export const suite = {
             const createCompatibleDC = bind('gdi32.dll', 'CreateCompatibleDC', '<>ptr -> <>ptr')
             const deleteDC = bind('gdi32.dll', 'DeleteDC', '<>ptr -> i32')
             const setDIBitsToDevice = bind('gdi32.dll', 'SetDIBitsToDevice',
-                '<>ptr i32 i32 u32 u32 i32 i32 u32 u32 <VOID>ptr <VOID>ptr u32 -> i32')
+                '<>ptr i32 i32 u32 u32 i32 i32 u32 u32 <BYTE>ptr <BYTE>ptr u32 -> i32')
             const hdc = createCompatibleDC(0)
             if (hdc) {
                 const bmi = new ArrayBuffer(40)
@@ -135,16 +135,16 @@ export const suite = {
             t.check('ldexp(1.5, 3)', 12.0, ldexp(1.5, 3))
         } else t.skipCase('ldexp missing')
 
-        t.section('int/float mix: f64 <VOID>ptr -> f64')
+        t.section('int/float mix: f64 <BYTE>ptr -> f64')
         if (has(crt, 'frexp')) {
-            const frexp = bind('msvcrt.dll', 'frexp', 'f64 <VOID>ptr -> f64')
+            const frexp = bind('msvcrt.dll', 'frexp', 'f64 <BYTE>ptr -> f64')
             const e = new ArrayBuffer(4)
             const m = frexp(12.0, e)
             t.check('frexp(12).mantissa', 0.75, m)
             t.check('frexp(12).exponent', 4, new DataView(e).getInt32(0, true))
         } else t.skipCase('frexp missing')
         if (has(crt, 'modf')) {
-            const modf = bind('msvcrt.dll', 'modf', 'f64 <VOID>ptr -> f64')
+            const modf = bind('msvcrt.dll', 'modf', 'f64 <BYTE>ptr -> f64')
             const ip = new ArrayBuffer(8)
             const frac = modf(3.75, ip)
             t.check('modf(3.75).frac', 0.75, frac)
@@ -176,8 +176,8 @@ export const suite = {
 
         t.section('negative return i64 (InterlockedIncrement64)')
         if (has(k32, 'InterlockedExchange64') && has(k32, 'InterlockedIncrement64')) {
-            const exchange64 = bind('kernel32.dll', 'InterlockedExchange64', '<VOID>ptr i64 -> i64')
-            const increment64 = bind('kernel32.dll', 'InterlockedIncrement64', '<VOID>ptr -> i64')
+            const exchange64 = bind('kernel32.dll', 'InterlockedExchange64', '<BYTE>ptr i64 -> i64')
+            const increment64 = bind('kernel32.dll', 'InterlockedIncrement64', '<BYTE>ptr -> i64')
             const cell = new ArrayBuffer(8)
             exchange64(cell, -2)
             t.check('InterlockedIncrement64(-2)', -1, increment64(cell))
@@ -185,7 +185,7 @@ export const suite = {
 
         t.section('64-bit arg transport (InterlockedExchange64)')
         if (has(k32, 'InterlockedExchange64')) {
-            const exchange64 = bind('kernel32.dll', 'InterlockedExchange64', '<VOID>ptr i64 -> i64')
+            const exchange64 = bind('kernel32.dll', 'InterlockedExchange64', '<BYTE>ptr i64 -> i64')
             const cell = new ArrayBuffer(8)
             const prev0 = exchange64(cell, 4294967297)  // 2^32+1：超过 32 位
             const prev1 = exchange64(cell, -1)          // 64 位全 1

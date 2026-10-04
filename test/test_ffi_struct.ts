@@ -1,11 +1,12 @@
 import * as os from 'os'
 import { Tester } from './test_helper.js'
 import { struct } from '../lib/ffi/struct.js'
-import { bind, type Ptr } from '../lib/ffi/bind.js'
+import { bind, } from '../lib/ffi/bind.js'
+import { Ptr } from '../lib/ffi/ctype.js'
 
 // 编译期断言工具（仅类型层，运行时无开销）
 type Equal<A, B> = (<G>() => G extends A ? 1 : 2) extends (<G>() => G extends B ? 1 : 2) ? true : false
-function expectType<T extends true>(_value?: T): void {}
+function expectType<T extends true>(_value?: T): void { }
 
 const RECT = struct('RECT', [
     { name: 'left', type: 'i32' },
@@ -49,7 +50,7 @@ export const suite = {
         t.check('offsetOf bottom', 12, RECT.offsetOf('bottom'))
 
         t.section('GetWindowRect fills RECT buffer')
-        const getWindowRect = bind('user32.dll', 'GetWindowRect', '<>ptr <VOID>ptr -> int')
+        const getWindowRect = bind('user32.dll', 'GetWindowRect', '<>ptr <BYTE>ptr -> int')
         const getWindowRectLayout = bind('user32.dll', 'GetWindowRect', '<>ptr <RECT>ptr -> int', { RECT })
         const getDesktopWindow = bind('user32.dll', 'GetDesktopWindow', ' -> <>ptr')
         const hwnd = getDesktopWindow()

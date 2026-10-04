@@ -148,9 +148,9 @@ function ensureGdi(): GdiFns | null {
   if (gdiFns) return gdiFns
   try {
     gdiFns = {
-      createFontIndirectW: bind('gdi32.dll', 'CreateFontIndirectW', '<VOID>ptr -> <>ptr'),
+      createFontIndirectW: bind('gdi32.dll', 'CreateFontIndirectW', '<BYTE>ptr -> <>ptr'),
       selectObjectFn: bind('gdi32.dll', 'SelectObject', '<>ptr <>ptr -> <>ptr'),
-      getObjectW: bind('gdi32.dll', 'GetObjectW', '<>ptr i32 <VOID>ptr -> i32'),
+      getObjectW: bind('gdi32.dll', 'GetObjectW', '<>ptr i32 <BYTE>ptr -> i32'),
     }
   } catch {
     return null
@@ -171,7 +171,7 @@ function ensureUser32(): User32Fns | null {
     user32Fns = {
       loadCursorW: bind('user32.dll', 'LoadCursorW', '<>ptr <>ptr -> <>ptr'),
       setCursorFn: bind('user32.dll', 'SetCursor', '<>ptr -> <>ptr'),
-      screenToClient: bind('user32.dll', 'ScreenToClient', '<>ptr <VOID>ptr -> i32'),
+      screenToClient: bind('user32.dll', 'ScreenToClient', '<>ptr <BYTE>ptr -> i32'),
     }
   } catch {
     return null

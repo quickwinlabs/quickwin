@@ -7,9 +7,9 @@ import type { WStyle } from '../jsx.d.ts'
 
 function makeBindings() {
   return {
-    GetOpenFileNameW: bind('comdlg32.dll', 'GetOpenFileNameW', '<VOID>ptr -> u32'),
-    SHBrowseForFolderW: bind('shell32.dll', 'SHBrowseForFolderW', '<VOID>ptr -> <>ptr'),
-    SHGetPathFromIDListW: bind('shell32.dll', 'SHGetPathFromIDListW', '<>ptr <VOID>ptr -> u32'),
+    GetOpenFileNameW: bind('comdlg32.dll', 'GetOpenFileNameW', '<BYTE>ptr -> u32'),
+    SHBrowseForFolderW: bind('shell32.dll', 'SHBrowseForFolderW', '<BYTE>ptr -> <>ptr'),
+    SHGetPathFromIDListW: bind('shell32.dll', 'SHGetPathFromIDListW', '<>ptr <BYTE>ptr -> u32'),
     CoTaskMemFree: bind('ole32.dll', 'CoTaskMemFree', '<>ptr -> void'),
   }
 }
