@@ -6,13 +6,16 @@ import { nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
 
 const TCITEMW = struct({
-  mask: 'u32',
-  dwState: 'u32',
-  dwStateMask: 'u32',
-  pszText: 'ptr',
-  cchTextMax: 'i32',
-  iImage: 'i32',
-  lParam: 'ptr',
+  tag: 'struct',
+  member: [
+    { name: 'mask', type: 'u32' },
+    { name: 'dwState', type: 'u32' },
+    { name: 'dwStateMask', type: 'u32' },
+    { name: 'pszText', type: 'ptr' },
+    { name: 'cchTextMax', type: 'i32' },
+    { name: 'iImage', type: 'i32' },
+    { name: 'lParam', type: 'ptr' },
+  ],
 })
 
 function textToUtf16(s: string): ArrayBuffer {

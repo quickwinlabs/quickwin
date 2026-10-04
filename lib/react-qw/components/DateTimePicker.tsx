@@ -6,13 +6,25 @@ import { NMHDR, nmCode, readI32At, readU16At } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
 
 const SYSTEMTIME = struct({
-  wYear: 'u16', wMonth: 'u16', wDayOfWeek: 'u16', wDay: 'u16',
-  wHour: 'u16', wMinute: 'u16', wSecond: 'u16', wMilliseconds: 'u16',
+  tag: 'struct',
+  member: [
+    { name: 'wYear', type: 'u16' },
+    { name: 'wMonth', type: 'u16' },
+    { name: 'wDayOfWeek', type: 'u16' },
+    { name: 'wDay', type: 'u16' },
+    { name: 'wHour', type: 'u16' },
+    { name: 'wMinute', type: 'u16' },
+    { name: 'wSecond', type: 'u16' },
+    { name: 'wMilliseconds', type: 'u16' },
+  ],
 })
 const NMDATETIMECHANGE = struct({
-  hdr: NMHDR,
-  dwFlags: 'u32',
-  st: SYSTEMTIME,
+  tag: 'struct',
+  member: [
+    { name: 'hdr', type: NMHDR.__struct },
+    { name: 'dwFlags', type: 'u32' },
+    { name: 'st', type: SYSTEMTIME.__struct },
+  ],
 })
 
 export interface DateTimePickerProps {

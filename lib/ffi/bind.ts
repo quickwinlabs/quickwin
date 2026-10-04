@@ -3,10 +3,10 @@ import * as win from 'win'
 import * as os from 'os'
 import * as std from 'std'
 import '../text-codec.js'
-import { type Kind, type Norm, type StructPtr, PTR_SIZE, normKind, ptrLayoutName } from './kind.js'
+import { type Kind, type Norm, type StructPtr, PTR_SIZE, normKind, ptrLayoutName } from './ctype.js'
 
-// 标量 kind / C 别名表见 ./kind.js；此处透传其公共类型与函数，保持 bind.js 深导入面不变。
-export * from './kind.js'
+// 标量 kind / C 别名表见 ./ctype.js；此处透传其公共类型与函数，保持 bind.js 深导入面不变。
+export * from './ctype.js'
 
 // 声明式 FFI 绑定：把字符串签名（'ptr i32 -> i32'）解析成可调用函数（bind）
 // 或一个 dll 的签名表（bindLib）。
@@ -26,7 +26,7 @@ export * from './kind.js'
 //   可用 C/Windows typedef 别名：int long short char float double
 //     + DWORD UINT LONG BOOL HRESULT ... + *_PTR WPARAM LPARAM SIZE_T
 //     + HANDLE HWND HDC ... (+ LPVOID 等指针 typedef)
-//   别名在 token 层归一化到规范形式（C_ALIAS as const 单源，见 ./kind.js）；
+//   别名在 token 层归一化到规范形式（C_ALIAS as const 单源，见 ./ctype.js）；
 //   LPCWSTR/PCWSTR/LPWSTR → '<WCHAR>ptr'，其余指针 typedef → ptr。
 
 // 原生标量（传值/地址）类型表：实参、返回共用
