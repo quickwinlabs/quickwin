@@ -25,7 +25,7 @@
 | 类型 | 宽度 | 是否随架构 |
 |---|---|---|
 | float / double | 4 / 8 | 否（IEEE 754 固定） |
-| ptr / 句柄 / WPARAM | 指针宽 | 是（ia32=4、x64=8，必须 `'ptr'`） |
+| ptr / 句柄 / WPARAM | 指针宽 | 是（ia32=4、x64=8，签名里必须写 `'<>ptr'`） |
 
 四个要记住的区别：
 
@@ -46,7 +46,7 @@
 
 把句柄（HWND/HDC/WPARAM…）在 ia32 上按 8 字节宽传 → 被调函数（stdcall 读 4 字节）只消费 4 字节 → **后续所有参数栈偏移错位** → DrawTextW 参数错乱、text-measure 测宽为 0。
 
-修复：句柄统一走 `'ptr'`（槽宽 `PTR_SIZE = os.arch === 'x64' ? 8 : 4`），`ffi-bind` 把 `*PTR/HANDLE/HWND/WPARAM/LPARAM...` 全部归 `'ptr'`。**指针宽由目标架构决定，勿手选 `u32/u64`。**
+修复：句柄统一走指针宽（签名里写 `'<>ptr'` → 内部 kind `'ptr'`，槽宽 `PTR_SIZE = os.arch === 'x64' ? 8 : 4`），`ffi-bind` 把 `*PTR/HANDLE/HWND/WPARAM/LPARAM...` 全部归一为 `'<>ptr'`。**指针宽由目标架构决定，勿手选 `u32/u64`。**
 
 ## 2. 返回值 read-back：必须知道宽度 + 符号
 
@@ -90,7 +90,7 @@ QEMU 回归：`docker/http_test.sh <xp|win11> ffi` 应全过（win11 = x64、xp 
 ## 4. 不变式 checklist（防止回归）
 
 - [ ] `retBuf` 恒 8 字节且 `new ArrayBuffer(8)` 零初始化——无符号/ptr 读回正确性依赖零初始化
-- [ ] 窄/无符号参数按宽传安全，但**指针宽必须用 `'ptr'`**，勿手选 `u32/u64`
+- [ ] 窄/无符号参数按宽传安全，但**指针宽必须用 `'<>ptr'`**（内部 kind `'ptr'`），勿手选 `u32/u64`
 - [ ] 有符号返回 `readRet` 必须按声明宽度符号扩展
 - [ ] f32/f64 在 64 位寄存器 ABI 必须区分（不能并入整数宽度）
 - [ ] varargs 暂不支持；若将来支持，float 参数必须按 `f64` 声明（default argument promotion）

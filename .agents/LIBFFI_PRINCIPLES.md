@@ -423,7 +423,7 @@ S1–S6 后，运行时 FFI 由本地汇编桩实现，libffi 已移出构建。
 关键对应关系：
 - libffi 的 `ffi_prep_cif`「算 `bytes`/`flags`」→ JS `ARG_SIZE[]` + 各桩的固定布局。
 - libffi 的返回跳转表（`CLASS_X87_RET` 等）→ ia32 桩的 `ret_fp` 分支 + JS `readRet()`；Win64 桩恒写 RAX/XMM0，由 JS 选一个。
-- libffi 的类型表 `ffi_type`/`arg_types` → `kinds` 字符串（`'ptr <WCHAR>ptr i32 ptr -> i32'`）。
+- libffi 的类型表 `ffi_type`/`arg_types` → `kinds` 字符串（`'<>ptr <WCHAR>ptr i32 <>ptr -> i32'`）。
 - 未支持：struct by-value、varargs（见计划 §10.4）。
 
 回归网：`test/test_ffi.ts`、`test/test_ffi_bind.ts`、`test/test_ffi_abi.ts`（ABI 边界 31 项）、

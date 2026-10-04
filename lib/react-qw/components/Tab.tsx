@@ -5,18 +5,15 @@ import { struct } from '../../ffi/struct.js'
 import { nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
 
-const TCITEMW = struct({
-  tag: 'struct',
-  member: [
-    { name: 'mask', type: 'u32' },
-    { name: 'dwState', type: 'u32' },
-    { name: 'dwStateMask', type: 'u32' },
-    { name: 'pszText', type: 'ptr' },
-    { name: 'cchTextMax', type: 'i32' },
-    { name: 'iImage', type: 'i32' },
-    { name: 'lParam', type: 'ptr' },
-  ],
-})
+const TCITEMW = struct([
+  { name: 'mask', type: 'u32' },
+  { name: 'dwState', type: 'u32' },
+  { name: 'dwStateMask', type: 'u32' },
+  { name: 'pszText', type: '<>ptr' },
+  { name: 'cchTextMax', type: 'i32' },
+  { name: 'iImage', type: 'i32' },
+  { name: 'lParam', type: '<>ptr' },
+])
 
 function textToUtf16(s: string): ArrayBuffer {
   const buf = new ArrayBuffer((s.length + 1) * 2)

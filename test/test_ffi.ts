@@ -83,7 +83,7 @@ export const suite = {
         if (!enumPrinters) return
 
         const { EnumPrintersW } = bindLib('winspool.drv', {
-            EnumPrintersW: 'u32 ptr u32 <VOID>ptr u32 <VOID>ptr <VOID>ptr -> i32',
+            EnumPrintersW: 'u32 <>ptr u32 <VOID>ptr u32 <VOID>ptr <VOID>ptr -> i32',
         })
 
         const flags = 0x06
@@ -157,7 +157,7 @@ export const suite = {
             const getDC = win.GetProcAddress(hUser32, 'GetDC')
             t.checkTrue('GetProcAddress("GetDC") succeeds', getDC !== null)
             if (getDC) {
-                const GetDC = bind('user32.dll', 'GetDC', 'ptr -> ptr')
+                const GetDC = bind('user32.dll', 'GetDC', '<>ptr -> <>ptr')
                 const screenDc = GetDC(0)
                 t.checkTrue('PTR slot takes number (NULL hwnd) and returns a DC handle', screenDc !== 0 && screenDc !== null)
                 const bogus = GetDC(0x12345678)

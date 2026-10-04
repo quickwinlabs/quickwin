@@ -18,17 +18,17 @@ const diagFile = (stage: string): void => {
 let K: any
 try {
     K = {
-        createPipe: bind('kernel32.dll', 'CreatePipe', 'ptr ptr ptr u32 -> i32'),
-        setHandleInformation: bind('kernel32.dll', 'SetHandleInformation', 'ptr u32 u32 -> i32'),
-        createProcessW: bind('kernel32.dll', 'CreateProcessW', '<WCHAR>ptr <WCHAR>ptr ptr ptr i32 u32 ptr <WCHAR>ptr ptr ptr -> i32'),
-        waitForSingleObject: bind('kernel32.dll', 'WaitForSingleObject', 'ptr u32 -> u32'),
-        getExitCodeProcess: bind('kernel32.dll', 'GetExitCodeProcess', 'ptr ptr -> i32'),
-        readFile: bind('kernel32.dll', 'ReadFile', 'ptr ptr u32 ptr ptr -> i32'),
-        closeHandle: bind('kernel32.dll', 'CloseHandle', 'ptr -> i32'),
+        createPipe: bind('kernel32.dll', 'CreatePipe', '<>ptr <>ptr <>ptr u32 -> i32'),
+        setHandleInformation: bind('kernel32.dll', 'SetHandleInformation', '<>ptr u32 u32 -> i32'),
+        createProcessW: bind('kernel32.dll', 'CreateProcessW', '<WCHAR>ptr <WCHAR>ptr <>ptr <>ptr i32 u32 <>ptr <WCHAR>ptr <>ptr <>ptr -> i32'),
+        waitForSingleObject: bind('kernel32.dll', 'WaitForSingleObject', '<>ptr u32 -> u32'),
+        getExitCodeProcess: bind('kernel32.dll', 'GetExitCodeProcess', '<>ptr <>ptr -> i32'),
+        readFile: bind('kernel32.dll', 'ReadFile', '<>ptr <>ptr u32 <>ptr <>ptr -> i32'),
+        closeHandle: bind('kernel32.dll', 'CloseHandle', '<>ptr -> i32'),
         getLastError: bind('kernel32.dll', 'GetLastError', ' -> u32'),
-        getSystemDirectoryW: bind('kernel32.dll', 'GetSystemDirectoryW', 'ptr u32 -> u32'),
-        getSystemInfo: bind('kernel32.dll', 'GetSystemInfo', 'ptr -> void'),
-        rtlGetVersion: bind('ntdll.dll', 'RtlGetVersion', 'ptr -> i32'),
+        getSystemDirectoryW: bind('kernel32.dll', 'GetSystemDirectoryW', '<>ptr u32 -> u32'),
+        getSystemInfo: bind('kernel32.dll', 'GetSystemInfo', '<>ptr -> void'),
+        rtlGetVersion: bind('ntdll.dll', 'RtlGetVersion', '<>ptr -> i32'),
     }
 } catch (ex) {
     diagFile('K-BIND-FAIL: ' + String(ex))
@@ -217,15 +217,15 @@ function gdi(): { u: any; g: any } {
     try {
         const u = {
             getSystemMetrics: bind('user32.dll', 'GetSystemMetrics', 'i32 -> i32'),
-            getDC: bind('user32.dll', 'GetDC', 'ptr -> ptr'),
-            releaseDC: bind('user32.dll', 'ReleaseDC', 'ptr ptr -> i32'),
-            getWindowRect: bind('user32.dll', 'GetWindowRect', 'HWND ptr -> BOOL'),
-            getClientRect: bind('user32.dll', 'GetClientRect', 'HWND ptr -> BOOL'),
-            clientToScreen: bind('user32.dll', 'ClientToScreen', 'HWND ptr -> BOOL'),
+            getDC: bind('user32.dll', 'GetDC', '<>ptr -> <>ptr'),
+            releaseDC: bind('user32.dll', 'ReleaseDC', '<>ptr <>ptr -> i32'),
+            getWindowRect: bind('user32.dll', 'GetWindowRect', 'HWND <>ptr -> BOOL'),
+            getClientRect: bind('user32.dll', 'GetClientRect', 'HWND <>ptr -> BOOL'),
+            clientToScreen: bind('user32.dll', 'ClientToScreen', 'HWND <>ptr -> BOOL'),
             isWindowVisible: bind('user32.dll', 'IsWindowVisible', 'HWND -> BOOL'),
             isIconic: bind('user32.dll', 'IsIconic', 'HWND -> BOOL'),
-            getWindowTextW: bind('user32.dll', 'GetWindowTextW', 'HWND ptr u32 -> i32'),
-            getClassNameW: bind('user32.dll', 'GetClassNameW', 'HWND ptr u32 -> i32'),
+            getWindowTextW: bind('user32.dll', 'GetWindowTextW', 'HWND <>ptr u32 -> i32'),
+            getClassNameW: bind('user32.dll', 'GetClassNameW', 'HWND <>ptr u32 -> i32'),
             findWindowExW: bind('user32.dll', 'FindWindowExW', 'HWND HWND <WCHAR>ptr <WCHAR>ptr -> HWND'),
             // PrintWindow 第 4 参是 Windows 8.1+ 的 PW_* flags；XP/Win7 忽略之。
             // 多传一个参数在 __cdecl 下无害（调用者清栈），且在 8.1+ 上传 0 即普通行为。
@@ -234,9 +234,9 @@ function gdi(): { u: any; g: any } {
         const g = {
             createCompatibleDC: bind('gdi32.dll', 'CreateCompatibleDC', 'HDC -> HDC'),
             createCompatibleBitmap: bind('gdi32.dll', 'CreateCompatibleBitmap', 'HDC i32 i32 -> HBITMAP'),
-            selectObject: bind('gdi32.dll', 'SelectObject', 'HDC HBITMAP -> ptr'),
+            selectObject: bind('gdi32.dll', 'SelectObject', 'HDC HBITMAP -> <>ptr'),
             bitBlt: bind('gdi32.dll', 'BitBlt', 'HDC i32 i32 i32 i32 HDC i32 i32 UINT -> BOOL'),
-            getDIBits: bind('gdi32.dll', 'GetDIBits', 'HDC HBITMAP u32 u32 ptr ptr UINT -> i32'),
+            getDIBits: bind('gdi32.dll', 'GetDIBits', 'HDC HBITMAP u32 u32 <>ptr <>ptr UINT -> i32'),
             deleteObject: bind('gdi32.dll', 'DeleteObject', 'HBITMAP -> i32'),
             deleteDC: bind('gdi32.dll', 'DeleteDC', 'HDC -> i32'),
         }

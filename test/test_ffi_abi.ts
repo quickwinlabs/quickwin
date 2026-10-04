@@ -54,7 +54,7 @@ export const suite = {
 
         t.section('param count 3 (<VOID>ptr <VOID>ptr u32 -> ptr)')
         if (has(crt, 'memcpy')) {
-            const memcpy = bind('msvcrt.dll', 'memcpy', '<VOID>ptr <VOID>ptr u32 -> ptr')
+            const memcpy = bind('msvcrt.dll', 'memcpy', '<VOID>ptr <VOID>ptr u32 -> <>ptr')
             const src = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8])
             const dst = new Uint8Array(8)
             const r = memcpy(dst.buffer as ArrayBuffer, src.buffer as ArrayBuffer, 8)
@@ -95,9 +95,9 @@ export const suite = {
             t.check('CompareStringW("abc","abd") = CSTR_LESS_THAN', 1, r)
         } else t.skipCase('CompareStringW missing')
 
-        t.section('param count 8 (u32 u32 <WCHAR>ptr i32 <VOID>ptr i32 ptr ptr -> i32)')
+        t.section('param count 8 (u32 u32 <WCHAR>ptr i32 <VOID>ptr i32 <>ptr <>ptr -> i32)')
         if (has(k32, 'WideCharToMultiByte')) {
-            const wideCharToMultiByte = bind('kernel32.dll', 'WideCharToMultiByte', 'u32 u32 <WCHAR>ptr i32 <VOID>ptr i32 ptr ptr -> i32')
+            const wideCharToMultiByte = bind('kernel32.dll', 'WideCharToMultiByte', 'u32 u32 <WCHAR>ptr i32 <VOID>ptr i32 <>ptr <>ptr -> i32')
             const out = new ArrayBuffer(16)
             // 显式给长度（cchWideChar=2）避免 -1 空终止语义下返回值是否含 '\0' 的版本差异。
             const n = wideCharToMultiByte(0 /* CP_ACP */, 0, 'AB', 2, out, 16, null, null)
@@ -108,10 +108,10 @@ export const suite = {
 
         t.section('param count 12 (SetDIBitsToDevice on memory DC)')
         if (has(gdi, 'SetDIBitsToDevice') && has(gdi, 'CreateCompatibleDC') && has(gdi, 'DeleteDC')) {
-            const createCompatibleDC = bind('gdi32.dll', 'CreateCompatibleDC', 'ptr -> ptr')
-            const deleteDC = bind('gdi32.dll', 'DeleteDC', 'ptr -> i32')
+            const createCompatibleDC = bind('gdi32.dll', 'CreateCompatibleDC', '<>ptr -> <>ptr')
+            const deleteDC = bind('gdi32.dll', 'DeleteDC', '<>ptr -> i32')
             const setDIBitsToDevice = bind('gdi32.dll', 'SetDIBitsToDevice',
-                'ptr i32 i32 u32 u32 i32 i32 u32 u32 <VOID>ptr <VOID>ptr u32 -> i32')
+                '<>ptr i32 i32 u32 u32 i32 i32 u32 u32 <VOID>ptr <VOID>ptr u32 -> i32')
             const hdc = createCompatibleDC(0)
             if (hdc) {
                 const bmi = new ArrayBuffer(40)
@@ -197,8 +197,8 @@ export const suite = {
 
         t.section('ptr NULL/undefined')
         if (has(usr, 'GetDC') && has(usr, 'IsWindow')) {
-            const getDC = bind('user32.dll', 'GetDC', 'ptr -> ptr')
-            const isWindow = bind('user32.dll', 'IsWindow', 'ptr -> i32')
+            const getDC = bind('user32.dll', 'GetDC', '<>ptr -> <>ptr')
+            const isWindow = bind('user32.dll', 'IsWindow', '<>ptr -> i32')
             t.checkTrue('GetDC(null) non-null', !!getDC(null))
             t.checkTrue('GetDC(undefined) non-null', !!getDC(undefined as unknown as null))
             t.check('IsWindow(null) = FALSE', 0, isWindow(null))

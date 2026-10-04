@@ -68,14 +68,14 @@ export const suite = {
     name: 'ffi-bind',
     run: (t: Tester) => {
         t.section('bind single proc')
-        const getDC = bind('user32.dll', 'GetDC', 'ptr -> ptr')
+        const getDC = bind('user32.dll', 'GetDC', '<>ptr -> <>ptr')
         const dc = getDC(0)
         t.checkTrue('bind GetDC(NULL) returns screen DC', !!dc)
 
         t.section('bindLib batch with <WCHAR>ptr auto-encode')
         const user32 = bindLib('user32.dll', {
-            DrawTextW: 'ptr <WCHAR>ptr i32 <VOID>ptr i32 -> i32',
-            ReleaseDC: 'ptr ptr -> i32',
+            DrawTextW: '<>ptr <WCHAR>ptr i32 <VOID>ptr i32 -> i32',
+            ReleaseDC: '<>ptr <>ptr -> i32',
         })
         const rect = new ArrayBuffer(16)
         const dv = new DataView(rect)
@@ -117,9 +117,9 @@ export const suite = {
         t.checkTrue('atan2(1,1) close to PI/4', Math.abs(pa - Math.PI / 4) < 1e-12)
         // f32: gdi32!AngleArc 的 eStartAngle/eSweepAngle 是 REAL(float32)。
         // 若 FLOAT 槽仍为 NULL，ffi_prep_cif 会返回 FFI_BAD_ARGTYPE → 抛 TypeError。
-        const getDCF = bind('user32.dll', 'GetDC', 'ptr -> ptr')
-        const angleArc = bind('gdi32.dll', 'AngleArc', 'ptr i32 i32 u32 f32 f32 -> i32')
-        const releaseDCF = bind('user32.dll', 'ReleaseDC', 'ptr ptr -> i32')
+        const getDCF = bind('user32.dll', 'GetDC', '<>ptr -> <>ptr')
+        const angleArc = bind('gdi32.dll', 'AngleArc', '<>ptr i32 i32 u32 f32 f32 -> i32')
+        const releaseDCF = bind('user32.dll', 'ReleaseDC', '<>ptr <>ptr -> i32')
         const hdcF = getDCF(0)
         if (hdcF != 0) {
             const ok = angleArc(hdcF, 20, 20, 5, 0.0, 90.0)
@@ -128,7 +128,7 @@ export const suite = {
             releaseDCF(0, hdcF)
         }
 
-        t.section('kind strictness: ptr / <VOID>ptr / <WCHAR>ptr')
+        t.section('kind strictness: <>ptr / <VOID>ptr / <WCHAR>ptr')
         const setRectB = bind('user32.dll', 'SetRect', '<VOID>ptr i32 i32 i32 i32 -> i32')
         const rb = new ArrayBuffer(16)
         const okR = setRectB(rb, 1, 2, 3, 4)
@@ -143,7 +143,7 @@ export const suite = {
         } catch (e) {
             errPtr = String(e)
         }
-        t.checkTrue('ptr rejects ArrayBuffer, hint mentions <VOID>ptr', errPtr.includes('<VOID>ptr'))
+        t.checkTrue('<>ptr rejects ArrayBuffer, hint mentions <VOID>ptr', errPtr.includes('<VOID>ptr'))
 
         let errBuf = ''
         try {
@@ -161,6 +161,14 @@ export const suite = {
         }
         t.checkTrue('<WCHAR>ptr rejects number, expects string|null', errWstr.includes('string|null'))
 
+        let errBare = ''
+        try {
+            bind('user32.dll', 'GetWindowRect', 'ptr <VOID>ptr -> i32')
+        } catch (e) {
+            errBare = String(e)
+        }
+        t.checkTrue('bare "ptr" token rejected at bind time', errBare.includes('rejected'))
+
         t.section('bigint 64-bit kinds: u64n / i64n')
         // 用 msvcrt 的 64 位字符串转换：win11(x64) kernel32 不导出 Interlocked*64
         //（编译器 intrinsic），msvcrt.dll 三平台必有。
@@ -170,14 +178,14 @@ export const suite = {
         const u64Prec = strtoui64(strToBuf('9007199254740993'), null, 10)
         t.check('u64n return 2^53+1', 9007199254740993n, u64Prec)
 
-        const i64toa = bind('msvcrt.dll', '_i64toa', 'i64n <VOID>ptr i32 -> ptr')
+        const i64toa = bind('msvcrt.dll', '_i64toa', 'i64n <VOID>ptr i32 -> <>ptr')
         const outI = new ArrayBuffer(64)
         i64toa(-9223372036854775808n, outI, 10)
         t.check('i64n arg -2^63 toa', '-9223372036854775808', bufToString(outI))
         i64toa(9007199254740993n, outI, 10)
         t.check('i64n arg 2^53+1 toa', '9007199254740993', bufToString(outI))
 
-        const ui64toa = bind('msvcrt.dll', '_ui64toa', 'u64n <VOID>ptr i32 -> ptr')
+        const ui64toa = bind('msvcrt.dll', '_ui64toa', 'u64n <VOID>ptr i32 -> <>ptr')
         const outU = new ArrayBuffer(64)
         ui64toa(18446744073709551615n, outU, 10)
         t.check('u64n arg 2^64-1 toa', '18446744073709551615', bufToString(outU))
@@ -193,37 +201,28 @@ export const suite = {
         t.section('struct layout <NAME>ptr (explicit layouts; param encode + branded ptr return)')
         // 内建 <VOID>ptr/<WCHAR>ptr 无需 layouts；用户 struct 由 ffi-struct 的
         // struct() 定义、显式传入（import 谁传谁，未用布局可被 tree-shake）。
-        const LOGBRUSH = struct({
-            tag: 'struct',
-            member: [
-                { name: 'lbStyle', type: 'u32' },
-                { name: 'lbColor', type: 'u32' },
-                { name: 'lbHatch', type: 'ptr' },
-            ],
-        })
-        const deleteObject = bind('gdi32.dll', 'DeleteObject', 'ptr -> i32')
-        const createBrushIndirect = bind('gdi32.dll', 'CreateBrushIndirect', '<LOGBRUSH>ptr -> ptr', { LOGBRUSH })
+        const LOGBRUSH = struct([
+            { name: 'lbStyle', type: 'u32' },
+            { name: 'lbColor', type: 'u32' },
+            { name: 'lbHatch', type: '<>ptr' },
+        ])
+        const deleteObject = bind('gdi32.dll', 'DeleteObject', '<>ptr -> i32')
+        const createBrushIndirect = bind('gdi32.dll', 'CreateBrushIndirect', '<LOGBRUSH>ptr -> <>ptr', { LOGBRUSH })
         const brush = createBrushIndirect({ lbStyle: 0, lbColor: 0x00ff0000, lbHatch: 0 })
         t.checkTrue('CreateBrushIndirect(<LOGBRUSH>ptr) returns HBRUSH', !!brush)
         if (brush) t.checkTrue('DeleteObject(HBRUSH) succeeds', deleteObject(brush) !== 0)
 
         // 嵌套 struct（LOGPEN 内含 POINT）验证 ShapeOf 递归 + 子结构写入
-        const POINT = struct({
-            tag: 'struct',
-            member: [
-                { name: 'x', type: 'i32' },
-                { name: 'y', type: 'i32' },
-            ],
-        })
-        const LOGPEN = struct({
-            tag: 'struct',
-            member: [
-                { name: 'lopnStyle', type: 'u32' },
-                { name: 'lopnWidth', type: POINT.__struct },
-                { name: 'lopnColor', type: 'u32' },
-            ],
-        })
-        const createPenIndirect = bind('gdi32.dll', 'CreatePenIndirect', '<LOGPEN>ptr -> ptr', { LOGPEN })
+        const POINT = struct([
+            { name: 'x', type: 'i32' },
+            { name: 'y', type: 'i32' },
+        ])
+        const LOGPEN = struct([
+            { name: 'lopnStyle', type: 'u32' },
+            { name: 'lopnWidth', type: POINT.__struct },
+            { name: 'lopnColor', type: 'u32' },
+        ])
+        const createPenIndirect = bind('gdi32.dll', 'CreatePenIndirect', '<LOGPEN>ptr -> <>ptr', { LOGPEN })
         const pen = createPenIndirect({ lopnStyle: 0, lopnWidth: { x: 1, y: 1 }, lopnColor: 0x000000ff })
         t.checkTrue('CreatePenIndirect(<LOGPEN>ptr nested) returns HPEN', !!pen)
         if (pen) t.checkTrue('DeleteObject(HPEN) succeeds', deleteObject(pen) !== 0)
@@ -239,7 +238,7 @@ export const suite = {
         t.checkTrue('unknown layout <NOPE>ptr bound lazily (no bind-time throw)', typeof deleteObjectLazy === 'function')
         t.checkTrue('<NOPE>ptr accepts null without layout (passthrough)', deleteObjectLazy(null) === 0)
         let errLayout = ''
-        const nopeBrush = bind('gdi32.dll', 'CreateBrushIndirect', '<NOPE>ptr -> ptr') as unknown as (v: unknown) => number
+        const nopeBrush = bind('gdi32.dll', 'CreateBrushIndirect', '<NOPE>ptr -> <>ptr') as unknown as (v: unknown) => number
         try {
             nopeBrush({})
         } catch (e) {
@@ -247,44 +246,45 @@ export const suite = {
         }
         t.checkTrue('unknown layout <NOPE>ptr rejected on struct-shape call', errLayout.includes('unknown layout') && errLayout.includes('VOID'))
 
-        // out 参数：命名 struct 的 alloc() 句柄，.ptr 即 StructPtr<'RECT'>，直接喂 <RECT>ptr。
-        const RECT = struct('RECT', {
-            tag: 'struct',
-            member: [
-                { name: 'left', type: 'i32' },
-                { name: 'top', type: 'i32' },
-                { name: 'right', type: 'i32' },
-                { name: 'bottom', type: 'i32' },
-            ],
-        })
-        const getWindowRect = bind('user32.dll', 'GetWindowRect', 'ptr <RECT>ptr -> i32', { RECT })
-        const getDesktopWindow = bind('user32.dll', 'GetDesktopWindow', ' -> ptr')
+        // out 参数：命名 struct 的 alloc() 句柄，.ptr 即 Ptr<'RECT'>，直接喂 <RECT>ptr。
+        const RECT = struct('RECT', [
+            { name: 'left', type: 'i32' },
+            { name: 'top', type: 'i32' },
+            { name: 'right', type: 'i32' },
+            { name: 'bottom', type: 'i32' },
+        ])
+        const getWindowRect = bind('user32.dll', 'GetWindowRect', '<>ptr <RECT>ptr -> i32', { RECT })
+        const getDesktopWindow = bind('user32.dll', 'GetDesktopWindow', ' -> <>ptr')
         const desktop = getDesktopWindow()
         const rectOut = RECT.alloc()
         t.checkTrue('GetWindowRect(hwnd, RECT.alloc().ptr) succeeds', getWindowRect(desktop, rectOut.ptr) !== 0)
         const rectV = rectOut.decode()
         t.checkTrue('alloc() handle read() decodes out-param', rectV.right > rectV.left && rectV.bottom > rectV.top)
 
+        // 成员 '<RECT>ptr'：decode 得到 Ptr<'RECT'>，可直接喂 <RECT>ptr 形参（品牌在类型层流动）。
+        const RECTPTR = struct([{ name: 'r', type: '<RECT>ptr' }])
+        const box = RECTPTR.decode(RECTPTR.encode({ r: rectOut.ptr }))
+        t.checkTrue('GetWindowRect(hwnd, member RECT*) succeeds', getWindowRect(desktop, box.r) !== 0)
+        const rectThroughMember = rectOut.decode()
+        t.checkTrue('writes through the member pointer', rectThroughMember.right > rectThroughMember.left && rectThroughMember.bottom > rectThroughMember.top)
+
         t.section('struct ptr return + branded passthrough')
-        // 返回位 <NAME>ptr → StructPtr<NAME>（number|null，只读指针，品牌在类型层）。
+        // 返回位 <NAME>ptr → Ptr<NAME>（number|null，只读指针，品牌在类型层）。
         // 该品牌指针可直接喂给另一函数的 <NAME>ptr 形参（裸地址透传，不重编码）。
         // 链条：localtime(&t) 返回 struct tm* → asctime(tm*) 消费之。
-        const TM = struct({
-            tag: 'struct',
-            member: [
-                { name: 'tm_sec', type: 'i32' },
-                { name: 'tm_min', type: 'i32' },
-                { name: 'tm_hour', type: 'i32' },
-                { name: 'tm_mday', type: 'i32' },
-                { name: 'tm_mon', type: 'i32' },
-                { name: 'tm_year', type: 'i32' },
-                { name: 'tm_wday', type: 'i32' },
-                { name: 'tm_yday', type: 'i32' },
-                { name: 'tm_isdst', type: 'i32' },
-            ],
-        })
+        const TM = struct([
+            { name: 'tm_sec', type: 'i32' },
+            { name: 'tm_min', type: 'i32' },
+            { name: 'tm_hour', type: 'i32' },
+            { name: 'tm_mday', type: 'i32' },
+            { name: 'tm_mon', type: 'i32' },
+            { name: 'tm_year', type: 'i32' },
+            { name: 'tm_wday', type: 'i32' },
+            { name: 'tm_yday', type: 'i32' },
+            { name: 'tm_isdst', type: 'i32' },
+        ])
         const localtime = bind('msvcrt.dll', 'localtime', '<VOID>ptr -> <TM>ptr')
-        const asctime = bind('msvcrt.dll', 'asctime', '<TM>ptr -> ptr', { TM })
+        const asctime = bind('msvcrt.dll', 'asctime', '<TM>ptr -> <>ptr', { TM })
         const tbuf = new ArrayBuffer(8)   // time_t=0（32/64 位 time_t 都读起始字节）
         const tm = localtime(tbuf)
         t.checkTrue('localtime -> <TM>ptr returns branded pointer', tm !== null)
@@ -296,9 +296,9 @@ export const suite = {
         const tmDecoded = structFromPtr(TM, tm)
         t.checkTrue('structFromPtr(<TM>ptr) decodes native-owned struct', tmDecoded !== null && tmDecoded.tm_sec === 0)
 
-        // 编译期：裸 number 不是 StructPtr<'TM'>，被类型层拒绝（此处永不执行）
+        // 编译期：裸 number 不是 Ptr<'TM'>，被类型层拒绝（此处永不执行）
         if (false) {
-            // @ts-expect-error plain number is not assignable to StructPtr<'TM'>
+            // @ts-expect-error plain number is not assignable to Ptr<'TM'>
             asctime(123)
         }
 
@@ -318,7 +318,7 @@ export const suite = {
         t.check('closure i32+i32 = 12', 12, new DataView(r1).getInt32(0, true))
         addClos.dispose()
 
-        const ptrClos = closure('ptr i32 -> i32', (p, n) => (p === null ? 0 : p) + n)
+        const ptrClos = closure('<>ptr i32 -> i32', (p, n) => (p === null ? 0 : p) + n)
         const r2 = new ArrayBuffer(8)
         ffi.ffiCall(ptrClos.ptr, packArgs(['ptr', 'i32'], [0x1234, 100]), r2, 0)
         t.check('closure ptr+i32 decode', 0x1234 + 100, new DataView(r2).getInt32(0, true))
@@ -338,10 +338,10 @@ export const suite = {
         bigClos.dispose()
 
         t.section('closures: EnumWindows (stdcall, end-to-end)')
-        const enumWindows = bind('user32.dll', 'EnumWindows', 'ptr ptr -> i32')
+        const enumWindows = bind('user32.dll', 'EnumWindows', '<>ptr <>ptr -> i32')
         let wcount = 0
         let wLp: number | null = null
-        const enumClos = closure('ptr ptr -> i32', (_hwnd, lParam) => { wcount++; wLp = lParam; return 1 })
+        const enumClos = closure('<>ptr <>ptr -> i32', (_hwnd, lParam) => { wcount++; wLp = lParam; return 1 })
         const eok = enumWindows(enumClos.ptr, 0x5A5A)
         t.checkTrue('EnumWindows succeeds', eok !== 0)
         t.checkTrue('EnumWindows callback fired', wcount > 0)
@@ -349,11 +349,11 @@ export const suite = {
         enumClos.dispose()
 
         t.section('closures: qsort (cdecl, msvcrt)')
-        const qsort = bind('msvcrt.dll', 'qsort', '<VOID>ptr ptr ptr ptr -> void')
+        const qsort = bind('msvcrt.dll', 'qsort', '<VOID>ptr <>ptr <>ptr <>ptr -> void')
         const arr = new Uint32Array([5, 3, 8, 1])
         const readI32 = (p: number): number =>
             (ffi.readByte(p) | (ffi.readByte(p + 1) << 8) | (ffi.readByte(p + 2) << 16) | (ffi.readByte(p + 3) << 24))
-        const cmp = closure('ptr ptr -> i32', (a, b) => readI32(a as number) - readI32(b as number), { stdcall: false })
+        const cmp = closure('<>ptr <>ptr -> i32', (a, b) => readI32(a as number) - readI32(b as number), { stdcall: false })
         qsort(arr.buffer, 4, 4, cmp.ptr)
         t.check('qsort [0]', 1, arr[0])
         t.check('qsort [1]', 3, arr[1])

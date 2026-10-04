@@ -3,12 +3,12 @@ import * as gui from 'gui'
 import { bindLib } from './ffi/bind.js'
 
 const user32 = bindLib('user32.dll', {
-    DrawTextW: 'ptr <WCHAR>ptr i32 <VOID>ptr i32 -> i32',
-    GetDC: 'ptr -> ptr',
-    ReleaseDC: 'ptr ptr -> i32',
+    DrawTextW: '<>ptr <WCHAR>ptr i32 <VOID>ptr i32 -> i32',
+    GetDC: '<>ptr -> <>ptr',
+    ReleaseDC: '<>ptr <>ptr -> i32',
 })
 const gdi32 = bindLib('gdi32.dll', {
-    SelectObject: 'ptr ptr -> ptr',
+    SelectObject: '<>ptr <>ptr -> <>ptr',
 })
 
 export function measureText(hdc: number, text: string, maxWidth: number): { width: number; height: number } {

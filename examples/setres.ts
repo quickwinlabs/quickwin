@@ -6,7 +6,7 @@ import { bind } from '../lib/ffi/bind.js'
 const user32 = win.LoadLibrary('user32.dll')
 if (!user32) { print('LoadLibrary user32 failed'); std.exit(1) }
 
-const enumDisplaySettingsA = bind('user32.dll', 'EnumDisplaySettingsA', 'ptr i32 <VOID>ptr -> i32')
+const enumDisplaySettingsA = bind('user32.dll', 'EnumDisplaySettingsA', '<>ptr i32 <VOID>ptr -> i32')
 const changeDisplaySettingsA = bind('user32.dll', 'ChangeDisplaySettingsA', '<VOID>ptr u32 -> i32')
 
 /** DEVMODEA used by EnumDisplaySettings; driver reports actual dmSize (often 124). */

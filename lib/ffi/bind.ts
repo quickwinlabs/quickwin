@@ -3,31 +3,32 @@ import * as win from 'win'
 import * as os from 'os'
 import * as std from 'std'
 import '../text-codec.js'
-import { type Kind, type Norm, type StructPtr, PTR_SIZE, normKind, ptrLayoutName } from './ctype.js'
+import { type Kind, type Norm, type Ptr, PTR_SIZE, normKind, normToken, ptrLayoutName } from './ctype.js'
 
 // 标量 kind / C 别名表见 ./ctype.js；此处透传其公共类型与函数，保持 bind.js 深导入面不变。
 export * from './ctype.js'
 
-// 声明式 FFI 绑定：把字符串签名（'ptr i32 -> i32'）解析成可调用函数（bind）
+// 声明式 FFI 绑定：把字符串签名（'<>ptr i32 -> i32'）解析成可调用函数（bind）
 // 或一个 dll 的签名表（bindLib）。
 // kind：
-//   BasicKind = void u8 i8 u16 i16 u32 i32 u64 i64 u64n i64n f32 f64 ptr
-//     ptr       number|null —— 裸地址；buffer 用 ffi.bufferPtr 取址或改用 <VOID>ptr
+//   BasicKind = void u8 i8 u16 i16 u32 i32 u64 i64 u64n i64n f32 f64 ptr（内部 kind）
+//   '<>ptr'   裸地址 —— number|null（raw，不 pin）；buffer 用 ffi.bufferPtr 取址或改用 <VOID>ptr
 //   指针布局 <NAME>ptr（调用期 pin，按指针宽读写）：
 //     <VOID>ptr     ArrayBuffer|null —— 原样传 JS 缓冲（仅参数）
 //     <WCHAR>ptr    string|null —— utf-16le+'\0' 编码（仅参数）
-//     <STRUCT>ptr   参数：布局 JS 形（编码成 buffer）或 StructPtr<STRUCT>（裸地址透传）；
-//                   返回：StructPtr<STRUCT>（指针，品牌在类型层，不解码内容）
+//     <STRUCT>ptr   参数：布局 JS 形（编码成 buffer）或 Ptr<STRUCT>（裸地址透传）；
+//                   返回：Ptr<STRUCT>（指针，品牌在类型层，不解码内容）
 //   u64/i64 收 number（0..2^53 连续无损，之上有空洞即 lossy）；u64n/i64n 收
 //   bigint、端到端 64 位全精确（恰 64 位，DataView 天然范围护栏）。裸 bigint
 //   类型会误读为任意精度，故用 i64n/u64n 显式钉死「恰 64 位」语义。
 //   指针/缓冲/字符串实参一一对应各自类型，运行时严格校验；null 恒 →0。
-//   <VOID>ptr/<WCHAR>ptr 不可作返回类型（返回裸地址/宽串指针请用 ptr）。
+//   裸 'ptr' 已被拒绝：一律写 '<>ptr' 或 '<NAME>ptr'。<VOID>ptr/<WCHAR>ptr 不可作
+//   返回类型（返回裸地址/宽串指针请用 '<>ptr'）。
 //   可用 C/Windows typedef 别名：int long short char float double
 //     + DWORD UINT LONG BOOL HRESULT ... + *_PTR WPARAM LPARAM SIZE_T
 //     + HANDLE HWND HDC ... (+ LPVOID 等指针 typedef)
 //   别名在 token 层归一化到规范形式（C_ALIAS as const 单源，见 ./ctype.js）；
-//   LPCWSTR/PCWSTR/LPWSTR → '<WCHAR>ptr'，其余指针 typedef → ptr。
+//   LPCWSTR/PCWSTR/LPWSTR → '<WCHAR>ptr'，其余指针 typedef → '<>ptr'。
 
 // 原生标量（传值/地址）类型表：实参、返回共用
 type BasicTypeOf = {
@@ -54,14 +55,19 @@ export type Layout<V = unknown> = {
 export type LayoutMap = Record<string, Layout<any>>
 export type LayoutValue<T> = T extends Layout<infer V> ? V : never
 
-// <NAME>ptr 实参：内建布局（VOID/WCHAR）或用户布局 —— 结构形（编码）或 StructPtr（透传）。
+// <NAME>ptr 实参：'<>ptr' → 裸地址（number|null，直通）；内建布局（VOID/WCHAR）或
+// 用户布局 —— 结构形（编码）或 Ptr 品牌（透传）。
 type PtrArgType<N extends string, L> =
-    N extends 'VOID' ? ArrayBuffer | null
+    N extends '' ? number | null
+        : N extends 'VOID' ? ArrayBuffer | null
         : N extends 'WCHAR' ? string | null
-            : StructPtr<N> | null | (N extends keyof L ? LayoutValue<L[N]> : never)
+            : Ptr<N> | null | (N extends keyof L ? LayoutValue<L[N]> : never)
 
+// 裸 'ptr' 编译期拒绝（never）；'<>ptr' → 裸地址；<NAME>ptr → 布局；否则标量。
 type ArgToken<T extends string, L> =
-    Norm<T> extends `<${infer N}>ptr` ? PtrArgType<N, L>
+    Norm<T> extends '<>ptr' ? number | null
+        : Norm<T> extends 'ptr' ? never
+        : Norm<T> extends `<${infer N}>ptr` ? PtrArgType<N, L>
         : ArgTypeOf[Norm<T> & keyof ArgTypeOf]
 
 type ArgsOf<T extends string, L> =
@@ -71,10 +77,13 @@ type ArgsOf<T extends string, L> =
 
 type _Args<S extends string, L = {}> = S extends `${infer P} -> ${string}` ? ArgsOf<P, L> : never
 
-// 返回位：用户 <STRUCT>ptr → StructPtr<N>（指针，不解码）；VOID/WCHAR 返回非法。
+// 返回位：'<>ptr' → number|null（裸地址）；用户 <STRUCT>ptr → Ptr<N>（不解码）；
+// VOID/WCHAR 返回非法；裸 'ptr' 编译期拒绝（never）。
 type RetToken<T extends string> =
-    Norm<T> extends `<${infer N}>ptr`
-        ? N extends 'VOID' | 'WCHAR' ? never : StructPtr<N> | null
+    Norm<T> extends '<>ptr' ? number | null
+        : Norm<T> extends 'ptr' ? never
+        : Norm<T> extends `<${infer N}>ptr`
+            ? N extends 'VOID' | 'WCHAR' ? never : Ptr<N> | null
         : RetTypeOf[Norm<T> & keyof RetTypeOf]
 
 type _Ret<S extends string> = S extends `${string} -> ${infer R}` ? RetToken<R> : never
@@ -102,7 +111,7 @@ const VOID_PTR: PtrCodec = {
     encode(v, held) {
         if (v === null || v === undefined) return 0
         if (!(v instanceof ArrayBuffer)) {
-            throw new Error(`ffi-bind: <VOID>ptr expects ArrayBuffer|null, got ${typeof v}; use kind "ptr" for a raw address, or ffi.bufferPtr(buf)`)
+            throw new Error(`ffi-bind: <VOID>ptr expects ArrayBuffer|null, got ${typeof v}; use "<>ptr" for a raw address, or ffi.bufferPtr(buf)`)
         }
         held.push(v)  // 调用期 pin：GC 在 ffiCall 返回前不可回收
         return ffi.bufferPtr(v)
@@ -114,7 +123,7 @@ const WCHAR_PTR: PtrCodec = {
     encode(v, held) {
         if (v === null || v === undefined) return 0
         if (typeof v !== 'string') {
-            throw new Error(`ffi-bind: <WCHAR>ptr expects string|null, got ${typeof v}; use kind "ptr" for a raw address`)
+            throw new Error(`ffi-bind: <WCHAR>ptr expects string|null, got ${typeof v}; use "<>ptr" for a raw address`)
         }
         const enc = new TextEncoder('utf-16le').encode(v + '\0')
         const buf = enc.buffer as ArrayBuffer
@@ -132,7 +141,7 @@ function userPtrCodec(name: string, layouts: LayoutMap | undefined): PtrCodec {
         name,
         encode(v, held) {
             if (v === null || v === undefined) return 0
-            if (typeof v === 'number') return v  // StructPtr 品牌指针 → 裸地址透传
+            if (typeof v === 'number') return v  // Ptr 品牌指针 → 裸地址透传
             const lay = layouts?.[name]
             if (!lay) {
                 const avail = [...Object.keys(BUILTIN_PTR_CODECS), ...Object.keys(layouts ?? {})]
@@ -156,30 +165,41 @@ type ArgSpec = { t: 'val'; k: Kind } | { t: 'ptr'; c: PtrCodec }
 // 返回规格：'val' 标量；'ptr' = 用户 <STRUCT>ptr 返回（只读指针，品牌在类型层）。
 type RetSpec = { t: 'val'; k: Kind } | { t: 'ptr'; name: string }
 
+// token → ArgSpec：裸 'ptr' 拒绝；'<>ptr' → 裸地址直通（val-ptr）；<NAME>ptr → 布局 codec。
+function argSpecOf(tok: string, layouts?: LayoutMap): ArgSpec {
+    const norm = normToken(tok)
+    if (norm === 'ptr')
+        throw new Error(`ffi-bind: bare "ptr" rejected — use "<>ptr" for a raw address or "<NAME>ptr" for a layout pointer`)
+    if (norm === '<>ptr') return { t: 'val', k: 'ptr' }
+    const name = ptrLayoutName(norm)
+    if (name !== undefined) return { t: 'ptr', c: ptrCodec(name, layouts) }
+    return { t: 'val', k: normKind(norm) }
+}
+
+// token → RetSpec：裸 'ptr' 拒绝；'<>ptr' → 裸地址；<NAME>ptr → 只读指针（VOID/WCHAR 非法）。
+function retSpecOf(tok: string): RetSpec {
+    const norm = normToken(tok)
+    if (norm === 'ptr')
+        throw new Error(`ffi-bind: bare "ptr" rejected — use "<>ptr" for a raw address or "<NAME>ptr" for a layout pointer`)
+    if (norm === '<>ptr') return { t: 'val', k: 'ptr' }
+    const name = ptrLayoutName(norm)
+    if (name !== undefined) {
+        if (name === 'VOID' || name === 'WCHAR')
+            throw new Error(`ffi-bind: "<${name}>ptr" cannot be a return type (use "<>ptr")`)
+        // 宽松：返回只读指针，不要求 layouts 里注册该布局（品牌是编译期的）。
+        return { t: 'ptr', name }
+    }
+    return { t: 'val', k: normKind(norm) }
+}
+
 function parseSig(sig: string, layouts?: LayoutMap): { args: ArgSpec[]; ret: RetSpec } {
     const parts = sig.split(' -> ')
     const ret = parts[1]
     if (ret === undefined || parts.length > 2) {
         throw new Error(`ffi-bind: invalid signature "${sig}" (expected "arg1 arg2 -> ret")`)
     }
-    let retSpec: RetSpec
-    const retName = ptrLayoutName(ret)
-    if (retName !== undefined) {
-        if (retName === 'VOID' || retName === 'WCHAR') {
-            throw new Error(`ffi-bind: "<${retName}>ptr" cannot be a return type (use "ptr")`)
-        }
-        // 宽松：返回只读指针，不要求 layouts 里注册该布局（品牌是编译期的）。
-        retSpec = { t: 'ptr', name: retName }
-    } else {
-        retSpec = { t: 'val', k: normKind(ret) }
-    }
     const tokens = (parts[0] ?? '') === '' ? [] : (parts[0] as string).split(' ')
-    const args = tokens.map((t): ArgSpec => {
-        const name = ptrLayoutName(t)
-        if (name !== undefined) return { t: 'ptr', c: ptrCodec(name, layouts) }
-        return { t: 'val', k: normKind(t) }
-    })
-    return { args, ret: retSpec }
+    return { args: tokens.map((t) => argSpecOf(t, layouts)), ret: retSpecOf(ret) }
 }
 
 function makeFn(proc: number, sig: string, layouts?: LayoutMap): (...a: unknown[]) => unknown {
@@ -269,11 +289,11 @@ function writeSlot(dv: DataView, off: number, k: Kind, v: unknown): void {
     }
 }
 
-// ptr 参数 → 裸地址整数；number 直通，null/undefined →0，其余报错并提示 <VOID>ptr。
+// <>ptr 参数 → 裸地址整数；number 直通，null/undefined →0，其余报错并提示 <VOID>ptr。
 function slotRawPtr(v: unknown): number {
     if (v === null || v === undefined) return 0
     if (typeof v === 'number') return v
-    throw new Error(`ffi-bind: ptr expects number|null, got ${typeof v}; use <VOID>ptr to pass an ArrayBuffer, or ffi.bufferPtr(buf)`)
+    throw new Error(`ffi-bind: <>ptr expects number|null, got ${typeof v}; use <VOID>ptr to pass an ArrayBuffer, or ffi.bufferPtr(buf)`)
 }
 
 // 从 retBuf 按返回类型解码。'ptr' 布局返回读指针宽、NULL→null；标量按声明宽度截断/扩展。

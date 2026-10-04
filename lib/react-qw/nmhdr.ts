@@ -8,14 +8,11 @@ export const PTR_SIZE = IS64 ? 8 : 4
 
 // NMHDR = hwndFrom(ptr) + idFrom(ptr) + code(i32)。
 // 用 ffi-struct 定义以复现 MSVC/嵌套结构的“尾 padding 传染”（内嵌 NMHDR 占满 24/12 字节）。
-export const NMHDR = struct({
-  tag: 'struct',
-  member: [
-    { name: 'hwndFrom', type: 'ptr' },
-    { name: 'idFrom', type: 'ptr' },
-    { name: 'code', type: 'i32' },
-  ],
-})
+export const NMHDR = struct([
+  { name: 'hwndFrom', type: '<>ptr' },
+  { name: 'idFrom', type: '<>ptr' },
+  { name: 'code', type: 'i32' },
+])
 export const NMHDR_SIZE = NMHDR.size // 24 (x64) / 12 (ia32)
 export const NMHDR_CODE = NMHDR.offsetOf('code') // 16 / 8
 
