@@ -1,9 +1,8 @@
 import * as os from 'os'
 
 // ============================================================
-// AST IR —— struct/bind 的类型描述树（CType = C_Number|<..>ptr|CString|CArray|CStruct|CUnion）。
-// 标量直接写 kind 字符串（如 'i32'）；指针必须写 '<>ptr'（裸地址）或 '<NAME>ptr'（带名），
-// 复合类型才是带 tag 的对象。
+// AST IR —— struct/bind 的类型描述树。标量直接写 kind 字符串（如 'i32'）；
+// 指针写 '<>ptr'（裸地址）或 '<NAME>ptr'（带名），复合类型才是带 tag 的对象。
 // 只描述「C 声明怎么写」（unit/length/encoding 等意图）；内存布局与读写视图由
 // struct.ts 的 computeStructLayout/lower 单独 lower 成 layout IR。
 //
@@ -13,30 +12,27 @@ import * as os from 'os'
 // ============================================================
 
 // ============================================================
-// §1 kind 词汇表 —— KINDS 是唯一手写源，下列集合全从 Kind 派生
-//   Kind         内部 kind 全集（14）：bind 签名 token / lower 后 IR 共用
-//   C_Number     结构体字段的数字档（10）
-//   Token        规范 token 全集（13 + 指针）：C_ALIAS / Norm / JsTypeOfToken 的操作面
-//   RuntimeKind  lower 后的字段 kind（11）= C_Number | 'ptr'
-//   CType        成员类型 IR 节点（见 §4）
-// 排除项各有理由：'void' 无大小；u64n/i64n 非 C 类型；裸 'ptr' 非合法用户 token（写 '<>ptr'）；
-// lower 后所有指针归一为 kind 'ptr'，名字被擦掉。别名表见 §3。
+// §1 kind 词汇表 —— KINDS 是唯一手写清单，下列集合全从它派生
+//   Kind(14)        bind 签名 token / lower 后 IR 共用
+//   C_Number(10)    结构体字段的数字档
+//   C_Integer(8)    C_Number 去浮点 —— 位域存储单元只能是整数档
+//   Token(13+指针)  C_ALIAS / Norm / JsTypeOfToken 的操作面（见 §3）
+// 排除项：'void' 无大小；u64n/i64n 是「恰 64 位」传输档，非 C 类型（u64/i64 才是）；
+// 裸 'ptr' 用户面禁写（须写 '<>ptr'），内部保留 —— 唯一随架构变宽的标量档。
+// lower 后所有指针归一为 kind 'ptr'，名字被擦掉。
 // ============================================================
-// KINDS 元组是唯一手写清单：Kind / KIND_SET 与本文件其余集合都从它派生。
-//   = 10 个 C 数字档 + 'void' + 裸 'ptr' + 两个内部专用档 u64n/i64n。
-//   u64n/i64n —— 钉死「恰 64 位」的传输档，不是 C 类型（u64/i64 才是）。
-// 裸 'ptr' 用户面已禁用，内部保留：它是唯一随架构变宽的标量档（见 §2 PTR_SIZE）。
 const KINDS = [
     'void', 'u8', 'i8', 'u16', 'i16', 'u32', 'i32',
     'u64', 'i64', 'u64n', 'i64n', 'f32', 'f64', 'ptr',
 ] as const
 export type Kind = (typeof KINDS)[number]
 
-// C 的数字类型档：可作结构体字段 / bind 签名 token。
-// 排除 'void'（无大小）、u64n/i64n（传输档，非 C 类型）、裸 'ptr'（内部指针档）。
+// C 的数字类型档：可作结构体字段 / bind 签名 token。排除项理由见 §1。
 export type C_Number = Exclude<Kind, 'void' | 'u64n' | 'i64n' | 'ptr'>
 
-// 运行时 kind 集合，供 normKind 校验。
+// 整数档：位域存储单元的合法类型（C 位域只能用整型）。
+export type C_Integer = Exclude<C_Number, 'f32' | 'f64'>
+
 const KIND_SET: ReadonlySet<Kind> = new Set(KINDS)
 
 // ============================================================
@@ -53,27 +49,26 @@ export type Ptr<T extends string> =
 
 type NullablePtr<T extends string> = (T extends '' ? number : number & { readonly [ptrBrand]: T }) | null
 
-// 指针 token 判定。NAME 允许为空（'<>ptr' 裸地址），但不许空白或尖括号嵌套 ——
-// 真实的 C 类型名是 \w+。struct 侧原有 /^<.*>ptr$/ 会放过 '<a b>ptr>' 这类怪写法。
+// 指针 token 判定：NAME 可空（'<>ptr' 裸地址），但不许空白或尖括号嵌套。
 const PTR_TOKEN_RE = /^<([^<>\s]*)>ptr$/
 
-// 用户面指针 CType：'<>ptr'（裸地址）或 '<NAME>ptr'（带名）。
 export function isCPtrToken(t: string): t is `<${string}>ptr` { return PTR_TOKEN_RE.test(t) }
 
+// 整数档运行时判定：位域单元只能是整型。排除项与 C_Integer 的类型层 Exclude 一一对应。
+export function isCInteger(t: string): t is C_Integer {
+    return KIND_SET.has(t as Kind)
+        && t !== 'f32' && t !== 'f64' && t !== 'void' && t !== 'u64n' && t !== 'i64n' && t !== 'ptr'
+}
+
 // ============================================================
-// §3 C 别名与 token 归一
-//   Windows x86/x64 均 LLP64：int/long 恒 32 位，long long 恒 64 位；
-//   LONG_PTR/WPARAM/SIZE_T 等指针 typedef 一律归一到 '<>ptr'（裸地址）；
-//   LPCWSTR 等宽字符串 typedef 归一到 '<WCHAR>ptr' 指针布局。
-//   单源常量（as const satisfies）：类型层 Norm 由它派生，无需手同步；
-//   satisfies 让 value 也在定义处被校验（仅 as const 会静默放过 'u32' 写成 'u3z'，
-//   错误推迟到调用点变成诡异的 never 参数）。
+// §3 C 别名与 token 归一 —— Windows LLP64：int/long 恒 32 位、long long 恒 64 位；
+//   指针 typedef（LONG_PTR/WPARAM/SIZE_T…）归一 '<>ptr'，宽字符串 typedef 归一 '<WCHAR>ptr'。
+//   单源常量 as const satisfies：类型层 Norm 由它派生，无需手同步；satisfies 让 value
+//   也在定义处被校验 —— 仅 as const 会静默放过 'u3z'，错误推迟成调用点诡异的 never。
 // ============================================================
 
-// 规范 token 全集 = 规范 kind（去裸 'ptr'）∪ 指针 token。
-// C_ALIAS 的值、Norm 的输入输出、JsTypeOfToken 的键都在这个集合上。
-// 不含裸 'ptr' —— 用户必须写 '<>ptr'，这是裸 ptr 拒绝在类型层的体现。
-// （原名 C_Type 与 §4 的 CType 仅差一个下划线，含义完全不同，故改名。）
+// 规范 token 全集 = 规范 kind（去裸 'ptr'）∪ 指针 token。C_ALIAS 的值、Norm 的输入输出、
+// JsTypeOfToken 的键都在此集合上。不含裸 'ptr' —— 用户必须写 '<>ptr'（见 §1）。
 type Token = Exclude<Kind, 'ptr'> | `<${string}>ptr`
 
 const C_ALIAS = {
@@ -134,17 +129,14 @@ export function ptrLayoutName(t: string): string | undefined {
 // ============================================================
 // §4 CType IR —— 复合类型（带 tag 的对象）；标量/指针直接写 kind 字符串。
 // ============================================================
-// 字符串解释方式（与 printf 的 %d/%u 类比：encoding 只决定「把这段字节怎么看成 JS string」）。
-// 直接复用 TextDecoder/TextEncoder 的标准标签，读写统一走 lib/text-codec.js：
-//   utf-8    变长编解码
-//   utf-16le 每 2 字节 1 码元（宽字符）
-// 定长字段：写入超长即截断到 size，读取到 NUL 为止。
-// unit+length 共同决定 layout；encoding 只在 decode/encode 时使用，可与任意 unit 组合。
+// encoding 只决定「这段字节怎么看成 JS string」，不参与布局：unit+length 决定 layout，
+// encoding 仅在 encode/decode 用，可与任意 unit 组合。标签直接用 TextDecoder/TextEncoder
+// 标准，读写走 lib/text-codec.js。定长字段：写入超长截断到 size，读取到 NUL 为止。
 export type Encoding = 'utf-8' | 'utf-16le'
 
 export type CString = {
     tag: 'string',
-    unit: 'u8' | 'u16',   // 存储单元类型（决定槽宽与对齐）
+    unit: 'u8' | 'u16',   // 槽宽与对齐
     length: number,   // 槽数
     encoding: Encoding
 }
@@ -153,15 +145,29 @@ export type CArray = {
     ctype: CType,
     length: number
 }
-// 成员分两支，用 name 判别：
-//   命名成员：标量 kind / string / array（没有可提升的子布局，必须命名）
-//   匿名聚合：struct / union（C11 匿名字段，其字段被 splice 提升进父结构）
-// alignas 抬对齐下限（pack 压上限）；bitfield 暂不支持。
+// 位域：unit 决定存储单元的宽、对齐与签别（必须整数档），width 是位宽。
+// 布局规则（mingw 实测 MSVC 语义）在 struct.ts 的位域状态机里，此处不重复。
+export type CBitfield = {
+    tag: 'bitfield',
+    unit: C_Integer,
+    width: number
+}
+// 成员分两支，用 name 判别：命名成员（标量/string/array/bitfield，无可提升子布局、必须命名）
+// 与匿名聚合（struct/union，C11 匿名字段其子字段被 splice 提升进父结构）。alignas 抬对齐下限。
+// CBitfield 刻意不进 CType —— 数组元素只能是 CType（C 禁止位域数组），
+// Member 用 CMemberType = CType | CBitfield 显式把它加回来。
+export type CMemberType = CType | CBitfield
+
 export type Member =
-    | { name: string; type: CType; alignas?: number }
+    | { name: string; type: CMemberType; alignas?: number }
     | { name?: undefined; type: CStruct | CUnion; alignas?: number }
 
 export type CStruct = { tag: 'struct'; member: readonly Member[], pack?: number }
 export type CUnion = { tag: 'union'; member: readonly Member[], pack?: number }
 
 export type CType = C_Number | `<${string}>ptr` | CString | CArray | CStruct | CUnion
+
+/** 构造位域成员类型：unit 决定单元宽与签别（整数档），width 是位宽（1..单元位宽）。 */
+export function bit(unit: C_Integer, width: number): CBitfield {
+    return { tag: 'bitfield', unit, width }
+}

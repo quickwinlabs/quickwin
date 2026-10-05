@@ -1,21 +1,20 @@
 import '../text-codec.js'
 import * as ffi from 'ffi'
 import {
-    PTR_SIZE, type Ptr, type Kind, type C_Number,
-    type CType, type CString, type CArray,
+    PTR_SIZE, type Ptr, type Kind, type C_Number, type C_Integer,
+    type CString, type CArray, type CBitfield,
+    type CMemberType,
     type CStruct, type CUnion, type Member, type Encoding,
     isCPtrToken,
+    isCInteger,
 } from './ctype.js'
 
 // ============================================================
-// 聚合定义（唯一 API：CType IR，member 数组即定义）：
-//   struct([...member])                  — 匿名结构体
-//   struct('RECT', [...member])          — 命名结构体（alloc().ptr 带 Ptr<'RECT'> 品牌）
-//   union([...member])                   — 匿名联合体
-//   union('U', [...member])              — 命名联合体（同样可用于 <U>ptr 布局）
-// 可选 { pack } 压对齐上限。layout 采用 MSVC 对齐语义：
+// 聚合定义：唯一 API 是 CType IR（member 数组即定义），签名与 pack 见末尾 struct()/union()。
+// layout 采用 MSVC 对齐语义：
 //   i8/u8→1  i16/u16→2  i32/u32/f32→4  i64/u64/f64→8  '<>ptr'/'<T>ptr'→arch 宽(4/8)
 //   struct 对齐 = 最大字段对齐，总尺寸末尾补齐；pack 压上限、alignas 抬下限
+//   位域布局规则见下方 computeStructLayout 的状态机注释（mingw 实测 DCB/COMSTAT）。
 // ============================================================
 
 // ============================================================
@@ -24,9 +23,10 @@ import {
 
 // 指针成员：'<>ptr' → number（T='' 品牌退化）；'<NAME>ptr' → Ptr<NAME>（品牌 number）。
 // 该品牌 number 可直接喂 bind 的 <NAME>ptr 形参（裸地址透传）。
-type ValOf<C extends CType> =
+type ValOf<C extends CMemberType> =
     C extends `<${infer T}>ptr` ? Ptr<T>
     : C extends C_Number ? number
+    : C extends CBitfield ? number
     : C extends CString ? string
     : C extends CArray ? Tuple<ValOf<C['ctype']>, C['length']>
     : C extends CStruct | CUnion ? ShapeOfC<C['member']>
@@ -46,7 +46,7 @@ type ShapeOfC<M extends readonly Member[]> = M extends readonly [
 type FieldShape<M extends Member> =
     M extends { name?: undefined; type: infer T extends CStruct | CUnion }
     ? ShapeOfC<T['member']>
-    : M extends { name: infer N extends string; type: infer T extends CType }
+    : M extends { name: infer N extends string; type: infer T extends CMemberType }
     ? { [K in N]: ValOf<T> }
     : {}
 
@@ -54,8 +54,7 @@ type FieldShape<M extends Member> =
 // 运行时类型
 // ============================================================
 
-// lower 后指针统一归一为内部 kind 'ptr'（用户面写 '<>ptr' 裸地址或 '<NAME>ptr' 带名指针）。
-// = Kind 去掉 'void'（无大小）与 u64n/i64n（传输档，非 C 类型）—— 只剩能占内存的档。
+// lower 后指针统一归一为内部 kind 'ptr'（用户面写 '<>ptr' 或 '<NAME>ptr'）。
 type RuntimeKind = Exclude<Kind, 'void' | 'u64n' | 'i64n'>
 
 // kind → size/align（不含指针：指针统一 PTR_SIZE，见 lower）。
@@ -69,9 +68,11 @@ const SizeAlign: Record<C_Number, number> = {
 
 // 运行时 Field：IR 的 lowered 视图（独立于 CType，不保留 Member/alignas）。
 // computeStructLayout 在 lowering 时把子布局内嵌进 FieldType（struct/union→fields，
-// array→elementType+elementSize），运行期 read/write 零查表；offset 相对本层起点。
+// array→elementType+elementSize，bitfield→bit 单元内偏移），运行期 read/write 零查表。
+// offset 相对本层起点；位域成员的 offset 是其存储单元的基址（不是位域自己的地址）。
 type FieldType =
     { tag: 'basic', kind: RuntimeKind }
+    | { tag: 'bitfield', unit: C_Integer, bit: number, width: number }
     | { tag: 'string', encoding: Encoding }
     | { tag: 'struct' | 'union', fields: Field[] }
     | { tag: 'array', elementType: FieldType, elementSize: number }
@@ -83,7 +84,6 @@ export type Field = {
 }
 export type Fields = Field[]
 
-// StructDef — struct()/union() 返回
 export type StructDef<T extends CStruct | CUnion, N extends string = never> = {
     readonly __struct: T
     readonly size: number
@@ -116,15 +116,13 @@ type Layout = {
     fields: Fields,
 }
 
-// 用户面已拒绝裸 'ptr'，但运行时仍可能收到（手写 IR / 迁移残留）—— 统一在此报错。
-// 用类型守卫绕开「CType 已不含 'ptr'」的收窄报错。
+// 用户面已拒绝裸 'ptr'，运行时仍可能收到（手写 IR）—— 用类型守卫绕开收窄报错，统一在此抛。
 function isBarePtr(t: string): t is 'ptr' {
     return t === 'ptr'
 }
 
-// CType → { size, align, FieldType }：聚合递归进 computeStructLayout。
-// 每个子树每层只 lower 一次（array 元素复用同一结果），不再分别算 size 和 type。
-function lower(t: CType): { size: number, align: number, type: FieldType } {
+// CType → { size, align, FieldType }：聚合递归进 computeStructLayout；array 元素复用同一结果。
+function lower(t: CMemberType): { size: number, align: number, type: FieldType } {
     if (typeof t === 'string') {
         if (isBarePtr(t))
             throw new Error(`ffi-struct: bare "ptr" rejected — use "<>ptr" for a raw address or "<NAME>ptr" for a typed pointer`)
@@ -140,10 +138,25 @@ function lower(t: CType): { size: number, align: number, type: FieldType } {
         const s = SizeAlign[t.unit]
         return { size: s * t.length, align: s, type: { tag: 'string', encoding: t.encoding } }
     }
+    if (t.tag === 'bitfield') {
+        // 手写 IR 可能绕过 C_Integer 约束，运行时把关。
+        if (!isCInteger(t.unit))
+            throw new Error(`ffi-struct: bitfield unit "${t.unit}" must be an integer kind`)
+        const s = SizeAlign[t.unit]
+        const cap = s * 8
+        if (!Number.isInteger(t.width) || t.width < 1)
+            throw new Error(`ffi-struct: bitfield width must be an integer >= 1, got ${t.width}`)
+        if (t.width > cap)
+            throw new Error(`ffi-struct: bitfield width ${t.width} exceeds unit width ${cap}`)
+        // bit 是单元内偏移，由 computeStructLayout 的位域状态机填写；这里占位 0。
+        return { size: s, align: s, type: { tag: 'bitfield', unit: t.unit, bit: 0, width: t.width } }
+    }
     if (t.tag === 'array') {
         if (!Number.isInteger(t.length) || t.length < 1)
             throw new Error(`ffi-struct: array length must be an integer >= 1, got ${t.length}`)
         const el = lower(t.ctype)
+        if (el.type.tag === 'bitfield')
+            throw new Error('ffi-struct: bitfields cannot be array elements')
         return {
             size: el.size * t.length,
             align: el.align,
@@ -168,11 +181,59 @@ export function computeStructLayout(t: CStruct | CUnion): Layout {
     const fields: Fields = []
     let cursor = 0
 
+    // 位域组状态：unitBase 是当前存储单元的字节基址（-1 = 不在位域组内），
+    // unitBits 是单元内已用位数，unitSize 是单元宽（字节）。
+    // MSVC 规则（mingw 交叉实测 DCB/COMSTAT 验证）：
+    //   - 连续同宽位域共单元，LSB→MSB（签别不参与分组）
+    //   - 放不下的位域开新单元，单元剩余位废弃
+    //   - 非位域成员打断位域组，游标跳到完整单元边界（不是按字节截断）
+    // 联合体位域同样按 struct 方式打包（实测 u.a=1 后 u.b==0，各占自己的位，不别名）。
+    let unitBase = -1
+    let unitBits = 0
+    let unitSize = 0
+
+    // 落定当前位域组：游标 = 单元起点 + 已用字节数，向上取整到单元宽。
+    const flushUnit = () => {
+        if (unitBase < 0) return
+        cursor = alignUp(unitBase + Math.ceil(unitBits / 8), unitSize)
+        unitBase = -1
+    }
+
     for (const m of t.member) {
         const { size, align: natural, type } = lower(m.type)
         let align = natural
         if (pack > 0) align = Math.min(pack, align)
         if (m.alignas) align = Math.max(align, m.alignas)
+
+        if (type.tag === 'bitfield') {
+            if (m.name === undefined)
+                throw new Error('ffi-struct: bitfield members must be named')
+            const width = type.width
+
+            // 新单元：无活动单元 / 单元宽不同 / 放不下。
+            if (unitBase < 0 || size !== unitSize || unitBits + width > unitSize * 8) {
+                // 单元宽变化或溢出时先把旧单元落定，新单元从落定点对齐。
+                if (unitBase >= 0) flushUnit()
+                const offset = alignUp(cursor, align)
+                unitBase = offset
+                unitBits = 0
+                unitSize = size
+            }
+
+            fields.push({
+                name: m.name,
+                offset: unitBase,   // 单元基址（不是位域自己的地址）
+                size,
+                type: { ...type, bit: unitBits },
+            })
+            unitBits += width
+
+            maxEffectiveAlign = Math.max(maxEffectiveAlign, align)
+            maxMemberSize = Math.max(maxMemberSize, size)
+            continue
+        }
+
+        flushUnit()
         const offset = alignUp(cursor, align)
 
         if (m.name !== undefined) {
@@ -187,6 +248,8 @@ export function computeStructLayout(t: CStruct | CUnion): Layout {
         maxEffectiveAlign = Math.max(maxEffectiveAlign, align)
         maxMemberSize = Math.max(maxMemberSize, size)
     }
+
+    flushUnit()
 
     return {
         size: isStruct ? alignUp(cursor, maxEffectiveAlign) : alignUp(maxMemberSize, maxEffectiveAlign),
@@ -241,8 +304,51 @@ function writePtr(dv: DataView, off: number, val: number): void {
     else dv.setUint32(off, val >>> 0, true)
 }
 
+// ============================================================
+// 位域读写
+// ============================================================
+// 存储单元统一按无符号读（避免单元高位的符号位干扰提取），再用掩码取出位域。
+// 有符号单元在提取后做符号扩展。写是读-改-写：只改本位域占的位，其余位保留。
+// 64 位单元走 BigInt，超出 2^53 的位域值有精度损失（与 u64/i64 一致）。
+type BitfieldType = Extract<FieldType, { tag: 'bitfield' }>
+
+function readUnitRaw(dv: DataView, off: number, unit: C_Integer): bigint {
+    const s = SizeAlign[unit]
+    if (s === 1) return BigInt(dv.getUint8(off))
+    if (s === 2) return BigInt(dv.getUint16(off, true))
+    if (s === 4) return BigInt(dv.getUint32(off, true))
+    return dv.getBigUint64(off, true)
+}
+
+function writeUnitRaw(dv: DataView, off: number, unit: C_Integer, v: bigint): void {
+    const s = SizeAlign[unit]
+    if (s === 1) { dv.setUint8(off, Number(v & 0xffn)); return }
+    if (s === 2) { dv.setUint16(off, Number(v & 0xffffn), true); return }
+    if (s === 4) { dv.setUint32(off, Number(v & 0xffffffffn), true); return }
+    dv.setBigUint64(off, v & 0xffffffffffffffffn, true)
+}
+
+function readBitfield(dv: DataView, off: number, t: BitfieldType): number {
+    const w = BigInt(t.width)
+    const v = (readUnitRaw(dv, off, t.unit) >> BigInt(t.bit)) & ((1n << w) - 1n)
+    if (t.unit[0] === 'i') {   // 有符号单元 → 符号扩展
+        const sign = 1n << (w - 1n)
+        if (v & sign) return Number(v - (1n << w))
+    }
+    return Number(v)
+}
+
+function writeBitfield(dv: DataView, off: number, t: BitfieldType, val: number): void {
+    const w = BigInt(t.width)
+    const bit = BigInt(t.bit)
+    const widthMask = (1n << w) - 1n
+    const posMask = widthMask << bit
+    const raw = readUnitRaw(dv, off, t.unit)
+    const bits = BigInt(Math.trunc(val)) & widthMask
+    writeUnitRaw(dv, off, t.unit, (raw & ~posMask) | (bits << bit))
+}
+
 // 字符串读写统一走 TextEncoder/TextDecoder（polyfill 见 lib/text-codec.js）。
-// 定长字段：写入把编码结果截断到 size，读取扫到 NUL 终止符为止。
 const stringEncoders: Record<Encoding, TextEncoder> = {
     'utf-8': new TextEncoder('utf-8'),
     'utf-16le': new TextEncoder('utf-16le'),
@@ -295,6 +401,7 @@ function writeArray(dv: DataView, off: number, size: number, t: ArrayFieldType, 
 function readElement(dv: DataView, off: number, t: FieldType, size: number): unknown {
     switch (t.tag) {
         case 'basic': return readScalar(dv, off, t.kind)
+        case 'bitfield': return readBitfield(dv, off, t)
         case 'string': return readString(dv, off, size, t.encoding)
         case 'struct':
         case 'union': return doDecode(dv, off, t.fields)
@@ -305,6 +412,7 @@ function readElement(dv: DataView, off: number, t: FieldType, size: number): unk
 function writeElement(dv: DataView, off: number, t: FieldType, size: number, val: unknown): void {
     switch (t.tag) {
         case 'basic': writeScalar(dv, off, t.kind, Number(val ?? 0)); break
+        case 'bitfield': writeBitfield(dv, off, t, Number(val ?? 0)); break
         case 'string': writeString(dv, off, size, t.encoding, val); break
         case 'struct':
         case 'union': doEncode(dv, off, t.fields, (val ?? {}) as Record<string, unknown>); break

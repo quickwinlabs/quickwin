@@ -231,34 +231,35 @@ function slotRawPtr(v: unknown): number {
     throw new Error(`ffi-bind: <>ptr expects number|null, got ${typeof v}; use <BYTE>ptr to pass an ArrayBuffer, or ffi.bufferPtr(buf)`)
 }
 
-// 从 retBuf 按返回类型解码。'ptr' 布局返回读指针宽、NULL→null；标量按声明宽度截断/扩展。
-function readRet(ret: RetSpec, retBuf: ArrayBuffer): unknown {
-    const dv = new DataView(retBuf)
-    const ptrW = PTR_SIZE
-    if (ret.t === 'ptr') {
-        const p = ptrW === 8 ? Number(dv.getBigUint64(0, true)) : dv.getUint32(0, true)
-        return p === 0 ? null : p
-    }
-    switch (ret.k) {
+// 按 kind 从槽位解一个值。readRet（返回槽）与 dispatchClosure（闭包实参）共用 ——
+// 两者只差 DataView 与 offset；ptr 槽宽在两处同源于 PTR_SIZE。
+// 'ptr' 读指针宽、NULL → null；'void' → undefined（返回层合法档，闭包层在校验处已挡）。
+function readSlot(dv: DataView, off: number, k: Kind): unknown {
+    switch (k) {
         case 'void': return undefined
-        case 'u8': return dv.getUint32(0, true) & 0xFF
-        case 'i8': { const b = dv.getUint8(0); return (b & 0x80) ? b - 0x100 : b }
-        case 'u16': return dv.getUint32(0, true) & 0xFFFF
-        case 'i16': { const s = dv.getUint16(0, true); return (s & 0x8000) ? s - 0x10000 : s }
-        case 'u32': return dv.getUint32(0, true)
-        case 'i32': return dv.getInt32(0, true)
-        case 'u64': return Number(dv.getBigUint64(0, true))
-        case 'i64': return Number(dv.getBigInt64(0, true))
-        case 'u64n': return dv.getBigUint64(0, true)
-        case 'i64n': return dv.getBigInt64(0, true)
-        case 'f32': return dv.getFloat32(0, true)
-        case 'f64': return dv.getFloat64(0, true)
+        case 'u8': return dv.getUint8(off)
+        case 'i8': return dv.getInt8(off)
+        case 'u16': return dv.getUint16(off, true)
+        case 'i16': return dv.getInt16(off, true)
+        case 'u32': return dv.getUint32(off, true)
+        case 'i32': return dv.getInt32(off, true)
+        case 'u64': return Number(dv.getBigUint64(off, true))
+        case 'i64': return Number(dv.getBigInt64(off, true))
+        case 'u64n': return dv.getBigUint64(off, true)
+        case 'i64n': return dv.getBigInt64(off, true)
+        case 'f32': return dv.getFloat32(off, true)
+        case 'f64': return dv.getFloat64(off, true)
         case 'ptr': {
-            const p = ptrW === 8 ? Number(dv.getBigUint64(0, true)) : dv.getUint32(0, true)
+            const p = PTR_SIZE === 8 ? Number(dv.getBigUint64(off, true)) : dv.getUint32(off, true)
             return p === 0 ? null : p
         }
     }
-    throw new Error(`ffi-bind: unsupported return kind "${ret.k}"`)
+    throw new Error(`ffi-bind: unsupported kind "${k}"`)
+}
+
+// 从 retBuf 按返回类型解码。布局指针 '{t:"ptr"}' 与标量 'ptr' 同槽语义，统一走 readSlot。
+function readRet(ret: RetSpec, retBuf: ArrayBuffer): unknown {
+    return readSlot(new DataView(retBuf), 0, ret.t === 'ptr' ? 'ptr' : ret.k)
 }
 
 type ParseArgStr<S extends string, L, Acc extends unknown[] = []> =
@@ -304,29 +305,6 @@ export function bindLib<const M extends Record<string, string>, const L extends 
 const CLOSURE_ARG_OK: ReadonlySet<string> = new Set<string>(['u8', 'i8', 'u16', 'i16', 'u32', 'i32', 'u64', 'i64', 'u64n', 'i64n', 'f32', 'f64', 'ptr'])
 const CLOSURE_RET_OK: ReadonlySet<string> = new Set<string>(['void', 'u8', 'i8', 'u16', 'i16', 'u32', 'i32', 'f32', 'f64', 'ptr'])
 
-// 从捕获 frame 解一个实参。x64: 8 字节槽（浮点取 xmm 区）；ia32: 按 ARG_SIZE 连续排列。
-function decodeArg(k: Kind, dv: DataView, off: number, w64: boolean): unknown {
-    switch (k) {
-        case 'u8': return dv.getUint32(off, true) & 0xFF
-        case 'i8': { const b = dv.getUint8(off); return (b & 0x80) ? b - 0x100 : b }
-        case 'u16': return dv.getUint32(off, true) & 0xFFFF
-        case 'i16': { const s = dv.getUint16(off, true); return (s & 0x8000) ? s - 0x10000 : s }
-        case 'u32': return dv.getUint32(off, true)
-        case 'i32': return dv.getInt32(off, true)
-        case 'u64': return Number(dv.getBigUint64(off, true))
-        case 'i64': return Number(dv.getBigInt64(off, true))
-        case 'u64n': return dv.getBigUint64(off, true)
-        case 'i64n': return dv.getBigInt64(off, true)
-        case 'f32': return dv.getFloat32(off, true)
-        case 'f64': return dv.getFloat64(off, true)
-        case 'ptr': {
-            const p = w64 ? Number(dv.getBigUint64(off, true)) : dv.getUint32(off, true)
-            return p === 0 ? null : p
-        }
-        default: return undefined
-    }
-}
-
 // 共享解码/编码助手：由每个闭包的 wrapper 调用（wrapper 闭包捕获 args/ret/fn）。
 function dispatchClosure(args: Kind[], ret: Kind, fn: (...a: unknown[]) => unknown,
     frameBuf: ArrayBuffer, retBuf: ArrayBuffer): void {
@@ -342,9 +320,9 @@ function dispatchClosure(args: Kind[], ret: Kind, fn: (...a: unknown[]) => unkno
             const base = fp
                 ? (i < 4 ? 128 + i * 8 : 32 + (i - 4) * 8)   // xmm 区（前 4）/ 溢出区
                 : (i < 4 ? i * 8 : 32 + (i - 4) * 8)          // 整数寄存器区 / 溢出区
-            a.push(decodeArg(k, fv, base, true))
+            a.push(readSlot(fv, base, k))
         } else {
-            a.push(decodeArg(k, fv, off, false))
+            a.push(readSlot(fv, off, k))
             off += ARG_SIZE[k]
         }
     }

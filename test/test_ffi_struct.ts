@@ -2,7 +2,7 @@ import * as os from 'os'
 import { Tester } from './test_helper.js'
 import { struct } from '../lib/ffi/struct.js'
 import { bind, } from '../lib/ffi/bind.js'
-import { Ptr } from '../lib/ffi/ctype.js'
+import { Ptr, bit } from '../lib/ffi/ctype.js'
 
 // 编译期断言工具（仅类型层，运行时无开销）
 type Equal<A, B> = (<G>() => G extends A ? 1 : 2) extends (<G>() => G extends B ? 1 : 2) ? true : false
@@ -414,5 +414,139 @@ export const suite = {
         ])
         t.check('LITEM.offsetOf szID', 16, LITEM.offsetOf('szID'))
         t.check('NMLINK.offsetOf szUrl', is64 ? 136 : 124, NMLINK.offsetOf('szUrl'))
+
+        // === 位域读/写往返 ===
+        // 布局 ground truth 在 test_ffi_struct_layout.ts（mingw 交叉实测），这里只测读写。
+
+        t.section('bitfield roundtrip: LSB→MSB 打包 + 读改写隔离')
+        {
+            // 字段按序写入同一 buffer：写 d 时单元里已有 a/b/c 的位，
+            // 若 writeBitfield 不做读改写（直接 val<<bit）会把 a/b/c 清零。
+            const BF = struct([
+                { name: 'a', type: bit('u32', 3) },
+                { name: 'b', type: bit('u32', 5) },
+                { name: 'c', type: bit('u32', 4) },
+                { name: 'd', type: bit('u32', 10) },   // 3+5+4+10=22 <= 32
+                { name: 'tail', type: 'u32' },
+            ])
+            t.check('BF.size == 8', 8, BF.size)
+            const bd = BF.decode(BF.encode({ a: 5, b: 31, c: 15, d: 1023, tail: 0xDEAD }))
+            t.check('a (LSB)', 5, bd.a)
+            t.check('b', 31, bd.b)
+            t.check('c', 15, bd.c)
+            t.check('d (max 10-bit)', 1023, bd.d)
+            t.check('tail survives bitfield unit', 0xDEAD, bd.tail)
+            // 位域写不破坏同单元的邻居：a=5 后写 b=31，a 仍为 5
+            t.check('a survives b write', 5, bd.a)
+        }
+
+        t.section('bitfield roundtrip: signed sign extension')
+        {
+            const SB = struct([
+                { name: 's', type: bit('i32', 8) },
+                { name: 'u', type: bit('u32', 4) },
+            ])
+            t.check('SB.size == 4 (同宽不分签别，共单元)', 4, SB.size)
+            const sbd = SB.decode(SB.encode({ s: -5, u: 9 }))
+            t.check('signed -5', -5, sbd.s)
+            t.check('unsigned 9', 9, sbd.u)
+            t.check('signed -1', -1, SB.decode(SB.encode({ s: -1, u: 0 })).s)
+            t.check('signed 127 (min int8)', 127, SB.decode(SB.encode({ s: 127, u: 0 })).s)
+            t.check('signed 128 → -128', -128, SB.decode(SB.encode({ s: 128, u: 0 })).s)
+        }
+
+        t.section('bitfield roundtrip: overflow starts a new unit')
+        {
+            const OV = struct([
+                { name: 'a', type: bit('u32', 30) },
+                { name: 'b', type: bit('u32', 4) },   // 30+4=34 > 32 → 新单元，剩余 2 位废弃
+                { name: 'c', type: 'u32' },
+            ])
+            t.check('OV.size == 12', 12, OV.size)
+            t.check('OV.offsetOf b (new unit)', 4, OV.offsetOf('b'))
+            t.check('OV.offsetOf c', 8, OV.offsetOf('c'))
+            const ovd = OV.decode(OV.encode({ a: 0x3FFFFFFF, b: 15, c: 7 }))
+            t.check('OV a (max 30-bit)', 0x3FFFFFFF, ovd.a)
+            t.check('OV b', 15, ovd.b)
+            t.check('OV c', 7, ovd.c)
+        }
+
+        t.section('bitfield: DCB roundtrip (Windows serial port config)')
+        {
+            const DCB = struct('DCB', [
+                { name: 'DCBlength', type: 'u32' },
+                { name: 'BaudRate', type: 'u32' },
+                { name: 'fBinary', type: bit('u32', 1) },
+                { name: 'fParity', type: bit('u32', 1) },
+                { name: 'fOutxCtsFlow', type: bit('u32', 1) },
+                { name: 'fOutxDsrFlow', type: bit('u32', 1) },
+                { name: 'fDtrControl', type: bit('u32', 2) },
+                { name: 'fDsrSensitivity', type: bit('u32', 1) },
+                { name: 'fTXContinueOnXoff', type: bit('u32', 1) },
+                { name: 'fOutX', type: bit('u32', 1) },
+                { name: 'fInX', type: bit('u32', 1) },
+                { name: 'fErrorChar', type: bit('u32', 1) },
+                { name: 'fNull', type: bit('u32', 1) },
+                { name: 'fRtsControl', type: bit('u32', 2) },
+                { name: 'fAbortOnError', type: bit('u32', 1) },
+                { name: 'fDummy2', type: bit('u32', 17) },
+                { name: 'wReserved', type: 'u16' },
+                { name: 'XonLim', type: 'u16' },
+                { name: 'XoffLim', type: 'u16' },
+                { name: 'ByteSize', type: 'u8' },
+                { name: 'Parity', type: 'u8' },
+                { name: 'StopBits', type: 'u8' },
+                { name: 'XonChar', type: 'i8' },
+                { name: 'XoffChar', type: 'i8' },
+                { name: 'ErrorChar', type: 'i8' },
+                { name: 'EofChar', type: 'i8' },
+                { name: 'EvtChar', type: 'i8' },
+                { name: 'wReserved1', type: 'u16' },
+            ])
+            t.check('DCB.size == 28', 28, DCB.size)
+            const d = DCB.decode(DCB.encode({
+                DCBlength: 28, BaudRate: 0x1C200,
+                fBinary: 1, fParity: 0, fOutxCtsFlow: 0, fOutxDsrFlow: 0,
+                fDtrControl: 2, fDsrSensitivity: 1, fTXContinueOnXoff: 0,
+                fOutX: 1, fInX: 0, fErrorChar: 1, fNull: 0,
+                fRtsControl: 2, fAbortOnError: 1, fDummy2: 0,
+                wReserved: 0, XonLim: 200, XoffLim: 100,
+                ByteSize: 8, Parity: 0, StopBits: 0,
+                XonChar: 3, XoffChar: 4, ErrorChar: 0xFF,
+                EofChar: 3, EvtChar: 0x4, wReserved1: 0,
+            }))
+            t.check('DCBlength', 28, d.DCBlength)
+            t.check('BaudRate', 0x1C200, d.BaudRate)
+            t.check('fBinary', 1, d.fBinary)
+            t.check('fParity', 0, d.fParity)
+            t.check('fDtrControl', 2, d.fDtrControl)
+            t.check('fDsrSensitivity', 1, d.fDsrSensitivity)
+            t.check('fOutX', 1, d.fOutX)
+            t.check('fRtsControl', 2, d.fRtsControl)
+            t.check('fAbortOnError', 1, d.fAbortOnError)
+            t.check('fDummy2', 0, d.fDummy2)
+            t.check('wReserved', 0, d.wReserved)
+            t.check('XonLim', 200, d.XonLim)
+            t.check('XoffLim', 100, d.XoffLim)
+            t.check('ByteSize', 8, d.ByteSize)
+            t.check('Parity', 0, d.Parity)
+            t.check('StopBits', 0, d.StopBits)
+            t.check('XonChar', 3, d.XonChar)
+            t.check('XoffChar', 4, d.XoffChar)
+            t.check('ErrorChar (i8)', -1, d.ErrorChar)
+            t.check('EofChar', 3, d.EofChar)
+            t.check('EvtChar', 4, d.EvtChar)
+            t.check('wReserved1', 0, d.wReserved1)
+        }
+
+        // 类型层：位域成员值类型是 number
+        {
+            const BF = struct([
+                { name: 'a', type: bit('u32', 3) },
+                { name: 's', type: bit('i32', 8) },
+            ])
+            expectType<Equal<ReturnType<typeof BF.decode>['a'], number>>()
+            expectType<Equal<ReturnType<typeof BF.decode>['s'], number>>()
+        }
     },
 }
