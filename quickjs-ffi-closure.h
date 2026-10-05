@@ -39,7 +39,7 @@ void qwin_closure_dispatch_ia32(void);
  *   win64: qwin_closure_inner_win64(block, int_args, stack_args, frame)
  *          frame[0..7]=结果槽，frame[16..47]=xmm0-3
  *   ia32:  qwin_closure_inner_ia32(block, stack_args, result)
- *          返回 ret_kind：0=int/ptr/void  1=f32  2=f64；结果写 result[0..7]
+ *          返回 ret_kind：0=int/ptr/void  1=f32  2=f64  3=int64(EDX:EAX)；结果写 result[0..7]
  *   block = 闭包块地址（trampoline 注入寄存器，跨 C 调用保存）。 */
 void qwin_closure_inner_win64(uint64_t block, const uint8_t *int_args,
                               const uint8_t *stack_args, uint8_t *frame);

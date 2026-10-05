@@ -193,9 +193,10 @@ export const suite = {
         t.check('raw roundtrip', rawOut.ptr, pd.raw)
         t.check('r roundtrip', rawOut.ptr, pd.r)
         t.check('tag', 7, pd.tag)
-        // 编译期：'<>ptr' → number（T='' 品牌退化）；'<RECT>ptr' → Ptr<'RECT'>（品牌）
-        expectType<Equal<ReturnType<typeof PTR.decode>['raw'], number>>()
-        expectType<Equal<ReturnType<typeof PTR.decode>['r'], Ptr<'RECT'>>>()
+        // 编译期：'<>ptr' → number|null（T='' 品牌退化 + 0 归一为 null）；
+        // '<RECT>ptr' → Ptr<'RECT'>|null（品牌）。
+        expectType<Equal<ReturnType<typeof PTR.decode>['raw'], number | null>>()
+        expectType<Equal<ReturnType<typeof PTR.decode>['r'], Ptr<'RECT'> | null>>()
 
         t.section('f32/f64 layout (MSVC: f@0, double@8)')
         const FL = struct([

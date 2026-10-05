@@ -14,7 +14,7 @@ import { Tester } from './test_helper.js'
 //   负数返回 i32/i16/i8：lstrcmpW；i64：InterlockedIncrement64
 //   窄整型负值传参：abs(i8/i16/u8/u16)
 //   大 64 位传参：InterlockedExchange64
-//   指针 NULL：GetDC(null/undefined)、IsWindow(null)
+//   指针 NULL：GetDC(null)、IsWindow(null)；undefined 不是指针合法值，应拒绝
 
 function readAscii(buf: ArrayBuffer, len: number): string {
     const dv = new DataView(buf)
@@ -179,20 +179,20 @@ export const suite = {
             const exchange64 = bind('kernel32.dll', 'InterlockedExchange64', '<BYTE>ptr i64 -> i64')
             const increment64 = bind('kernel32.dll', 'InterlockedIncrement64', '<BYTE>ptr -> i64')
             const cell = new ArrayBuffer(8)
-            exchange64(cell, -2)
-            t.check('InterlockedIncrement64(-2)', -1, increment64(cell))
+            exchange64(cell, -2n)
+            t.check('InterlockedIncrement64(-2)', -1n, increment64(cell))
         } else t.skipCase('Interlocked*64 missing')
 
         t.section('64-bit arg transport (InterlockedExchange64)')
         if (has(k32, 'InterlockedExchange64')) {
             const exchange64 = bind('kernel32.dll', 'InterlockedExchange64', '<BYTE>ptr i64 -> i64')
             const cell = new ArrayBuffer(8)
-            const prev0 = exchange64(cell, 4294967297)  // 2^32+1：超过 32 位
-            const prev1 = exchange64(cell, -1)          // 64 位全 1
-            const prev2 = exchange64(cell, 0)
-            t.check('exchange empty cell returns 0', 0, prev0)
-            t.check('exchange returns 2^32+1', 4294967297, prev1)
-            t.check('exchange returns -1', -1, prev2)
+            const prev0 = exchange64(cell, 4294967297n)  // 2^32+1：超过 32 位
+            const prev1 = exchange64(cell, -1n)          // 64 位全 1
+            const prev2 = exchange64(cell, 0n)
+            t.check('exchange empty cell returns 0', 0n, prev0)
+            t.check('exchange returns 2^32+1', 4294967297n, prev1)
+            t.check('exchange returns -1', -1n, prev2)
         } else t.skipCase('InterlockedExchange64 missing')
 
         t.section('ptr NULL/undefined')
@@ -200,7 +200,14 @@ export const suite = {
             const getDC = bind('user32.dll', 'GetDC', '<>ptr -> <>ptr')
             const isWindow = bind('user32.dll', 'IsWindow', '<>ptr -> i32')
             t.checkTrue('GetDC(null) non-null', !!getDC(null))
-            t.checkTrue('GetDC(undefined) non-null', !!getDC(undefined as unknown as null))
+            // undefined 不是指针合法值（指针只收 null 或有效地址），必须拒绝而非静默当 0。
+            let errUndef = ''
+            try {
+                (getDC as unknown as (v: unknown) => number | null)(undefined)
+            } catch (e) {
+                errUndef = String(e)
+            }
+            t.checkTrue('GetDC(undefined) rejected', errUndef.includes('undefined'))
             t.check('IsWindow(null) = FALSE', 0, isWindow(null))
         } else t.skipCase('GetDC/IsWindow missing')
     },

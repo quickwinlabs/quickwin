@@ -1,13 +1,24 @@
-import '../text-codec.js'
-import * as ffi from 'ffi'
+import * as ffi from 'ffi';
+import '../text-codec.js';
 import {
-    PTR_SIZE, type Ptr, type Kind, type C_Number, type C_Integer,
-    type CString, type CArray, type CBitfield,
-    type CMemberType,
-    type CStruct, type CUnion, type Member, type Encoding,
+    C_BasicType_No_Void,
+    C_TypeJsTypeMap,
     isCPtrToken,
-    isCInteger,
-} from './ctype.js'
+    NullablePtr,
+    PTR_SIZE,
+    readScalar,
+    SizeAlign,
+    writeScalar,
+    type C_Array, type C_Bitfield,
+    type C_Integer,
+    type C_MemberType,
+    type C_Number,
+    type C_String,
+    type C_Struct, type C_Union,
+    type Encoding,
+    type Member,
+    type Ptr
+} from './ctype.js';
 
 // ============================================================
 // 聚合定义：唯一 API 是 CType IR（member 数组即定义），签名与 pack 见末尾 struct()/union()。
@@ -23,13 +34,22 @@ import {
 
 // 指针成员：'<>ptr' → number（T='' 品牌退化）；'<NAME>ptr' → Ptr<NAME>（品牌 number）。
 // 该品牌 number 可直接喂 bind 的 <NAME>ptr 形参（裸地址透传）。
-type ValOf<C extends CMemberType> =
-    C extends `<${infer T}>ptr` ? Ptr<T>
-    : C extends C_Number ? number
-    : C extends CBitfield ? number
-    : C extends CString ? string
-    : C extends CArray ? Tuple<ValOf<C['ctype']>, C['length']>
-    : C extends CStruct | CUnion ? ShapeOfC<C['member']>
+
+type N =
+    | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+    | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19
+    | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29
+    | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39
+    | 40 | 41 | 42 | 43 | 44 | 45 | 46 | 47 | 48 | 49
+    | 50 | 51 | 52 | 53;
+
+type ValOf<C extends C_MemberType> =
+    C extends `<${infer T}>ptr` ? NullablePtr<T>
+    : C extends C_Number ? C_TypeJsTypeMap[C]
+    : C extends C_Bitfield ? (C extends { width: N } ? number : bigint)
+    : C extends C_String ? string
+    : C extends C_Array ? Tuple<ValOf<C['ctype']>, C['length']>
+    : C extends C_Struct | C_Union ? ShapeOfC<C['member']>
     : never
 
 type Tuple<T, N extends number, R extends T[] = []> =
@@ -44,9 +64,9 @@ type ShapeOfC<M extends readonly Member[]> = M extends readonly [
 ] ? (FieldShape<H> & ShapeOfC<T>) : {}
 
 type FieldShape<M extends Member> =
-    M extends { name?: undefined; type: infer T extends CStruct | CUnion }
+    M extends { name?: undefined; type: infer T extends C_Struct | C_Union }
     ? ShapeOfC<T['member']>
-    : M extends { name: infer N extends string; type: infer T extends CMemberType }
+    : M extends { name: infer N extends string; type: infer T extends C_MemberType }
     ? { [K in N]: ValOf<T> }
     : {}
 
@@ -55,23 +75,16 @@ type FieldShape<M extends Member> =
 // ============================================================
 
 // lower 后指针统一归一为内部 kind 'ptr'（用户面写 '<>ptr' 或 '<NAME>ptr'）。
-type RuntimeKind = Exclude<Kind, 'void' | 'u64n' | 'i64n'>
 
 // kind → size/align（不含指针：指针统一 PTR_SIZE，见 lower）。
-const SizeAlign: Record<C_Number, number> = {
-    u8: 1, i8: 1,
-    u16: 2, i16: 2,
-    u32: 4, i32: 4,
-    u64: 8, i64: 8,
-    f32: 4, f64: 8,
-}
+
 
 // 运行时 Field：IR 的 lowered 视图（独立于 CType，不保留 Member/alignas）。
 // computeStructLayout 在 lowering 时把子布局内嵌进 FieldType（struct/union→fields，
 // array→elementType+elementSize，bitfield→bit 单元内偏移），运行期 read/write 零查表。
 // offset 相对本层起点；位域成员的 offset 是其存储单元的基址（不是位域自己的地址）。
 type FieldType =
-    { tag: 'basic', kind: RuntimeKind }
+    { tag: 'basic', kind: C_BasicType_No_Void }
     | { tag: 'bitfield', unit: C_Integer, bit: number, width: number }
     | { tag: 'string', encoding: Encoding }
     | { tag: 'struct' | 'union', fields: Field[] }
@@ -84,7 +97,7 @@ export type Field = {
 }
 export type Fields = Field[]
 
-export type StructDef<T extends CStruct | CUnion, N extends string = never> = {
+export type StructDef<T extends C_Struct | C_Union, N extends string = never> = {
     readonly __struct: T
     readonly size: number
     readonly structAlign: number
@@ -116,16 +129,9 @@ type Layout = {
     fields: Fields,
 }
 
-// 用户面已拒绝裸 'ptr'，运行时仍可能收到（手写 IR）—— 用类型守卫绕开收窄报错，统一在此抛。
-function isBarePtr(t: string): t is 'ptr' {
-    return t === 'ptr'
-}
-
 // CType → { size, align, FieldType }：聚合递归进 computeStructLayout；array 元素复用同一结果。
-function lower(t: CMemberType): { size: number, align: number, type: FieldType } {
+function lower(t: C_MemberType): { size: number, align: number, type: FieldType } {
     if (typeof t === 'string') {
-        if (isBarePtr(t))
-            throw new Error(`ffi-struct: bare "ptr" rejected — use "<>ptr" for a raw address or "<NAME>ptr" for a typed pointer`)
         if (isCPtrToken(t))
             return { size: PTR_SIZE, align: PTR_SIZE, type: { tag: 'basic', kind: 'ptr' } }
         const s = SizeAlign[t]
@@ -139,9 +145,6 @@ function lower(t: CMemberType): { size: number, align: number, type: FieldType }
         return { size: s * t.length, align: s, type: { tag: 'string', encoding: t.encoding } }
     }
     if (t.tag === 'bitfield') {
-        // 手写 IR 可能绕过 C_Integer 约束，运行时把关。
-        if (!isCInteger(t.unit))
-            throw new Error(`ffi-struct: bitfield unit "${t.unit}" must be an integer kind`)
         const s = SizeAlign[t.unit]
         const cap = s * 8
         if (!Number.isInteger(t.width) || t.width < 1)
@@ -168,12 +171,12 @@ function lower(t: CMemberType): { size: number, align: number, type: FieldType }
     return { size: l.size, align: l.maxEffectiveAlign, type: { tag: t.tag, fields: l.fields } }
 }
 
-export function computeArray(t: CArray): { align: number, size: number } {
+export function computeArray(t: C_Array): { align: number, size: number } {
     const { size, align } = lower(t)
     return { align, size }
 }
 
-export function computeStructLayout(t: CStruct | CUnion): Layout {
+export function computeStructLayout(t: C_Struct | C_Union): Layout {
     const isStruct = t.tag === 'struct'
     const pack = t.pack ?? 8
     let maxEffectiveAlign = 1
@@ -259,57 +262,11 @@ export function computeStructLayout(t: CStruct | CUnion): Layout {
 }
 
 // ============================================================
-// 读取 / 写入
-// ============================================================
-
-function readScalar(dv: DataView, off: number, k: RuntimeKind): number {
-    switch (k) {
-        case 'u8': return dv.getUint8(off)
-        case 'i8': return dv.getInt8(off)
-        case 'u16': return dv.getUint16(off, true)
-        case 'i16': return dv.getInt16(off, true)
-        case 'u32': return dv.getUint32(off, true)
-        case 'i32': return dv.getInt32(off, true)
-        case 'u64': return Number(dv.getBigUint64(off, true))
-        case 'i64': return Number(dv.getBigInt64(off, true))
-        case 'f32': return dv.getFloat32(off, true)
-        case 'f64': return dv.getFloat64(off, true)
-        case 'ptr': return readPtr(dv, off)
-    }
-}
-
-function readPtr(dv: DataView, off: number): number {
-    if (PTR_SIZE === 8) return Number(dv.getBigUint64(off, true))
-    return dv.getUint32(off, true)
-}
-
-function writeScalar(dv: DataView, off: number, k: RuntimeKind, val: number): void {
-    switch (k) {
-        case 'u8': dv.setUint8(off, val); break
-        case 'i8': dv.setInt8(off, val); break
-        case 'u16': dv.setUint16(off, val, true); break
-        case 'i16': dv.setInt16(off, val, true); break
-        case 'u32': dv.setUint32(off, val >>> 0, true); break
-        case 'i32': dv.setInt32(off, val | 0, true); break
-        case 'u64': dv.setBigUint64(off, BigInt(Math.trunc(val)), true); break
-        case 'i64': dv.setBigInt64(off, BigInt(Math.trunc(val)), true); break
-        case 'f32': dv.setFloat32(off, val, true); break
-        case 'f64': dv.setFloat64(off, val, true); break
-        case 'ptr': writePtr(dv, off, val); break
-    }
-}
-
-function writePtr(dv: DataView, off: number, val: number): void {
-    if (PTR_SIZE === 8) dv.setBigUint64(off, BigInt(Math.trunc(val)), true)
-    else dv.setUint32(off, val >>> 0, true)
-}
-
-// ============================================================
 // 位域读写
 // ============================================================
 // 存储单元统一按无符号读（避免单元高位的符号位干扰提取），再用掩码取出位域。
 // 有符号单元在提取后做符号扩展。写是读-改-写：只改本位域占的位，其余位保留。
-// 64 位单元走 BigInt，超出 2^53 的位域值有精度损失（与 u64/i64 一致）。
+// 64 位单元往返走 BigInt；读回时 width>53 返回 bigint、否则 number（见 readBitfield）。
 type BitfieldType = Extract<FieldType, { tag: 'bitfield' }>
 
 function readUnitRaw(dv: DataView, off: number, unit: C_Integer): bigint {
@@ -328,23 +285,26 @@ function writeUnitRaw(dv: DataView, off: number, unit: C_Integer, v: bigint): vo
     dv.setBigUint64(off, v & 0xffffffffffffffffn, true)
 }
 
-function readBitfield(dv: DataView, off: number, t: BitfieldType): number {
+function readBitfield(dv: DataView, off: number, t: BitfieldType): number | bigint {
+    // TODO： width > 53 时返回 bigint
     const w = BigInt(t.width)
     const v = (readUnitRaw(dv, off, t.unit) >> BigInt(t.bit)) & ((1n << w) - 1n)
     if (t.unit[0] === 'i') {   // 有符号单元 → 符号扩展
         const sign = 1n << (w - 1n)
         if (v & sign) return Number(v - (1n << w))
     }
+    if (t.width > 53) return v
     return Number(v)
 }
 
-function writeBitfield(dv: DataView, off: number, t: BitfieldType, val: number): void {
+function writeBitfield(dv: DataView, off: number, t: BitfieldType, val: number | bigint): void {
+    // TODO: width > 53 时可写入 bigint | number
     const w = BigInt(t.width)
     const bit = BigInt(t.bit)
     const widthMask = (1n << w) - 1n
     const posMask = widthMask << bit
     const raw = readUnitRaw(dv, off, t.unit)
-    const bits = BigInt(Math.trunc(val)) & widthMask
+    const bits = (typeof val === 'bigint' ? val : BigInt(Math.trunc(val))) & widthMask
     writeUnitRaw(dv, off, t.unit, (raw & ~posMask) | (bits << bit))
 }
 
@@ -411,8 +371,11 @@ function readElement(dv: DataView, off: number, t: FieldType, size: number): unk
 
 function writeElement(dv: DataView, off: number, t: FieldType, size: number, val: unknown): void {
     switch (t.tag) {
-        case 'basic': writeScalar(dv, off, t.kind, Number(val ?? 0)); break
-        case 'bitfield': writeBitfield(dv, off, t, Number(val ?? 0)); break
+        // TODO: remove this any
+        case 'basic': writeScalar(dv, off, { k: t.kind, v: val as any }); break
+        // 直传（不 Number()）：writeBitfield 的 val 是 number | bigint，
+        // 64 位单元走 bigint，先 Number() 会把 >2^53 的位域值截断。
+        case 'bitfield': writeBitfield(dv, off, t, (val ?? 0) as number | bigint); break
         case 'string': writeString(dv, off, size, t.encoding, val); break
         case 'struct':
         case 'union': doEncode(dv, off, t.fields, (val ?? {}) as Record<string, unknown>); break
@@ -436,7 +399,7 @@ function doEncode(dv: DataView, base: number, fields: Fields, v: Record<string, 
 // 内部构造器
 // ============================================================
 
-function createStruct(t: CStruct | CUnion): any {
+function createStruct(t: C_Struct | C_Union): any {
     const { fields, size, maxEffectiveAlign } = computeStructLayout(t)
     return {
         __struct: t,

@@ -10,7 +10,7 @@
  * 块布局（128 字节）：
  *   [0..31]    trampoline（内嵌块地址）
  *   [32..35]   magic（in_use 校验）
- *   [36..39]   ret_kind（ia32 结果加载分派：0=int/ptr/void 1=f32 2=f64）
+ *   [36..39]   ret_kind（ia32 结果加载分派：0=int/ptr/void 1=f32 2=f64 3=int64）
  *   [40..43]   arg_bytes（ia32 stdcall 清栈字节数；cdecl/x64 = 0）
  *   [44..47]   对齐垫
  *   [48..63]   JSValue wrapper（JS_DupValue 强引用；本版 QuickJS 的 JSValue 为

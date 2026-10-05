@@ -12,68 +12,96 @@ import * as os from 'os'
 // ============================================================
 
 // ============================================================
-// §1 kind 词汇表 —— KINDS 是唯一手写清单，下列集合全从它派生
-//   Kind(14)        bind 签名 token / lower 后 IR 共用
+// §1 kind 词汇表 —— C_BASIC_TYPE 是唯一手写清单，下列集合全从它派生
+//   C_BasicType(12)  bind 签名 token / lower 后 IR 共用
 //   C_Number(10)    结构体字段的数字档
 //   C_Integer(8)    C_Number 去浮点 —— 位域存储单元只能是整数档
-//   Token(13+指针)  C_ALIAS / Norm / JsTypeOfToken 的操作面（见 §3）
-// 排除项：'void' 无大小；u64n/i64n 是「恰 64 位」传输档，非 C 类型（u64/i64 才是）；
-// 裸 'ptr' 用户面禁写（须写 '<>ptr'），内部保留 —— 唯一随架构变宽的标量档。
-// lower 后所有指针归一为 kind 'ptr'，名字被擦掉。
+//   Token(11+指针)  C_ALIAS / Norm / JsTypeOfToken 的操作面（见 §3）
+// 排除项：'void' 无大小；裸 'ptr' 用户面禁写（须写 '<>ptr'），内部保留 ——
+// 唯一随架构变宽的标量档。lower 后所有指针归一为 kind 'ptr'，名字被擦掉。
 // ============================================================
-const KINDS = [
+const C_BASIC_TYPE = [
     'void', 'u8', 'i8', 'u16', 'i16', 'u32', 'i32',
-    'u64', 'i64', 'u64n', 'i64n', 'f32', 'f64', 'ptr',
+    'u64', 'i64', 'f32', 'f64', 'ptr',
 ] as const
-export type Kind = (typeof KINDS)[number]
+
+export type C_BasicType = (typeof C_BASIC_TYPE)[number]
+export type C_BasicType_No_Void = Exclude<C_BasicType, 'void'>
+
+export type C_BasicType_Token = Exclude<C_BasicType, 'ptr'> | `<${string}>ptr`
+export type C_BasicType_Token_No_Void = Exclude<C_BasicType_Token, 'void'>
+
+const PTR_TOKEN_RE = /^<([^<>\s]*)>ptr$/
+
+export function isCPtrToken(t: string): t is `<${string}>ptr` { return PTR_TOKEN_RE.test(t) }
+export function ptrName<const N extends string>(t: `<${N}>ptr`): N {
+    const m = PTR_TOKEN_RE.exec(t)
+    return (m?.[1] || "") as N
+}
+/**
+ * @description `<${string}>ptr` -> 'ptr'
+ */
+export const cTokenToType = <const T extends string>(t: T): Exclude<T, `<${string}>ptr`> | 'ptr' => {
+    if (isCPtrToken(t)) return 'ptr'
+    else return t as Exclude<T, `<${string}>ptr`>
+}
 
 // C 的数字类型档：可作结构体字段 / bind 签名 token。排除项理由见 §1。
-export type C_Number = Exclude<Kind, 'void' | 'u64n' | 'i64n' | 'ptr'>
+export type C_Number = Exclude<C_BasicType, 'void' | 'ptr'>
 
 // 整数档：位域存储单元的合法类型（C 位域只能用整型）。
 export type C_Integer = Exclude<C_Number, 'f32' | 'f64'>
 
-const KIND_SET: ReadonlySet<Kind> = new Set(KINDS)
+export type Encoding = 'utf-8' | 'utf-16le'
 
-// ============================================================
-// §2 指针布局与品牌
-// ============================================================
-// 指针宽：与 bind 的调用约定 / quickjs-ffi-type.h 一致。
+export type C_String = {
+    tag: 'string',
+    unit: 'u8' | 'u16',   // 槽宽与对齐
+    length: number,   // 槽数
+    encoding: Encoding
+}
+export type C_Array = {
+    tag: 'array',
+    ctype: C_Type,
+    length: number
+}
+export type C_Bitfield = {
+    tag: 'bitfield',
+    unit: C_Integer,
+    width: number
+}
+
+export type C_MemberType = C_Type | C_Bitfield
+
+export type Member =
+    | { name: string; type: C_MemberType; alignas?: number }
+    | { name?: undefined; type: C_Struct | C_Union; alignas?: number }
+
+export type C_Struct = { tag: 'struct'; member: readonly Member[], pack?: number }
+export type C_Union = { tag: 'union'; member: readonly Member[], pack?: number }
+
+export type C_Type = C_Number | `<${string}>ptr` | C_String | C_Array | C_Struct | C_Union
+
+
 export const PTR_SIZE = os.arch === 'x64' ? 8 : 4
 
-// 指针的编译期品牌（运行期擦除，值就是 number）：'<>ptr'（T=''）直接退化成 number，
-// 带名 '<NAME>ptr' 提供名义约束 —— 不同 <NAME>ptr 不可互串，裸 number 不可传给 <NAME>ptr。
+export const SizeAlign: Record<C_Number, number> = {
+    u8: 1, i8: 1,
+    u16: 2, i16: 2,
+    u32: 4, i32: 4,
+    u64: 8, i64: 8,
+    f32: 4, f64: 8,
+}
+
 declare const ptrBrand: unique symbol
 export type Ptr<T extends string> =
     T extends '' ? number : number & { readonly [ptrBrand]: T }
 
-type NullablePtr<T extends string> = (T extends '' ? number : number & { readonly [ptrBrand]: T }) | null
-
-// 指针 token 判定：NAME 可空（'<>ptr' 裸地址），但不许空白或尖括号嵌套。
-const PTR_TOKEN_RE = /^<([^<>\s]*)>ptr$/
-
-export function isCPtrToken(t: string): t is `<${string}>ptr` { return PTR_TOKEN_RE.test(t) }
-
-// 整数档运行时判定：位域单元只能是整型。排除项与 C_Integer 的类型层 Exclude 一一对应。
-export function isCInteger(t: string): t is C_Integer {
-    return KIND_SET.has(t as Kind)
-        && t !== 'f32' && t !== 'f64' && t !== 'void' && t !== 'u64n' && t !== 'i64n' && t !== 'ptr'
-}
-
-// ============================================================
-// §3 C 别名与 token 归一 —— Windows LLP64：int/long 恒 32 位、long long 恒 64 位；
-//   指针 typedef（LONG_PTR/WPARAM/SIZE_T…）归一 '<>ptr'，宽字符串 typedef 归一 '<WCHAR>ptr'。
-//   单源常量 as const satisfies：类型层 Norm 由它派生，无需手同步；satisfies 让 value
-//   也在定义处被校验 —— 仅 as const 会静默放过 'u3z'，错误推迟成调用点诡异的 never。
-// ============================================================
-
-// 规范 token 全集 = 规范 kind（去裸 'ptr'）∪ 指针 token。C_ALIAS 的值、Norm 的输入输出、
-// JsTypeOfToken 的键都在此集合上。不含裸 'ptr' —— 用户必须写 '<>ptr'（见 §1）。
-type Token = Exclude<Kind, 'ptr'> | `<${string}>ptr`
+export type NullablePtr<T extends string> = Ptr<T> | null
 
 const C_ALIAS = {
     void: 'void', u8: 'u8', i8: 'i8', u16: 'u16', i16: 'i16', u32: 'u32', i32: 'i32',
-    u64: 'u64', i64: 'i64', f32: 'f32', f64: 'f64', i64n: 'i64n', u64n: 'u64n',
+    u64: 'u64', i64: 'i64', f32: 'f32', f64: 'f64',
     int: 'i32', long: 'i32', short: 'i16', char: 'i8', float: 'f32', double: 'f64',
     DWORD: 'u32', UINT: 'u32', ULONG: 'u32', LONG: 'i32', BOOL: 'i32', HRESULT: 'i32',
     SHORT: 'i16', USHORT: 'u16', BYTE: 'u8', WCHAR: 'u16',
@@ -82,17 +110,18 @@ const C_ALIAS = {
     HANDLE: '<>ptr', HWND: '<>ptr', HDC: '<>ptr', HMODULE: '<>ptr', HFONT: '<>ptr', HBRUSH: '<>ptr',
     HICON: '<>ptr', HBITMAP: '<>ptr', LPVOID: '<>ptr', LPCVOID: '<>ptr',
     LPCWSTR: '<WCHAR>ptr', PCWSTR: '<WCHAR>ptr', LPWSTR: '<WCHAR>ptr',
-} as const satisfies Record<string, Token>
+} as const satisfies Record<string, C_BasicType_Token>
 
 export type C_ALIAS_MAP = typeof C_ALIAS
 
-export type TokenJsTypeMap = {
+export type C_TypeJsTypeMap = {
     u8: number; i8: number; u16: number; i16: number
-    u32: number; i32: number; u64: number; i64: number
-    u64n: bigint; i64n: bigint; f32: number; f64: number
+    u32: number; i32: number; i64: bigint, u64: bigint
+    f32: number; f64: number, ptr: number
 }
 
-export type TokenReturnJsTypeMap = TokenJsTypeMap & { void: void }
+export type TokenArgJsTypeMap = C_TypeJsTypeMap
+export type TokenReturnJsTypeMap = C_TypeJsTypeMap & { void: void }
 
 // token 的类型层归一（运行时对应 normToken）。约束刻意保持 string 而非 Token：
 // 非法 token（如 'i3z'）要塌成 never 而不是报 TS2344 —— `& keyof` 把交集约成 never，
@@ -109,65 +138,76 @@ export type JsTypeOfToken<K extends string, M, L, D> =
     : never
 
 // token 归一：C/Windows typedef 别名 → 规范形式（'HANDLE' → '<>ptr' 等）；非别名原样返回。
-export function normToken(t: string): string {
-    return (C_ALIAS as Record<string, string>)[t] ?? t
+
+export function normToken(t: string): C_BasicType_Token {
+    if (isCPtrToken(t)) return t
+    const isKey = (k: string): k is keyof C_ALIAS_MAP => k in C_ALIAS;
+    if (isKey(t)) {
+        return C_ALIAS[t]
+    }
+    throw new Error("Unknown token: " + t)
 }
-
-// 别名归一 + kind 校验：非法 kind 抛错，合法者收窄为 Kind。
-export function normKind(t: string): Kind {
-    const k = normToken(t) as Kind
-    if (!KIND_SET.has(k)) throw new Error(`ffi-bind: invalid kind "${t}"`)
-    return k
-}
-
-// token（C 别名归一后）是否为 <NAME>ptr 指针布局；是则返回 NAME，否则 undefined。
-export function ptrLayoutName(t: string): string | undefined {
-    const m = PTR_TOKEN_RE.exec(normToken(t))
-    return m?.[1] || undefined   // '<>ptr' 空名 → undefined，调用方按裸指针另行处理
-}
-
-// ============================================================
-// §4 CType IR —— 复合类型（带 tag 的对象）；标量/指针直接写 kind 字符串。
-// ============================================================
-// encoding 只决定「这段字节怎么看成 JS string」，不参与布局：unit+length 决定 layout，
-// encoding 仅在 encode/decode 用，可与任意 unit 组合。标签直接用 TextDecoder/TextEncoder
-// 标准，读写走 lib/text-codec.js。定长字段：写入超长截断到 size，读取到 NUL 为止。
-export type Encoding = 'utf-8' | 'utf-16le'
-
-export type CString = {
-    tag: 'string',
-    unit: 'u8' | 'u16',   // 槽宽与对齐
-    length: number,   // 槽数
-    encoding: Encoding
-}
-export type CArray = {
-    tag: 'array',
-    ctype: CType,
-    length: number
-}
-// 位域：unit 决定存储单元的宽、对齐与签别（必须整数档），width 是位宽。
-// 布局规则（mingw 实测 MSVC 语义）在 struct.ts 的位域状态机里，此处不重复。
-export type CBitfield = {
-    tag: 'bitfield',
-    unit: C_Integer,
-    width: number
-}
-// 成员分两支，用 name 判别：命名成员（标量/string/array/bitfield，无可提升子布局、必须命名）
-// 与匿名聚合（struct/union，C11 匿名字段其子字段被 splice 提升进父结构）。alignas 抬对齐下限。
-// CBitfield 刻意不进 CType —— 数组元素只能是 CType（C 禁止位域数组），
-// Member 用 CMemberType = CType | CBitfield 显式把它加回来。
-export type CMemberType = CType | CBitfield
-
-export type Member =
-    | { name: string; type: CMemberType; alignas?: number }
-    | { name?: undefined; type: CStruct | CUnion; alignas?: number }
-
-export type CStruct = { tag: 'struct'; member: readonly Member[], pack?: number }
-export type CUnion = { tag: 'union'; member: readonly Member[], pack?: number }
-
-export type CType = C_Number | `<${string}>ptr` | CString | CArray | CStruct | CUnion
 
 /** 构造位域成员类型：unit 决定单元宽与签别（整数档），width 是位宽（1..单元位宽）。 */
-export function bit(unit: C_Integer, width: number): CBitfield {
-    return { tag: 'bitfield', unit, width }
+export function bit<const W extends number>(unit: C_Integer, width: W) {
+    return { tag: 'bitfield', unit, width } as const
+}
+
+export function readScalar(dv: DataView, off: number, k: C_BasicType_No_Void): number | bigint | null {
+    switch (k) {
+        case 'u8': return dv.getUint8(off)
+        case 'i8': return dv.getInt8(off)
+        case 'u16': return dv.getUint16(off, true)
+        case 'i16': return dv.getInt16(off, true)
+        case 'u32': return dv.getUint32(off, true)
+        case 'i32': return dv.getInt32(off, true)
+        case 'u64': return dv.getBigUint64(off, true)
+        case 'i64': return dv.getBigInt64(off, true)
+        case 'f32': return dv.getFloat32(off, true)
+        case 'f64': return dv.getFloat64(off, true)
+        case 'ptr': {
+            const p = PTR_SIZE === 8 ? Number(dv.getBigUint64(off, true)) : dv.getUint32(off, true)
+            // 0 归一为 null：类型层（ValOf / JsTypeOfToken）把指针一律声明为
+            // NullablePtr，若此处返回裸 0，`p === null` 就永不成立 —— 类型允许、
+            // 运行时永远走不到的分支比类型错误更隐蔽。
+            return p === 0 ? null : p
+        }
+    }
+}
+
+type Entry =
+    { [K in C_BasicType_No_Void]: { k: K; v: C_TypeJsTypeMap[K] } }[C_BasicType_No_Void];
+
+/** 内存写：按 sizeof 精确写，供 struct 字段编码用。小整数只占自己的字节，
+ *  否则 `{a:u8,b:u8}` 这类紧凑布局会被 setUint32 越界覆盖相邻字段。 */
+export function writeScalar(dv: DataView, off: number, { k, v }: Entry): void {
+    switch (k) {
+        case 'u8': dv.setUint8(off, Number(v)); break
+        case 'i8': dv.setInt8(off, Number(v)); break
+        case 'u16': dv.setUint16(off, Number(v), true); break
+        case 'i16': dv.setInt16(off, Number(v), true); break
+        case 'u32': dv.setUint32(off, (v) >>> 0, true); break
+        case 'i32': dv.setUint32(off, (v) >>> 0, true); break
+        case 'u64': dv.setBigUint64(off, v, true); break
+        case 'i64': dv.setBigInt64(off, v, true); break
+        case 'f32': dv.setFloat32(off, (v), true); break
+        case 'f64': dv.setFloat64(off, (v), true); break
+        case 'ptr': {
+            if (PTR_SIZE === 8) dv.setBigUint64(off, BigInt(v), true)
+            else dv.setUint32(off, v >>> 0, true)
+            break
+        }
+    }
+}
+
+/** 槽写：供 bind 的参数槽/返回槽用。小整数扩展到 4 字节 —— 可变参数按 int 提升读，
+ *  `i8 = -1` 必须给 `0xFFFFFFFF` 而非 `0x000000FF`。u32/i32/u64/i64/f32/f64/ptr
+ *  槽宽 == sizeof，直接委托 writeScalar。 */
+export function writeSlot(dv: DataView, off: number, e: Entry): void {
+    const { k, v } = e
+    if (k === 'u8' || k === 'i8' || k === 'u16' || k === 'i16') {
+        dv.setUint32(off, Number(v) >>> 0, true)
+        return
+    }
+    writeScalar(dv, off, e)
 }

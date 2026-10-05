@@ -63,7 +63,7 @@
 | i16 | `getUint16(0,true)`，`>0x7FFF` 减 `0x10000` | 低字有符号 |
 | i32 | `getInt32(0, true)` | 低 4 字节有符号 |
 | u8/u16/u32 | `getUint32(0,true)` 后按位掩码 / 直接 | 零扩展 |
-| u64/i64 | `getBigUint64`/`getBigInt64` → `Number` | 全宽；注意 JS 安全整数只到 2^53 |
+| u64/i64 | `getBigUint64`/`getBigInt64` → `bigint` | 全宽精确，JS 侧保持 bigint，不降级 Number |
 | f32/f64 | `getFloat32`/`getFloat64` | 按浮点槽位取回 |
 | ptr | 读指针宽，0 → `null` | 地址按无符号解释 |
 

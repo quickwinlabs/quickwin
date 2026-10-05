@@ -13,12 +13,14 @@
  *   eax        闭包块地址
  *
  * 返回约定：cdecl 调用方清栈；stdcall 由被调方 ret $N 清栈。
- * 本派发器是共享的，N 从闭包块 [ebx+40]（arg_bytes）动态取，
- * 用「返回地址搬运」技巧统一两条路径：先把返回地址弹进 edx，addl 跳过参数区，
- * 再 push 回返回地址后 ret（等价于 ret $N，见栈算术注释）。
+ * 本派发器是共享的，N 从闭包块 [ebx+40]（arg_bytes）动态取，故不能用
+ * `ret $N` 立即数，改用「返回地址搬运」：先把目标 esp 算进 ecx，把返回地址
+ * 预写到 [E+arg_bytes]，最后 movl %ecx,%esp 后 ret（等价 ret $N）。
  *
- * ia32 闭包返回限制：只支持 int32/ptr/void/f32/f64（Win32 回调无 64 位整数返回）。
- * 因此 eax（int）或 ST0（float）之外的 edx/ecx 均可作返回路径 scratch。
+ * 返回值分派（ret_kind）：0=int/ptr/void → EAX；1=f32、2=f64 → ST0；
+ * 3=int64 → EDX:EAX（i386 64 位整数返回约定，同 libffi X86_RET_INT64）。
+ * EDX 先搬返回地址、读完结果后复用装高 32 位，两次使用错开；整个过程
+ * esp 不切走，结果槽才能始终可寻址（借鉴 libffi x86/sysv.S 的三段式）。
  */
 
 #ifdef __USER_LABEL_PREFIX__
@@ -55,31 +57,43 @@ C(qwin_closure_dispatch_ia32):
 	call	C(qwin_closure_inner_ia32)
 	addl	$12, %esp		/* cdecl：调用方清 3 个实参 */
 
-	/* eax = ret_kind（0=int/ptr/void, 1=f32, 2=f64）；结果字节在 [esp..esp+7] */
+	/* 第 1 步：目标 esp + 搬返回地址（此时 esp 仍在结果槽、ebp 有效）。
+	   ecx = ret 前的 esp（E+arg_bytes）；返回地址预写到该处，等价于 ret $N：
+	   cdecl 时 arg_bytes=0 → 写回原位（no-op）；stdcall 时写进参数区末字，
+	   与旧的 popl/addl/pushl 技巧落点完全相同。
+	   必须先于读结果完成 —— 之后 EDX 才腾得出来装 int64 高半。 */
+	movl	40(%ebx), %ecx		/* arg_bytes（自包含：闭包块内，stdcall 清栈/cdecl=0） */
+	leal	4(%ebp,%ecx), %ecx	/* ret 前 esp = E+arg_bytes */
+	movl	4(%ebp), %edx		/* 返回地址 → EDX（暂用） */
+	movl	%edx, (%ecx)		/* [E+arg_bytes] = 返回地址 */
+
+	/* 第 2 步：装返回值。esp 仍在结果槽，结果字节 [esp..esp+7] 始终可寻址。
+	   ret_kind：0=int/ptr/void  1=f32  2=f64  3=int64(EDX:EAX) */
 	testl	%eax, %eax
-	jnz	.Lfloat
-	movl	(%esp), %eax		/* int32/ptr/void → EAX */
-	jmp	.Lepi
-.Lfloat:
+	jnz	.Lnotint
+	movl	(%esp), %eax		/* kind=0: int32/ptr/void → EAX */
+	jmp	.Ldone
+.Lnotint:
+	cmpl	$3, %eax
+	je	.Lint64
 	cmpl	$2, %eax
 	je	.Lf64
-	flds	(%esp)			/* f32 → ST0 */
-	jmp	.Lepi
+	flds	(%esp)			/* kind=1: f32 → ST0 */
+	jmp	.Ldone
+.Lint64:
+	movl	(%esp), %eax		/* 低 32 → EAX */
+	movl	4(%esp), %edx		/* 高 32 → EDX（i386 64 位返回 EDX:EAX；
+				   返回地址已入栈，EDX 此处复用是安全的） */
+	jmp	.Ldone
 .Lf64:
-	fldl	(%esp)			/* f64 → ST0 */
-.Lepi:
-	movl	40(%ebx), %ecx		/* arg_bytes（自包含：闭包块内，stdcall 清栈/cdecl=0） */
+	fldl	(%esp)			/* kind=2: f64 → ST0 */
 
+	/* 第 3 步：恢复 callee-saved，最后才把 esp 切到目标。 */
+.Ldone:
 	addl	$8, %esp		/* 弹结果槽 */
 	popl	%ebx			/* 恢复 */
-	popl	%ebp			/* 此时 esp=E，[esp]=返回地址 */
-
-	/* 返回地址搬运（等价 ret $N）：
-	   弹返回地址进 edx → addl 跳过 API 参数区 → push 回返回地址 → ret。
-	   最终调用方 esp = E+4+arg_bytes（stdcall 语义），cdecl 时 arg_bytes=0。 */
-	popl	%edx			/* edx = 返回地址；esp = E+4 */
-	addl	%ecx, %esp		/* 跳过参数区 → E+4+arg_bytes */
-	pushl	%edx			/* → E+arg_bytes，[esp]=返回地址 */
-	ret				/* → E+4+arg_bytes ✓ */
+	popl	%ebp			/* 恢复；此时 esp=E，[esp]=原返回地址（不再使用） */
+	movl	%ecx, %esp		/* 切到 E+arg_bytes */
+	ret				/* eip=[E+arg_bytes]=返回地址，返回后 esp=E+4+arg_bytes ✓ */
 
 	.cfi_endproc

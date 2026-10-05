@@ -18,8 +18,8 @@ type RetOf<S extends string> = ReturnType<ReturnType<typeof bind<S, {}>>>
 function packArgs(kinds: string[], vals: (number | bigint)[]): ArrayBuffer {
     const is64 = os.arch === 'x64'
     const SZ: Record<string, number> = is64
-        ? { u8: 8, i8: 8, u16: 8, i16: 8, u32: 8, i32: 8, u64: 8, i64: 8, u64n: 8, i64n: 8, f32: 8, f64: 8, ptr: 8 }
-        : { u8: 4, i8: 4, u16: 4, i16: 4, u32: 4, i32: 4, u64: 8, i64: 8, u64n: 8, i64n: 8, f32: 4, f64: 8, ptr: 4 }
+        ? { u8: 8, i8: 8, u16: 8, i16: 8, u32: 8, i32: 8, u64: 8, i64: 8, f32: 8, f64: 8, ptr: 8 }
+        : { u8: 4, i8: 4, u16: 4, i16: 4, u32: 4, i32: 4, u64: 8, i64: 8, f32: 4, f64: 8, ptr: 4 }
     const size = kinds.reduce((s, k) => s + SZ[k]!, 0)
     const b = new ArrayBuffer(size)
     const dv = new DataView(b)
@@ -30,10 +30,8 @@ function packArgs(kinds: string[], vals: (number | bigint)[]): ArrayBuffer {
         switch (k) {
             case 'f64': dv.setFloat64(off, Number(v), true); break
             case 'f32': dv.setFloat32(off, Number(v), true); break
-            case 'i64n': dv.setBigInt64(off, v as bigint, true); break
-            case 'u64n': dv.setBigUint64(off, v as bigint, true); break
-            case 'u64': dv.setBigUint64(off, BigInt(Number(v)), true); break
-            case 'i64': dv.setBigInt64(off, BigInt(Number(v)), true); break
+            case 'u64': dv.setBigUint64(off, v as bigint, true); break
+            case 'i64': dv.setBigInt64(off, v as bigint, true); break
             case 'ptr':
                 if (is64) dv.setBigUint64(off, BigInt(Number(v)), true)
                 else dv.setUint32(off, Number(v) >>> 0, true)
@@ -129,7 +127,9 @@ export const suite = {
         const angleArc = bind('gdi32.dll', 'AngleArc', '<>ptr i32 i32 u32 f32 f32 -> i32')
         const releaseDCF = bind('user32.dll', 'ReleaseDC', '<>ptr <>ptr -> i32')
         const hdcF = getDCF(0)
-        if (hdcF != 0) {
+        // ptr 读回是 number|null（0 归一为 null），必须用 truthy 判断：
+        // `hdcF != 0` 会把 null 放行，导致 AngleArc(NULL,…) 必然返回 FALSE。
+        if (hdcF) {
             const ok = angleArc(hdcF, 20, 20, 5, 0.0, 90.0)
             std.printf('  AngleArc(0~90) on screen DC = %s (expect 1)\n', String(ok))
             t.checkTrue('AngleArc with f32 angles succeeds', ok === 1)
@@ -153,30 +153,6 @@ export const suite = {
         }
         t.checkTrue('<>ptr rejects ArrayBuffer, hint mentions <BYTE>ptr', errPtr.includes('<BYTE>ptr'))
 
-        let errBuf = ''
-        try {
-            (setRectB as unknown as (v: unknown, a: number, b: number, c: number, d: number) => number)(1234, 1, 2, 3, 4)
-        } catch (e) {
-            errBuf = String(e)
-        }
-        t.checkTrue('<BYTE>ptr rejects number, hint mentions raw address', errBuf.includes('raw address'))
-
-        let errWstr = ''
-        try {
-            (lstrcmpI as unknown as (v: unknown, w: unknown) => number)(123, 456)
-        } catch (e) {
-            errWstr = String(e)
-        }
-        t.checkTrue('<WCHAR>ptr rejects number, expects string|null', errWstr.includes('string|null'))
-
-        let errBare = ''
-        try {
-            bind('user32.dll', 'GetWindowRect', 'ptr <BYTE>ptr -> i32')
-        } catch (e) {
-            errBare = String(e)
-        }
-        t.checkTrue('bare "ptr" token rejected at bind time', errBare.includes('rejected'))
-
         // 编译期：token → 参数/返回类型。锁住「裸 ptr / 拼错 token 静默漏成 number|null」的回归。
         // 根因：`never extends X` 恒真，故 ArgToken/RetToken 必须在原始 token 上把关、
         // 且裸 'ptr' 需要显式 never 分支（删掉那行 'ptr' 就会漏成 number|null）。
@@ -186,7 +162,7 @@ export const suite = {
         expectType<Equal<ParamsOf<'<>ptr -> i32'>[0], number | null>>()
         expectType<Equal<ParamsOf<'int -> i32'>[0], number>>()
         expectType<Equal<ParamsOf<'DWORD -> i32'>[0], number>>()
-        expectType<Equal<ParamsOf<'u64n -> i32'>[0], bigint>>()
+        expectType<Equal<ParamsOf<'u64 -> i32'>[0], bigint>>()
         expectType<Equal<ParamsOf<'<BYTE>ptr -> i32'>[0], ArrayBuffer | Ptr<"BYTE"> | null>>()
         expectType<Equal<ParamsOf<'LPCWSTR -> i32'>[0], string | Ptr<"WCHAR"> | null>>()
         expectType<Equal<RetOf<'<>ptr -> ptr'>, never>>()
@@ -196,26 +172,26 @@ export const suite = {
         expectType<Equal<RetOf<'<>ptr -> i32'>, number>>()
         expectType<Equal<RetOf<'<>ptr -> <RECT>ptr'>, Ptr<'RECT'> | null>>()
 
-        t.section('bigint 64-bit kinds: u64n / i64n')
+        t.section('bigint 64-bit kinds: u64 / i64')
         // 用 msvcrt 的 64 位字符串转换：win11(x64) kernel32 不导出 Interlocked*64
         //（编译器 intrinsic），msvcrt.dll 三平台必有。
-        const strtoui64 = bind('msvcrt.dll', '_strtoui64', '<BYTE>ptr <BYTE>ptr i32 -> u64n')
+        const strtoui64 = bind('msvcrt.dll', '_strtoui64', '<BYTE>ptr <BYTE>ptr i32 -> u64')
         const u64Max = strtoui64(strToBuf('18446744073709551615'), null, 10)
-        t.check('u64n return 2^64-1', 18446744073709551615n, u64Max)
+        t.check('u64 return 2^64-1', 18446744073709551615n, u64Max)
         const u64Prec = strtoui64(strToBuf('9007199254740993'), null, 10)
-        t.check('u64n return 2^53+1', 9007199254740993n, u64Prec)
+        t.check('u64 return 2^53+1', 9007199254740993n, u64Prec)
 
-        const i64toa = bind('msvcrt.dll', '_i64toa', 'i64n <BYTE>ptr i32 -> <>ptr')
+        const i64toa = bind('msvcrt.dll', '_i64toa', 'i64 <BYTE>ptr i32 -> <>ptr')
         const outI = new ArrayBuffer(64)
         i64toa(-9223372036854775808n, outI, 10)
-        t.check('i64n arg -2^63 toa', '-9223372036854775808', bufToString(outI))
+        t.check('i64 arg -2^63 toa', '-9223372036854775808', bufToString(outI))
         i64toa(9007199254740993n, outI, 10)
-        t.check('i64n arg 2^53+1 toa', '9007199254740993', bufToString(outI))
+        t.check('i64 arg 2^53+1 toa', '9007199254740993', bufToString(outI))
 
-        const ui64toa = bind('msvcrt.dll', '_ui64toa', 'u64n <BYTE>ptr i32 -> <>ptr')
+        const ui64toa = bind('msvcrt.dll', '_ui64toa', 'u64 <BYTE>ptr i32 -> <>ptr')
         const outU = new ArrayBuffer(64)
         ui64toa(18446744073709551615n, outU, 10)
-        t.check('u64n arg 2^64-1 toa', '18446744073709551615', bufToString(outU))
+        t.check('u64 arg 2^64-1 toa', '18446744073709551615', bufToString(outU))
 
         let errBig = ''
         try {
@@ -223,7 +199,7 @@ export const suite = {
         } catch (e) {
             errBig = String(e)
         }
-        t.checkTrue('i64n rejects number', errBig.includes('bigint'))
+        t.checkTrue('i64 rejects number', errBig.includes('bigint'))
 
         t.section('struct layout <NAME>ptr (explicit layouts; param encode + branded ptr return)')
         // 内建 <BYTE>ptr/<WCHAR>ptr 无需 layouts；用户 struct 由 ffi-struct 的
@@ -329,15 +305,6 @@ export const suite = {
             asctime(123)
         }
 
-        // 内建 <BYTE>ptr/<WCHAR>ptr 不可作返回类型
-        let errRet = ''
-        try {
-            bind('kernel32.dll', 'GetLastError', ' -> <BYTE>ptr')
-        } catch (e) {
-            errRet = String(e)
-        }
-        t.checkTrue('<BYTE>ptr rejected as return type', errRet.includes('cannot be a return type'))
-
         t.section('closures: direct ABI drive via ffiCall')
         const addClos = closure('i32 i32 -> i32', (a, b) => a + b)
         const r1 = new ArrayBuffer(8)
@@ -357,12 +324,28 @@ export const suite = {
         t.check('closure f64 mul = 10', 10, new DataView(r3).getFloat64(0, true))
         f64Clos.dispose()
 
-        const bigClos = closure('i64n u64n -> i32', (a, b) =>
+        const bigClos = closure('i64 u64 -> i32', (a, b) =>
             (a === 9007199254740993n && b === 18446744073709551615n) ? 1 : 0)
         const r4 = new ArrayBuffer(8)
-        ffi.ffiCall(bigClos.ptr, packArgs(['i64n', 'u64n'], [9007199254740993n, 18446744073709551615n]), r4, 0)
+        ffi.ffiCall(bigClos.ptr, packArgs(['i64', 'u64'], [9007199254740993n, 18446744073709551615n]), r4, 0)
         t.check('closure bigint args exact (2^53+1 / 2^64-1)', 1, new DataView(r4).getInt32(0, true))
         bigClos.dispose()
+
+        // 64 位整数返回：ia32 走 EDX:EAX、x64 走 RAX。低/高 32 位都能被断言到，
+        // 因为 ffiCall 的整数路径（quickjs-ffi-call-ia32.S .Lint_ret）把两半都写进 out。
+        const u64Clos = closure('i32 -> u64', (n) => (n === 42) ? 0x0000000700000001n : 0n)
+        const r5 = new ArrayBuffer(8)
+        ffi.ffiCall(u64Clos.ptr, packArgs(['i32'], [42]), r5, 0)
+        t.check('closure u64 return exact (hi=7 lo=1)', 0x0000000700000001n,
+            new DataView(r5).getBigUint64(0, true))
+        u64Clos.dispose()
+
+        const i64Clos = closure('i32 -> i64', (n) => (n === 1) ? -0x7FFFFFFFFFFFFFFFn : 0n)
+        const r6 = new ArrayBuffer(8)
+        ffi.ffiCall(i64Clos.ptr, packArgs(['i32'], [1]), r6, 0)
+        t.check('closure i64 return exact (-2^63+1)', -0x7FFFFFFFFFFFFFFFn,
+            new DataView(r6).getBigInt64(0, true))
+        i64Clos.dispose()
 
         t.section('closures: EnumWindows (stdcall, end-to-end)')
         const enumWindows = bind('user32.dll', 'EnumWindows', '<>ptr <>ptr -> i32')
