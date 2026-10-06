@@ -1,7 +1,7 @@
 import * as ffi from 'ffi'
 import * as gui from 'gui'
 import { bindLib } from './ffi/bind.js'
-import { DrawText, GetDC, ReleaseDC } from './user32.js'
+import { DrawText, GetDC, ReleaseDC } from './windows/user32.js'
 
 const gdi32 = bindLib('gdi32.dll', {
     SelectObject: '<>ptr <>ptr -> <>ptr',

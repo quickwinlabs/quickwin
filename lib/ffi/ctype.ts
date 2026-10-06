@@ -124,12 +124,16 @@ export const SizeAlign: Record<C_Number, number> = {
     f32: 4, f64: 8,
 }
 
-declare const ptrBrand: unique symbol
+// brand 属性用普通字符串键（phantom——运行时就是裸 number，属性不存在）：结构等价使
+// quickwin.d.ts 的 gui.HWND 能直接书写 `number & { readonly ptrBrand: "HWND" }`，
+// 与 Ptr<"HWND"> 双向可赋值、d.ts 零依赖 ctype；unique symbol 按声明位置定身份，
+// 反而使跨包的重复副本互不兼容。同构碰撞的防线由 `number &` 交叉保证（裸 number
+// 缺属性、纯对象缺 number，构造源只有 Ptr 本身或故意手写）。
 // `''` 判在左侧（右侧实例化，不作 naked 分布）：T=never 不再塌缩成 never（否则
 // `Ptr<never>` 不可构造，decode(… | Ptr<N>) 在 N=never 时直接堵死），含 '' 的并集
 // 不再拆分，宽 string 归一裸 number。字面品牌照旧走交叉 brand 分支。
 export type Ptr<T extends string> =
-    '' extends T ? number : number & { readonly [ptrBrand]: T }
+    '' extends T ? number : number & { readonly ptrBrand: T }
 
 export type NullablePtr<T extends string> = Ptr<T> | null
 

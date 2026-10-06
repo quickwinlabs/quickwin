@@ -5,7 +5,7 @@ import * as ffi from 'ffi'
 import { bind } from '../../ffi/bind.js'
 import { struct } from '../../ffi/struct.js'
 import { NMHDR, PTR_SIZE, nmCode } from '../nmhdr.js'
-import { LoadCursor, SetCursor, ScreenToClient } from '../../user32.js'
+import { LoadCursor, SetCursor, ScreenToClient } from '../../windows/user32.js'
 import type { WStyle } from '../jsx.d.ts'
 
 export function makeColorBlock(size: number, bgra: number): ArrayBuffer {

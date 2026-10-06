@@ -1,11 +1,11 @@
 import { Tester } from './test_helper.js'
-import { closure } from '../lib/ffi/bind.js'
+import { closure, WCHAR } from '../lib/ffi/bind.js'
 import {
     GetDesktopWindow, IsWindow, IsWindowVisible, GetSystemMetrics, GetClientRect,
     GetWindowTextLength, GetClassName, FindWindow, SetTimer, KillTimer,
-    GetKeyState, LoadCursor, GetMenu, GetForegroundWindow, GetDC, ReleaseDC,
-    EnumWindows,
-} from '../lib/user32.js'
+    GetKeyState, LoadCursor, SetCursor, GetMenu, DestroyMenu, GetForegroundWindow,
+    GetDC, ReleaseDC, EnumWindows,
+} from '../lib/windows/user32.js'
 
 export const suite = {
     run(t: Tester) {
@@ -34,6 +34,10 @@ export const suite = {
         let clsName = ''
         for (let i = 0; i < n; i++) clsName += String.fromCharCode(cdv.getUint16(i * 2, true))
         t.checkTrue('类名非空', clsName.length > 0)
+        // JSDoc 文档化流（L4）：WCHAR.alloc(n).buf 当 out buffer、WCHAR.decode(buf) 读回
+        const clsH = WCHAR.alloc(32)
+        t.checkTrue('WCHAR.alloc out 写入长度 > 0', GetClassName(desk, clsH.buf, 32) > 0)
+        t.check('WCHAR.decode(buf) 读回类名', clsName, WCHAR.decode(clsH.buf))
 
         t.section('user32: FindWindow（<WCHAR>ptr 的 null 与 string 双形态）')
         const fw = FindWindow(null, null)
@@ -49,6 +53,11 @@ export const suite = {
         t.section('user32: 输入 / 光标 / 菜单')
         t.checkTrue('GetKeyState 返回整数', Number.isInteger(GetKeyState(0x1b)))
         t.checkTrue('LoadCursor(0, IDC_ARROW=32512) 非 null', LoadCursor(0, 32512) !== null)
+        // 品牌流动（正例）：LoadCursor 返回 Ptr<'HCURSOR'> | null 直接喂 SetCursor 形参
+        const arrow = LoadCursor(0, 32512)
+        const prevCur = arrow !== null ? SetCursor(arrow) : null
+        t.checkTrue('SetCursor(LoadCursor(...)) 返回句柄形态',
+            arrow !== null && (prevCur === null || typeof prevCur === 'number'))
         t.check('GetMenu(desktop) 无菜单 → null', null, GetMenu(desk))
 
         t.section('user32: GetDC / ReleaseDC 配对')
@@ -56,10 +65,19 @@ export const suite = {
         t.checkTrue('GetDC(null) 非 null', hdc !== null)
         t.checkTrue('ReleaseDC(null, hdc) 成功', ReleaseDC(null, hdc) !== 0)
 
-        // 仅类型层反例（不执行）：<>ptr（普通 number，如 HWND）不能传给 <HDC>ptr 归还位
+        // 仅类型层反例（不执行）：异种句柄互传、<>ptr 误传品牌位都应编译不过
         const _typeOnly = () => {
             // @ts-expect-error Ptr<>（number）不是 Ptr<'HDC'>，误传桌面句柄应编译不过
             ReleaseDC(null, GetDesktopWindow())
+            // @ts-expect-error Ptr<'HWND'> 不是 Ptr<'HCURSOR'>，窗口句柄喂 SetCursor 应编译不过
+            SetCursor(GetDesktopWindow())
+            // @ts-expect-error Ptr<'HWND'> 不是 Ptr<'HMENU'>，窗口句柄喂 DestroyMenu 应编译不过
+            DestroyMenu(GetDesktopWindow())
+            // @ts-expect-error Ptr<'HMENU'> 不是 Ptr<'HWND'>，菜单句柄喂 IsWindow 应编译不过
+            IsWindow(GetMenu(desk))
+            // 正例：同种品牌流动（GetMenu → DestroyMenu）通过——上面反例的成立依赖这层区分
+            const m = GetMenu(desk)
+            if (m !== null) DestroyMenu(m)
         }
         void _typeOnly
 

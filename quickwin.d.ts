@@ -419,7 +419,8 @@ declare module "win" {
 }
 
 declare module "gui" {
-    type HWND = number & { readonly __label: unique symbol };
+    /** 与 ffi 的 Ptr<"HWND"> 结构同型（string 键 brand，见 lib/ffi/ctype.ts）——窗口句柄可在两体系间互传 */
+    type HWND = number & { readonly ptrBrand: "HWND" };
     type HMENU = number & { readonly __label: unique symbol };
     type HFONT = number & { readonly __label: unique symbol };
     type HICON = number & { readonly __label: unique symbol };
