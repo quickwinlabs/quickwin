@@ -16,7 +16,7 @@
 ## 低优先级
 - [x] 系统性优化 FFI：libffi 已移出构建（汇编桩，见 `.agents/REMOVE_LIBFFI_PLAN.md`）；`lib/ffi/bind.ts` 的 `bind()/bindLib()` DSL 以签名串声明类型/ABI，隐藏 `ffiCall` 参数类型数组与句柄宽度差异；`ListView.tsx`、`pdf_preview2.ts`、`PdfCanvas.tsx`、`PathPicker.tsx`、`pdf_viewer.tsx`、`setres.ts`、`test_ffi.ts` 已全部迁到 `bind()`，旧 `ffiCall`/`FFI_TYPE_*` 导出已删除
 - [x] FFI 回调（closure）落地：`closure(sig, fn, {stdcall?})` → `{ptr, dispose}`，每闭包一个 VirtualAlloc 可执行块（trampoline 绝对跳转 + wrapper 派发，无 registry、无跨 context 全局），`closureNew/closureFree` 注册进 'ffi' 模块；EnumWindows(stdcall)/qsort(cdecl)/bigint 用例 + win11/xp 双平台 ffi 142/142、全量 611/611 全绿
-- [ ] `ffi-struct` 覆盖缺口（按需再补）：union / bitfield / `#pragma pack(n)` 对齐；by-value struct 传参/返回；varargs（printf 系列，`AL` 恒 0）；可选 native `ffi.readBytes(ptr,len)` 加速 `structFromPtr`
+- [ ] `ffi-struct` 覆盖缺口（按需再补）：union / bitfield / `#pragma pack(n)` 对齐；by-value struct 传参/返回；varargs（printf 系列，`AL` 恒 0）；可选 native `ffi.readBytes(ptr,len)` 加速 decode(ptr) 指针分支
 - [ ] `_PreloadedStream` optimization: `slice()` → `subarray()`
 - [ ] Add protocol whitelist for `fetch()`
 - [ ] `exec_server` 流式输出：当前三层全缓冲（worker `readBytes` 读到 EOF 一次 `postMessage` → `runInWorker` 等完整 `out` → `http-server.sendResponse` `_readStream` + `Content-Length` 一次 `queueSend`），命令跑完客户端才收到 body。要做流式需：(1) worker 分块 `postMessage({type:'chunk'})` + 结束 `result`；(2) `/exec` 用 `ReadableStream` 构造 Response；(3) `sendResponse` 支持 chunked 响应（先 headers 再多次 `sock.send`，EOF `0\r\n\r\n`）——`chunked` 目前只解析请求 body；(4) 中途断开/超时/worker 挂收尾；(5) `http_test.sh` 回归。文件：`examples/exec_server.ts`、`examples/exec_server_worker.ts`、`lib/http-server.ts`（`sendResponse` ~L395）

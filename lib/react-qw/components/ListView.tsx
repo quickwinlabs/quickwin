@@ -5,6 +5,7 @@ import * as ffi from 'ffi'
 import { bind } from '../../ffi/bind.js'
 import { struct } from '../../ffi/struct.js'
 import { NMHDR, PTR_SIZE, nmCode } from '../nmhdr.js'
+import { LoadCursor, SetCursor, ScreenToClient } from '../../user32.js'
 import type { WStyle } from '../jsx.d.ts'
 
 export function makeColorBlock(size: number, bgra: number): ArrayBuffer {
@@ -156,27 +157,6 @@ function ensureGdi(): GdiFns | null {
     return null
   }
   return gdiFns
-}
-
-type User32Fns = {
-  loadCursorW: (hinst: number | null, name: number | null) => number | null
-  setCursorFn: (h: number | null) => number | null
-  screenToClient: (h: number | null, pt: ArrayBuffer | null) => number
-}
-let user32Fns: User32Fns | null = null
-
-function ensureUser32(): User32Fns | null {
-  if (user32Fns) return user32Fns
-  try {
-    user32Fns = {
-      loadCursorW: bind('user32.dll', 'LoadCursorW', '<>ptr <>ptr -> <>ptr'),
-      setCursorFn: bind('user32.dll', 'SetCursor', '<>ptr -> <>ptr'),
-      screenToClient: bind('user32.dll', 'ScreenToClient', '<>ptr <BYTE>ptr -> i32'),
-    }
-  } catch {
-    return null
-  }
-  return user32Fns
 }
 
 function getCellFont(hwnd: gui.HWND, style: CellStyle): number | null {
@@ -437,8 +417,6 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
           if ((e.lParam & 0xFFFF) !== gui.HitTest.CLIENT) return
           const h = lvRef.current
           if (!h) return
-          const u32 = ensureUser32()
-          if (!u32) return
 
           const sp = gui.GetCursorPos()
           if (!sp) return
@@ -446,7 +424,7 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
           const sdv = new DataView(sbuf)
           sdv.setInt32(0, sp[0], true)
           sdv.setInt32(4, sp[1], true)
-          u32.screenToClient(h, sbuf)
+          ScreenToClient(h, sbuf)
 
           const lvhi = new ArrayBuffer(24)
           const lvd = new DataView(lvhi)
@@ -460,9 +438,9 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
           const iSubItem = readI32(lvhiPtr, 16)
           const style = resolveCellStyle(columns, data, iItem, iSubItem)
           if (!style || style.cursor === undefined) return
-          const hc = u32.loadCursorW(0, style.cursor)
+          const hc = LoadCursor(0, style.cursor)
           if (hc) {
-            u32.setCursorFn(hc)
+            SetCursor(hc)
             return 1
           }
           return

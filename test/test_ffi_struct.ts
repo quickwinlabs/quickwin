@@ -9,6 +9,11 @@ import type { C_Union } from '../lib/ffi/ctype.js'
 type Equal<A, B> = (<G>() => G extends A ? 1 : 2) extends (<G>() => G extends B ? 1 : 2) ? true : false
 function expectType<T extends true>(_value?: T): void { }
 
+// Ptr 定义：'' 判右侧（不作 naked 分布）——字面品牌照旧收窄、Ptr<''> 归一 number、
+// never 不再塌缩成 never（旧定义下 Ptr<never> 即 never，decode(… | Ptr<N>) 会在 N=never 时堵死）
+expectType<Equal<Ptr<''>, number>>(true)
+expectType<Equal<Ptr<never>, never> extends false ? true : false>(true)
+
 const RECT = struct('RECT', {
     left: 'i32',
     top: 'i32',
@@ -50,6 +55,15 @@ export const suite = {
         t.check('offsetOf left', 0, RECT.offsetOf('left'))
         t.check('offsetOf bottom', 12, RECT.offsetOf('bottom'))
 
+        // decode 入参随 N 品牌化：命名 RECT 收 ArrayBuffer | Ptr<'RECT'>，
+        // 未命名 TVITEM（N=''）归一 ArrayBuffer | number
+        expectType<Equal<Parameters<typeof RECT.decode>[0], ArrayBuffer | Ptr<'RECT'>>>(true)
+        expectType<Equal<Parameters<typeof TVITEM.decode>[0], ArrayBuffer | number>>(true)
+        if (false) {
+            // @ts-expect-error plain number is not assignable to ArrayBuffer | Ptr<'RECT'>
+            RECT.decode(123)
+        }
+
         t.section('GetWindowRect fills RECT buffer')
         const getWindowRect = bind('user32.dll', 'GetWindowRect', '<>ptr <BYTE>ptr -> int')
         const getWindowRectLayout = bind('user32.dll', 'GetWindowRect', '<>ptr <RECT>ptr -> int', { RECT })
@@ -61,13 +75,14 @@ export const suite = {
         const wr = RECT.decode(wrect)
         t.checkTrue('screen RECT non-empty', wr.right > 0 && wr.bottom > 0)
 
-        // out 参数：命名 struct 的 alloc() 句柄 → .ptr 为 Ptr<'RECT'>，直接喂 <RECT>ptr
-        t.section('RECT.alloc() out-param handle')
+        // out 参数：alloc() 返回 { buf, ptr } → .ptr 为 Ptr<'RECT'> 直接喂 <RECT>ptr，
+        // 读回走 def.decode(buf)（双态入参的 ArrayBuffer 分支）
+        t.section('RECT.alloc() out-param { buf, ptr }')
         const out = RECT.alloc()
-        t.checkTrue('alloc() exposes buffer + ptr', out.buffer instanceof ArrayBuffer && typeof out.ptr === 'number')
+        t.checkTrue('alloc() exposes buf + ptr', out.buf instanceof ArrayBuffer && typeof out.ptr === 'number')
         t.checkTrue('GetWindowRect(hwnd, out.ptr) succeeds', getWindowRectLayout(hwnd, out.ptr) !== 0)
-        const or = out.decode()
-        t.checkTrue('alloc().decode() decodes out-param', or.right > 0 && or.bottom > 0)
+        const or = RECT.decode(out.buf)
+        t.checkTrue('RECT.decode(alloc().buf) decodes out-param', or.right > 0 && or.bottom > 0)
 
         t.section('ptr layout matches arch')
         t.check(`TVITEM.size (${os.arch})`, is64 ? 56 : 40, TVITEM.size)

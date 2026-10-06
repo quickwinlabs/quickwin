@@ -131,20 +131,22 @@ export type Fields = Field[]
 
 // T 约束 = '#' 声明本身：struct()/union() 构造的 `{'#':'struct'} & M` 可证 —— M 是平铺
 // 字段表（SimpleMember 无 '#' 键），交叉的 '#' 取字面声明。形状层不设约束的理由见 ShapeOfC。
-export type StructDef<T extends { '#': 'struct' | 'union' }, N extends string = never> = {
+// N = 布局品牌（struct(name, …) 传入）：decode 入参与 alloc().ptr 同品牌。默认 '' ——
+// `Ptr<''>` 归一裸 number（与旧 never 守卫结果相同），品牌化 def 未来收窄时签名不用再动。
+export type StructDef<T extends { '#': 'struct' | 'union' }, N extends string = ''> = {
     readonly __struct: T
     readonly size: number
     readonly structAlign: number
-    decode(buf: ArrayBuffer, offset?: number): ShapeOfC<T>
+    decode(buf: ArrayBuffer | Ptr<N>): ShapeOfC<T>
     encode(v: ShapeOfC<T>, buf?: ArrayBuffer, offset?: number): ArrayBuffer
     offsetOf(name: string): number
-    alloc(): StructAlloc<ShapeOfC<T>, N>
+    alloc(): StructAlloc<N>
 }
 
-export type StructAlloc<S, N extends string = never> = {
-    readonly buffer: ArrayBuffer
-    readonly ptr: [N] extends [never] ? number : Ptr<N>
-    decode(offset?: number): S
+// out 预分配句柄：buf 给 def.decode(buf) 直读、ptr 带布局品牌直接喂 <N>ptr 形参。
+export type StructAlloc<N extends string = ''> = {
+    readonly buf: ArrayBuffer
+    readonly ptr: Ptr<N>
 }
 
 // ============================================================
@@ -500,7 +502,18 @@ function createStruct(t: C_Struct | C_Union): any {
         __struct: t,
         size,
         structAlign: maxEffectiveAlign,
-        decode: (buf: ArrayBuffer, offset = 0) => doDecode(new DataView(buf), offset, fields),
+        decode: (p: ArrayBuffer | number) => {
+            // number = native 拥有的品牌指针（Codec 的 decode(p) 形态）：按布局 size
+            // 逐字节拷进临时 buffer 再解码；ArrayBuffer = 调用方持有的 out buffer 直读。
+            // 顶层不收 offset——out 参数恒从起点读，嵌套偏移由字段布局（doDecode 的 base）承担。
+            if (typeof p === 'number') {
+                const buf = new ArrayBuffer(size)
+                const u8 = new Uint8Array(buf)
+                for (let i = 0; i < size; i++) u8[i] = ffi.readByte(p + i)
+                return doDecode(new DataView(buf), 0, fields)
+            }
+            return doDecode(new DataView(p), 0, fields)
+        },
         encode: (v: any, buf?: ArrayBuffer, offset = 0) => {
             const out = buf ?? new ArrayBuffer(size)
             doEncode(new DataView(out), offset, fields, v)
@@ -511,12 +524,8 @@ function createStruct(t: C_Struct | C_Union): any {
             throw new Error(`ffi-struct: no field "${name}"`)
         },
         alloc: () => {
-            const buffer = new ArrayBuffer(size)
-            return {
-                buffer,
-                ptr: ffi.bufferPtr(buffer),
-                decode: (offset = 0) => doDecode(new DataView(buffer), offset, fields),
-            }
+            const buf = new ArrayBuffer(size)
+            return { buf, ptr: ffi.bufferPtr(buf) }
         },
     }
 }
@@ -540,9 +549,9 @@ function buildDecl(kind: 'struct' | 'union', member: Record<string, unknown>, pa
 }
 
 /** 平铺字段表定义结构体（token/别名/`X[n]`/`unit:width`/`'#'` 声明均可，见 ctype.ts §4）。
- *  给 name 则 alloc().ptr 带 Ptr<name> 品牌。 */
-type StructOf<M, N extends string = never> = StructDef<{ '#': 'struct', '#pack'?: number } & M, N>
-type UnionOf<M, N extends string = never> = StructDef<{ '#': 'union', '#pack'?: number } & M, N>
+ *  给 name 则 alloc().ptr 与 decode 入参带 Ptr<name> 品牌。 */
+type StructOf<M, N extends string = ''> = StructDef<{ '#': 'struct', '#pack'?: number } & M, N>
+type UnionOf<M, N extends string = ''> = StructDef<{ '#': 'union', '#pack'?: number } & M, N>
 export function struct<const M extends SimpleMember>(member: M, opts?: AggOpts): StructOf<M>
 export function struct<const N extends string, const M extends SimpleMember>(name: N, member: M, opts?: AggOpts): StructOf<M, N>
 export function struct(a: string | SimpleMember, b?: SimpleMember | AggOpts, c?: AggOpts): any {
@@ -560,16 +569,4 @@ export function union(a: string | SimpleMember, b?: SimpleMember | AggOpts, c?: 
     const raw = (isNamed ? b : a) as Record<string, unknown>
     const opts = (isNamed ? c : b) as AggOpts | undefined
     return createStruct(buildDecl('union', raw, opts?.pack))
-}
-
-/** 从 native 拥有的 `<STRUCT>ptr` 解码（ptr === null → null）。 */
-export function structFromPtr<S>(
-    def: { size: number; decode(buf: ArrayBuffer, offset?: number): S },
-    ptr: number | null,
-): S | null {
-    if (ptr === null) return null
-    const buf = new ArrayBuffer(def.size)
-    const u8 = new Uint8Array(buf)
-    for (let i = 0; i < u8.length; i++) u8[i] = ffi.readByte(ptr + i)
-    return def.decode(buf)
 }

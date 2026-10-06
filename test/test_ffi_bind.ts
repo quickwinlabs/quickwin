@@ -3,8 +3,8 @@ import * as gui from 'gui'
 import * as ffi from 'ffi'
 import * as os from 'os'
 import { Tester } from './test_helper.js'
-import { bind, bindLib, closure} from '../lib/ffi/bind.js'
-import { structFromPtr, struct } from '../lib/ffi/struct.js'
+import { bind, bindLib, closure, WCHAR, BYTE, type CodecMap } from '../lib/ffi/bind.js'
+import { struct } from '../lib/ffi/struct.js'
 import { Ptr } from '../lib/ffi/ctype.js'
 
 // 编译期断言工具（仅类型层，运行时无开销）
@@ -259,7 +259,8 @@ export const suite = {
         }
         t.checkTrue('unknown layout <NOPE>ptr rejected on struct-shape call', errLayout.includes('unknown layout') && errLayout.includes('BYTE'))
 
-        // out 参数：命名 struct 的 alloc() 句柄，.ptr 即 Ptr<'RECT'>，直接喂 <RECT>ptr。
+        // out 参数：命名 struct 的 alloc() 返回 { buf, ptr }，.ptr 即 Ptr<'RECT'> 直接喂
+        // <RECT>ptr；读回走 RECT.decode(buf)（双态入参的 ArrayBuffer 分支）。
         const RECT = struct('RECT', {
             left: 'i32',
             top: 'i32',
@@ -271,14 +272,14 @@ export const suite = {
         const desktop = getDesktopWindow()
         const rectOut = RECT.alloc()
         t.checkTrue('GetWindowRect(hwnd, RECT.alloc().ptr) succeeds', getWindowRect(desktop, rectOut.ptr) !== 0)
-        const rectV = rectOut.decode()
-        t.checkTrue('alloc() handle read() decodes out-param', rectV.right > rectV.left && rectV.bottom > rectV.top)
+        const rectV = RECT.decode(rectOut.buf)
+        t.checkTrue('RECT.decode(alloc().buf) decodes out-param', rectV.right > rectV.left && rectV.bottom > rectV.top)
 
         // 成员 '<RECT>ptr'：decode 得到 Ptr<'RECT'>，可直接喂 <RECT>ptr 形参（品牌在类型层流动）。
         const RECTPTR = struct({r: '<RECT>ptr'})
         const box = RECTPTR.decode(RECTPTR.encode({ r: rectOut.ptr }))
         t.checkTrue('GetWindowRect(hwnd, member RECT*) succeeds', getWindowRect(desktop, box.r) !== 0)
-        const rectThroughMember = rectOut.decode()
+        const rectThroughMember = RECT.decode(rectOut.buf)
         t.checkTrue('writes through the member pointer', rectThroughMember.right > rectThroughMember.left && rectThroughMember.bottom > rectThroughMember.top)
 
         t.section('struct ptr return + branded passthrough')
@@ -305,15 +306,64 @@ export const suite = {
         std.printf('  asctime(localtime(0)) = %s', asc.replace(/\n$/, ''))
         t.checkTrue('asctime(<TM>ptr) accepts branded pointer (passthrough)', asc.includes(':') && asc.length >= 20)
 
-        // structFromPtr：不消费只读指针，而是显式拷贝+解码 native 拥有的 <TM>ptr。
-        const tmDecoded = structFromPtr(TM, tm)
-        t.checkTrue('structFromPtr(<TM>ptr) decodes native-owned struct', tmDecoded !== null && tmDecoded.tm_sec === 0)
+        // 手动解 native 拥有的 <TM>ptr：def.decode 双态入参的指针分支（null 守卫在调用方）
+        const tmDecoded = tm !== null ? TM.decode(tm) : null
+        t.checkTrue('TM.decode(<TM>ptr) decodes native-owned struct', tmDecoded !== null && tmDecoded.tm_sec === 0)
 
         // 编译期：裸 number 不是 Ptr<'TM'>，被类型层拒绝（此处永不执行）
         if (false) {
             // @ts-expect-error plain number is not assignable to Ptr<'TM'>
             asctime(123)
         }
+
+        // Codec：decoders 显式传表 → 返回位自动解码为结构对象（替代 Ptr | null）
+        const localtimeDec = bind('msvcrt.dll', 'localtime', '<BYTE>ptr -> <TM>ptr', undefined, { TM })
+        const tmObj = localtimeDec(tbuf)
+        t.checkTrue('localtime + decoders auto-decodes to struct object',
+            tmObj !== null && typeof tmObj.tm_sec === 'number')
+        // 类型层证明：解码结果非 null 分支上 tm_sec 字段可访问且为 number
+        // （返回若含 Ptr<'TM'> 分支——无 decode 的旧行为——此访问编译不过）
+        if (tmObj !== null) expectType<Equal<typeof tmObj.tm_sec, number>>(true)
+
+        // Codec：返回位类型断言（decoders 显式 / 缺省回退 encoders）
+        // 断言「替换语义」两半：解码结果不含 Ptr（number）分支 + 含结构对象分支。
+        type RetOfDec<S extends string, D extends CodecMap> = ReturnType<ReturnType<typeof bind<S, {}, D>>>
+        type RetDecTM = RetOfDec<' -> <TM>ptr', { TM: typeof TM }>
+        type RetEncTM = ReturnType<ReturnType<typeof bind<' -> <TM>ptr', { TM: typeof TM }>>>
+        expectType<Equal<Extract<RetDecTM, number> extends never ? true : false, true>>(true)
+        expectType<Equal<Extract<RetDecTM, { tm_sec: number }> extends never ? false : true, true>>(true)
+        expectType<Equal<Extract<RetEncTM, number> extends never ? true : false, true>>(true)
+        expectType<Equal<Extract<RetEncTM, { tm_sec: number }> extends never ? false : true, true>>(true)
+
+        // 内建 WCHAR codec：无条件进两张表 → <WCHAR>ptr 返回直接 string
+        type RetW = ReturnType<ReturnType<typeof bind<' -> <WCHAR>ptr'>>>
+        expectType<Equal<RetW, string | null>>(true)
+        const getCommandLineW = bind('kernel32.dll', 'GetCommandLineW', ' -> <WCHAR>ptr')
+        const cl = getCommandLineW()
+        t.checkTrue('GetCommandLineW auto-decodes builtin <WCHAR>ptr to string',
+            typeof cl === 'string' && cl.length > 0)
+
+        // WCHAR alloc/decode 往返：{ buf, ptr } 预分配 + 手填 UTF-16LE + 双态读回
+        const walloc = WCHAR.alloc(8)
+        const wdv = new DataView(walloc.buf)
+        wdv.setUint16(0, 'h'.charCodeAt(0), true)
+        wdv.setUint16(2, 'i'.charCodeAt(0), true)
+        wdv.setUint16(4, 0, true)
+        t.check('WCHAR.alloc(8).buf = 16 bytes', 16, walloc.buf.byteLength)
+        t.check('WCHAR.decode(ptr) roundtrip', 'hi', WCHAR.decode(walloc.ptr))
+        t.check('WCHAR.decode(ArrayBuffer) roundtrip', 'hi', WCHAR.decode(walloc.buf))
+        t.check('BYTE.alloc(12).buf = 12 bytes', 12, BYTE.alloc(12).buf.byteLength)
+
+        // out-only codec（只声明 decode）走入参位 → 编码期 fail-fast（不触 native 调用）
+        const asctimeOutOnly = bind('msvcrt.dll', 'asctime', '<TM>ptr -> <>ptr',
+            { TM: { decode: (p: number) => p } })
+        let outOnlyErr = ''
+        try {
+            asctimeOutOnly({} as never)   // 类型层 Ptr|null；运行时喂对象进 encoder 分支
+        } catch (e) {
+            outOnlyErr = String(e)
+        }
+        t.checkTrue('out-only codec rejected at encode time', outOnlyErr.includes('no encoder'))
 
         t.section('closures: direct ABI drive via ffiCall')
         const addClos = closure('i32 i32 -> i32', (a, b) => a + b)

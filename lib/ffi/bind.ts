@@ -3,12 +3,27 @@ import * as os from 'os'
 import * as std from 'std'
 import * as win from 'win'
 import '../text-codec.js'
-import { type C_BasicType, C_BasicType_No_Void, C_BasicType_Token, C_BasicType_Token_No_Void, cTokenToType, isCPtrToken, JsTypeOfToken, normToken, PTR_SIZE, ptrName, readScalar, TokenArgJsTypeMap, TokenReturnJsTypeMap, writeSlot } from './ctype.js'
+import { type C_BasicType, C_BasicType_No_Void, C_BasicType_Token, C_BasicType_Token_No_Void, cTokenToType, isCPtrToken, JsTypeOfToken, normToken, type Norm, NullablePtr, PTR_SIZE, ptrName, type Ptr, readScalar, TokenArgJsTypeMap, TokenReturnJsTypeMap, writeSlot } from './ctype.js'
 
 // 形状刻意是「方法」而非裸函数：ffi-struct 的 struct()/union() 结果（StructDef）
 // 结构上即满足 encode(v, buf?, offset?) -> ArrayBuffer，用户布局可直接透传。
-type Encoder<V> = { encode(v: V, buf?: ArrayBuffer, offset?: number): ArrayBuffer }
-type EncoderMap = Record<string, Encoder<any>>
+// Codec 三件全可选（可只入参 / 只出参）：encode JS→native 序列化、decode 读回 JS 值、
+// alloc 出参预分配（分配描述符 T 由各 codec 自定——内建收元素数/字节数）。
+// decode 双态单参：native 品牌指针（返回位分派 / bufferPtr）逐字节读、调用方持有的
+// ArrayBuffer 直读。刻意没有 offset——out 参数恒从 buffer 起点读，嵌套偏移由布局
+// 字段（doDecode 的 base）承担，顶层再收 offset 只会掩盖"读错位置"这类错误。
+// alloc 统一返回 { buf, ptr }：buf 喂 decode 直读，ptr 带品牌直接喂 <N>ptr 形参。
+type Codec<N extends string = string, V = unknown, T = unknown> = {
+    encode?(v: V, buf?: ArrayBuffer, offset?: number): ArrayBuffer
+    decode?(p: Ptr<N>| ArrayBuffer): V
+    alloc?(a: T): { buf: ArrayBuffer; ptr: Ptr<N> }
+}
+// 约束层三件与 StructDef 形状一致，def 可整体透传；提取层按键存在性走（见下）。
+export type CodecMap = Record<string, {
+    encode?(v: any, buf?: ArrayBuffer, offset?: number): ArrayBuffer
+    decode?(p: any): any
+    alloc?(a: any): { buf: ArrayBuffer; ptr: Ptr<any> }
+}>
 
 const _dllCache: Map<string, win.HMODULE> = new Map()
 
@@ -42,9 +57,9 @@ function parseSig(sig: string): { argTokens: C_BasicType_Token_No_Void[]; retTok
     return { argTokens: args, retToken: normToken(parts[1]!) }
 }
 
-function makeFn(proc: number, sig: string, encoders: EncoderMap): (...a: unknown[]) => unknown {
+function makeFn(proc: number, sig: string, encoders: CodecMap, decoders: CodecMap): (...a: unknown[]) => unknown {
     const { argTokens, retToken } = parseSig(sig)
-    return (...a: unknown[]) => callPacked(proc, argTokens, retToken, a, encoders)
+    return (...a: unknown[]) => callPacked(proc, argTokens, retToken, a, encoders, decoders)
 }
 
 // 每个参数在 argFrame 里占的字节数。与 quickjs-ffi-type.h 的 qwin_ffi_arg_size[]
@@ -58,7 +73,7 @@ const IA32_ARG_SIZE: Record<C_BasicType_No_Void, number> = {
 // x64 桩无条件双读 slots[0..3]，故 argFrame 至少 4 个槽（32 字节）
 const X64_MIN_SLOTS = 4
 
-function callPacked(proc: number, argTokens: C_BasicType_Token_No_Void[], retToken: C_BasicType_Token, args: any[], encoders: EncoderMap): unknown {
+function callPacked(proc: number, argTokens: C_BasicType_Token_No_Void[], retToken: C_BasicType_Token, args: any[], encoders: CodecMap, decoders: CodecMap): unknown {
     const is64 = os.arch === 'x64'
 
     const getWidth = (t: C_BasicType_Token_No_Void, is64: boolean): number => {
@@ -89,14 +104,18 @@ function callPacked(proc: number, argTokens: C_BasicType_Token_No_Void[], retTok
                 // 合法值形态由类型层约束（如 <BYTE>ptr 只收 ArrayBuffer|null），此处不重复校验。
                 writeSlot(dv, off, { k: 'ptr', v: arg })
             } else {
-                const encoder = encoders[name]
-                if (!encoder) {
+                const codec = encoders[name]
+                if (!codec) {
                     // undefined / 未知布局落到这：指针只收 null 或有效地址，不静默当 0。
                     throw new Error(name === ''
                         ? `ffi-bind: <>ptr expects number|null, got ${typeof arg}; use <BYTE>ptr to pass an ArrayBuffer, or ffi.bufferPtr(buf)`
                         : `ffi-bind: unknown layout "<${name}>ptr" (available: ${Object.keys(encoders).join(', ') || 'none'})`)
                 }
-                const buf = encoder.encode(arg)
+                if (!codec.encode) {
+                    // codec 存在但只声明了 decode/alloc（只读出），入参位无序列化可用。
+                    throw new Error(`ffi-bind: <${name}>ptr has no encoder (out-only codec)`)
+                }
+                const buf = codec.encode(arg)
                 held.push(buf)
                 writeSlot(dv, off, { k: 'ptr', v: ffi.bufferPtr(buf) })
             }
@@ -110,7 +129,17 @@ function callPacked(proc: number, argTokens: C_BasicType_Token_No_Void[], retTok
     const retBuf = new ArrayBuffer(8)
     const retIsFp = retToken === 'f32' || retToken === 'f64'
     ffi.ffiCall(proc, argFrame, retBuf, retIsFp ? 1 : 0)
-    return readRet(cTokenToType(retToken), retBuf)
+    const raw = readRet(cTokenToType(retToken), retBuf)
+    // 返回位自动解码：非空品牌指针且该键声明了 decode → 交还 JS 值；
+    // NULL 恒原样 null（无可读内容），裸 <>ptr / 无 decode 的键原样返回。
+    if (raw !== null && isCPtrToken(retToken)) {
+        const name = ptrName(retToken)
+        if (name !== '') {
+            const codec = decoders[name]
+            if (codec?.decode) return codec.decode(raw)
+        }
+    }
+    return raw
 }
 
 // 把标量参数写进 argFrame 槽位。ptr 为裸地址直通；引用型参数见 writePtrSlot。
@@ -125,54 +154,129 @@ type ParseArgStr<S extends string, L, Acc extends unknown[] = []> =
     : S extends ''
     ? Acc : [...Acc, JsTypeOfToken<S, TokenArgJsTypeMap, L, never>]
 
-// 布局表：用户布局解包成 JS 形，并注入两个内建 codec 的值域，
+// 按键存在性提取 codec 值域（方法全可选后，`extends Encoder<infer V>` 会整体塌 never）。
+type EncodeValue<T> = 'encode' extends keyof T
+    ? (T extends { encode?: (v: infer V, ...r: any[]) => ArrayBuffer } ? V : never)
+    : never
+type DecodeValue<T> = 'decode' extends keyof T
+    ? (T extends { decode?: (p: any, ...r: any[]) => infer V } ? V : never)
+    : never
+
+// 入参布局表：用户 codec 解包成 JS 形，并注入两个内建 codec 的值域，
 // 使 <BYTE>ptr / <WCHAR>ptr 形参在类型层拿到 ArrayBuffer / string。
 type BindEncoders<M> = {
-    [K in keyof M]: M[K] extends Encoder<infer V> ? V : never
+    [K in keyof M]: EncodeValue<M[K]>
 } & {
     WCHAR: string;
     BYTE: ArrayBuffer;
 }
+// 返回位布局表：只含 decode 值域。内建 WCHAR 注入与运行时（builtinCodecs.WCHAR
+// 无条件合并进 decoders）对齐——<WCHAR>ptr 返回直接拿 string；BYTE 无 decode，
+// 不注入，返回保持 Ptr<'BYTE'> | null。
+type BindDecoders<M> = { [K in keyof M]: DecodeValue<M[K]> } & { WCHAR: string }
 
-type BindFn<S extends string, L> =
-    S extends `${infer ArgStr} -> ${infer RetStr}` ? ((...args: ParseArgStr<ArgStr, L>) => JsTypeOfToken<RetStr, TokenReturnJsTypeMap, {}, unknown>) : never
+// 返回位 token → JS 类型：该键有 decode → V | null（品牌指针被解码结果替换，
+// 可直接访问字段）；否则 Ptr<N> | null。入参路径不动（仍是 Ptr | V | null 并集）。
+type RetOfToken<K extends string, M, D> = Norm<K> extends infer S ?
+    S extends `<${infer N}>ptr`
+        ? (D[N & keyof D] extends never ? NullablePtr<N> : D[N & keyof D] | null)
+        : M[S & keyof M] extends never ? unknown : M[S & keyof M]
+    : never
 
-// 内建指针 encoder：类型校验放在这里，与「用户布局 encoder」同一分派点。
+type BindFn<S extends string, E, D> =
+    S extends `${infer ArgStr} -> ${infer RetStr}` ? ((...args: ParseArgStr<ArgStr, E>) => RetOfToken<RetStr, TokenReturnJsTypeMap, D>) : never
+
+// 内建 codec：类型校验放在这里，与「用户布局 codec」同一分派点。
 // BYTE/WCHAR 拒绝裸 number（无句柄可 pin），提示改用 <>ptr。
-const builtinEncoders: EncoderMap = {
-    WCHAR: {
-        encode: (v: string) => {
-            return new TextEncoder('utf-16le').encode(v + '\0').buffer
-        }
+/** 内建 UTF-16 编解码：encode 入参序列化（UTF-16LE + NUL）；decode 双态单参——
+ *  品牌指针逐字节读到 NUL（野指针无终止 4MiB 上限 fail-fast）、ArrayBuffer 直读到
+ *  NUL 或末尾（out 参数未写 NUL 时按读满处理）；alloc 出参预分配返回 { buf, ptr }
+ *  （a = 字符数，缺省 256；ptr 带 <WCHAR> 品牌直接喂形参）。类型取必需形态——
+ *  内建三件齐备，调用无需空断言。 */
+export const WCHAR: Required<Codec<'WCHAR', string, number>> = {
+    encode: (v: string) => {
+        return new TextEncoder('utf-16le').encode(v + '\0').buffer
     },
-    BYTE: {
-        encode: (v: ArrayBuffer) => {
-            return v
+    decode: (p) => {
+        // 两分支同构（UTF-16LE code unit、拼接到 NUL 止），唯一差异是读法。
+        if (typeof p === 'number') {
+            let s = ''
+            let addr: number = p
+            const start = addr
+            for (;;) {
+                const lo = ffi.readByte(addr)
+                const hi = ffi.readByte(addr + 1)
+                if (lo === 0 && hi === 0) return s
+                s += String.fromCharCode(lo | (hi << 8))
+                addr += 2
+                if (addr - start > 1 << 21) {
+                    throw new Error('ffi-bind: WCHAR decode exceeded 4MiB without NUL')
+                }
+            }
         }
+        const u8 = new Uint8Array(p)
+        const limit = u8.length & ~1   // 奇数末尾的残半字节丢弃
+        let s = ''
+        for (let i = 0; i < limit; i += 2) {
+            const c = u8[i]! | (u8[i + 1]! << 8)
+            if (c === 0) return s
+            s += String.fromCharCode(c)
+        }
+        return s
+    },
+    alloc: (size = 256) => {
+        const buf = new ArrayBuffer(size * 2)
+        return { buf, ptr: ffi.bufferPtr(buf) as Ptr<'WCHAR'> }
     },
 }
-export function bind<const S extends string, const L extends EncoderMap = {}>(
-    dll: string, name: string, sig: S, encoders?: L) {
+/** 内建字节缓冲：encode identity 直通（调用方持有 buffer 原地存活）；alloc 出参预
+ *  分配返回 { buf, ptr }（a = 字节数；ptr 带 <BYTE> 品牌直接喂形参）。无 decode——
+ *  地址不携带长度（无终止符），读回用 buf 原地读（native 写回后 DataView 直接取）。 */
+export const BYTE: Required<Pick<Codec<'BYTE', ArrayBuffer, number>, 'encode' | 'alloc'>> = {
+    encode: (v) => {
+        return v
+    },
+    alloc: (byteLen) => {
+        const buf = new ArrayBuffer(byteLen)
+        return { buf, ptr: ffi.bufferPtr(buf) as Ptr<'BYTE'> }
+    },
+}
+// 运行时两张表是同一对象：参数位只调 .encode、返回位只调 .decode，互不干扰。
+const builtinCodecs: CodecMap = { WCHAR, BYTE }
+/** 绑定单个函数。encoders/decoders 是两张可选布局表（结构上是 Codec）：
+ *  encoders 喂入参位（encode 值域 → 形参类型），decoders 喂返回位（decode 值域
+ *  → 返回 V | null，替代 Ptr | null）。decoders 缺省时回退到 encoders——双向 codec
+ *  只需传一次（与运行时 `decoders ?? encoders` 同构：都只在实参缺省时生效，
+ *  显式传空对象不 fallback）。内建 WCHAR/BYTE 无条件参与两张表。 */
+export function bind<const S extends string,
+    const LE extends CodecMap = {},
+    const LD extends CodecMap = LE>(
+    dll: string, name: string, sig: S, encoders?: LE, decoders?: LD) {
     const proc = win.GetProcAddress(loadDll(dll), name)
     if (!proc) throw new Error(`ffi-bind: proc "${name}" not found in ${dll}`)
-    return makeFn(proc, sig, {
-        ...builtinEncoders,
-        ...encoders
-    }) as unknown as BindFn<S, BindEncoders<L>>
+    const effDec = decoders ?? encoders
+    return makeFn(proc, sig,
+        { ...builtinCodecs, ...encoders },
+        { ...builtinCodecs, ...(effDec ?? {}) }
+    ) as unknown as BindFn<S, BindEncoders<LE>, BindDecoders<LD>>
 }
 
-export function bindLib<const M extends Record<string, string>, const L extends EncoderMap = {}>(
-    dll: string, map: M, encoders?: L) {
+/** 批量绑定（map = 函数名 → 签名串）。encoders/decoders 语义同 bind()。 */
+export function bindLib<const M extends Record<string, string>,
+    const LE extends CodecMap = {},
+    const LD extends CodecMap = LE>(
+    dll: string, map: M, encoders?: LE, decoders?: LD) {
     const out: Record<string, (...a: unknown[]) => unknown> = {}
     const h = loadDll(dll)
+    const effDec = decoders ?? encoders
+    const encTable = { ...builtinCodecs, ...encoders }
+    const decTable = { ...builtinCodecs, ...(effDec ?? {}) }
     for (const [name, sig] of Object.entries(map)) {
         const proc = win.GetProcAddress(h, name)
         if (!proc) throw new Error(`ffi-bind: proc "${name}" not found in ${dll}`)
-        out[name] = makeFn(proc, sig, {
-            ...builtinEncoders, ...encoders
-        })
+        out[name] = makeFn(proc, sig, encTable, decTable)
     }
-    return out as { [K in keyof M]: BindFn<M[K], BindEncoders<L>> }
+    return out as { [K in keyof M]: BindFn<M[K], BindEncoders<LE>, BindDecoders<LD>> }
 }
 
 /* ---- 闭包（回调）：JS 函数 → 可传给 Win32 API 的函数指针 ---- */
@@ -236,7 +340,7 @@ function dispatchClosure(args: C_BasicType_No_Void[], ret: C_BasicType, fn: (...
  *  注意：dispose 后 ptr 不得再被任何 native 方引用。
  *  从未 dispose 就丢弃通道（整个返回对象或解构出来的 dispose 均算）
  *  → 打印泄漏警告（只警告、不自动释放，见 leakRegistry）。 */
-export function closure<S extends string>(sig: S, fn: BindFn<S, {}>,
+export function closure<S extends string>(sig: S, fn: BindFn<S, {}, {}>,
     opts?: { stdcall?: boolean }): { ptr: number; dispose(): void } {
     const { argTokens, retToken } = parseSig(sig)
     const argTypes = argTokens.map(cTokenToType)

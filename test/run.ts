@@ -32,6 +32,7 @@ const suiteDefs = [
     { name: 'ffi-struct',        file: './test_ffi_struct.js',       tags: [] },
     { name: 'ffi-struct-layout', file: './test_ffi_struct_layout.js', tags: [] },
     { name: 'ffi-abi',           file: './test_ffi_abi.js',          tags: [] },
+    { name: 'ffi-user32',        file: './test_ffi_user32.js',       tags: [] },
     { name: 'net-fetch',         file: './test_net_fetch.js',        tags: ['net'] },
     { name: 'net-wolfssl-read',   file: './test_wolfssl_read.js',     tags: ['net'] },
     { name: 'net-websocket',     file: './test_net_websocket.js',    tags: ['net'] },
