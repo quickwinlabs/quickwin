@@ -4,32 +4,34 @@ import {
     C_BasicType_No_Void,
     C_TypeJsTypeMap,
     isCPtrToken,
+    normToken,
+    Norm,
     NullablePtr,
     PTR_SIZE,
     readScalar,
     SizeAlign,
     writeScalar,
-    type C_Array, type C_Bitfield,
+    type C_Array,
+    type C_BasicType_Token,
     type C_Integer,
-    type C_MemberType,
     type C_Number,
-    type C_String,
     type C_Struct, type C_Union,
     type Encoding,
-    type Member,
-    type Ptr
+    type Ptr,
+    type SimpleMember,
+    type SimpleToken,
 } from './ctype.js';
 
 // ============================================================
-// 聚合定义：唯一 API 是 CType IR（member 数组即定义），签名与 pack 见末尾 struct()/union()。
+// 聚合定义：唯一 API 是平铺语法（值词汇见 ctype.ts §4），签名与 pack 见末尾 struct()/union()。
 // layout 采用 MSVC 对齐语义：
 //   i8/u8→1  i16/u16→2  i32/u32/f32→4  i64/u64/f64→8  '<>ptr'/'<T>ptr'→arch 宽(4/8)
-//   struct 对齐 = 最大字段对齐，总尺寸末尾补齐；pack 压上限、alignas 抬下限
+//   struct 对齐 = 最大字段对齐，总尺寸末尾补齐；pack 压上限、键尾 '@N'（alignas）抬下限
 //   位域布局规则见下方 computeStructLayout 的状态机注释（mingw 实测 DCB/COMSTAT）。
 // ============================================================
 
 // ============================================================
-// 类型推导 — CType IR
+// 类型推导 — 值词汇 → decode/encode 形状
 // ============================================================
 
 // 指针成员：'<>ptr' → number（T='' 品牌退化）；'<NAME>ptr' → Ptr<NAME>（品牌 number）。
@@ -43,13 +45,31 @@ type N =
     | 40 | 41 | 42 | 43 | 44 | 45 | 46 | 47 | 48 | 49
     | 50 | 51 | 52 | 53;
 
-type ValOf<C extends C_MemberType> =
-    C extends `<${infer T}>ptr` ? NullablePtr<T>
-    : C extends C_Number ? C_TypeJsTypeMap[C]
-    : C extends C_Bitfield ? (C extends { width: N } ? number : bigint)
-    : C extends C_String ? string
-    : C extends C_Array ? Tuple<ValOf<C['ctype']>, C['length']>
-    : C extends C_Struct | C_Union ? ShapeOfC<C['member']>
+// 规范 token（Norm 后）→ JS 形状：'<T>ptr' → NullablePtr（0 归一为 null）；数字档 → JsType 映射。
+// 归一后落不到两者的（'void'、裸 'ptr'、拼错 token）塌 never。
+type ValOf<T> =
+    T extends `<${infer B}>ptr` ? NullablePtr<B>
+    : T extends C_Number ? C_TypeJsTypeMap[T]
+    : never
+
+// 位域糖 → 形状：unit 归一后非整数档（如 'float:3' → 'f32'）塌 never（运行时同报错）；
+// width ≤53 可被 number 精确表示 → number，否则 bigint。
+type BitShape<T extends string, W extends number> =
+    Norm<T> extends C_Integer ? (W extends N ? number : bigint) : never
+
+// 值 → 形状。对象值一律按 '#' 分派（无「裸嵌套 map 默认 struct」—— 漏写 '#' 是错误）。
+// 字符串糖（值尾带 @encoding）在数组糖之前判别 —— 两形态本不相交（数组糖以 ] 收尾），
+// 特判在前更可读。注意 infer 出的 L 是字符串字面（'8'），不能写 `L extends number`
+// （string 永不 extends number → 塌 never），要用 `L extends `${number}`` 检查；
+// U/L/E 都在条件里被引用，避免未使用的 infer 触发 TS6196。
+type ShapeOfValue<V> =
+    V extends infer T extends SimpleToken ? ValOf<Norm<T>>
+    : V extends `${infer U}[${infer L}]@${infer E}`
+      ? (U extends 'u8' | 'u16' ? (L extends `${number}` ? (E extends Encoding ? string : never) : never) : never)
+    : V extends `${infer T extends SimpleToken}[${infer L extends number}]` ? Tuple<ShapeOfValue<T>, L>
+    : V extends `${infer T extends SimpleToken}:${infer W extends number}` ? BitShape<T, W>
+    : V extends { '#': 'array', element: infer E, length: infer L extends number } ? Tuple<ShapeOfValue<E>, L>
+    : V extends { '#': 'struct' | 'union' } ? ShapeOfC<V>
     : never
 
 type Tuple<T, N extends number, R extends T[] = []> =
@@ -57,18 +77,30 @@ type Tuple<T, N extends number, R extends T[] = []> =
     : R['length'] extends N ? R
     : R['length'] extends 64 ? T[]
     : Tuple<T, N, [...R, T]>
+type DollarKeys<T> = { [K in keyof T]: K extends `$${string}` ? K : never }[keyof T];
+type UnionToIntersection<U> =
+    (U extends any ? (k: U) => void : never) extends ((k: infer I) => void) ? I : never;
+type Lift<T> =
+    {
+        [K in keyof T as K extends `$${string}` ? never : K]:
+        T[K] extends readonly unknown[] ? T[K] :
+        T[K] extends {} ? Lift<T[K]> : T[K];
+    } & UnionToIntersection<
+        { [K in DollarKeys<T>]: Lift<T[K]> }[DollarKeys<T>]
+    >;
+// 形状层刻意不设约束：M 常是泛型实例化里的 C_Struct 交叉（在 struct()/union() 声明处
+// 无法证明满足模板索引签名），约束检查会在这里炸掉（TS2344/TS2589）。
+// 非法 M 落到 ShapeOfValue 的 never 分支，由具体实例化点暴露。
+// 指令键（'#'/'#pack'）不进形状；键尾 '@N'（alignas）拆掉 —— 对齐只影响布局、不影响读写形状。
+type FieldKey<K> =
+    K extends `#${string}` ? never
+    : K extends `${infer B}@${string}` ? B
+    : K
+type _ShapeOfC<M> = {
+    [K in keyof M as FieldKey<K>]: ShapeOfValue<M[K]>
+}
+type ShapeOfC<M> = Lift<_ShapeOfC<M>>
 
-type ShapeOfC<M extends readonly Member[]> = M extends readonly [
-    infer H extends Member,
-    ...infer T extends readonly Member[]
-] ? (FieldShape<H> & ShapeOfC<T>) : {}
-
-type FieldShape<M extends Member> =
-    M extends { name?: undefined; type: infer T extends C_Struct | C_Union }
-    ? ShapeOfC<T['member']>
-    : M extends { name: infer N extends string; type: infer T extends C_MemberType }
-    ? { [K in N]: ValOf<T> }
-    : {}
 
 // ============================================================
 // 运行时类型
@@ -79,7 +111,7 @@ type FieldShape<M extends Member> =
 // kind → size/align（不含指针：指针统一 PTR_SIZE，见 lower）。
 
 
-// 运行时 Field：IR 的 lowered 视图（独立于 CType，不保留 Member/alignas）。
+// 运行时 Field：IR 的 lowered 视图（独立于语法层，不保留 alignas）。
 // computeStructLayout 在 lowering 时把子布局内嵌进 FieldType（struct/union→fields，
 // array→elementType+elementSize，bitfield→bit 单元内偏移），运行期 read/write 零查表。
 // offset 相对本层起点；位域成员的 offset 是其存储单元的基址（不是位域自己的地址）。
@@ -97,14 +129,16 @@ export type Field = {
 }
 export type Fields = Field[]
 
-export type StructDef<T extends C_Struct | C_Union, N extends string = never> = {
+// T 约束 = '#' 声明本身：struct()/union() 构造的 `{'#':'struct'} & M` 可证 —— M 是平铺
+// 字段表（SimpleMember 无 '#' 键），交叉的 '#' 取字面声明。形状层不设约束的理由见 ShapeOfC。
+export type StructDef<T extends { '#': 'struct' | 'union' }, N extends string = never> = {
     readonly __struct: T
     readonly size: number
     readonly structAlign: number
-    decode(buf: ArrayBuffer, offset?: number): ShapeOfC<T['member']>
-    encode(v: ShapeOfC<T['member']>, buf?: ArrayBuffer, offset?: number): ArrayBuffer
+    decode(buf: ArrayBuffer, offset?: number): ShapeOfC<T>
+    encode(v: ShapeOfC<T>, buf?: ArrayBuffer, offset?: number): ArrayBuffer
     offsetOf(name: string): number
-    alloc(): StructAlloc<ShapeOfC<T['member']>, N>
+    alloc(): StructAlloc<ShapeOfC<T>, N>
 }
 
 export type StructAlloc<S, N extends string = never> = {
@@ -129,46 +163,93 @@ type Layout = {
     fields: Fields,
 }
 
-// CType → { size, align, FieldType }：聚合递归进 computeStructLayout；array 元素复用同一结果。
-function lower(t: C_MemberType): { size: number, align: number, type: FieldType } {
-    if (typeof t === 'string') {
-        if (isCPtrToken(t))
-            return { size: PTR_SIZE, align: PTR_SIZE, type: { tag: 'basic', kind: 'ptr' } }
-        const s = SizeAlign[t]
-        if (s === undefined) throw new Error(`ffi-struct: unknown kind "${t}"`)
-        return { size: s, align: s, type: { tag: 'basic', kind: t } }
-    }
-    if (t.tag === 'string') {
-        if (!Number.isInteger(t.length) || t.length < 1)
-            throw new Error(`ffi-struct: string length must be an integer >= 1, got ${t.length}`)
-        const s = SizeAlign[t.unit]
-        return { size: s * t.length, align: s, type: { tag: 'string', encoding: t.encoding } }
-    }
-    if (t.tag === 'bitfield') {
-        const s = SizeAlign[t.unit]
-        const cap = s * 8
-        if (!Number.isInteger(t.width) || t.width < 1)
-            throw new Error(`ffi-struct: bitfield width must be an integer >= 1, got ${t.width}`)
-        if (t.width > cap)
-            throw new Error(`ffi-struct: bitfield width ${t.width} exceeds unit width ${cap}`)
-        // bit 是单元内偏移，由 computeStructLayout 的位域状态机填写；这里占位 0。
-        return { size: s, align: s, type: { tag: 'bitfield', unit: t.unit, bit: 0, width: t.width } }
-    }
-    if (t.tag === 'array') {
-        if (!Number.isInteger(t.length) || t.length < 1)
-            throw new Error(`ffi-struct: array length must be an integer >= 1, got ${t.length}`)
-        const el = lower(t.ctype)
-        if (el.type.tag === 'bitfield')
-            throw new Error('ffi-struct: bitfields cannot be array elements')
-        return {
-            size: el.size * t.length,
-            align: el.align,
-            type: { tag: 'array', elementType: el.type, elementSize: el.size },
+// 归一后 token 的档位检查：'void'/指针 token 查表为 undefined（SizeAlign 只收 C_Number）。
+const isCNumberToken = (t: C_BasicType_Token): t is C_Number =>
+    SizeAlign[t as C_Number] !== undefined
+
+// 值 → { size, align, FieldType }：字符串先试字符串糖/数组糖/位域糖，再按 token（含别名）归一；
+// 对象值一律按 '#' 分派 —— 无「裸嵌套 map 默认 struct」，漏写 '#' 直接报错。
+// 字符串无 '#' 声明形式（词汇只有糖，见 ctype.ts §4）：旧写法落到末尾 unknown '#' 报错。
+function lower(v: unknown): { size: number, align: number, type: FieldType } {
+    if (typeof v === 'string') {
+        const st = /^(u8|u16)\[(\d+)\]@(utf-8|utf-16le)$/.exec(v)   // 'u16[128]@utf-16le' → 字符串糖
+        if (st) {
+            const length = Number(st[2])
+            if (!Number.isInteger(length) || length < 1)
+                throw new Error(`ffi-struct: string length must be an integer >= 1, got ${length}`)
+            // 布局 = unit × length（与 encoding 无关），encoding 只是读写时的解释 ——
+            // 'u8[128]@utf-16le'（128 字节按 utf-16le 解出 64 字符）之类的错配语义自洽。
+            const s = st[1] === 'u8' ? 1 : 2
+            return { size: s * length, align: s, type: { tag: 'string', encoding: st[3] as Encoding } }
         }
+        const a = /^([^\[\]]+)\[(\d+)\]$/.exec(v)          // 'u32[4]' / 'i3z[4]' → 数组糖（元素递归归一）
+        if (a) {
+            const length = Number(a[2])
+            if (!Number.isInteger(length) || length < 1)
+                throw new Error(`ffi-struct: array length must be an integer >= 1, got ${length}`)
+            const el = lower(a[1])
+            if (el.type.tag === 'bitfield')
+                throw new Error('ffi-struct: bitfields cannot be array elements')
+            return {
+                size: el.size * length,
+                align: el.align,
+                type: { tag: 'array', elementType: el.type, elementSize: el.size },
+            }
+        }
+        const b = /^([A-Za-z_]\w*):(\d+)$/.exec(v)          // 'u32:3' → 位域糖（'float:3' 归一后非整数档被拒）
+        if (b) {
+            const rawUnit = b[1]!
+            const unit = normToken(rawUnit)
+            // 'void'/'<>ptr' 查表为 undefined、'float' 归一到 'f32' —— 都不是合法位域单元。
+            if (!isCNumberToken(unit) || unit === 'f32' || unit === 'f64')
+                throw new Error(`ffi-struct: bitfield unit must be an integer type, got "${rawUnit}"`)
+            const width = Number(b[2])
+            const s = SizeAlign[unit]
+            const cap = s * 8
+            if (!Number.isInteger(width) || width < 1)
+                throw new Error(`ffi-struct: bitfield width must be an integer >= 1, got ${width}`)
+            if (width > cap)
+                throw new Error(`ffi-struct: bitfield width ${width} exceeds unit width ${cap}`)
+            // bit 是单元内偏移，由 computeStructLayout 的位域状态机填写；这里占位 0。
+            return { size: s, align: s, type: { tag: 'bitfield', unit, bit: 0, width } }
+        }
+        // token / 别名 / 指针 token。normToken：'HANDLE'/'LPARAM' → '<>ptr' —— 别名归一出的
+        // 指针 token 必须在归一后判型，否则落 unknown kind；'void' 归一后无大小、
+        // 裸 'ptr'/'i3z' 未知 —— 都在这里抛（原先由 SizeAlign 查表兜住，现归一并入）。
+        const k = normToken(v)
+        if (isCPtrToken(k))
+            return { size: PTR_SIZE, align: PTR_SIZE, type: { tag: 'basic', kind: 'ptr' } }
+        if (!isCNumberToken(k)) throw new Error(`ffi-struct: unknown kind "${v}"`)
+        const s = SizeAlign[k]
+        return { size: s, align: s, type: { tag: 'basic', kind: k } }
     }
-    // struct | union
-    const l = computeStructLayout(t)
-    return { size: l.size, align: l.maxEffectiveAlign, type: { tag: t.tag, fields: l.fields } }
+    if (v && typeof v === 'object') {
+        const o = v as Record<string, unknown>
+        const tag = o['#']
+        if (tag === undefined)
+            throw new Error(`ffi-struct: nested object value requires a '#' key ('struct' | 'union' | 'array')`)
+        if (tag === 'array' && '#pack' in o)
+            throw new Error(`ffi-struct: '#pack' is only allowed on struct/union, got '${tag}'`)
+        if (tag === 'array') {
+            const length = o['length']
+            if (!Number.isInteger(length) || (length as number) < 1)
+                throw new Error(`ffi-struct: array length must be an integer >= 1, got ${String(length)}`)
+            const el = lower(o['element'])
+            if (el.type.tag === 'bitfield')
+                throw new Error('ffi-struct: bitfields cannot be array elements')
+            return {
+                size: el.size * (length as number),
+                align: el.align,
+                type: { tag: 'array', elementType: el.type, elementSize: el.size },
+            }
+        }
+        if (tag === 'struct' || tag === 'union') {
+            const l = computeStructLayout(v as C_Struct | C_Union)
+            return { size: l.size, align: l.maxEffectiveAlign, type: { tag, fields: l.fields } }
+        }
+        throw new Error(`ffi-struct: unknown '#' declaration ${JSON.stringify(String(tag))}`)
+    }
+    throw new Error(`ffi-struct: invalid member value: ${String(v)}`)
 }
 
 export function computeArray(t: C_Array): { align: number, size: number } {
@@ -177,8 +258,8 @@ export function computeArray(t: C_Array): { align: number, size: number } {
 }
 
 export function computeStructLayout(t: C_Struct | C_Union): Layout {
-    const isStruct = t.tag === 'struct'
-    const pack = t.pack ?? 8
+    const isStruct = t['#'] === 'struct'
+    const pack = t['#pack'] ?? 8
     let maxEffectiveAlign = 1
     let maxMemberSize = 0
     const fields: Fields = []
@@ -202,15 +283,18 @@ export function computeStructLayout(t: C_Struct | C_Union): Layout {
         unitBase = -1
     }
 
-    for (const m of t.member) {
-        const { size, align: natural, type } = lower(m.type)
+    for (const [rawName, v] of Object.entries(t as unknown as Record<string, unknown>)) {
+        if (rawName.startsWith('#')) continue            // '#' 指令键（'#'/'#pack'）不是字段
+        const m = /^([^@]+)@(\d+)$/.exec(rawName)        // 键尾 '@N' = alignas（字段名不含 '@'）
+        const name = m ? m[1]! : rawName
+        const alignas = m ? Number(m[2]) : 0
+        const { size, align: natural, type } = lower(v)
         let align = natural
         if (pack > 0) align = Math.min(pack, align)
-        if (m.alignas) align = Math.max(align, m.alignas)
+        if (alignas) align = Math.max(align, alignas)
 
         if (type.tag === 'bitfield') {
-            if (m.name === undefined)
-                throw new Error('ffi-struct: bitfield members must be named')
+            if (name.startsWith('$')) throw new Error('ffi-struct: bitfield members must be named')
             const width = type.width
 
             // 新单元：无活动单元 / 单元宽不同 / 放不下。
@@ -224,7 +308,7 @@ export function computeStructLayout(t: C_Struct | C_Union): Layout {
             }
 
             fields.push({
-                name: m.name,
+                name: name,
                 offset: unitBase,   // 单元基址（不是位域自己的地址）
                 size,
                 type: { ...type, bit: unitBits },
@@ -239,11 +323,13 @@ export function computeStructLayout(t: C_Struct | C_Union): Layout {
         flushUnit()
         const offset = alignUp(cursor, align)
 
-        if (m.name !== undefined) {
-            fields.push({ name: m.name, offset, size, type })
+        if (!name.startsWith('$')) {
+            fields.push({ name: name, offset, size, type })
         } else {
-            // 匿名聚合：m.type 必为 struct/union，内嵌 fields 已 lower 好，offset 平移到本成员起点。
-            for (const cf of (type as { fields: Fields }).fields)
+            // 匿名聚合：内嵌 fields 已 lower 好，offset 平移到本成员起点。
+            if (type.tag !== 'struct' && type.tag !== 'union')
+                throw new Error(`ffi-struct: anonymous member "${name}" must be a struct/union`)
+            for (const cf of type.fields)
                 fields.push({ ...cf, offset: cf.offset + offset })
         }
 
@@ -433,22 +519,38 @@ function createStruct(t: C_Struct | C_Union): any {
 /** 聚合对齐上限（pack 压 maxAlign，语义同 MSVC #pragma pack）。 */
 export type AggOpts = { pack?: number }
 
-/** member 数组定义结构体。给 name 则 alloc().ptr 带 Ptr<name> 品牌。 */
-export function struct<const M extends readonly Member[]>(member: M, opts?: AggOpts): StructDef<{ tag: 'struct'; member: M; pack?: number }, never>
-export function struct<const N extends string, const M extends readonly Member[]>(name: N, member: M, opts?: AggOpts): StructDef<{ tag: 'struct'; member: M; pack?: number }, N>
-export function struct(a: string | readonly Member[], b?: readonly Member[] | AggOpts, c?: AggOpts): StructDef<any, any> {
-    const member = (typeof a === 'string' ? b : a) as readonly Member[]
-    const opts = (typeof a === 'string' ? c : b) as AggOpts | undefined
-    return createStruct({ tag: 'struct', member, ...(opts?.pack !== undefined ? { pack: opts.pack } : {}) })
+/** 平铺字段表 → '#' 声明：'#'/`#pack` 由构造器写入（顶层 kind 由函数名表明，字段表本身
+ *  不收指令键）。member 里混进的 '#' 前缀键在此剔除 —— 类型层已禁（fresh literal excess
+ *  check），这里运行时兜底，避免用户键覆盖构造器写入的 '#'/`#pack`。 */
+function buildDecl(kind: 'struct' | 'union', member: Record<string, unknown>, pack?: number): C_Struct | C_Union {
+    const decl: Record<string, unknown> = { '#': kind }
+    if (pack !== undefined) decl['#pack'] = pack
+    for (const [k, v] of Object.entries(member))
+        if (!k.startsWith('#')) decl[k] = v
+    return decl as unknown as C_Struct | C_Union
 }
 
-/** member 数组定义联合体；布局/读写与 struct 相同，仅成员偏移重叠。 */
-export function union<const M extends readonly Member[]>(member: M, opts?: AggOpts): StructDef<{ tag: 'union'; member: M; pack?: number }, never>
-export function union<const N extends string, const M extends readonly Member[]>(name: N, member: M, opts?: AggOpts): StructDef<{ tag: 'union'; member: M; pack?: number }, N>
-export function union(a: string | readonly Member[], b?: readonly Member[] | AggOpts, c?: AggOpts): StructDef<any, any> {
-    const member = (typeof a === 'string' ? b : a) as readonly Member[]
-    const opts = (typeof a === 'string' ? c : b) as AggOpts | undefined
-    return createStruct({ tag: 'union', member, ...(opts?.pack !== undefined ? { pack: opts.pack } : {}) })
+/** 平铺字段表定义结构体（token/别名/`X[n]`/`unit:width`/`'#'` 声明均可，见 ctype.ts §4）。
+ *  给 name 则 alloc().ptr 带 Ptr<name> 品牌。 */
+type StructOf<M, N extends string = never> = StructDef<{ '#': 'struct', '#pack'?: number } & M, N>
+type UnionOf<M, N extends string = never> = StructDef<{ '#': 'union', '#pack'?: number } & M, N>
+export function struct<const M extends SimpleMember>(member: M, opts?: AggOpts): StructOf<M>
+export function struct<const N extends string, const M extends SimpleMember>(name: N, member: M, opts?: AggOpts): StructOf<M, N>
+export function struct(a: string | SimpleMember, b?: SimpleMember | AggOpts, c?: AggOpts): any {
+    const isNamed = typeof a === 'string'
+    const raw = (isNamed ? b : a) as Record<string, unknown>
+    const opts = (isNamed ? c : b) as AggOpts | undefined
+    return createStruct(buildDecl('struct', raw, opts?.pack))
+}
+
+/** 平铺字段表定义联合体；布局/读写与 struct 相同，仅成员偏移重叠。 */
+export function union<const M extends SimpleMember>(member: M, opts?: AggOpts): UnionOf<M>
+export function union<const N extends string, const M extends SimpleMember>(name: N, member: M, opts?: AggOpts): UnionOf<M, N>
+export function union(a: string | SimpleMember, b?: SimpleMember | AggOpts, c?: AggOpts): any {
+    const isNamed = typeof a === 'string'
+    const raw = (isNamed ? b : a) as Record<string, unknown>
+    const opts = (isNamed ? c : b) as AggOpts | undefined
+    return createStruct(buildDecl('union', raw, opts?.pack))
 }
 
 /** 从 native 拥有的 `<STRUCT>ptr` 解码（ptr === null → null）。 */

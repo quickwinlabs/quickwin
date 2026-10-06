@@ -5,23 +5,23 @@ import { struct } from '../../ffi/struct.js'
 import { nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
 
-const TVITEM = struct([
-    { name: 'mask', type: 'u32' },
-    { name: 'hItem', type: '<>ptr' },
-    { name: 'state', type: 'u32' },
-    { name: 'stateMask', type: 'u32' },
-    { name: 'pszText', type: '<>ptr' },
-    { name: 'cchTextMax', type: 'i32' },
-    { name: 'iImage', type: 'i32' },
-    { name: 'iSelectedImage', type: 'i32' },
-    { name: 'cChildren', type: 'i32' },
-    { name: 'lParam', type: '<>ptr' },
-])
-const TVINSERTSTRUCT = struct([
-    { name: 'hParent', type: '<>ptr' },
-    { name: 'hInsertAfter', type: '<>ptr' },
-    { name: 'item', type: TVITEM.__struct },
-])
+const TVITEM = struct({
+    mask: 'u32',
+    hItem: '<>ptr',
+    state: 'u32',
+    stateMask: 'u32',
+    pszText: '<>ptr',
+    cchTextMax: 'i32',
+    iImage: 'i32',
+    iSelectedImage: 'i32',
+    cChildren: 'i32',
+    lParam: '<>ptr',
+})
+const TVINSERTSTRUCT = struct({
+    hParent: '<>ptr',
+    hInsertAfter: '<>ptr',
+    item: TVITEM.__struct,
+})
 
 export interface TreeNode<D = unknown> {
   key?: string

@@ -1,6 +1,6 @@
 import * as os from 'os'
 import { Tester } from './test_helper.js'
-import { struct } from '../lib/ffi/struct.js'
+import { struct, union } from '../lib/ffi/struct.js'
 import { bind, } from '../lib/ffi/bind.js'
 import { Ptr, bit } from '../lib/ffi/ctype.js'
 
@@ -8,30 +8,30 @@ import { Ptr, bit } from '../lib/ffi/ctype.js'
 type Equal<A, B> = (<G>() => G extends A ? 1 : 2) extends (<G>() => G extends B ? 1 : 2) ? true : false
 function expectType<T extends true>(_value?: T): void { }
 
-const RECT = struct('RECT', [
-    { name: 'left', type: 'i32' },
-    { name: 'top', type: 'i32' },
-    { name: 'right', type: 'i32' },
-    { name: 'bottom', type: 'i32' },
-])
+const RECT = struct('RECT', {
+    left: 'i32',
+    top: 'i32',
+    right: 'i32',
+    bottom: 'i32',
+})
 
-const TVITEM = struct([
-    { name: 'mask', type: 'u32' },
-    { name: 'hItem', type: '<>ptr' },
-    { name: 'state', type: 'u32' },
-    { name: 'stateMask', type: 'u32' },
-    { name: 'pszText', type: '<>ptr' },
-    { name: 'cchTextMax', type: 'i32' },
-    { name: 'iImage', type: 'i32' },
-    { name: 'iSelectedImage', type: 'i32' },
-    { name: 'cChildren', type: 'i32' },
-    { name: 'lParam', type: '<>ptr' },
-])
-const TVINSERTSTRUCT = struct([
-    { name: 'hParent', type: '<>ptr' },
-    { name: 'hInsertAfter', type: '<>ptr' },
-    { name: 'item', type: TVITEM.__struct },
-])
+const TVITEM = struct({
+    mask: 'u32',
+    hItem: '<>ptr',
+    state: 'u32',
+    stateMask: 'u32',
+    pszText: '<>ptr',
+    cchTextMax: 'i32',
+    iImage: 'i32',
+    iSelectedImage: 'i32',
+    cChildren: 'i32',
+    lParam: '<>ptr',
+})
+const TVINSERTSTRUCT = struct({
+    hParent: '<>ptr',
+    hInsertAfter: '<>ptr',
+    item: TVITEM.__struct,
+})
 
 export const suite = {
     name: 'ffi-struct',
@@ -91,13 +91,13 @@ export const suite = {
         t.check('nested ptr pszText', 0x44444444, got.item.pszText)
 
         t.section('C typedef aliases (int/DWORD/LPARAM/LONG_PTR/short)')
-        const M = struct([
-            { name: 'n', type: 'i32' },             // int
-            { name: 'd', type: 'u32' },             // DWORD
-            { name: 'w', type: '<>ptr' },            // LPARAM
-            { name: 's', type: 'i16' },             // short
-            { name: 'q', type: '<>ptr' },            // LONG_PTR
-        ])
+        const M = struct({
+            n: 'int',        // 别名 → i32（字段值位收别名，normToken 归一）
+            d: 'DWORD',      // 别名 → u32
+            w: 'LPARAM',     // 别名 → <>ptr
+            s: 'short',      // 别名 → i16
+            q: 'LONG_PTR',   // 别名 → <>ptr
+        })
         t.check(`aliased size (${os.arch})`, is64 ? 32 : 20, M.size)
         const mb = M.encode({ n: -5, d: 0xFFFFFFFF, w: 0xAABBCCDD, s: -7, q: 0x11223344 })
         const m = M.decode(mb)
@@ -107,8 +107,37 @@ export const suite = {
         t.check('short -7', -7, m.s)
         t.check('LONG_PTR', 0x11223344, m.q)
 
+        t.section('alias in sugar（数组糖/位域糖收别名）')
+        const AS = struct({
+            v: 'DWORD[4]',   // 别名元素糖 → u32[4]
+            f: 'DWORD:3',    // 别名位域糖 → u32:3（等价 bit('u32', 3)）
+        })
+        t.check('size == 20 (16 + 位域单元)', 20, AS.size)
+        t.check('f offset == 16', 16, AS.offsetOf('f'))
+        const asd = AS.decode(AS.encode({ v: [1, 2, 3, 4], f: 5 }))
+        t.check('DWORD[4][1]', 2, asd.v[1])
+        t.check('DWORD:3', 5, asd.f)
+        expectType<Equal<ReturnType<typeof AS.decode>['f'], number>>()
+
+        t.section('union() entry roundtrip')
+        const U = union({ a: 'u8', b: 'u32' })
+        t.check('union size == 4', 4, U.size)
+        t.check('union offsetOf a', 0, U.offsetOf('a'))
+        t.check('union offsetOf b', 0, U.offsetOf('b'))
+        const ud = U.decode(U.encode({ a: 0, b: 0x01020304 }))
+        t.check('union a 与 b 同偏移（低字节别名）', 0x04, ud.a)
+        t.check('union b', 0x01020304, ud.b)
+
+        t.section('struct() entry: pack 选项 + 键尾 @N（alignas）')
+        const P = struct({ a: 'u8', b: 'u32', c: 'u8' }, { pack: 1 })
+        t.check('pack(1) size == 6', 6, P.size)
+        t.check('pack(1) offsetOf b', 1, P.offsetOf('b'))
+        const AL = struct({ a: 'u8', 'b@8': 'u32' })
+        t.check('@N offsetOf a', 0, AL.offsetOf('a'))
+        t.check('@N offsetOf b（字段名已剥离 @N）', 8, AL.offsetOf('b'))
+
         t.section('utf-16le string[8] roundtrip & truncation')
-        const W = struct([{ name: 'name', type: { tag: 'string', unit: 'u16', length: 8, encoding: 'utf-16le' } }])
+        const W = struct({name: 'u16[8]@utf-16le' })
         t.check('utf16[8].size == 16', 16, W.size)
         const wb = W.encode({ name: 'hello' })
         t.check('read back "hello"', 'hello', W.decode(wb).name)
@@ -117,7 +146,7 @@ export const suite = {
         t.check('utf16 terminator[14..15] == 0', 0, new DataView(lb).getUint16(14, true))
 
         t.section("utf-8 string[8] roundtrip & truncation")
-        const C = struct([{ name: 'name', type: { tag: 'string', unit: 'u8', length: 8, encoding: 'utf-8' } }])
+        const C = struct({name: 'u8[8]@utf-8' })
         t.check('char[8].size == 8', 8, C.size)
         const cb = C.encode({ name: 'hi' })
         t.check('read back "hi"', 'hi', C.decode(cb).name)
@@ -126,11 +155,31 @@ export const suite = {
         t.check('char[8]: payload 7 + NUL', '1234567', C.decode(ctrunc).name)
         t.check('char terminator[7] == 0', 0, new DataView(ctrunc).getUint8(7))
 
+        t.section('string sugar: 布局与解释正交（错配 roundtrip）')
+        const XS = struct({ buf: 'u8[8]@utf-16le' })
+        t.check('u8[8]@utf-16le size == 8（encoding 不参与布局）', 8, XS.size)
+        const xsd = XS.decode(XS.encode({ buf: 'AB' }))
+        t.check('8 字节按 utf-16le 解出 "AB"', 'AB', xsd.buf)
+
+        t.section('string sugar as array element')
+        const SA = struct({ rows: { '#': 'array', element: 'u16[4]@utf-16le', length: 3 } })
+        t.check('string[4]×3 size == 24', 24, SA.size)
+        const sad = SA.decode(SA.encode({ rows: ['ab', 'cd', 'ef'] }))
+        t.check('rows[0]', 'ab', sad.rows[0])
+        t.check('rows[1]', 'cd', sad.rows[1])
+        expectType<Equal<ReturnType<typeof SA.decode>['rows'], [string, string, string]>>()
+
+        t.section('键侧 alignas @N 与值侧 encoding @ 并存')
+        const KV = struct({ a: 'u8', 's@8': 'u16[4]@utf-8' })
+        t.check('offsetOf a', 0, KV.offsetOf('a'))
+        t.check('offsetOf s（键尾 @8 生效）', 8, KV.offsetOf('s'))
+        t.check('KV size == 16', 16, KV.size)
+
         t.section('numeric arrays roundtrip (CArray)')
-        const A = struct([
-            { name: 'v', type: { tag: 'array', ctype: 'u16', length: 4 } },
-            { name: 'k', type: { tag: 'array', ctype: 'i32', length: 2 } },
-        ])
+        const A = struct({
+            v: 'u16[4]',
+            k: 'i32[2]',
+        })
         t.check('size == 16', 16, A.size)
         const ab = A.encode({ v: [1, 2, 3, 4], k: [-1, 300000] })
         const ad = A.decode(ab)
@@ -140,21 +189,21 @@ export const suite = {
         t.check('i32[1]', 300000, ad.k[1])
 
         t.section('T[1] stays an array (no scalar degradation)')
-        const ONE = struct([{ name: 'v', type: { tag: 'array', ctype: 'u16', length: 1 } }])
+        const ONE = struct({v: 'u16[1]'})
         t.check('size == 2', 2, ONE.size)
         const one = ONE.decode(ONE.encode({ v: [42] }))
         t.check('length 1', 1, one.v.length)
         t.check('[0]', 42, one.v[0])
 
         t.section('array of struct roundtrip (stride = child size)')
-        const PT = struct([
-            { name: 'x', type: 'i32' },
-            { name: 'y', type: 'i32' },
-        ])
-        const POLY = struct([
-            { name: 'count', type: 'u32' },
-            { name: 'pts', type: { tag: 'array', ctype: PT.__struct, length: 3 } },
-        ])
+        const PT = struct({
+            x: 'i32',
+            y: 'i32',
+        })
+        const POLY = struct({
+            count: 'u32',
+            pts: { '#': 'array', element: PT.__struct, length: 3 },
+        })
         t.check('POLY.size == 28', 28, POLY.size)
         t.check('POLY.offsetOf pts', 4, POLY.offsetOf('pts'))
         const poly = POLY.decode(POLY.encode({ count: 3, pts: [{ x: 1, y: 2 }, { x: 3, y: 4 }, { x: 5, y: 6 }] }))
@@ -171,19 +220,28 @@ export const suite = {
         expectType<Equal<ReturnType<typeof POLY.decode>['pts'][0], ReturnType<typeof PT.decode>>>()
 
         let rejected = false
-        try { struct([{ name: 'v', type: { tag: 'array', ctype: 'i32', length: 0 } }]) } catch { rejected = true }
+        try { struct({v: 'i32[0]'}) } catch { rejected = true }
         t.check('array length 0 rejected', true, rejected)
 
         let rejectedBare = false
-        try { (struct as any)([{ name: 'p', type: 'ptr' }]) } catch { rejectedBare = true }
+        try { (struct as any)({ p: 'ptr' }) } catch { rejectedBare = true }
         t.check('bare "ptr" member rejected', true, rejectedBare)
 
+        // '#' 必填：字段值漏写 '#'（裸嵌套 map）不再默认 struct，直接 throw
+        let rejectedMap = false
+        try { (struct as any)({ outer: { inner: 'u32' } }) } catch { rejectedMap = true }
+        t.check('bare nested map rejected（漏写 #）', true, rejectedMap)
+
+        // 顶层 '#' 由构造器写入：字段表混入的 '#' 指令键被剔除（运行时兜底，类型层已禁）
+        const H = (struct as any)({ '#': 'union', a: 'u8', b: 'u32' })
+        t.check('top-level # stripped（仍按函数名 struct 布局）', 8, H.size)
+
         t.section("pointer member '<>ptr' raw vs '<T>ptr' branded")
-        const PTR = struct([
-            { name: 'raw', type: '<>ptr' },
-            { name: 'r', type: '<RECT>ptr' },
-            { name: 'tag', type: 'u32' },
-        ])
+        const PTR = struct({
+            raw: '<>ptr',
+            r: '<RECT>ptr',
+            tag: 'u32',
+        })
         t.check('PTR.size', is64 ? 24 : 12, PTR.size)
         t.check('offsetOf raw', 0, PTR.offsetOf('raw'))
         t.check('offsetOf r', is64 ? 8 : 4, PTR.offsetOf('r'))
@@ -199,10 +257,10 @@ export const suite = {
         expectType<Equal<ReturnType<typeof PTR.decode>['r'], Ptr<'RECT'> | null>>()
 
         t.section('f32/f64 layout (MSVC: f@0, double@8)')
-        const FL = struct([
-            { name: 'f', type: 'f32' },      // float
-            { name: 'd', type: 'f64' },      // double
-        ])
+        const FL = struct({
+            f: 'f32',      // float
+            d: 'f64',      // double
+        })
         t.check('size == 16 (f@0, double aligned @8)', 16, FL.size)
         const fb = FL.encode({ f: 1.5, d: -2.25 })
         const fr = FL.decode(fb)
@@ -210,129 +268,129 @@ export const suite = {
         t.check('double', -2.25, fr.d)
 
         t.section('comctl dialog structs track 32/64-bit ABI')
-        const TCITEMW = struct([
-            { name: 'mask', type: 'u32' },
-            { name: 'dwState', type: 'u32' },
-            { name: 'dwStateMask', type: 'u32' },
-            { name: 'pszText', type: '<>ptr' },
-            { name: 'cchTextMax', type: 'i32' },
-            { name: 'iImage', type: 'i32' },
-            { name: 'lParam', type: '<>ptr' },
-        ])
+        const TCITEMW = struct({
+            mask: 'u32',
+            dwState: 'u32',
+            dwStateMask: 'u32',
+            pszText: '<>ptr',
+            cchTextMax: 'i32',
+            iImage: 'i32',
+            lParam: '<>ptr',
+        })
         t.check('TCITEMW.size', is64 ? 40 : 28, TCITEMW.size)
         t.check('TCITEMW.offsetOf pszText', is64 ? 16 : 12, TCITEMW.offsetOf('pszText'))
         t.check('TCITEMW.offsetOf cchTextMax', is64 ? 24 : 16, TCITEMW.offsetOf('cchTextMax'))
 
-        const TTTOOLINFOW = struct([
-            { name: 'cbSize', type: 'u32' },
-            { name: 'uFlags', type: 'u32' },
-            { name: 'hwnd', type: '<>ptr' },
-            { name: 'uId', type: '<>ptr' },
-            { name: 'rect', type: { tag: 'array', ctype: 'i32', length: 4 } },
-            { name: 'hinst', type: '<>ptr' },
-            { name: 'lpszText', type: '<>ptr' },
-            { name: 'lParam', type: '<>ptr' },
-            { name: 'lpReserved', type: '<>ptr' }, // WinXP+ 追加
-        ])
+        const TTTOOLINFOW = struct({
+            cbSize: 'u32',
+            uFlags: 'u32',
+            hwnd: '<>ptr',
+            uId: '<>ptr',
+            rect: 'i32[4]',
+            hinst: '<>ptr',
+            lpszText: '<>ptr',
+            lParam: '<>ptr',
+            lpReserved: '<>ptr', // WinXP+ 追加
+        })
         t.check('TTTOOLINFOW.size', is64 ? 72 : 48, TTTOOLINFOW.size)
         t.check('TTTOOLINFOW.offsetOf lpszText', is64 ? 48 : 36, TTTOOLINFOW.offsetOf('lpszText'))
 
-        const OPENFILENAMEW = struct([
-            { name: 'lStructSize', type: 'u32' },
-            { name: 'hwndOwner', type: '<>ptr' },
-            { name: 'hInstance', type: '<>ptr' },
-            { name: 'lpstrFilter', type: '<>ptr' },
-            { name: 'lpstrCustomFilter', type: '<>ptr' },
-            { name: 'nMaxCustFilter', type: 'u32' },
-            { name: 'nFilterIndex', type: 'u32' },
-            { name: 'lpstrFile', type: '<>ptr' },
-            { name: 'nMaxFile', type: 'u32' },
-            { name: 'lpstrFileTitle', type: '<>ptr' },
-            { name: 'nMaxFileTitle', type: 'u32' },
-            { name: 'lpstrInitialDir', type: '<>ptr' },
-            { name: 'lpstrTitle', type: '<>ptr' },
-            { name: 'Flags', type: 'u32' },
-            { name: 'nFileOffset', type: 'u16' },
-            { name: 'nFileExtension', type: 'u16' },
-            { name: 'lpstrDefExt', type: '<>ptr' },
-            { name: 'lCustData', type: '<>ptr' },
-            { name: 'lpfnHook', type: '<>ptr' },
-            { name: 'lpTemplateName', type: '<>ptr' },
-            { name: 'pvReserved', type: '<>ptr' },
-            { name: 'dwReserved', type: 'u32' },
-            { name: 'FlagsEx', type: 'u32' }, // Win2000+ 追加
-        ])
+        const OPENFILENAMEW = struct({
+            lStructSize: 'u32',
+            hwndOwner: '<>ptr',
+            hInstance: '<>ptr',
+            lpstrFilter: '<>ptr',
+            lpstrCustomFilter: '<>ptr',
+            nMaxCustFilter: 'u32',
+            nFilterIndex: 'u32',
+            lpstrFile: '<>ptr',
+            nMaxFile: 'u32',
+            lpstrFileTitle: '<>ptr',
+            nMaxFileTitle: 'u32',
+            lpstrInitialDir: '<>ptr',
+            lpstrTitle: '<>ptr',
+            Flags: 'u32',
+            nFileOffset: 'u16',
+            nFileExtension: 'u16',
+            lpstrDefExt: '<>ptr',
+            lCustData: '<>ptr',
+            lpfnHook: '<>ptr',
+            lpTemplateName: '<>ptr',
+            pvReserved: '<>ptr',
+            dwReserved: 'u32',
+            FlagsEx: 'u32', // Win2000+ 追加
+        })
         t.check('OPENFILENAMEW.size', is64 ? 152 : 88, OPENFILENAMEW.size)
         t.check('OPENFILENAMEW.offsetOf lpstrFile', is64 ? 48 : 28, OPENFILENAMEW.offsetOf('lpstrFile'))
         t.check('OPENFILENAMEW.offsetOf Flags', is64 ? 96 : 52, OPENFILENAMEW.offsetOf('Flags'))
         t.check('OPENFILENAMEW.offsetOf lpstrTitle', is64 ? 88 : 48, OPENFILENAMEW.offsetOf('lpstrTitle'))
 
-        const BROWSEINFOW = struct([
-            { name: 'hwndOwner', type: '<>ptr' },
-            { name: 'pidlRoot', type: '<>ptr' },
-            { name: 'pszDisplayName', type: '<>ptr' },
-            { name: 'lpszTitle', type: '<>ptr' },
-            { name: 'ulFlags', type: 'u32' },
-            { name: 'lpfn', type: '<>ptr' },
-            { name: 'lParam', type: '<>ptr' },
-            { name: 'iImage', type: 'i32' },
-        ])
+        const BROWSEINFOW = struct({
+            hwndOwner: '<>ptr',
+            pidlRoot: '<>ptr',
+            pszDisplayName: '<>ptr',
+            lpszTitle: '<>ptr',
+            ulFlags: 'u32',
+            lpfn: '<>ptr',
+            lParam: '<>ptr',
+            iImage: 'i32',
+        })
         t.check('BROWSEINFOW.size', is64 ? 64 : 32, BROWSEINFOW.size)
         t.check('BROWSEINFOW.offsetOf lpszTitle', is64 ? 24 : 12, BROWSEINFOW.offsetOf('lpszTitle'))
         t.check('BROWSEINFOW.offsetOf ulFlags', is64 ? 32 : 16, BROWSEINFOW.offsetOf('ulFlags'))
 
         t.section('NMHDR（嵌套时 MSVC 尾 padding 传染）')
-        const NMHDR = struct([
-            { name: 'hwndFrom', type: '<>ptr' },
-            { name: 'idFrom', type: '<>ptr' },
-            { name: 'code', type: 'i32' },
-        ])
+        const NMHDR = struct({
+            hwndFrom: '<>ptr',
+            idFrom: '<>ptr',
+            code: 'i32',
+        })
         t.check('NMHDR.size', is64 ? 24 : 12, NMHDR.size)
         t.check('NMHDR.offsetOf code', is64 ? 16 : 8, NMHDR.offsetOf('code'))
 
         t.section('NMCUSTOMDRAW / NMLVCUSTOMDRAW (ListView custom draw)')
-        const NMCUSTOMDRAW = struct([
-            { name: 'hdr', type: NMHDR.__struct },
-            { name: 'dwDrawStage', type: 'u32' },
-            { name: 'hdc', type: '<>ptr' },
-            { name: 'rc', type: { tag: 'array', ctype: 'i32', length: 4 } },
-            { name: 'dwItemSpec', type: '<>ptr' },
-            { name: 'uItemState', type: 'u32' },
-            { name: 'lItemlParam', type: '<>ptr' },
-        ])
+        const NMCUSTOMDRAW = struct({
+            hdr: NMHDR.__struct,
+            dwDrawStage: 'u32',
+            hdc: '<>ptr',
+            rc: 'i32[4]',
+            dwItemSpec: '<>ptr',
+            uItemState: 'u32',
+            lItemlParam: '<>ptr',
+        })
         t.check('NMCUSTOMDRAW.size', is64 ? 80 : 48, NMCUSTOMDRAW.size)
         t.check('NMCUSTOMDRAW.offsetOf dwDrawStage', is64 ? 24 : 12, NMCUSTOMDRAW.offsetOf('dwDrawStage'))
         t.check('NMCUSTOMDRAW.offsetOf hdc', is64 ? 32 : 16, NMCUSTOMDRAW.offsetOf('hdc'))
         t.check('NMCUSTOMDRAW.offsetOf dwItemSpec', is64 ? 56 : 36, NMCUSTOMDRAW.offsetOf('dwItemSpec'))
-        const NMLVCUSTOMDRAW = struct([
-            { name: 'hdr', type: NMHDR.__struct },
-            { name: 'dwDrawStage', type: 'u32' },
-            { name: 'hdc', type: '<>ptr' },
-            { name: 'rc', type: { tag: 'array', ctype: 'i32', length: 4 } },
-            { name: 'dwItemSpec', type: '<>ptr' },
-            { name: 'uItemState', type: 'u32' },
-            { name: 'lItemlParam', type: '<>ptr' },
-            { name: 'clrText', type: 'u32' },
-            { name: 'clrTextBk', type: 'u32' },
-            { name: 'iSubItem', type: 'i32' },
-            { name: 'dwItemType', type: 'u32' },
-        ])
+        const NMLVCUSTOMDRAW = struct({
+            hdr: NMHDR.__struct,
+            dwDrawStage: 'u32',
+            hdc: '<>ptr',
+            rc: 'i32[4]',
+            dwItemSpec: '<>ptr',
+            uItemState: 'u32',
+            lItemlParam: '<>ptr',
+            clrText: 'u32',
+            clrTextBk: 'u32',
+            iSubItem: 'i32',
+            dwItemType: 'u32',
+        })
         t.check('NMLVCUSTOMDRAW.size', is64 ? 96 : 64, NMLVCUSTOMDRAW.size)
         t.check('NMLVCUSTOMDRAW.offsetOf clrText', is64 ? 80 : 48, NMLVCUSTOMDRAW.offsetOf('clrText'))
         t.check('NMLVCUSTOMDRAW.offsetOf clrTextBk', is64 ? 84 : 52, NMLVCUSTOMDRAW.offsetOf('clrTextBk'))
         t.check('NMLVCUSTOMDRAW.offsetOf iSubItem', is64 ? 88 : 56, NMLVCUSTOMDRAW.offsetOf('iSubItem'))
 
         t.section('NMLISTVIEW / NMITEMACTIVATE')
-        const NMLISTVIEW = struct([
-            { name: 'hdr', type: NMHDR.__struct },
-            { name: 'iItem', type: 'i32' },
-            { name: 'iSubItem', type: 'i32' },
-            { name: 'uNewState', type: 'u32' },
-            { name: 'uOldState', type: 'u32' },
-            { name: 'uChanged', type: 'u32' },
-            { name: 'ptAction', type: { tag: 'array', ctype: 'i32', length: 2 } },
-            { name: 'lParam', type: '<>ptr' },
-        ])
+        const NMLISTVIEW = struct({
+            hdr: NMHDR.__struct,
+            iItem: 'i32',
+            iSubItem: 'i32',
+            uNewState: 'u32',
+            uOldState: 'u32',
+            uChanged: 'u32',
+            ptAction: 'i32[2]',
+            lParam: '<>ptr',
+        })
         t.check('NMLISTVIEW.size', is64 ? 64 : 44, NMLISTVIEW.size)
         t.check('NMLISTVIEW.offsetOf iItem', is64 ? 24 : 12, NMLISTVIEW.offsetOf('iItem'))
         t.check('NMLISTVIEW.offsetOf iSubItem', is64 ? 28 : 16, NMLISTVIEW.offsetOf('iSubItem'))
@@ -340,79 +398,79 @@ export const suite = {
         t.check('NMLISTVIEW.offsetOf uOldState', is64 ? 36 : 24, NMLISTVIEW.offsetOf('uOldState'))
 
         t.section('LVITEMW / LVCOLUMNW')
-        const LVITEMW = struct([
-            { name: 'mask', type: 'u32' },
-            { name: 'iItem', type: 'i32' },
-            { name: 'iSubItem', type: 'i32' },
-            { name: 'state', type: 'u32' },
-            { name: 'stateMask', type: 'u32' },
-            { name: 'pszText', type: '<>ptr' },
-            { name: 'cchTextMax', type: 'i32' },
-            { name: 'iImage', type: 'i32' },
-            { name: 'lParam', type: '<>ptr' },
-            { name: 'iIndent', type: 'i32' },
-            { name: 'iGroupId', type: 'i32' },
-            { name: 'cColumns', type: 'u32' },
-            { name: 'puColumns', type: '<>ptr' },
-            { name: 'piColFmt', type: '<>ptr' },
-            { name: 'iGroup', type: 'i32' },
-        ])
+        const LVITEMW = struct({
+            mask: 'u32',
+            iItem: 'i32',
+            iSubItem: 'i32',
+            state: 'u32',
+            stateMask: 'u32',
+            pszText: '<>ptr',
+            cchTextMax: 'i32',
+            iImage: 'i32',
+            lParam: '<>ptr',
+            iIndent: 'i32',
+            iGroupId: 'i32',
+            cColumns: 'u32',
+            puColumns: '<>ptr',
+            piColFmt: '<>ptr',
+            iGroup: 'i32',
+        })
         t.check('LVITEMW.size', is64 ? 88 : 60, LVITEMW.size)
         t.check('LVITEMW.offsetOf iItem', 4, LVITEMW.offsetOf('iItem'))
         t.check('LVITEMW.offsetOf pszText', is64 ? 24 : 20, LVITEMW.offsetOf('pszText'))
         t.check('LVITEMW.offsetOf iImage', is64 ? 36 : 28, LVITEMW.offsetOf('iImage'))
         t.check('LVITEMW.offsetOf lParam', is64 ? 40 : 32, LVITEMW.offsetOf('lParam'))
-        const LVCOLUMNW = struct([
-            { name: 'mask', type: 'u32' },
-            { name: 'fmt', type: 'i32' },
-            { name: 'cx', type: 'i32' },
-            { name: 'pszText', type: '<>ptr' },
-            { name: 'cchTextMax', type: 'i32' },
-            { name: 'iSubItem', type: 'i32' },
-            { name: 'iImage', type: 'i32' },
-            { name: 'iOrder', type: 'i32' },
-            { name: 'cxMin', type: 'i32' },
-            { name: 'cxDefault', type: 'i32' },
-            { name: 'cxIdeal', type: 'i32' },
-        ])
+        const LVCOLUMNW = struct({
+            mask: 'u32',
+            fmt: 'i32',
+            cx: 'i32',
+            pszText: '<>ptr',
+            cchTextMax: 'i32',
+            iSubItem: 'i32',
+            iImage: 'i32',
+            iOrder: 'i32',
+            cxMin: 'i32',
+            cxDefault: 'i32',
+            cxIdeal: 'i32',
+        })
         t.check('LVCOLUMNW.size', is64 ? 56 : 44, LVCOLUMNW.size)
         t.check('LVCOLUMNW.offsetOf pszText', is64 ? 16 : 12, LVCOLUMNW.offsetOf('pszText'))
         t.check('LVCOLUMNW.offsetOf iSubItem', is64 ? 28 : 20, LVCOLUMNW.offsetOf('iSubItem'))
         t.check('LVCOLUMNW.offsetOf iOrder', is64 ? 36 : 28, LVCOLUMNW.offsetOf('iOrder'))
 
         t.section('NMDATETIMECHANGE')
-        const SYSTEMTIME = struct([
-            { name: 'wYear', type: 'u16' },
-            { name: 'wMonth', type: 'u16' },
-            { name: 'wDayOfWeek', type: 'u16' },
-            { name: 'wDay', type: 'u16' },
-            { name: 'wHour', type: 'u16' },
-            { name: 'wMinute', type: 'u16' },
-            { name: 'wSecond', type: 'u16' },
-            { name: 'wMilliseconds', type: 'u16' },
-        ])
-        const NMDATETIMECHANGE = struct([
-            { name: 'hdr', type: NMHDR.__struct },
-            { name: 'dwFlags', type: 'u32' },
-            { name: 'st', type: SYSTEMTIME.__struct },
-        ])
+        const SYSTEMTIME = struct({
+            wYear: 'u16',
+            wMonth: 'u16',
+            wDayOfWeek: 'u16',
+            wDay: 'u16',
+            wHour: 'u16',
+            wMinute: 'u16',
+            wSecond: 'u16',
+            wMilliseconds: 'u16',
+        })
+        const NMDATETIMECHANGE = struct({
+            hdr: NMHDR.__struct,
+            dwFlags: 'u32',
+            st: SYSTEMTIME.__struct,
+        })
         t.check('NMDATETIMECHANGE.size', is64 ? 48 : 32, NMDATETIMECHANGE.size)
         t.check('NMDATETIMECHANGE.offsetOf dwFlags', is64 ? 24 : 12, NMDATETIMECHANGE.offsetOf('dwFlags'))
         t.check('NMDATETIMECHANGE.offsetOf st', is64 ? 28 : 16, NMDATETIMECHANGE.offsetOf('st'))
 
         t.section('NMLINK szUrl offset')
-        const LITEM = struct([
-            { name: 'mask', type: 'u32' },
-            { name: 'iLink', type: 'i32' },
-            { name: 'state', type: 'u32' },
-            { name: 'stateMask', type: 'u32' },
-            { name: 'szID', type: { tag: 'string', unit: 'u16', length: 48, encoding: 'utf-16le' } },
-        ])
-        const NMLINK = struct([
-            { name: 'hdr', type: NMHDR.__struct },
-            { name: 'item', type: LITEM.__struct },
-            { name: 'szUrl', type: { tag: 'string', unit: 'u16', length: 2084, encoding: 'utf-16le' } },
-        ])
+        const LITEM = struct({
+            mask: 'u32',
+            iLink: 'i32',
+            state: 'u32',
+            stateMask: 'u32',
+            szID: 'u16[48]@utf-16le',
+        })
+        const NMLINK = struct({
+            hdr: NMHDR.__struct,
+            item: LITEM.__struct,
+            szUrl: 'u16[2084]@utf-16le',
+        })
         t.check('LITEM.offsetOf szID', 16, LITEM.offsetOf('szID'))
         t.check('NMLINK.offsetOf szUrl', is64 ? 136 : 124, NMLINK.offsetOf('szUrl'))
 
@@ -423,13 +481,13 @@ export const suite = {
         {
             // 字段按序写入同一 buffer：写 d 时单元里已有 a/b/c 的位，
             // 若 writeBitfield 不做读改写（直接 val<<bit）会把 a/b/c 清零。
-            const BF = struct([
-                { name: 'a', type: bit('u32', 3) },
-                { name: 'b', type: bit('u32', 5) },
-                { name: 'c', type: bit('u32', 4) },
-                { name: 'd', type: bit('u32', 10) },   // 3+5+4+10=22 <= 32
-                { name: 'tail', type: 'u32' },
-            ])
+            const BF = struct({
+                a: bit('u32', 3),
+                b: bit('u32', 5),
+                c: bit('u32', 4),
+                d: bit('u32', 10),   // 3+5+4+10=22 <= 32
+                tail: 'u32',
+            })
             t.check('BF.size == 8', 8, BF.size)
             const bd = BF.decode(BF.encode({ a: 5, b: 31, c: 15, d: 1023, tail: 0xDEAD }))
             t.check('a (LSB)', 5, bd.a)
@@ -443,10 +501,10 @@ export const suite = {
 
         t.section('bitfield roundtrip: signed sign extension')
         {
-            const SB = struct([
-                { name: 's', type: bit('i32', 8) },
-                { name: 'u', type: bit('u32', 4) },
-            ])
+            const SB = struct({
+                s: bit('i32', 8),
+                u: bit('u32', 4),
+            })
             t.check('SB.size == 4 (同宽不分签别，共单元)', 4, SB.size)
             const sbd = SB.decode(SB.encode({ s: -5, u: 9 }))
             t.check('signed -5', -5, sbd.s)
@@ -458,11 +516,11 @@ export const suite = {
 
         t.section('bitfield roundtrip: overflow starts a new unit')
         {
-            const OV = struct([
-                { name: 'a', type: bit('u32', 30) },
-                { name: 'b', type: bit('u32', 4) },   // 30+4=34 > 32 → 新单元，剩余 2 位废弃
-                { name: 'c', type: 'u32' },
-            ])
+            const OV = struct({
+                a: bit('u32', 30),
+                b: bit('u32', 4),   // 30+4=34 > 32 → 新单元，剩余 2 位废弃
+                c: 'u32',
+            })
             t.check('OV.size == 12', 12, OV.size)
             t.check('OV.offsetOf b (new unit)', 4, OV.offsetOf('b'))
             t.check('OV.offsetOf c', 8, OV.offsetOf('c'))
@@ -474,36 +532,36 @@ export const suite = {
 
         t.section('bitfield: DCB roundtrip (Windows serial port config)')
         {
-            const DCB = struct('DCB', [
-                { name: 'DCBlength', type: 'u32' },
-                { name: 'BaudRate', type: 'u32' },
-                { name: 'fBinary', type: bit('u32', 1) },
-                { name: 'fParity', type: bit('u32', 1) },
-                { name: 'fOutxCtsFlow', type: bit('u32', 1) },
-                { name: 'fOutxDsrFlow', type: bit('u32', 1) },
-                { name: 'fDtrControl', type: bit('u32', 2) },
-                { name: 'fDsrSensitivity', type: bit('u32', 1) },
-                { name: 'fTXContinueOnXoff', type: bit('u32', 1) },
-                { name: 'fOutX', type: bit('u32', 1) },
-                { name: 'fInX', type: bit('u32', 1) },
-                { name: 'fErrorChar', type: bit('u32', 1) },
-                { name: 'fNull', type: bit('u32', 1) },
-                { name: 'fRtsControl', type: bit('u32', 2) },
-                { name: 'fAbortOnError', type: bit('u32', 1) },
-                { name: 'fDummy2', type: bit('u32', 17) },
-                { name: 'wReserved', type: 'u16' },
-                { name: 'XonLim', type: 'u16' },
-                { name: 'XoffLim', type: 'u16' },
-                { name: 'ByteSize', type: 'u8' },
-                { name: 'Parity', type: 'u8' },
-                { name: 'StopBits', type: 'u8' },
-                { name: 'XonChar', type: 'i8' },
-                { name: 'XoffChar', type: 'i8' },
-                { name: 'ErrorChar', type: 'i8' },
-                { name: 'EofChar', type: 'i8' },
-                { name: 'EvtChar', type: 'i8' },
-                { name: 'wReserved1', type: 'u16' },
-            ])
+            const DCB = struct('DCB', {
+                DCBlength: 'u32',
+                BaudRate: 'u32',
+                fBinary: bit('u32', 1),
+                fParity: bit('u32', 1),
+                fOutxCtsFlow: bit('u32', 1),
+                fOutxDsrFlow: bit('u32', 1),
+                fDtrControl: bit('u32', 2),
+                fDsrSensitivity: bit('u32', 1),
+                fTXContinueOnXoff: bit('u32', 1),
+                fOutX: bit('u32', 1),
+                fInX: bit('u32', 1),
+                fErrorChar: bit('u32', 1),
+                fNull: bit('u32', 1),
+                fRtsControl: bit('u32', 2),
+                fAbortOnError: bit('u32', 1),
+                fDummy2: bit('u32', 17),
+                wReserved: 'u16',
+                XonLim: 'u16',
+                XoffLim: 'u16',
+                ByteSize: 'u8',
+                Parity: 'u8',
+                StopBits: 'u8',
+                XonChar: 'i8',
+                XoffChar: 'i8',
+                ErrorChar: 'i8',
+                EofChar: 'i8',
+                EvtChar: 'i8',
+                wReserved1: 'u16',
+            })
             t.check('DCB.size == 28', 28, DCB.size)
             const d = DCB.decode(DCB.encode({
                 DCBlength: 28, BaudRate: 0x1C200,
@@ -542,10 +600,10 @@ export const suite = {
 
         // 类型层：位域成员值类型是 number
         {
-            const BF = struct([
-                { name: 'a', type: bit('u32', 3) },
-                { name: 's', type: bit('i32', 8) },
-            ])
+            const BF = struct({
+                a: bit('u32', 3),
+                s: bit('i32', 8),
+            })
             expectType<Equal<ReturnType<typeof BF.decode>['a'], number>>()
             expectType<Equal<ReturnType<typeof BF.decode>['s'], number>>()
         }

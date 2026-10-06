@@ -204,11 +204,11 @@ export const suite = {
         t.section('struct layout <NAME>ptr (explicit layouts; param encode + branded ptr return)')
         // 内建 <BYTE>ptr/<WCHAR>ptr 无需 layouts；用户 struct 由 ffi-struct 的
         // struct() 定义、显式传入（import 谁传谁，未用布局可被 tree-shake）。
-        const LOGBRUSH = struct([
-            { name: 'lbStyle', type: 'u32' },
-            { name: 'lbColor', type: 'u32' },
-            { name: 'lbHatch', type: '<>ptr' },
-        ])
+        const LOGBRUSH = struct({
+            lbStyle: 'u32',
+            lbColor: 'u32',
+            lbHatch: '<>ptr',
+        })
         const deleteObject = bind('gdi32.dll', 'DeleteObject', '<>ptr -> i32')
         const createBrushIndirect = bind('gdi32.dll', 'CreateBrushIndirect', '<LOGBRUSH>ptr -> <>ptr', { LOGBRUSH })
         const brush = createBrushIndirect({ lbStyle: 0, lbColor: 0x00ff0000, lbHatch: 0 })
@@ -216,15 +216,15 @@ export const suite = {
         if (brush) t.checkTrue('DeleteObject(HBRUSH) succeeds', deleteObject(brush) !== 0)
 
         // 嵌套 struct（LOGPEN 内含 POINT）验证 ShapeOf 递归 + 子结构写入
-        const POINT = struct([
-            { name: 'x', type: 'i32' },
-            { name: 'y', type: 'i32' },
-        ])
-        const LOGPEN = struct([
-            { name: 'lopnStyle', type: 'u32' },
-            { name: 'lopnWidth', type: POINT.__struct },
-            { name: 'lopnColor', type: 'u32' },
-        ])
+        const POINT = struct({
+            x: 'i32',
+            y: 'i32',
+        })
+        const LOGPEN = struct({
+            lopnStyle: 'u32',
+            lopnWidth: POINT.__struct,
+            lopnColor: 'u32',
+        })
         const createPenIndirect = bind('gdi32.dll', 'CreatePenIndirect', '<LOGPEN>ptr -> <>ptr', { LOGPEN })
         const pen = createPenIndirect({ lopnStyle: 0, lopnWidth: { x: 1, y: 1 }, lopnColor: 0x000000ff })
         t.checkTrue('CreatePenIndirect(<LOGPEN>ptr nested) returns HPEN', !!pen)
@@ -250,12 +250,12 @@ export const suite = {
         t.checkTrue('unknown layout <NOPE>ptr rejected on struct-shape call', errLayout.includes('unknown layout') && errLayout.includes('BYTE'))
 
         // out 参数：命名 struct 的 alloc() 句柄，.ptr 即 Ptr<'RECT'>，直接喂 <RECT>ptr。
-        const RECT = struct('RECT', [
-            { name: 'left', type: 'i32' },
-            { name: 'top', type: 'i32' },
-            { name: 'right', type: 'i32' },
-            { name: 'bottom', type: 'i32' },
-        ])
+        const RECT = struct('RECT', {
+            left: 'i32',
+            top: 'i32',
+            right: 'i32',
+            bottom: 'i32',
+        })
         const getWindowRect = bind('user32.dll', 'GetWindowRect', '<>ptr <RECT>ptr -> i32', { RECT })
         const getDesktopWindow = bind('user32.dll', 'GetDesktopWindow', ' -> <>ptr')
         const desktop = getDesktopWindow()
@@ -265,7 +265,7 @@ export const suite = {
         t.checkTrue('alloc() handle read() decodes out-param', rectV.right > rectV.left && rectV.bottom > rectV.top)
 
         // 成员 '<RECT>ptr'：decode 得到 Ptr<'RECT'>，可直接喂 <RECT>ptr 形参（品牌在类型层流动）。
-        const RECTPTR = struct([{ name: 'r', type: '<RECT>ptr' }])
+        const RECTPTR = struct({r: '<RECT>ptr'})
         const box = RECTPTR.decode(RECTPTR.encode({ r: rectOut.ptr }))
         t.checkTrue('GetWindowRect(hwnd, member RECT*) succeeds', getWindowRect(desktop, box.r) !== 0)
         const rectThroughMember = rectOut.decode()
@@ -275,17 +275,17 @@ export const suite = {
         // 返回位 <NAME>ptr → Ptr<NAME>（number|null，只读指针，品牌在类型层）。
         // 该品牌指针可直接喂给另一函数的 <NAME>ptr 形参（裸地址透传，不重编码）。
         // 链条：localtime(&t) 返回 struct tm* → asctime(tm*) 消费之。
-        const TM = struct([
-            { name: 'tm_sec', type: 'i32' },
-            { name: 'tm_min', type: 'i32' },
-            { name: 'tm_hour', type: 'i32' },
-            { name: 'tm_mday', type: 'i32' },
-            { name: 'tm_mon', type: 'i32' },
-            { name: 'tm_year', type: 'i32' },
-            { name: 'tm_wday', type: 'i32' },
-            { name: 'tm_yday', type: 'i32' },
-            { name: 'tm_isdst', type: 'i32' },
-        ])
+        const TM = struct({
+            tm_sec: 'i32',
+            tm_min: 'i32',
+            tm_hour: 'i32',
+            tm_mday: 'i32',
+            tm_mon: 'i32',
+            tm_year: 'i32',
+            tm_wday: 'i32',
+            tm_yday: 'i32',
+            tm_isdst: 'i32',
+        })
         const localtime = bind('msvcrt.dll', 'localtime', '<BYTE>ptr -> <TM>ptr')
         const asctime = bind('msvcrt.dll', 'asctime', '<TM>ptr -> <>ptr', { TM })
         const tbuf = new ArrayBuffer(8)   // time_t=0（32/64 位 time_t 都读起始字节）
