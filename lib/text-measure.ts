@@ -2,17 +2,19 @@ import * as ffi from 'ffi'
 import * as gui from 'gui'
 import { bindLib } from './ffi/bind.js'
 import { DrawText, GetDC, ReleaseDC } from './windows/user32.js'
+import { RECT } from './windows/structs.js'
 
 const gdi32 = bindLib('gdi32.dll', {
     SelectObject: '<>ptr <>ptr -> <>ptr',
 })
 
 export function measureText(hdc: number, text: string, maxWidth: number): { width: number; height: number } {
-    const rect = new ArrayBuffer(16)
-    const dv = new DataView(rect)
-    dv.setInt32(8, maxWidth, true)
-    DrawText(hdc, text, -1, rect, gui.DrawTextFlag.CALCRECT)
-    return { width: dv.getInt32(8, true), height: dv.getInt32(12, true) }
+    // rect 双向位不注册 encoder（CALCRECT 就地写回）：encode() 新建 + DeepPartial 初值一步到位
+    //（left/top/bottom 缺省跳过保持 0）→ 传 .ptr → decode 读回
+    const r = RECT.encode({ right: maxWidth })
+    DrawText(hdc, text, -1, r.ptr, gui.DrawTextFlag.CALCRECT)
+    const { right, bottom } = RECT.decode(r)
+    return { width: right, height: bottom }
 }
 
 export function getButtonIdealSize(hwnd: gui.HWND): { width: number; height: number } {

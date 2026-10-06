@@ -1,3 +1,4 @@
+import { bufferPtr } from 'ffi'
 import * as os from 'os'
 
 // ============================================================
@@ -16,7 +17,7 @@ import * as os from 'os'
 //   C_BasicType(12)  bind 签名 token / lower 后 IR 共用
 //   C_Number(10)    结构体字段的数字档
 //   C_Integer(8)    C_Number 去浮点 —— 位域存储单元只能是整数档
-//   Token(11+指针)  C_ALIAS / Norm / JsTypeOfToken 的操作面（见 §3）
+//   Token(11+指针)  C_ALIAS / Norm / Arg·Ret JsTypeOfToken 的操作面（见 §3）
 // 排除项：'void' 无大小；裸 'ptr' 用户面禁写（须写 '<>ptr'），内部保留 ——
 // 唯一随架构变宽的标量档。lower 后所有指针归一为 kind 'ptr'，名字被擦掉。
 // ============================================================
@@ -132,10 +133,23 @@ export const SizeAlign: Record<C_Number, number> = {
 // `''` 判在左侧（右侧实例化，不作 naked 分布）：T=never 不再塌缩成 never（否则
 // `Ptr<never>` 不可构造，decode(… | Ptr<N>) 在 N=never 时直接堵死），含 '' 的并集
 // 不再拆分，宽 string 归一裸 number。字面品牌照旧走交叉 brand 分支。
+// 空品牌塌缩成 number 是有意设计：FFI 的 `<>ptr` 是 uintptr 双态位（WPARAM/LPARAM/
+// void*/LONG_PTR 在 C ABI 里既收地址又收整数），品牌化会把 sel、max、算术值这类
+// 合法实参拦成伪错误——裸档误用靠 NULL 迁移后的调用点纪律兜底，不做 tsc 强制。
 export type Ptr<T extends string> =
     '' extends T ? number : number & { readonly ptrBrand: T }
 
-export type NullablePtr<T extends string> = Ptr<T> | null
+/** NULL 品牌零：0 的品牌形态 —— 全 FFI 层唯一的空指针字面量（对应 C 的 NULL 宏，
+ *  运行时就是 0）。JS 的 null 不在指针值域：类型层禁收，运行时不做 null→0 转换
+ *  （动态 null 在参数槽 / 写槽处 fail-loud 报错）。 */
+export type NULL = 0 & { readonly ptrBrand: 'NULL' }
+export const NULL = 0 as NULL
+
+/** 唯一指针类型：参数位 / 返回位 / struct 字段 / closure 双侧通用。
+ *  C→JS 0 保真（readScalar 不做 0→null）；JS→C 空位写 NULL（写槽即 0）。
+ *  传参前由 tsc 收窄掉空位（truthy / === NULL / === 0）。 */
+export type MaybePtr<T extends string> =
+    NULL | Ptr<T>
 
 const C_ALIAS = {
     void: 'void', u8: 'u8', i8: 'i8', u16: 'u16', i16: 'i16', u32: 'u32', i32: 'i32',
@@ -166,13 +180,23 @@ export type TokenReturnJsTypeMap = C_TypeJsTypeMap & { void: void }
 // 索引出 never 让调用点拿到 never。收紧到 Token 会把「拼错 token」从 never 变成硬错误。
 export type Norm<K extends string> = K extends `<${string}>ptr` ? K : C_ALIAS_MAP[K & keyof C_ALIAS_MAP]
 
-// token → JS 类型。M = kind→JS 映射（实参表 / 返回表）；L = 布局名→JS 形；
-// D = 落不到任何映射时的默认（实参传 never，使 'void' 等非法档报 never）。
-export type JsTypeOfToken<K extends string, M, L, D> =
+// token → JS 类型（实参语境）。L = 布局名→JS 形；M/D 已固化（TokenArgJsTypeMap /
+// never —— 'void' 等非法档塌 never）。指针位收 MaybePtr（NULL | Ptr，与返回位同型）。
+export type ArgJsTypeOfToken<K extends string, L> =
     Norm<K> extends infer S ?
-    S extends `<${infer N}>ptr` ? NullablePtr<N> | L[N & keyof L] :
-    M[S & keyof M] extends never ? D
-    : M[S & keyof M]
+    S extends `<${infer N}>ptr` ? MaybePtr<N> | L[N & keyof L] :
+    TokenArgJsTypeMap[S & keyof TokenArgJsTypeMap] extends never ? never
+    : TokenArgJsTypeMap[S & keyof TokenArgJsTypeMap]
+    : never
+
+// token → JS 类型（返回语境）。D = 返回位布局表 decode 值域：该键有 decode →
+// D[N] | NULL（解码结果替换地址，空指针 0 保真为 NULL）；否则 MaybePtr<N>，
+// 与实参位同型（空品牌 <''> 归一裸 number，联合坍缩）。
+export type RetJsTypeOfToken<K extends string, D> = Norm<K> extends infer S ?
+    S extends `<${infer N}>ptr`
+        ? (D[N & keyof D] extends never ? MaybePtr<N> : D[N & keyof D] | NULL)
+        : TokenReturnJsTypeMap[S & keyof TokenReturnJsTypeMap] extends never ? unknown
+        : TokenReturnJsTypeMap[S & keyof TokenReturnJsTypeMap]
     : never
 
 // token 归一：C/Windows typedef 别名 → 规范形式（'HANDLE' → '<>ptr' 等）；非别名原样返回。
@@ -199,11 +223,10 @@ export function readScalar(dv: DataView, off: number, k: C_BasicType_No_Void): n
         case 'f32': return dv.getFloat32(off, true)
         case 'f64': return dv.getFloat64(off, true)
         case 'ptr': {
-            const p = PTR_SIZE === 8 ? Number(dv.getBigUint64(off, true)) : dv.getUint32(off, true)
-            // 0 归一为 null：类型层（ValOf / JsTypeOfToken）把指针一律声明为
-            // NullablePtr，若此处返回裸 0，`p === null` 就永不成立 —— 类型允许、
-            // 运行时永远走不到的分支比类型错误更隐蔽。
-            return p === 0 ? null : p
+            // 有符号读（对齐 C 版 JS_NewInt64）：-1 哨兵等负值保真；用户态指针高位
+            // 为 0，有符号读与无符号同值。0 保真返回（即 NULL 品牌零，类型层
+            // MaybePtr = NULL | Ptr<N>，传参前收窄掉空位）。写回位模式见 writeScalar。
+            return PTR_SIZE === 8 ? Number(dv.getBigInt64(off, true)) : dv.getInt32(off, true)
         }
     }
 }
@@ -226,7 +249,13 @@ export function writeScalar(dv: DataView, off: number, { k, v }: Entry): void {
         case 'f32': dv.setFloat32(off, (v), true); break
         case 'f64': dv.setFloat64(off, (v), true); break
         case 'ptr': {
-            if (PTR_SIZE === 8) dv.setBigUint64(off, BigInt(v), true)
+            // JS null/undefined 不是指针词汇（空位写 NULL）——fail-loud，不做 null→0 转换。
+            if ((v as unknown) == null) {
+                throw new Error('ffi: got null/undefined for a ptr slot; pass the imported NULL constant for empty')
+            }
+            // 读回的负值（LRESULT/句柄）再作参数回传时按二补位位模式写：asUintN /
+            // >>> 0 取模保真，否则 x64 传负 setBigUint64 直接 RangeError。
+            if (PTR_SIZE === 8) dv.setBigUint64(off, BigInt.asUintN(64, BigInt(v)), true)
             else dv.setUint32(off, v >>> 0, true)
             break
         }
@@ -243,4 +272,17 @@ export function writeSlot(dv: DataView, off: number, e: Entry): void {
         return
     }
     writeScalar(dv, off, e)
+}
+
+/** buffer + 品牌指针合一：一个引用既是 ArrayBuffer（喂 decode / encode(v, buf) 复用）
+ *  又带 `.ptr` 直接喂 <N>ptr 形参 —— 替代旧 { buf, ptr } 结构包装。
+ *  `ptr` 是构造时快照（与旧 StructAlloc 同性质：底层数据不可 detach/transfer）。
+ *  品牌 N 由创建方声明：struct def 的 encode() 返回值在类型层带 def 的 N（不可伪造）；
+ *  直接 new 属自报品牌，仅限内部/原型场景 —— 生产路径一律走 def.encode()。 */
+export class PtrArrayBuffer<N extends string> extends ArrayBuffer {
+    readonly ptr: Ptr<N>
+    constructor(byteLength: number) {
+        super(byteLength)
+        this.ptr = bufferPtr(this) as Ptr<N>
+    }
 }

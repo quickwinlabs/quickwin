@@ -1,10 +1,16 @@
 // user32.dll 精选高频 API（85 个），逐函数独立导出：
 //   - 签名对照 mingw winuser.h 原型手写；未被 import 的绑定经 esbuild 摇树不进产物
 //   - WPARAM / LPARAM / LRESULT / UINT_PTR / LONG_PTR 及句柄混合值一律 <>ptr（指针宽度跨
-//     架构正确；返回值 0 归一为 null、按无符号读——如 GetWindowLongPtrW 的 -1 哨兵会读成大正数）
-//   - 入参字符串用 <WCHAR>ptr（string 编码为 UTF-16 + NUL，null → NULL 指针）；出参缓冲与
-//     结构指针用 <BYTE>ptr（传 ArrayBuffer，native 写回可原地读回——宽字符串出参配
-//     WCHAR.alloc(n).buf 当 buffer、WCHAR.decode(buf) 读回）；回调参数用 <>ptr 接 closure() 的 ptr
+//     架构正确；返回值 0 归一为 null、有符号读对齐 C 版 JS_NewInt64——-1 哨兵等负值保真）
+//   - 入参字符串用 <WCHAR>ptr（string 编码为 UTF-16 + NUL，null → NULL 指针）；文本出参缓冲
+//     用 <BYTE>ptr（宽字符串出参配 WCHAR.alloc(n).buf 当 buffer、WCHAR.decode(buf) 读回）；
+//     回调参数用 <>ptr 接 closure() 的 ptr
+//   - 结构位按方向分流（结构定义见 ./structs.ts）：
+//       纯入参位 <N>ptr + 注册 encoder → DeepPartial 对象直传（缺省字段 doEncode 跳过）、
+//         encode().ptr、null 三形态；
+//       出参/就地位 <N>ptr 不注册 encoder → 位只收 def 分配的 .ptr（对象 encode 进调用方拿不到
+//         的临时 buffer 会丢结果；ArrayBuffer 由 unknown layout fail-fast 拦下），
+//         读回走 N.decode(buf|ptr)。统一流程：encode → call → decode
 //   - 签名里的 LPCWSTR 若语义是 MAKEINTRESOURCE 整数（如 LoadCursorW 光标名），该位用 <>ptr
 //   - HDC 借出/归还用 <HDC>ptr（品牌指针 Ptr<'HDC'>）：ReleaseDC 等归还位由 tsc 校验配对、
 //     拦住误传 HWND；DrawText/FillRect 等消费位仍收 <>ptr（brand 是 number 子类型可直传）
@@ -16,12 +22,15 @@
 //     （命令 ID 或子菜单句柄）、MAKEINTRESOURCE 光标名，以及 HINSTANCE / HGLOBAL /
 //     HBRUSH / 回调等非清单句柄
 import * as os from 'os'
-import { bind } from '../ffi/bind.js'
+import { bind, type CodecMap } from '../ffi/bind.js'
+// 只 import 注册了 encoder 的结构（纯入参位）；POINT 等出/就地位不注册，运行时无需引用
+import { RECT, SCROLLINFO } from './structs.js'
 
 // dll 名部分应用：85 个绑定共用，签名字符串不再重复 'user32.dll'。
 // 不能用 bind.bind(null, dll)——泛型在部分应用点坍缩（返回 never）；工厂转调让
-// S/LE/LD 在调用点正常 infer。
-const b = <const S extends string>(name: string, sig: S) => bind('user32.dll', name, sig)
+// S/LE/LD 在调用点正常 infer。第三参透传 encoders（结构入参位注册，见头注释方向约定）。
+const b = <const S extends string, const LE extends CodecMap = {}>(name: string, sig: S, encoders?: LE) =>
+    bind('user32.dll', name, sig, encoders)
 // 推导保真探针：若返回类型退化（any/never 可赋给 string），本行不报错 → expect-error unused 反向暴露
 // @ts-expect-error 函数返回值不能赋给 string
 const _bProbe: string = b('GetDesktopWindow', ' -> <HWND>ptr')
@@ -44,10 +53,10 @@ export const ShowWindow = /*@__PURE__*/ b('ShowWindow', '<HWND>ptr i32 -> i32')
 export const MoveWindow = /*@__PURE__*/ b('MoveWindow', '<HWND>ptr i32 i32 i32 i32 i32 -> i32')
 /** 设窗口位置/层级（hWndInsertAfter 为 HWND 或 HWND_TOP 等常量——混合位保持 <>ptr） */
 export const SetWindowPos = /*@__PURE__*/ b('SetWindowPos', '<HWND>ptr <>ptr i32 i32 i32 i32 u32 -> i32')
-/** 取窗口外框矩形（屏幕坐标）到 RECT buffer */
-export const GetWindowRect = /*@__PURE__*/ b('GetWindowRect', '<HWND>ptr <BYTE>ptr -> i32')
-/** 取窗口客户区矩形到 RECT buffer */
-export const GetClientRect = /*@__PURE__*/ b('GetClientRect', '<HWND>ptr <BYTE>ptr -> i32')
+/** 取窗口外框矩形（屏幕坐标）；出参 encode → call → decode：RECT.encode() 传 .ptr、RECT.decode(实例) 读回 */
+export const GetWindowRect = /*@__PURE__*/ b('GetWindowRect', '<HWND>ptr <RECT>ptr -> i32')
+/** 取窗口客户区矩形；出参同上（encode → call → decode） */
+export const GetClientRect = /*@__PURE__*/ b('GetClientRect', '<HWND>ptr <RECT>ptr -> i32')
 /** 是否有效窗口句柄；是 → 非 0 */
 export const IsWindow = /*@__PURE__*/ b('IsWindow', '<HWND>ptr -> i32')
 /** 窗口是否可见；是 → 非 0 */
@@ -72,9 +81,9 @@ export const GetWindowTextLength = /*@__PURE__*/ b('GetWindowTextLengthW', '<HWN
 /** 取窗口类名（宽字符写入 out buffer，返回字符数）；
  *  out 传 WCHAR.alloc(n).buf（n = 字符数），读回 WCHAR.decode(buf) */
 export const GetClassName = /*@__PURE__*/ b('GetClassNameW', '<HWND>ptr <BYTE>ptr i32 -> i32')
-/** 取窗口附加数据（GWLP_* / GWL_* 索引）；0 → null（值按无符号读；ia32 走 GetWindowLongW） */
+/** 取窗口附加数据（GWLP_* / GWL_* 索引）；0 → null（值有符号读；ia32 走 GetWindowLongW） */
 export const GetWindowLongPtr = /*@__PURE__*/ b('GetWindowLong' + LONG_PTR_SYM, '<HWND>ptr i32 -> <>ptr')
-/** 设窗口附加数据；返回先前值（0 → null，值按无符号读） */
+/** 设窗口附加数据；返回先前值（0 → null，值有符号读） */
 export const SetWindowLongPtr = /*@__PURE__*/ b('SetWindowLong' + LONG_PTR_SYM, '<HWND>ptr i32 <>ptr -> <>ptr')
 /** 取窗口所属进程 ID 到 buffer（可传 null）；返回线程 ID */
 export const GetWindowThreadProcessId = /*@__PURE__*/ b('GetWindowThreadProcessId', '<HWND>ptr <BYTE>ptr -> u32')
@@ -108,18 +117,18 @@ export const GetMessage = /*@__PURE__*/ b('GetMessageW', '<BYTE>ptr <HWND>ptr u3
 export const PeekMessage = /*@__PURE__*/ b('PeekMessageW', '<BYTE>ptr <HWND>ptr u32 u32 u32 -> i32')
 /** 把 WM_KEYDOWN/UP 转成字符消息（翻译结果留在队列）；可翻译 → 非 0 */
 export const TranslateMessage = /*@__PURE__*/ b('TranslateMessage', '<BYTE>ptr -> i32')
-/** 分发 MSG 给窗口过程；返回处理结果（0 → null，按无符号读） */
+/** 分发 MSG 给窗口过程；返回处理结果（0 → null，有符号读） */
 export const DispatchMessage = /*@__PURE__*/ b('DispatchMessageW', '<BYTE>ptr -> <>ptr')
 /** 异步投递消息到窗口线程队列；成功 → 非 0 */
 export const PostMessage = /*@__PURE__*/ b('PostMessageW', '<HWND>ptr u32 <>ptr <>ptr -> i32')
-/** 同步发送消息并等窗口过程处理；返回处理结果（0 → null，按无符号读） */
+/** 同步发送消息并等窗口过程处理；返回处理结果（0 → null，有符号读） */
 export const SendMessage = /*@__PURE__*/ b('SendMessageW', '<HWND>ptr u32 <>ptr <>ptr -> <>ptr')
 /** 退出消息循环（投递 WM_QUIT，wParam = 退出码） */
 export const PostQuitMessage = /*@__PURE__*/ b('PostQuitMessage', 'i32 -> void')
-/** 默认窗口过程（未处理消息的兜底）；返回处理结果（0 → null，按无符号读） */
+/** 默认窗口过程（未处理消息的兜底）；返回处理结果（0 → null，有符号读） */
 export const DefWindowProc = /*@__PURE__*/ b('DefWindowProcW', '<HWND>ptr u32 <>ptr <>ptr -> <>ptr')
 /** 调用窗口过程（wndProc = GetWindowLongPtr(GWLP_WNDPROC) 读回的过程指针——无品牌混合位 <>ptr，
- *  仅对本线程窗口调用）；返回处理结果（0 → null，按无符号读） */
+ *  仅对本线程窗口调用）；返回处理结果（0 → null，有符号读） */
 export const CallWindowProc = /*@__PURE__*/ b('CallWindowProcW', '<>ptr <HWND>ptr u32 <>ptr <>ptr -> <>ptr')
 /** 注册系统级唯一消息 ID（按字符串比较）；失败 → 0 */
 export const RegisterWindowMessage = /*@__PURE__*/ b('RegisterWindowMessageW', '<WCHAR>ptr -> u32')
@@ -136,12 +145,13 @@ export const GetWindowDC = /*@__PURE__*/ b('GetWindowDC', '<HWND>ptr -> <HDC>ptr
 export const BeginPaint = /*@__PURE__*/ b('BeginPaint', '<HWND>ptr <BYTE>ptr -> <HDC>ptr')
 /** 结束重绘（传 BeginPaint 同一 buffer）；成功 → 非 0 */
 export const EndPaint = /*@__PURE__*/ b('EndPaint', '<HWND>ptr <BYTE>ptr -> i32')
-/** 文本排版绘制（首参为品牌 HDC 的 number 子类型，可直传；RECT buffer 就地读写；format = gui.DrawTextFlag）；返回文本行高 */
-export const DrawText = /*@__PURE__*/ b('DrawTextW', '<>ptr <WCHAR>ptr i32 <BYTE>ptr i32 -> i32')
-/** 用画刷填充矩形（首参 HDC 同上；RECT buffer；第三参 HBRUSH 无品牌保持 <>ptr）；返回填充高度 */
-export const FillRect = /*@__PURE__*/ b('FillRect', '<>ptr <BYTE>ptr <>ptr -> i32')
-/** 标记窗口区域失效（触发重绘；lpRect 可传 null 全窗）；成功 → 非 0 */
-export const InvalidateRect = /*@__PURE__*/ b('InvalidateRect', '<HWND>ptr <BYTE>ptr i32 -> i32')
+/** 文本排版绘制（首参品牌 HDC 的 number 子类型直传；format = gui.DrawTextFlag；rect 双向不注册
+ *  encoder——CALCRECT 就地写回须持 buffer：RECT.encode(初值) 传 .ptr、完成后 RECT.decode(实例) 读回）；返回文本行高 */
+export const DrawText = /*@__PURE__*/ b('DrawTextW', '<>ptr <WCHAR>ptr i32 <RECT>ptr i32 -> i32')
+/** 用画刷填充矩形（首参 HDC 同上；rect 收 DeepPartial RECT 对象 / encode().ptr；第三参 HBRUSH 无品牌 <>ptr）；返回填充高度 */
+export const FillRect = /*@__PURE__*/ b('FillRect', '<>ptr <RECT>ptr <>ptr -> i32', { RECT })
+/** 标记窗口区域失效（触发重绘；rect 收 DeepPartial RECT 对象 / RECT.encode().ptr，null 全窗）；成功 → 非 0 */
+export const InvalidateRect = /*@__PURE__*/ b('InvalidateRect', '<HWND>ptr <RECT>ptr i32 -> i32', { RECT })
 /** 立即重绘失效区域；成功 → 非 0 */
 export const UpdateWindow = /*@__PURE__*/ b('UpdateWindow', '<HWND>ptr -> i32')
 
@@ -151,16 +161,16 @@ export const UpdateWindow = /*@__PURE__*/ b('UpdateWindow', '<HWND>ptr -> i32')
 export const SetCursor = /*@__PURE__*/ b('SetCursor', '<HCURSOR>ptr -> <HCURSOR>ptr')
 /** 加载光标资源（hInstance 传 0 = 系统光标；名传 MAKEINTRESOURCE 整数，如 32512 = IDC_ARROW）；失败 → null */
 export const LoadCursor = /*@__PURE__*/ b('LoadCursorW', '<>ptr <>ptr -> <HCURSOR>ptr')
-/** 取光标屏幕坐标到 POINT buffer；成功 → 非 0 */
-export const GetCursorPos = /*@__PURE__*/ b('GetCursorPos', '<BYTE>ptr -> i32')
+/** 取光标屏幕坐标；出参 encode → call → decode（POINT.encode() 传 .ptr、POINT.decode(实例) 读回）；成功 → 非 0 */
+export const GetCursorPos = /*@__PURE__*/ b('GetCursorPos', '<POINT>ptr -> i32')
 /** 设光标屏幕坐标；成功 → 非 0 */
 export const SetCursorPos = /*@__PURE__*/ b('SetCursorPos', 'i32 i32 -> i32')
 /** 显示/隐藏光标（计数式：>0 显示）；返回新计数 */
 export const ShowCursor = /*@__PURE__*/ b('ShowCursor', 'i32 -> i32')
-/** 屏幕坐标 → 客户区坐标（POINT buffer 就地更新）；成功 → 非 0 */
-export const ScreenToClient = /*@__PURE__*/ b('ScreenToClient', '<HWND>ptr <BYTE>ptr -> i32')
-/** 客户区坐标 → 屏幕坐标（POINT buffer 就地更新）；成功 → 非 0 */
-export const ClientToScreen = /*@__PURE__*/ b('ClientToScreen', '<HWND>ptr <BYTE>ptr -> i32')
+/** 屏幕坐标 → 客户区坐标（就地更新不注册 encoder：POINT.encode(初值) 一步、传 .ptr、decode 读回）；成功 → 非 0 */
+export const ScreenToClient = /*@__PURE__*/ b('ScreenToClient', '<HWND>ptr <POINT>ptr -> i32')
+/** 客户区坐标 → 屏幕坐标（就地更新，同上）；成功 → 非 0 */
+export const ClientToScreen = /*@__PURE__*/ b('ClientToScreen', '<HWND>ptr <POINT>ptr -> i32')
 /** 批量坐标系转换（POINT buffer，cPoints 个点）；返回偏移差的低/高 16 位打包值 */
 export const MapWindowPoints = /*@__PURE__*/ b('MapWindowPoints', '<HWND>ptr <HWND>ptr <BYTE>ptr u32 -> i32')
 /** 取当前捕获鼠标的窗口；无 → null */
@@ -231,12 +241,11 @@ export const CreatePopupMenu = /*@__PURE__*/ b('CreatePopupMenu', ' -> <HMENU>pt
 
 // ============ 滚动条 ============
 
-/** 设滚动参数（SCROLLINFO 28 字节 buffer，布局 ia32/x64 相同：cbSize@0 fMask@4 nMin@8 nMax@12
- *  nPage@16 nPos@20 nTrackPos@24——先填 cbSize 与 fMask=SIF_* 再按 mask 填字段；
- *  redraw 非 0 立即重画）；返回滑块位置 */
-export const SetScrollInfo = /*@__PURE__*/ b('SetScrollInfo', '<HWND>ptr u32 <BYTE>ptr i32 -> i32')
-/** 取滚动参数（buffer 同上，fMask = SIF_* 决定读取项，读回各字段）；成功 → 非 0 */
-export const GetScrollInfo = /*@__PURE__*/ b('GetScrollInfo', '<HWND>ptr u32 <BYTE>ptr -> i32')
+/** 设滚动参数（入参位对象直传：DeepPartial SCROLLINFO——cbSize 必须显式给 SCROLLINFO.size（Win32
+ *  结构自描述要求，缺省跳过帮不了），fMask = SIF_* 决定写哪些项；redraw 非 0 立即重画）；返回滑块位置 */
+export const SetScrollInfo = /*@__PURE__*/ b('SetScrollInfo', '<HWND>ptr u32 <SCROLLINFO>ptr i32 -> i32', { SCROLLINFO })
+/** 取滚动参数（双向不注册 encoder：SCROLLINFO.encode({cbSize, fMask}) 一步 → 传 .ptr → decode 读回）；成功 → 非 0 */
+export const GetScrollInfo = /*@__PURE__*/ b('GetScrollInfo', '<HWND>ptr u32 <SCROLLINFO>ptr -> i32')
 /** 显示/隐藏滚动条（bar = SB_*，0=HORZ 1=VERT 3=BOTH；show 非 0 显示）；成功 → 非 0 */
 export const ShowScrollBar = /*@__PURE__*/ b('ShowScrollBar', '<HWND>ptr u32 i32 -> i32')
 

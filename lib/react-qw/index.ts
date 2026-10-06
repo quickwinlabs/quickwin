@@ -1,5 +1,6 @@
 import * as gui from 'gui'
 import React from 'react'
+import { DefWindowProc, GetSystemMetrics } from '../windows/user32.js'
 import reconciler, { scaleFactor, instancesByHwnd, forceFlexLayout, type Instance } from './reconciler.js'
 
 const noop = () => { }
@@ -32,7 +33,7 @@ function ensureDefaultClass() {
     const result = entry?.onEvent?.({ hwnd, msg, wParam, lParam })
     if (typeof result === 'number') return result
     if (msg === gui.WmMsg.SIZE) forceFlexLayout(hwnd)
-    return gui.DefWindowProc(hwnd, msg, wParam, lParam)
+    return DefWindowProc(hwnd, msg, wParam, lParam)
   })
   defaultClassRegistered = true
   return DEFAULT_CLASS
@@ -46,7 +47,8 @@ export function createRoot(container: gui.HWND | RootWindowConfig) {
     const ws = (cfg.ws ?? 0) | gui.WindowStyle.OVERLAPPEDWINDOW
     const w = (cfg.width ?? 800) * scaleFactor
     const h = (cfg.height ?? 600) * scaleFactor
-    const [sw, sh] = gui.GetScreenSize()
+    // GetScreenSize 等价内联：SM_CXSCREEN=0 / SM_CYSCREEN=1
+    const [sw, sh] = [GetSystemMetrics(0), GetSystemMetrics(1)]
     const x = cfg.x === undefined ? ((sw - w) / 2) | 0
       : cfg.x === gui.CreatePos.USEDEFAULT ? gui.CreatePos.USEDEFAULT
       : cfg.x * scaleFactor

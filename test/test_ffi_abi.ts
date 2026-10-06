@@ -1,6 +1,7 @@
 import * as std from 'std'
 import * as win from 'win'
 import { bind } from '../lib/ffi/bind.js'
+import { NULL } from '../lib/ffi/ctype.js'
 import { Tester } from './test_helper.js'
 
 // ABI 边界回归：覆盖 REMOVE_LIBFFI_PLAN.md §4.2 的维度，全部用真实 Win32/CRT
@@ -100,7 +101,7 @@ export const suite = {
             const wideCharToMultiByte = bind('kernel32.dll', 'WideCharToMultiByte', 'u32 u32 <WCHAR>ptr i32 <BYTE>ptr i32 <>ptr <>ptr -> i32')
             const out = new ArrayBuffer(16)
             // 显式给长度（cchWideChar=2）避免 -1 空终止语义下返回值是否含 '\0' 的版本差异。
-            const n = wideCharToMultiByte(0 /* CP_ACP */, 0, 'AB', 2, out, 16, null, null)
+            const n = wideCharToMultiByte(0 /* CP_ACP */, 0, 'AB', 2, out, 16, NULL, NULL)
             t.check('WideCharToMultiByte char count', 2, n)
             t.check('converted byte 0 = A', 65, new DataView(out).getUint8(0))
             t.check('converted byte 1 = B', 66, new DataView(out).getUint8(1))
@@ -199,16 +200,16 @@ export const suite = {
         if (has(usr, 'GetDC') && has(usr, 'IsWindow')) {
             const getDC = bind('user32.dll', 'GetDC', '<>ptr -> <>ptr')
             const isWindow = bind('user32.dll', 'IsWindow', '<>ptr -> i32')
-            t.checkTrue('GetDC(null) non-null', !!getDC(null))
-            // undefined 不是指针合法值（指针只收 null 或有效地址），必须拒绝而非静默当 0。
+            t.checkTrue('GetDC(NULL) non-null', !!getDC(NULL))
+            // undefined / null 不是指针合法值（指针只收 NULL 或有效地址），必须拒绝而非静默当 0。
             let errUndef = ''
             try {
-                (getDC as unknown as (v: unknown) => number | null)(undefined)
+                (getDC as unknown as (v: unknown) => number)(undefined)
             } catch (e) {
                 errUndef = String(e)
             }
             t.checkTrue('GetDC(undefined) rejected', errUndef.includes('undefined'))
-            t.check('IsWindow(null) = FALSE', 0, isWindow(null))
+            t.check('IsWindow(NULL) = FALSE', 0, isWindow(NULL))
         } else t.skipCase('GetDC/IsWindow missing')
     },
 }

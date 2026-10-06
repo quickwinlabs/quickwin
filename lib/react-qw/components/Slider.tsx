@@ -1,5 +1,6 @@
 import { forwardRef, useRef, useEffect } from 'react'
 import * as gui from 'gui'
+import { DefWindowProc } from '../../windows/user32.js'
 import type { WStyle } from '../jsx.d.ts'
 
 export interface SliderProps {
@@ -48,7 +49,7 @@ export const Slider = forwardRef<gui.HWND, SliderProps>(
         onEvent={(e) => {
           if (e.msg === gui.WmMsg.NCHITTEST ||
               e.msg === gui.WmMsg.NCLBUTTONDOWN) {
-            return gui.DefWindowProc(e.hwnd, e.msg, e.wParam, e.lParam)
+            return DefWindowProc(e.hwnd, e.msg, e.wParam, e.lParam)
           }
           if (e.msg === gui.WmMsg.HSCROLL || e.msg === gui.WmMsg.VSCROLL) {
             const h = sliderRef.current

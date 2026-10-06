@@ -1,5 +1,8 @@
 import { forwardRef, useLayoutEffect, useRef } from 'react'
 import * as gui from 'gui'
+import { DefWindowProc, SetWindowPos, ShowScrollBar, GetDC, ReleaseDC } from '../../windows/user32.js'
+import { NULL } from '../../ffi/ctype.js'
+import { GetDeviceCaps } from '../../windows/gdi32.js'
 import type { WStyle } from '../jsx.d.ts'
 import { forceFlexLayout } from '../reconciler.js'
 
@@ -28,33 +31,36 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
       const svW = svRect.right - svRect.left
       const svH = svRect.bottom - svRect.top
 
-      const scale = gui.GetScaleFactor()
+      // GetScaleFactor 等价内联：GetDC → GetDeviceCaps(LOGPIXELSX=88) → ReleaseDC 配对
+      const hdc = GetDC(NULL)
+      const scale = hdc ? GetDeviceCaps(hdc, 88) / 96 : 1
+      if (hdc) ReleaseDC(NULL, hdc)
       const natW = Math.round((contentWidth ?? (svW / scale)) * scale)
       const natH = Math.round((contentHeight ?? (svH / scale)) * scale)
 
       scrollXRef.current = Math.max(0, Math.min(scrollXRef.current, natW - svW))
       scrollYRef.current = Math.max(0, Math.min(scrollYRef.current, natH - svH))
 
-      gui.SetWindowPos(content, gui.SetWindowPosHwnd.TOP, -scrollXRef.current, -scrollYRef.current, natW, natH,
+      SetWindowPos(content, gui.SetWindowPosHwnd.TOP, -scrollXRef.current, -scrollYRef.current, natW, natH,
         gui.SetWindowPosFlag.SWP_NOZORDER)
       forceFlexLayout(content)
 
       if (natW > svW) {
         gui.SetScrollInfo(sv, gui.ScrollBar.HORZ,
           { min: 0, max: natW - 1, page: svW, pos: scrollXRef.current }, true)
-        gui.ShowScrollBar(sv, gui.ScrollBar.HORZ, true)
+        ShowScrollBar(sv, gui.ScrollBar.HORZ, 1)
       } else {
         scrollXRef.current = 0
-        gui.ShowScrollBar(sv, gui.ScrollBar.HORZ, false)
+        ShowScrollBar(sv, gui.ScrollBar.HORZ, 0)
       }
 
       if (natH > svH) {
         gui.SetScrollInfo(sv, gui.ScrollBar.VERT,
           { min: 0, max: natH - 1, page: svH, pos: scrollYRef.current }, true)
-        gui.ShowScrollBar(sv, gui.ScrollBar.VERT, true)
+        ShowScrollBar(sv, gui.ScrollBar.VERT, 1)
       } else {
         scrollYRef.current = 0
-        gui.ShowScrollBar(sv, gui.ScrollBar.VERT, false)
+        ShowScrollBar(sv, gui.ScrollBar.VERT, 0)
       }
     }
 
@@ -71,7 +77,7 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
       } else {
         scrollXRef.current = newPos
       }
-      gui.SetWindowPos(content, gui.SetWindowPosHwnd.TOP, -scrollXRef.current, -scrollYRef.current, 0, 0,
+      SetWindowPos(content, gui.SetWindowPosHwnd.TOP, -scrollXRef.current, -scrollYRef.current, 0, 0,
         gui.SetWindowPosFlag.SWP_NOSIZE | gui.SetWindowPosFlag.SWP_NOZORDER)
       gui.SetScrollInfo(sv, bar, { pos: newPos }, true)
     }
@@ -131,7 +137,7 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
           fn: (e) => {
             if (e.msg === gui.WmMsg.NCHITTEST ||
                 e.msg === gui.WmMsg.NCLBUTTONDOWN) {
-              return gui.DefWindowProc(e.hwnd, e.msg, e.wParam, e.lParam)
+              return DefWindowProc(e.hwnd, e.msg, e.wParam, e.lParam)
             }
             if (e.msg === gui.WmMsg.VSCROLL) { handleScroll(e, gui.ScrollBar.VERT); return 0 }
             if (e.msg === gui.WmMsg.HSCROLL) { handleScroll(e, gui.ScrollBar.HORZ); return 0 }

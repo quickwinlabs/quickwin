@@ -2,6 +2,7 @@ import * as std from 'std'
 import * as gui from 'gui'
 import * as win from 'win'
 import { bind } from '../lib/ffi/bind.js'
+import { NULL } from '../lib/ffi/ctype.js'
 
 const user32 = win.LoadLibrary('user32.dll')
 if (!user32) { print('LoadLibrary user32 failed'); std.exit(1) }
@@ -35,7 +36,7 @@ function newDevMode(): ArrayBuffer {
 }
 
 function enumMode(modeNum: number, buf: ArrayBuffer): number {
-    return enumDisplaySettingsA(null, modeNum, buf)
+    return enumDisplaySettingsA(NULL, modeNum, buf)
 }
 
 function getPels(dv: DataView): [number, number, number] {

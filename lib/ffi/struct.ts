@@ -6,8 +6,9 @@ import {
     isCPtrToken,
     normToken,
     Norm,
-    NullablePtr,
+    MaybePtr,
     PTR_SIZE,
+    PtrArrayBuffer,
     readScalar,
     SizeAlign,
     writeScalar,
@@ -34,8 +35,8 @@ import {
 // 类型推导 — 值词汇 → decode/encode 形状
 // ============================================================
 
-// 指针成员：'<>ptr' → number（T='' 品牌退化）；'<NAME>ptr' → Ptr<NAME>（品牌 number）。
-// 该品牌 number 可直接喂 bind 的 <NAME>ptr 形参（裸地址透传）。
+// 指针成员：'<>ptr' → number（T='' 品牌退化）；'<NAME>ptr' → MaybePtr<NAME>（NULL | 品牌 number）。
+// 该品牌 number 可直接喂 bind 的 <NAME>ptr 形参（裸地址透传）；空位写 NULL。
 
 type N =
     | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
@@ -45,10 +46,10 @@ type N =
     | 40 | 41 | 42 | 43 | 44 | 45 | 46 | 47 | 48 | 49
     | 50 | 51 | 52 | 53;
 
-// 规范 token（Norm 后）→ JS 形状：'<T>ptr' → NullablePtr（0 归一为 null）；数字档 → JsType 映射。
+// 规范 token（Norm 后）→ JS 形状：'<T>ptr' → MaybePtr（0 保真，对齐 C 版）；数字档 → JsType 映射。
 // 归一后落不到两者的（'void'、裸 'ptr'、拼错 token）塌 never。
 type ValOf<T> =
-    T extends `<${infer B}>ptr` ? NullablePtr<B>
+    T extends `<${infer B}>ptr` ? MaybePtr<B>
     : T extends C_Number ? C_TypeJsTypeMap[T]
     : never
 
@@ -84,7 +85,11 @@ type Lift<T> =
     {
         [K in keyof T as K extends `$${string}` ? never : K]:
         T[K] extends readonly unknown[] ? T[K] :
-        T[K] extends {} ? Lift<T[K]> : T[K];
+        // 品牌 number（NULL / Ptr = 0&{brand} 或 number&{brand}）经自己的对象半边
+        // extends object，会被误当嵌套对象递归，把 number 榨成方法集对象（丧失
+        // number 属性）——number 档先跳过。只递归进真正嵌套的结构体形状。
+        T[K] extends number ? T[K] :
+        T[K] extends object ? Lift<T[K]> : T[K];
     } & UnionToIntersection<
         { [K in DollarKeys<T>]: Lift<T[K]> }[DollarKeys<T>]
     >;
@@ -100,6 +105,15 @@ type _ShapeOfC<M> = {
     [K in keyof M as FieldKey<K>]: ShapeOfValue<M[K]>
 }
 type ShapeOfC<M> = Lift<_ShapeOfC<M>>
+
+// encode 入参的深度可选形态：缺省字段运行时跳过（doEncode 的 undefined-continue——
+// 不动 buffer 该字段，新建 buffer 上等价写 0），decode 返回仍是全字段 ShapeOfC。
+// 数组元组排除在外：writeArray 是整体写入语义，"省略第 N 个元素"没有意义——
+// 数组字段维持"要么给全、要么整个缺省"（整个缺省由外层 continue 拦下）。
+export type DeepPartial<T> =
+    T extends readonly unknown[] ? T
+    : T extends object ? { [K in keyof T]?: DeepPartial<T[K]> }
+    : T
 
 
 // ============================================================
@@ -131,22 +145,18 @@ export type Fields = Field[]
 
 // T 约束 = '#' 声明本身：struct()/union() 构造的 `{'#':'struct'} & M` 可证 —— M 是平铺
 // 字段表（SimpleMember 无 '#' 键），交叉的 '#' 取字面声明。形状层不设约束的理由见 ShapeOfC。
-// N = 布局品牌（struct(name, …) 传入）：decode 入参与 alloc().ptr 同品牌。默认 '' ——
+// N = 布局品牌（struct(name, …) 传入）：decode 入参与 encode().ptr 同品牌。默认 '' ——
 // `Ptr<''>` 归一裸 number（与旧 never 守卫结果相同），品牌化 def 未来收窄时签名不用再动。
 export type StructDef<T extends { '#': 'struct' | 'union' }, N extends string = ''> = {
     readonly __struct: T
     readonly size: number
     readonly structAlign: number
     decode(buf: ArrayBuffer | Ptr<N>): ShapeOfC<T>
-    encode(v: ShapeOfC<T>, buf?: ArrayBuffer, offset?: number): ArrayBuffer
+    // 重载分派：无/单参 = 新建 PtrArrayBuffer（零初值 / DeepPartial 初值），带品牌 .ptr
+    // 直接喂 <N>ptr 形参；带 buf = 写入调用方既有 buffer（返回其本身，供链式读回）。
+    encode(v?: DeepPartial<ShapeOfC<T>>): PtrArrayBuffer<N>
+    encode(v: DeepPartial<ShapeOfC<T>>, buf: ArrayBuffer, offset?: number): ArrayBuffer
     offsetOf(name: string): number
-    alloc(): StructAlloc<N>
-}
-
-// out 预分配句柄：buf 给 def.decode(buf) 直读、ptr 带布局品牌直接喂 <N>ptr 形参。
-export type StructAlloc<N extends string = ''> = {
-    readonly buf: ArrayBuffer
-    readonly ptr: Ptr<N>
 }
 
 // ============================================================
@@ -488,8 +498,12 @@ function doDecode(dv: DataView, base: number, fields: Fields): Record<string, un
 }
 
 function doEncode(dv: DataView, base: number, fields: Fields, v: Record<string, unknown>): void {
-    for (const f of fields)
+    for (const f of fields) {
+        // DeepPartial 缺省：不动该字段（新建 buffer 上保持 0、复用 buffer 上保留旧值）；
+        // 嵌套/数组字段整个缺失也在这里拦下（writeElement 的 struct 分支回到本函数）。
+        if (v[f.name] === undefined) continue
         writeElement(dv, base + f.offset, f.type, f.size, v[f.name])
+    }
 }
 
 // ============================================================
@@ -514,18 +528,16 @@ function createStruct(t: C_Struct | C_Union): any {
             }
             return doDecode(new DataView(p), 0, fields)
         },
-        encode: (v: any, buf?: ArrayBuffer, offset = 0) => {
-            const out = buf ?? new ArrayBuffer(size)
-            doEncode(new DataView(out), offset, fields, v)
+        encode: ((v?: any, buf?: ArrayBuffer, offset: number = 0) => {
+            // 无 buf = 新建带品牌 ptr 的 PtrArrayBuffer（v 缺省时全字段 continue → 全 0，
+            // 等价旧 alloc()）；有 buf = 写入调用方 buffer（复用/预分配形态）。
+            const out = buf ?? new PtrArrayBuffer(size)
+            doEncode(new DataView(out), offset, fields, v ?? {})
             return out
-        },
+        }) as StructDef<any, any>['encode'],
         offsetOf: (name: string) => {
             for (const f of fields) if (f.name === name) return f.offset
             throw new Error(`ffi-struct: no field "${name}"`)
-        },
-        alloc: () => {
-            const buf = new ArrayBuffer(size)
-            return { buf, ptr: ffi.bufferPtr(buf) }
         },
     }
 }
@@ -549,7 +561,7 @@ function buildDecl(kind: 'struct' | 'union', member: Record<string, unknown>, pa
 }
 
 /** 平铺字段表定义结构体（token/别名/`X[n]`/`unit:width`/`'#'` 声明均可，见 ctype.ts §4）。
- *  给 name 则 alloc().ptr 与 decode 入参带 Ptr<name> 品牌。 */
+ *  给 name 则 encode().ptr 与 decode 入参带 Ptr<name> 品牌。 */
 type StructOf<M, N extends string = ''> = StructDef<{ '#': 'struct', '#pack'?: number } & M, N>
 type UnionOf<M, N extends string = ''> = StructDef<{ '#': 'union', '#pack'?: number } & M, N>
 export function struct<const M extends SimpleMember>(member: M, opts?: AggOpts): StructOf<M>

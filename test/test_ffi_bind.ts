@@ -5,7 +5,7 @@ import * as os from 'os'
 import { Tester } from './test_helper.js'
 import { bind, bindLib, closure, WCHAR, BYTE, type CodecMap } from '../lib/ffi/bind.js'
 import { struct } from '../lib/ffi/struct.js'
-import { Ptr } from '../lib/ffi/ctype.js'
+import { NULL, type MaybePtr, Ptr, readScalar, writeScalar, PTR_SIZE } from '../lib/ffi/ctype.js'
 
 // 编译期断言工具（仅类型层，运行时无开销）
 type Equal<A, B> = (<G>() => G extends A ? 1 : 2) extends (<G>() => G extends B ? 1 : 2) ? true : false
@@ -58,9 +58,9 @@ function bufToString(buf: ArrayBuffer): string {
     return s
 }
 
-// 读取 native 指针指向的 C 字符串（\0 结尾）；null → 空串
-function readCStr(p: number | null): string {
-    if (p === null) return ''
+// 读取 native 指针指向的 C 字符串（\0 结尾）；空指针（0）→ 空串
+function readCStr(p: number): string {
+    if (!p) return ''
     let s = ''
     for (let i = 0; ; i++) {
         const b = ffi.readByte(p + i)
@@ -127,8 +127,8 @@ export const suite = {
         const angleArc = bind('gdi32.dll', 'AngleArc', '<>ptr i32 i32 u32 f32 f32 -> i32')
         const releaseDCF = bind('user32.dll', 'ReleaseDC', '<>ptr <>ptr -> i32')
         const hdcF = getDCF(0)
-        // ptr 读回是 number|null（0 归一为 null），必须用 truthy 判断：
-        // `hdcF != 0` 会把 null 放行，导致 AngleArc(NULL,…) 必然返回 FALSE。
+        // ptr 读回 0 保真（number）：hdcF 为 0 表示无 DC，跳过——
+        // AngleArc(NULL,…) 必然返回 FALSE，不值得断言。
         if (hdcF) {
             const ok = angleArc(hdcF, 20, 20, 5, 0.0, 90.0)
             std.printf('  AngleArc(0~90) on screen DC = %s (expect 1)\n', String(ok))
@@ -147,38 +147,41 @@ export const suite = {
 
         let errPtr = ''
         try {
-            (getDC as unknown as (v: unknown) => number | null)(rb)
+            (getDC as unknown as (v: unknown) => number)(rb)
         } catch (e) {
             errPtr = String(e)
         }
         t.checkTrue('<>ptr rejects ArrayBuffer, hint mentions <BYTE>ptr', errPtr.includes('<BYTE>ptr'))
 
-        // 编译期：token → 参数/返回类型。锁住「裸 ptr / 拼错 token 静默漏成 number|null」的回归。
+        // 编译期：token → 参数/返回类型。锁住「裸 ptr / 拼错 token 静默漏成 number」的回归。
         // 根因：`never extends X` 恒真，故 ArgToken/RetToken 必须在原始 token 上把关、
-        // 且裸 'ptr' 需要显式 never 分支（删掉那行 'ptr' 就会漏成 number|null）。
+        // 且裸 'ptr' 需要显式 never 分支（删掉那行 'ptr' 就会漏成 number）。
         expectType<Equal<ParamsOf<'ptr <BYTE>ptr -> i32'>[0], never>>()
         expectType<Equal<ParamsOf<'i3z <BYTE>ptr -> i32'>[0], never>>()
         expectType<Equal<ParamsOf<'void <BYTE>ptr -> i32'>[0], never>>()
-        expectType<Equal<ParamsOf<'<>ptr -> i32'>[0], number | null>>()
+        // '<>ptr' 空品牌 → MaybePtr<''>（= NULL|number）：与 number 双向可赋值（identity 不作要求）。
+        expectType<Equal<ParamsOf<'<>ptr -> i32'>[0], MaybePtr<''>>>()
+        expectType<[ParamsOf<'<>ptr -> i32'>[0]] extends [number] ? true : false>()
+        expectType<[number] extends [ParamsOf<'<>ptr -> i32'>[0]] ? true : false>()
         expectType<Equal<ParamsOf<'int -> i32'>[0], number>>()
         expectType<Equal<ParamsOf<'DWORD -> i32'>[0], number>>()
         expectType<Equal<ParamsOf<'u64 -> i32'>[0], bigint>>()
-        expectType<Equal<ParamsOf<'<BYTE>ptr -> i32'>[0], ArrayBuffer | Ptr<"BYTE"> | null>>()
-        expectType<Equal<ParamsOf<'LPCWSTR -> i32'>[0], string | Ptr<"WCHAR"> | null>>()
+        expectType<Equal<ParamsOf<'<BYTE>ptr -> i32'>[0], ArrayBuffer | MaybePtr<"BYTE">>>()
+        expectType<Equal<ParamsOf<'LPCWSTR -> i32'>[0], string | MaybePtr<"WCHAR">>>()
         expectType<Equal<RetOf<'<>ptr -> ptr'>, never>>()
         expectType<Equal<RetOf<'<>ptr -> i3z'>, never>>()
-        expectType<Equal<RetOf<'<>ptr -> <BYTE>ptr'>, Ptr<"BYTE"> | null>>()
+        expectType<Equal<RetOf<'<>ptr -> <BYTE>ptr'>, MaybePtr<"BYTE">>>()
         expectType<Equal<RetOf<'<>ptr -> void'>, void>>()
         expectType<Equal<RetOf<'<>ptr -> i32'>, number>>()
-        expectType<Equal<RetOf<'<>ptr -> <RECT>ptr'>, Ptr<'RECT'> | null>>()
+        expectType<Equal<RetOf<'<>ptr -> <RECT>ptr'>, MaybePtr<'RECT'>>>()
 
         t.section('bigint 64-bit kinds: u64 / i64')
         // 用 msvcrt 的 64 位字符串转换：win11(x64) kernel32 不导出 Interlocked*64
         //（编译器 intrinsic），msvcrt.dll 三平台必有。
         const strtoui64 = bind('msvcrt.dll', '_strtoui64', '<BYTE>ptr <BYTE>ptr i32 -> u64')
-        const u64Max = strtoui64(strToBuf('18446744073709551615'), null, 10)
+        const u64Max = strtoui64(strToBuf('18446744073709551615'), NULL, 10)
         t.check('u64 return 2^64-1', 18446744073709551615n, u64Max)
-        const u64Prec = strtoui64(strToBuf('9007199254740993'), null, 10)
+        const u64Prec = strtoui64(strToBuf('9007199254740993'), NULL, 10)
         t.check('u64 return 2^53+1', 9007199254740993n, u64Prec)
 
         const i64toa = bind('msvcrt.dll', '_i64toa', 'i64 <BYTE>ptr i32 -> <>ptr')
@@ -216,7 +219,7 @@ export const suite = {
         if (brush) t.checkTrue('DeleteObject(HBRUSH) succeeds', deleteObject(brush) !== 0)
 
         // bindLib 用户布局 encoder 直传 struct 对象（bindLib 的 L 泛型曾未接线：
-        // encoders?: EncoderMap 使 L 恒为 {}，<LOGBRUSH>ptr 实参被类型层收窄成 number|null）
+        // encoders?: EncoderMap 使 L 恒为 {}，<LOGBRUSH>ptr 实参被类型层收窄成裸 number（丢失布局形））
         const gdi32Lib = bindLib('gdi32.dll', {
             CreateBrushIndirect: '<LOGBRUSH>ptr -> <>ptr',
             DeleteObject: '<>ptr -> i32',
@@ -246,10 +249,10 @@ export const suite = {
         t.checkTrue('LPCWSTR alias normalizes to <WCHAR>ptr', rAlias < 0)
 
         // 未知布局：延迟解析 —— bind 期不再抛；仅当真的收到「结构形」实参时才报错，
-        // 并列出内建 + 已传入的可选项。纯 number/null 透传不需要布局。
+        // 并列出内建 + 已传入的可选项。纯 number（NULL / 地址）透传不需要布局。
         const deleteObjectLazy = bind('gdi32.dll', 'DeleteObject', '<NOPE>ptr -> i32')
         t.checkTrue('unknown layout <NOPE>ptr bound lazily (no bind-time throw)', typeof deleteObjectLazy === 'function')
-        t.checkTrue('<NOPE>ptr accepts null without layout (passthrough)', deleteObjectLazy(null) === 0)
+        t.checkTrue('<NOPE>ptr accepts NULL without layout (passthrough)', deleteObjectLazy(NULL) === 0)
         let errLayout = ''
         const nopeBrush = bind('gdi32.dll', 'CreateBrushIndirect', '<NOPE>ptr -> <>ptr') as unknown as (v: unknown) => number
         try {
@@ -259,7 +262,7 @@ export const suite = {
         }
         t.checkTrue('unknown layout <NOPE>ptr rejected on struct-shape call', errLayout.includes('unknown layout') && errLayout.includes('BYTE'))
 
-        // out 参数：命名 struct 的 alloc() 返回 { buf, ptr }，.ptr 即 Ptr<'RECT'> 直接喂
+        // out 参数：命名 struct 的 encode() 新建零 buffer 返回 PtrArrayBuffer，.ptr 即 Ptr<'RECT'> 直接喂
         // <RECT>ptr；读回走 RECT.decode(buf)（双态入参的 ArrayBuffer 分支）。
         const RECT = struct('RECT', {
             left: 'i32',
@@ -270,20 +273,20 @@ export const suite = {
         const getWindowRect = bind('user32.dll', 'GetWindowRect', '<>ptr <RECT>ptr -> i32', { RECT })
         const getDesktopWindow = bind('user32.dll', 'GetDesktopWindow', ' -> <>ptr')
         const desktop = getDesktopWindow()
-        const rectOut = RECT.alloc()
-        t.checkTrue('GetWindowRect(hwnd, RECT.alloc().ptr) succeeds', getWindowRect(desktop, rectOut.ptr) !== 0)
-        const rectV = RECT.decode(rectOut.buf)
-        t.checkTrue('RECT.decode(alloc().buf) decodes out-param', rectV.right > rectV.left && rectV.bottom > rectV.top)
+        const rectOut = RECT.encode()
+        t.checkTrue('GetWindowRect(hwnd, RECT.encode().ptr) succeeds', getWindowRect(desktop, rectOut.ptr) !== 0)
+        const rectV = RECT.decode(rectOut)
+        t.checkTrue('RECT.decode(encode()) decodes out-param', rectV.right > rectV.left && rectV.bottom > rectV.top)
 
         // 成员 '<RECT>ptr'：decode 得到 Ptr<'RECT'>，可直接喂 <RECT>ptr 形参（品牌在类型层流动）。
         const RECTPTR = struct({r: '<RECT>ptr'})
         const box = RECTPTR.decode(RECTPTR.encode({ r: rectOut.ptr }))
-        t.checkTrue('GetWindowRect(hwnd, member RECT*) succeeds', getWindowRect(desktop, box.r) !== 0)
-        const rectThroughMember = RECT.decode(rectOut.buf)
+        t.checkTrue('GetWindowRect(hwnd, member RECT*) succeeds', box.r !== 0 && getWindowRect(desktop, box.r) !== 0)
+        const rectThroughMember = RECT.decode(rectOut)
         t.checkTrue('writes through the member pointer', rectThroughMember.right > rectThroughMember.left && rectThroughMember.bottom > rectThroughMember.top)
 
         t.section('struct ptr return + branded passthrough')
-        // 返回位 <NAME>ptr → Ptr<NAME>（number|null，只读指针，品牌在类型层）。
+        // 返回位 <NAME>ptr → MaybePtr<NAME>（NULL|Ptr，0 保真，只读指针，品牌在类型层）。
         // 该品牌指针可直接喂给另一函数的 <NAME>ptr 形参（裸地址透传，不重编码）。
         // 链条：localtime(&t) 返回 struct tm* → asctime(tm*) 消费之。
         const TM = struct({
@@ -301,13 +304,13 @@ export const suite = {
         const asctime = bind('msvcrt.dll', 'asctime', '<TM>ptr -> <>ptr', { TM })
         const tbuf = new ArrayBuffer(8)   // time_t=0（32/64 位 time_t 都读起始字节）
         const tm = localtime(tbuf)
-        t.checkTrue('localtime -> <TM>ptr returns branded pointer', tm !== null)
-        const asc = readCStr(asctime(tm))
+        t.checkTrue('localtime -> <TM>ptr returns branded pointer', tm !== 0)
+        const asc = tm !== 0 ? readCStr(asctime(tm)) : ''
         std.printf('  asctime(localtime(0)) = %s', asc.replace(/\n$/, ''))
         t.checkTrue('asctime(<TM>ptr) accepts branded pointer (passthrough)', asc.includes(':') && asc.length >= 20)
 
-        // 手动解 native 拥有的 <TM>ptr：def.decode 双态入参的指针分支（null 守卫在调用方）
-        const tmDecoded = tm !== null ? TM.decode(tm) : null
+        // 手动解 native 拥有的 <TM>ptr：def.decode 双态入参的指针分支（0 守卫在调用方）
+        const tmDecoded = tm !== 0 ? TM.decode(tm) : null
         t.checkTrue('TM.decode(<TM>ptr) decodes native-owned struct', tmDecoded !== null && tmDecoded.tm_sec === 0)
 
         // 编译期：裸 number 不是 Ptr<'TM'>，被类型层拒绝（此处永不执行）
@@ -316,28 +319,29 @@ export const suite = {
             asctime(123)
         }
 
-        // Codec：decoders 显式传表 → 返回位自动解码为结构对象（替代 Ptr | null）
+        // Codec：decoders 显式传表 → 返回位自动解码为结构对象（替代 Ptr，空指针 0 保真）
         const localtimeDec = bind('msvcrt.dll', 'localtime', '<BYTE>ptr -> <TM>ptr', undefined, { TM })
         const tmObj = localtimeDec(tbuf)
         t.checkTrue('localtime + decoders auto-decodes to struct object',
-            tmObj !== null && typeof tmObj.tm_sec === 'number')
-        // 类型层证明：解码结果非 null 分支上 tm_sec 字段可访问且为 number
+            tmObj !== 0 && typeof tmObj.tm_sec === 'number')
+        // 类型层证明：解码结果非 0 分支上 tm_sec 字段可访问且为 number
         // （返回若含 Ptr<'TM'> 分支——无 decode 的旧行为——此访问编译不过）
-        if (tmObj !== null) expectType<Equal<typeof tmObj.tm_sec, number>>(true)
+        if (tmObj !== 0) expectType<Equal<typeof tmObj.tm_sec, number>>(true)
 
         // Codec：返回位类型断言（decoders 显式 / 缺省回退 encoders）
-        // 断言「替换语义」两半：解码结果不含 Ptr（number）分支 + 含结构对象分支。
+        // 断言「替换语义」两半：解码结果 = 结构对象 | 0（Ptr 品牌被替换掉）；
+        // 无 decode 保留 0 | Ptr 品牌形态。
         type RetOfDec<S extends string, D extends CodecMap> = ReturnType<ReturnType<typeof bind<S, {}, D>>>
         type RetDecTM = RetOfDec<' -> <TM>ptr', { TM: typeof TM }>
         type RetEncTM = ReturnType<ReturnType<typeof bind<' -> <TM>ptr', { TM: typeof TM }>>>
-        expectType<Equal<Extract<RetDecTM, number> extends never ? true : false, true>>(true)
+        expectType<Equal<Extract<RetDecTM, Ptr<'TM'>>, never>>(true)
         expectType<Equal<Extract<RetDecTM, { tm_sec: number }> extends never ? false : true, true>>(true)
-        expectType<Equal<Extract<RetEncTM, number> extends never ? true : false, true>>(true)
+        expectType<Equal<Extract<RetEncTM, Ptr<'TM'>>, never>>(true)
         expectType<Equal<Extract<RetEncTM, { tm_sec: number }> extends never ? false : true, true>>(true)
 
-        // 内建 WCHAR codec：无条件进两张表 → <WCHAR>ptr 返回直接 string
+        // 内建 WCHAR codec：无条件进两张表 → <WCHAR>ptr 返回直接 string（空 0 保真）
         type RetW = ReturnType<ReturnType<typeof bind<' -> <WCHAR>ptr'>>>
-        expectType<Equal<RetW, string | null>>(true)
+        expectType<Equal<RetW, string | NULL>>(true)
         const getCommandLineW = bind('kernel32.dll', 'GetCommandLineW', ' -> <WCHAR>ptr')
         const cl = getCommandLineW()
         t.checkTrue('GetCommandLineW auto-decodes builtin <WCHAR>ptr to string',
@@ -372,7 +376,7 @@ export const suite = {
         t.check('closure i32+i32 = 12', 12, new DataView(r1).getInt32(0, true))
         addClos.dispose()
 
-        const ptrClos = closure('<>ptr i32 -> i32', (p, n) => (p === null ? 0 : p) + n)
+        const ptrClos = closure('<>ptr i32 -> i32', (p, n) => p + n)
         const r2 = new ArrayBuffer(8)
         ffi.ffiCall(ptrClos.ptr, packArgs(['ptr', 'i32'], [0x1234, 100]), r2, 0)
         t.check('closure ptr+i32 decode', 0x1234 + 100, new DataView(r2).getInt32(0, true))
@@ -457,5 +461,16 @@ export const suite = {
         t.check('qsort [2]', 5, arr[2])
         t.check('qsort [3]', 8, arr[3])
         cmp.dispose()
+
+        t.section('ptr 位有符号读写（对齐 C 版 JS_NewInt64）')
+        const pdv = new DataView(new ArrayBuffer(8))
+        writeScalar(pdv, 0, { k: 'ptr', v: -1 })
+        if (PTR_SIZE === 8) t.check('-1 写入位模式（x64 二补位）', 18446744073709551615n, pdv.getBigUint64(0, true))
+        else t.check('-1 写入位模式（ia32 二补位）', 0xFFFFFFFF, pdv.getUint32(0, true))
+        t.check('负值往返 write(-1) → read = -1', -1, readScalar(pdv, 0, 'ptr'))
+        writeScalar(pdv, 0, { k: 'ptr', v: 0 })
+        t.check('0 保真（原 0 归一为 null）', 0, readScalar(pdv, 0, 'ptr'))
+        writeScalar(pdv, 0, { k: 'ptr', v: 0x7FFFFFFF })
+        t.check('正哨兵往返', 0x7FFFFFFF, readScalar(pdv, 0, 'ptr'))
     },
 }

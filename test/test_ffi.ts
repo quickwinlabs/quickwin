@@ -3,6 +3,7 @@ import * as win from 'win'
 import * as ffi from 'ffi'
 import * as os from 'os'
 import { bind, bindLib } from '../lib/ffi/bind.js'
+import { NULL } from '../lib/ffi/ctype.js'
 import { Tester } from './test_helper.js'
 
 const MAX_WCHARS = 4096
@@ -91,7 +92,7 @@ export const suite = {
         const neededBuf = new Uint32Array(new ArrayBuffer(4))
         const returnedBuf = new Uint32Array(new ArrayBuffer(4))
 
-        const ret1 = EnumPrintersW(flags, null, level, null, 0, neededBuf.buffer, returnedBuf.buffer)
+        const ret1 = EnumPrintersW(flags, NULL, level, NULL, 0, neededBuf.buffer, returnedBuf.buffer)
         std.printf('  first call: ret=%d needed=%d returned=%d\n', ret1, neededBuf[0], returnedBuf[0])
         if (neededBuf[0]! > 0) {
             t.checkTrue('pcbNeeded > 0', neededBuf[0]! > 0)
@@ -105,7 +106,7 @@ export const suite = {
         const printerBuf = new ArrayBuffer(neededBuf[0]!)
         const ret2 = EnumPrintersW(
             flags,
-            null,
+            NULL,
             level,
             printerBuf,
             neededBuf[0]!,
@@ -159,9 +160,9 @@ export const suite = {
             if (getDC) {
                 const GetDC = bind('user32.dll', 'GetDC', '<>ptr -> <>ptr')
                 const screenDc = GetDC(0)
-                t.checkTrue('PTR slot takes number (NULL hwnd) and returns a DC handle', screenDc !== 0 && screenDc !== null)
+                t.checkTrue('PTR slot takes number (NULL hwnd) and returns a DC handle', screenDc !== 0)
                 const bogus = GetDC(0x12345678)
-                t.checkTrue('PTR slot takes non-zero number without throwing', bogus === 0 || bogus === null)
+                t.checkTrue('PTR slot takes non-zero number without throwing', bogus === 0)
             }
         }
     }

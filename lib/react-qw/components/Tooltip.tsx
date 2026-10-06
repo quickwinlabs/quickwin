@@ -2,6 +2,7 @@ import { useRef, useEffect, Children, cloneElement } from 'react'
 import * as gui from 'gui'
 import * as ffi from 'ffi'
 import { struct } from '../../ffi/struct.js'
+import { SetWindowPos } from '../../windows/user32.js'
 
 export interface TooltipProps {
   text: string
@@ -61,7 +62,7 @@ function Tooltip({ text, children, balloon }: TooltipProps) {
     if (!hTT) return
     hTTRef.current = hTT
 
-    gui.SetWindowPos(hTT, gui.SetWindowPosHwnd.TOPMOST, 0, 0, 0, 0, gui.SetWindowPosFlag.SWP_NOMOVE | gui.SetWindowPosFlag.SWP_NOSIZE | gui.SetWindowPosFlag.SWP_NOACTIVATE)
+    SetWindowPos(hTT, gui.SetWindowPosHwnd.TOPMOST, 0, 0, 0, 0, gui.SetWindowPosFlag.SWP_NOMOVE | gui.SetWindowPosFlag.SWP_NOSIZE | gui.SetWindowPosFlag.SWP_NOACTIVATE)
 
     const ti = buildToolInfo(hTarget, text)
     const tiPtr = ffi.bufferPtr(ti)

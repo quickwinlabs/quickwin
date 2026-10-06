@@ -2,7 +2,7 @@ import * as os from 'os'
 import { Tester } from './test_helper.js'
 import { struct, union } from '../lib/ffi/struct.js'
 import { bind, } from '../lib/ffi/bind.js'
-import { Ptr } from '../lib/ffi/ctype.js'
+import { type MaybePtr, Ptr } from '../lib/ffi/ctype.js'
 import type { C_Union } from '../lib/ffi/ctype.js'
 
 // 编译期断言工具（仅类型层，运行时无开销）
@@ -75,14 +75,14 @@ export const suite = {
         const wr = RECT.decode(wrect)
         t.checkTrue('screen RECT non-empty', wr.right > 0 && wr.bottom > 0)
 
-        // out 参数：alloc() 返回 { buf, ptr } → .ptr 为 Ptr<'RECT'> 直接喂 <RECT>ptr，
-        // 读回走 def.decode(buf)（双态入参的 ArrayBuffer 分支）
-        t.section('RECT.alloc() out-param { buf, ptr }')
-        const out = RECT.alloc()
-        t.checkTrue('alloc() exposes buf + ptr', out.buf instanceof ArrayBuffer && typeof out.ptr === 'number')
+        // out 参数：encode() 新建零 buffer 返回 PtrArrayBuffer<'RECT'> → .ptr 直接喂
+        // <RECT>ptr，读回走 def.decode(实例)（ArrayBuffer 分支直读）
+        t.section('RECT.encode() out-param → PtrArrayBuffer')
+        const out = RECT.encode()
+        t.checkTrue('encode() exposes ArrayBuffer subclass + ptr', out instanceof ArrayBuffer && typeof out.ptr === 'number')
         t.checkTrue('GetWindowRect(hwnd, out.ptr) succeeds', getWindowRectLayout(hwnd, out.ptr) !== 0)
-        const or = RECT.decode(out.buf)
-        t.checkTrue('RECT.decode(alloc().buf) decodes out-param', or.right > 0 && or.bottom > 0)
+        const or = RECT.decode(out)
+        t.checkTrue('RECT.decode(encode()) decodes out-param', or.right > 0 && or.bottom > 0)
 
         t.section('ptr layout matches arch')
         t.check(`TVITEM.size (${os.arch})`, is64 ? 56 : 40, TVITEM.size)
@@ -119,7 +119,9 @@ export const suite = {
         const m = M.decode(mb)
         t.check('int -5', -5, m.n)
         t.check('DWORD', 0xFFFFFFFF, m.d)
-        t.check('LPARAM', 0xAABBCCDD, m.w)
+        // ptr 位有符号读（对齐 C 版 JS_NewInt64）：0xAABBCCDD 在 ia32 按 4 字节
+        // 存取 → 符号扩展读成负；x64 8 字节高位 0 → 仍为正
+        t.check('LPARAM', is64 ? 0xAABBCCDD : -1430532899, m.w)
         t.check('short -7', -7, m.s)
         t.check('LONG_PTR', 0x11223344, m.q)
 
@@ -303,15 +305,16 @@ export const suite = {
         t.check('offsetOf raw', 0, PTR.offsetOf('raw'))
         t.check('offsetOf r', is64 ? 8 : 4, PTR.offsetOf('r'))
         t.check('offsetOf tag', is64 ? 16 : 8, PTR.offsetOf('tag'))
-        const rawOut = RECT.alloc()
+        const rawOut = RECT.encode()
         const pd = PTR.decode(PTR.encode({ raw: rawOut.ptr, r: rawOut.ptr, tag: 7 }))
         t.check('raw roundtrip', rawOut.ptr, pd.raw)
         t.check('r roundtrip', rawOut.ptr, pd.r)
         t.check('tag', 7, pd.tag)
-        // 编译期：'<>ptr' → number|null（T='' 品牌退化 + 0 归一为 null）；
-        // '<RECT>ptr' → Ptr<'RECT'>|null（品牌）。
-        expectType<Equal<ReturnType<typeof PTR.decode>['raw'], number | null>>()
-        expectType<Equal<ReturnType<typeof PTR.decode>['r'], Ptr<'RECT'> | null>>()
+        // 编译期：'<>ptr' → MaybePtr<''>（NULL|number，与 number 双向可赋值，NULL 即 0 保真）；
+        // '<RECT>ptr' → MaybePtr<'RECT'>（NULL|Ptr，0 保真，传参前收窄）。
+        expectType<Equal<ReturnType<typeof PTR.decode>['raw'], MaybePtr<''>>>()
+        expectType<[ReturnType<typeof PTR.decode>['raw']] extends [number] ? true : false>()
+        expectType<Equal<ReturnType<typeof PTR.decode>['r'], MaybePtr<'RECT'>>>()
 
         t.section('f32/f64 layout (MSVC: f@0, double@8)')
         const FL = struct({

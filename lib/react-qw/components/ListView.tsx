@@ -3,9 +3,12 @@ import * as gui from 'gui'
 import { LvItemFlag, LvItemState, LvColumnMask } from 'gui'
 import * as ffi from 'ffi'
 import { bind } from '../../ffi/bind.js'
+import type { MaybePtr } from '../../ffi/ctype.js'
 import { struct } from '../../ffi/struct.js'
 import { NMHDR, PTR_SIZE, nmCode } from '../nmhdr.js'
-import { LoadCursor, SetCursor, ScreenToClient } from '../../windows/user32.js'
+import { LoadCursor, SetCursor, ScreenToClient, GetCursorPos } from '../../windows/user32.js'
+import { DeleteObject } from '../../windows/gdi32.js'
+import { POINT } from '../../windows/structs.js'
 import type { WStyle } from '../jsx.d.ts'
 
 export function makeColorBlock(size: number, bgra: number): ArrayBuffer {
@@ -139,9 +142,9 @@ const LVCOLUMNW = struct({
 const fontCache = new Map<string, number>()
 
 type GdiFns = {
-  createFontIndirectW: (lf: ArrayBuffer | null) => number | null
-  selectObjectFn: (hdc: number | null, hfont: number | null) => number | null
-  getObjectW: (h: number | null, n: number, buf: ArrayBuffer | null) => number
+  createFontIndirectW: (lf: ArrayBuffer | MaybePtr<'BYTE'>) => number
+  selectObjectFn: (hdc: number, hfont: number) => number
+  getObjectW: (h: number, n: number, buf: ArrayBuffer | MaybePtr<'BYTE'>) => number
 }
 let gdiFns: GdiFns | null = null
 
@@ -311,7 +314,7 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
       const hbm = gui.CreateBitmapFromPixels(size, size, p)
       if (hbm) {
         gui.ImageListAdd(img, hbm)
-        gui.DeleteObject(hbm)
+        DeleteObject(hbm)
       }
     }
     gui.SendMessage(h, gui.LvMsg.SETIMAGELIST, gui.LvImageList.SMALL, img)
@@ -418,18 +421,16 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
           const h = lvRef.current
           if (!h) return
 
-          const sp = gui.GetCursorPos()
-          if (!sp) return
-          const sbuf = new ArrayBuffer(8)
-          const sdv = new DataView(sbuf)
-          sdv.setInt32(0, sp[0], true)
-          sdv.setInt32(4, sp[1], true)
-          ScreenToClient(h, sbuf)
+          // GetCursorPos 出参写入初值 → ScreenToClient 就地更新 → decode 读回
+          const pt = POINT.encode()
+          if (!GetCursorPos(pt.ptr)) return
+          ScreenToClient(h, pt.ptr)
+          const { x: sx, y: sy } = POINT.decode(pt)
 
           const lvhi = new ArrayBuffer(24)
           const lvd = new DataView(lvhi)
-          lvd.setInt32(0, sdv.getInt32(0, true), true)
-          lvd.setInt32(4, sdv.getInt32(4, true), true)
+          lvd.setInt32(0, sx, true)
+          lvd.setInt32(4, sy, true)
           lvd.setInt32(12, -1, true)
           lvd.setInt32(16, -1, true)
           const lvhiPtr = bufPtr(lvhi)

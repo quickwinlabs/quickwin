@@ -1,6 +1,8 @@
 import { forwardRef, useRef, useEffect, type Ref } from 'react'
 import * as gui from 'gui'
 import * as ffi from 'ffi'
+import { InvalidateRect } from '../../windows/user32.js'
+import { NULL } from '../../ffi/ctype.js'
 import { nmCode, NMHDR_SIZE } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
 
@@ -36,7 +38,7 @@ const Link = forwardRef(function Link(
   useEffect(() => {
     const h = linkRef.current
     if (!h) return
-    gui.InvalidateRect(h, null, true)
+    InvalidateRect(h, NULL, 1)
   }, [linkText])
 
   return (
