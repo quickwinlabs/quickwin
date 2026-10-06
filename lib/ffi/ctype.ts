@@ -64,7 +64,7 @@ type First =
 // §4 值词汇（SimpleValue）—— 字段值/数组元素的全部合法形态：
 //   token/别名   'u32' | 'DWORD'（别名经 normToken 归一；'void'/裸 'ptr' 运行时拒绝）
 //   数组糖       'u32[4]'（仅 token 元素 —— 更复杂的元素写 '#' array 声明）
-//   位域糖       'u32:3'（bit() 的返回形态；unit 位收别名，归一后须为整数档）
+//   位域糖       'u32:3'（unit 位收别名，归一后须为整数档）
 //   字符串糖     'u16[128]@utf-16le'（布局 unit[length] × 解释 @encoding 正交：
 //                size = typesize × length 由 unit/length 决定，encoding 只管怎么读写
 //                这些字节 —— 错配如 'u8[128]@utf-16le' 也语义自洽。与键侧 alignas 同
@@ -177,12 +177,6 @@ export function normToken(t: string): C_BasicType_Token {
         return C_ALIAS[t]
     }
     throw new Error("Unknown token: " + t)
-}
-
-/** 构造位域成员：返回位域糖字符串（`'u32:3'`，字段值的唯一位域写法）。
- *  unit 只收规范整数档（类型参数位不收别名），width 校验在布局期完成。 */
-export function bit<const U extends C_Integer, const W extends number>(unit: U, width: W): `${U}:${W}` {
-    return `${unit}:${width}` as `${U}:${W}`
 }
 
 export function readScalar(dv: DataView, off: number, k: C_BasicType_No_Void): number | bigint | null {

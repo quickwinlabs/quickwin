@@ -15,7 +15,7 @@
     "esModuleInterop": true,
     // "skipLibCheck": true,
     "allowJs": false,
-    "lib": ["ES2020"],
+    "lib": ["ES2025"],
     "types": ["./quickwin.d.ts"],
     "rootDir": ".",
     "outDir": "_build",

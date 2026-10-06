@@ -215,6 +215,16 @@ export const suite = {
         t.checkTrue('CreateBrushIndirect(<LOGBRUSH>ptr) returns HBRUSH', !!brush)
         if (brush) t.checkTrue('DeleteObject(HBRUSH) succeeds', deleteObject(brush) !== 0)
 
+        // bindLib 用户布局 encoder 直传 struct 对象（bindLib 的 L 泛型曾未接线：
+        // encoders?: EncoderMap 使 L 恒为 {}，<LOGBRUSH>ptr 实参被类型层收窄成 number|null）
+        const gdi32Lib = bindLib('gdi32.dll', {
+            CreateBrushIndirect: '<LOGBRUSH>ptr -> <>ptr',
+            DeleteObject: '<>ptr -> i32',
+        }, { LOGBRUSH })
+        const brushL = gdi32Lib.CreateBrushIndirect({ lbStyle: 0, lbColor: 0x0000ff00, lbHatch: 0 })
+        t.checkTrue('bindLib(<LOGBRUSH>ptr w/ encoder) returns HBRUSH', !!brushL)
+        if (brushL) t.checkTrue('bindLib DeleteObject succeeds', gdi32Lib.DeleteObject(brushL) !== 0)
+
         // 嵌套 struct（LOGPEN 内含 POINT）验证 ShapeOf 递归 + 子结构写入
         const POINT = struct({
             x: 'i32',
@@ -346,6 +356,33 @@ export const suite = {
         t.check('closure i64 return exact (-2^63+1)', -0x7FFFFFFFFFFFFFFFn,
             new DataView(r6).getBigInt64(0, true))
         i64Clos.dispose()
+
+        t.section('closure arg capture limit（C 捕获窗 fail-fast + 边界 roundtrip）')
+        {
+            // 边界内：16 参（x64=4 寄存器+12 栈槽；ia32=16×4B=64B 恰好）创建并往返
+            const sig16 = Array(16).fill('u32').join(' ') + ' -> void'
+            let got: unknown[] = []
+            let c16: { ptr: number; dispose(): void } | null = null
+            try {
+                c16 = closure(sig16 as any, ((...a: unknown[]) => { got = a }) as any)
+            } catch { /* 失败落到下面的 check */ }
+            t.checkTrue('16×u32 创建成功', c16 !== null)
+            if (c16) {
+                const vals = Array.from({ length: 16 }, (_, i) => i + 1)
+                ffi.ffiCall(c16.ptr, packArgs(Array(16).fill('u32'), vals), new ArrayBuffer(8), 0)
+                t.check('16 参完整送达', 16, got.length)
+                t.check('第 16 参（栈尾槽）值正确', 16, got[15])
+                c16.dispose()
+            }
+
+            // 超限：17×u32 → x64 17>16、ia32 68>64，双架构创建期同抛
+            const sig17 = Array(17).fill('u32').join(' ') + ' -> void'
+            let err17 = ''
+            try {
+                closure(sig17 as any, (() => { }) as any)
+            } catch (e) { err17 = String(e) }
+            t.checkTrue('17×u32 创建期抛错（fail-fast 而非静默垃圾）', err17.includes('capture window'))
+        }
 
         t.section('closures: EnumWindows (stdcall, end-to-end)')
         const enumWindows = bind('user32.dll', 'EnumWindows', '<>ptr <>ptr -> i32')

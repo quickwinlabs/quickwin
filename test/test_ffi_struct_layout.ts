@@ -1,7 +1,6 @@
 import { Tester } from './test_helper.js'
 import { computeStructLayout, computeArray } from '../lib/ffi/struct.js'
 import type { Fields } from '../lib/ffi/struct.js'
-import { bit } from '../lib/ffi/ctype.js'
 import type { C_Struct, C_Union, C_Array } from '../lib/ffi/ctype.js'
 
 export const suite = {
@@ -329,10 +328,10 @@ export const suite = {
             // 9+7=16 塞满第一单元，30 放不下开第二，18 开第三。sizeof 应为 12。
             const s: C_Struct = {
                 '#': 'struct',
-                first: bit('u32', 9),
-                second: bit('u32', 7),
-                may_straddle: bit('u32', 30),
-                last: bit('u32', 18),
+                first: 'u32:9',
+                second: 'u32:7',
+                may_straddle: 'u32:30',
+                last: 'u32:18',
             }
             const r = computeStructLayout(s)
             t.check('sizeof == 12', 12, r.size)
@@ -349,8 +348,8 @@ export const suite = {
             // 15+17=32 恰好塞满一个 32 位单元 → 不开新单元（mingw 实测 sizeof=8, w@4）
             const s: C_Struct = {
                 '#': 'struct',
-                a: bit('u32', 15),
-                b: bit('u32', 17),
+                a: 'u32:15',
+                b: 'u32:17',
                 w: 'u16',
             }
             const r = computeStructLayout(s)
@@ -365,7 +364,7 @@ export const suite = {
             // u32 单元用 12 位 = 2 字节，但 char 落在单元边界 4（不是按字节截断的 2）
             const s: C_Struct = {
                 '#': 'struct',
-                a: bit('u32', 12),
+                a: 'u32:12',
                 z: 'u8',
             }
             const r = computeStructLayout(s)
@@ -375,7 +374,7 @@ export const suite = {
             // u16 单元用 12 位 = 2 字节 = 完整单元，char 紧随其后
             const s2: C_Struct = {
                 '#': 'struct',
-                a: bit('u16', 12),
+                a: 'u16:12',
                 z: 'u8',
             }
             const r2 = computeStructLayout(s2)
@@ -387,8 +386,8 @@ export const suite = {
         {
             const s: C_Struct = {
                 '#': 'struct',
-                a: bit('u32', 8),
-                b: bit('i32', 8),
+                a: 'u32:8',
+                b: 'i32:8',
             }
             const r = computeStructLayout(s)
             t.check('sizeof == 4 (有/无符号共单元)', 4, r.size)
@@ -401,20 +400,20 @@ export const suite = {
                 '#': 'struct',
                 DCBlength: 'u32',
                 BaudRate: 'u32',
-                fBinary: bit('u32', 1),
-                fParity: bit('u32', 1),
-                fOutxCtsFlow: bit('u32', 1),
-                fOutxDsrFlow: bit('u32', 1),
-                fDtrControl: bit('u32', 2),
-                fDsrSensitivity: bit('u32', 1),
-                fTXContinueOnXoff: bit('u32', 1),
-                fOutX: bit('u32', 1),
-                fInX: bit('u32', 1),
-                fErrorChar: bit('u32', 1),
-                fNull: bit('u32', 1),
-                fRtsControl: bit('u32', 2),
-                fAbortOnError: bit('u32', 1),
-                fDummy2: bit('u32', 17),
+                fBinary: 'u32:1',
+                fParity: 'u32:1',
+                fOutxCtsFlow: 'u32:1',
+                fOutxDsrFlow: 'u32:1',
+                fDtrControl: 'u32:2',
+                fDsrSensitivity: 'u32:1',
+                fTXContinueOnXoff: 'u32:1',
+                fOutX: 'u32:1',
+                fInX: 'u32:1',
+                fErrorChar: 'u32:1',
+                fNull: 'u32:1',
+                fRtsControl: 'u32:2',
+                fAbortOnError: 'u32:1',
+                fDummy2: 'u32:17',
                 wReserved: 'u16',
                 XonLim: 'u16',
                 XoffLim: 'u16',
@@ -445,14 +444,14 @@ export const suite = {
         {
             const s: C_Struct = {
                 '#': 'struct',
-                fCtsHold: bit('u32', 1),
-                fDsrHold: bit('u32', 1),
-                fRlsdHold: bit('u32', 1),
-                fXoffHold: bit('u32', 1),
-                fXoffSent: bit('u32', 1),
-                fEof: bit('u32', 1),
-                fTxim: bit('u32', 1),
-                fReserved: bit('u32', 25),
+                fCtsHold: 'u32:1',
+                fDsrHold: 'u32:1',
+                fRlsdHold: 'u32:1',
+                fXoffHold: 'u32:1',
+                fXoffSent: 'u32:1',
+                fEof: 'u32:1',
+                fTxim: 'u32:1',
+                fReserved: 'u32:25',
                 cbInQue: 'u32',
                 cbOutQue: 'u32',
             }
@@ -463,18 +462,37 @@ export const suite = {
             t.check('cbOutQue.offset == 8', 8, offOf(r.fields, 'cbOutQue'))
         }
 
-        t.section('Bitfield: union 位域按 struct 打包（不别名）')
+        t.section('Bitfield: union 位域完全别名（mingw 实测：每位域成员独立 offset 0/bit 0）')
         {
             const u: C_Union = {
                 '#': 'union',
-                a: bit('u32', 1),
-                b: bit('u32', 1),
+                a: 'u32:1',
+                b: 'u32:1',
             }
             const r = computeStructLayout(u)
             t.check('sizeof == 4', 4, r.size)
             t.check('a.offset == 0', 0, bitOf(r.fields, 'a').offset)
-            t.check('b.offset == 0 (同单元)', 0, bitOf(r.fields, 'b').offset)
-            t.check('b.bit == 1 (不同位)', 1, bitOf(r.fields, 'b').bit)
+            t.check('a.bit == 0', 0, bitOf(r.fields, 'a').bit)
+            t.check('b.offset == 0 (同址别名)', 0, bitOf(r.fields, 'b').offset)
+            t.check('b.bit == 0 (同位别名，实测 a=1→b=1)', 0, bitOf(r.fields, 'b').bit)
+        }
+
+        t.section('Bitfield: union 溢出/混合形状不越界（regression：曾推进游标致 offset 越出 size）')
+        {
+            // 溢出：struct 里 30+4>32 开新单元；union 每成员独立回 offset 0
+            const u2: C_Union = { '#': 'union', a: 'u32:30', b: 'u32:4' }
+            const r2 = computeStructLayout(u2)
+            t.check('overflow sizeof == 4', 4, r2.size)
+            t.check('overflow a.offset == 0', 0, bitOf(r2.fields, 'a').offset)
+            t.check('overflow b.offset == 0（回 offset 0 重叠，曾为 4）', 0, bitOf(r2.fields, 'b').offset)
+            t.check('overflow b.bit == 0', 0, bitOf(r2.fields, 'b').bit)
+
+            // 位域后跟普通成员：flushUnit 不得推进 union 游标
+            const u3: C_Union = { '#': 'union', a: 'u32:1', b: 'u8' }
+            const r3 = computeStructLayout(u3)
+            t.check('mixed sizeof == 4', 4, r3.size)
+            t.check('mixed a.offset == 0', 0, bitOf(r3.fields, 'a').offset)
+            t.check('mixed b.offset == 0（曾错位到 4 → 越出 size 4）', 0, offOf(r3.fields, 'b'))
         }
 
         t.section('Bitfield validation')
@@ -483,21 +501,21 @@ export const suite = {
                 try { computeStructLayout(s); return false } catch { return true }
             }
             t.check('width 0 rejected (v1 不支持 :0 填充)', true,
-                rejected({ '#': 'struct', x: bit('u32', 0) }))
+                rejected({ '#': 'struct', x: 'u32:0' }))
             t.check('width > unit bits rejected', true,
-                rejected({ '#': 'struct', x: bit('u32', 33) }))
+                rejected({ '#': 'struct', x: 'u32:33' }))
             t.check('width > u8 bits rejected', true,
-                rejected({ '#': 'struct', x: bit('u8', 9) }))
+                rejected({ '#': 'struct', x: 'u8:9' }))
             t.check('negative width rejected（非 \\d+ → 落 token 分支抛）', true,
-                rejected({ '#': 'struct', x: bit('u32', -1) }))
+                rejected({ '#': 'struct', x: 'u32:-1' }))
             t.check('non-integer width rejected', true,
-                rejected({ '#': 'struct', x: bit('u32', 2.5) }))
+                rejected({ '#': 'struct', x: 'u32:2.5' }))
             t.check('array of bitfields rejected（# 形式）', true,
-                rejected({ '#': 'struct', x: { '#': 'array', element: bit('u32', 1), length: 2 } }))
+                rejected({ '#': 'struct', x: { '#': 'array', element: 'u32:1', length: 2 } }))
             t.check('array of bitfields rejected（数组糖，类型层拒绝故 as any）', true,
                 rejected({ '#': 'struct', x: 'u32:1[2]' as any }))
             t.check('anonymous bitfield rejected', true,
-                rejected({ '#': 'struct', $anon1: bit('u32', 1) } as any))
+                rejected({ '#': 'struct', $anon1: 'u32:1' } as any))
             t.check('float bitfield unit rejected（归一后非整数档）', true,
                 rejected({ '#': 'struct', x: 'float:3' as any }))
             t.check('unknown bitfield unit rejected', true,

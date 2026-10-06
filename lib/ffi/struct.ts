@@ -271,7 +271,8 @@ export function computeStructLayout(t: C_Struct | C_Union): Layout {
     //   - 连续同宽位域共单元，LSB→MSB（签别不参与分组）
     //   - 放不下的位域开新单元，单元剩余位废弃
     //   - 非位域成员打断位域组，游标跳到完整单元边界（不是按字节截断）
-    // 联合体位域同样按 struct 方式打包（实测 u.a=1 后 u.b==0，各占自己的位，不别名）。
+    // 联合体位域不分组：每位域成员独立从 offset 0/bit 0 起算——完全别名
+    // （mingw 16 x64+ia32 实测：a=1→b=1、溢出成员回 offset 0、sizeof=单元宽）。
     let unitBase = -1
     let unitBits = 0
     let unitSize = 0
@@ -295,6 +296,18 @@ export function computeStructLayout(t: C_Struct | C_Union): Layout {
 
         if (type.tag === 'bitfield') {
             if (name.startsWith('$')) throw new Error('ffi-struct: bitfield members must be named')
+
+            // union：成员同址（C 标准），每位域成员独立从 offset 0/bit 0 起算。
+            // 不顺序分组、不开新单元、不动游标（flushUnit 因 unitBase 恒 -1 而
+            // no-op，普通/匿名成员的 offset 也因此保持 0）——曾因游标推进致
+            // 溢出单元/后续成员落在 union 声明 size 之外（越界读写）。
+            if (!isStruct) {
+                fields.push({ name: name, offset: 0, size, type: { ...type, bit: 0 } })
+                maxEffectiveAlign = Math.max(maxEffectiveAlign, align)
+                maxMemberSize = Math.max(maxMemberSize, size)
+                continue
+            }
+
             const width = type.width
 
             // 新单元：无活动单元 / 单元宽不同 / 放不下。
@@ -372,19 +385,15 @@ function writeUnitRaw(dv: DataView, off: number, unit: C_Integer, v: bigint): vo
 }
 
 function readBitfield(dv: DataView, off: number, t: BitfieldType): number | bigint {
-    // TODO： width > 53 时返回 bigint
     const w = BigInt(t.width)
-    const v = (readUnitRaw(dv, off, t.unit) >> BigInt(t.bit)) & ((1n << w) - 1n)
-    if (t.unit[0] === 'i') {   // 有符号单元 → 符号扩展
-        const sign = 1n << (w - 1n)
-        if (v & sign) return Number(v - (1n << w))
-    }
-    if (t.width > 53) return v
+    let v = (readUnitRaw(dv, off, t.unit) >> BigInt(t.bit)) & ((1n << w) - 1n)
+    if (t.unit[0] === 'i' && (v & (1n << (w - 1n))))   // 有符号单元且符号位为 1 → 先符号扩展
+        v -= 1n << w
+    if (t.width > 53) return v      // 值域装不进安全整数 → bigint（与类型层 BitShape 同界）
     return Number(v)
 }
 
 function writeBitfield(dv: DataView, off: number, t: BitfieldType, val: number | bigint): void {
-    // TODO: width > 53 时可写入 bigint | number
     const w = BigInt(t.width)
     const bit = BigInt(t.bit)
     const widthMask = (1n << w) - 1n
