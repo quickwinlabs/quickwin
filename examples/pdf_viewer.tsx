@@ -1,4 +1,4 @@
-import { PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import '../lib/polyfill.js'
 import * as std from 'std'
 import * as gui from 'gui'
@@ -39,7 +39,7 @@ function openPdfFileDialog(owner: number): string | null {
   const ofn: PtrArrayBuffer<any> & { __keep?: ArrayBuffer[] } = OPENFILENAMEW.encode({
     lStructSize: OPENFILENAMEW.size,
     hwndOwner: owner,
-    hInstance: 0,
+    hInstance: NULL,
     lpstrFilter: filterWide.ptr,
     lpstrCustomFilter: 0,
     nMaxCustFilter: 0,

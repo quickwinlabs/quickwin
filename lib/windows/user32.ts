@@ -12,15 +12,16 @@
 //         的临时 buffer 会丢结果；ArrayBuffer 由 unknown layout fail-fast 拦下），
 //         读回走 N.decode(buf|ptr)。统一流程：encode → call → decode
 //   - 签名里的 LPCWSTR 若语义是 MAKEINTRESOURCE 整数（如 LoadCursorW 光标名），该位用 <>ptr
-//   - HDC 借出/归还用 <HDC>ptr（品牌指针 Ptr<'HDC'>）：ReleaseDC 等归还位由 tsc 校验配对、
-//     拦住误传 HWND；DrawText/FillRect 等消费位仍收 <>ptr（brand 是 number 子类型可直传）
+//   - HDC 借出/归还与消费位统一 <HDC>ptr（品牌指针 Ptr<'HDC'>）：ReleaseDC 等归还位由 tsc
+//     校验配对拦住误传 HWND，DrawText/FillRect 等消费位同收品牌、拦住裸 number 误传
 //   - 返回/入参句柄位品牌化：HWND（窗口句柄形参与返回）、HMENU（菜单组出入参）、
 //     HCURSOR（LoadCursor/SetCursor）一律 <N>ptr → Ptr<'N'> | NULL；gui.HWND 与
 //     Ptr<"HWND"> 结构同型（quickwin.d.ts 字符串键 brand），react-qw 直传零桥接。
 //     异种句柄互传（如 GetDesktopWindow() → DestroyMenu）由 tsc 拦下。混合值位保持
 //     <>ptr：SetWindowPos 的 hWndInsertAfter（HWND_TOP 等常量）、AppendMenu.uIDNewItem
-//     （命令 ID 或子菜单句柄）、MAKEINTRESOURCE 光标名，以及 HINSTANCE / HGLOBAL /
-//     HBRUSH / 回调等非清单句柄
+//     （命令 ID 或子菜单句柄）、MAKEINTRESOURCE 光标名，以及 HBRUSH / 回调等非清单
+//     句柄（HINSTANCE 即 HMODULE：走 <HMODULE>ptr 与 win 模块同型；剪贴板句柄走
+//     <HGLOBAL>ptr 自产自收）
 import * as os from 'os'
 import { bind, type CodecMap } from '../ffi/bind.js'
 // 只 import 注册了 encoder 的结构（纯入参位）；POINT 等出/就地位不注册，运行时无需引用
@@ -44,7 +45,7 @@ const LONG_PTR_SYM = os.arch === 'x64' ? 'PtrW' : 'W'
 
 /** 创建窗口（class/窗口名可传 string 或 NULL；hWndParent 收品牌 HWND、hMenu 收品牌 HMENU，均可 NULL）；失败 → NULL */
 export const CreateWindowEx = /*@__PURE__*/ b('CreateWindowExW',
-    'u32 <WCHAR>ptr <WCHAR>ptr u32 i32 i32 i32 i32 <HWND>ptr <HMENU>ptr <>ptr <>ptr -> <HWND>ptr')
+    'u32 <WCHAR>ptr <WCHAR>ptr u32 i32 i32 i32 i32 <HWND>ptr <HMENU>ptr <HMODULE>ptr <>ptr -> <HWND>ptr')
 /** 销毁窗口；成功 → 非 0 */
 export const DestroyWindow = /*@__PURE__*/ b('DestroyWindow', '<HWND>ptr -> i32')
 /** 显示/隐藏窗口（nCmdShow = gui.WindowStyle 类常量）；返回先前可见性 */
@@ -153,11 +154,11 @@ export const GetWindowDC = /*@__PURE__*/ b('GetWindowDC', '<HWND>ptr -> <HDC>ptr
 export const BeginPaint = /*@__PURE__*/ b('BeginPaint', '<HWND>ptr <BYTE>ptr -> <HDC>ptr')
 /** 结束重绘（传 BeginPaint 同一 buffer）；成功 → 非 0 */
 export const EndPaint = /*@__PURE__*/ b('EndPaint', '<HWND>ptr <BYTE>ptr -> i32')
-/** 文本排版绘制（首参品牌 HDC 的 number 子类型直传；format = gui.DrawTextFlag；rect 双向不注册
+/** 文本排版绘制（首参收品牌 HDC；format = gui.DrawTextFlag；rect 双向不注册
  *  encoder——CALCRECT 就地写回须持 buffer：RECT.encode(初值) 传 .ptr、完成后 RECT.decode(实例) 读回）；返回文本行高 */
-export const DrawText = /*@__PURE__*/ b('DrawTextW', '<>ptr <WCHAR>ptr i32 <RECT>ptr i32 -> i32')
-/** 用画刷填充矩形（首参 HDC 同上；rect 收 DeepPartial RECT 对象 / encode().ptr；第三参 HBRUSH 无品牌 <>ptr）；返回填充高度 */
-export const FillRect = /*@__PURE__*/ b('FillRect', '<>ptr <RECT>ptr <>ptr -> i32', { RECT })
+export const DrawText = /*@__PURE__*/ b('DrawTextW', '<HDC>ptr <WCHAR>ptr i32 <RECT>ptr i32 -> i32')
+/** 用画刷填充矩形（首参收品牌 HDC；rect 收 DeepPartial RECT 对象 / encode().ptr；第三参 HBRUSH 无品牌 <>ptr）；返回填充高度 */
+export const FillRect = /*@__PURE__*/ b('FillRect', '<HDC>ptr <RECT>ptr <>ptr -> i32', { RECT })
 /** 标记窗口区域失效（触发重绘；rect 收 DeepPartial RECT 对象 / RECT.encode().ptr，NULL 全窗）；成功 → 非 0 */
 export const InvalidateRect = /*@__PURE__*/ b('InvalidateRect', '<HWND>ptr <RECT>ptr i32 -> i32', { RECT })
 /** 立即重绘失效区域；成功 → 非 0 */
@@ -167,8 +168,8 @@ export const UpdateWindow = /*@__PURE__*/ b('UpdateWindow', '<HWND>ptr -> i32')
 
 /** 设光标形状（第 1 参收品牌 HCURSOR，误传 HWND 编译不过）；返回先前光标 */
 export const SetCursor = /*@__PURE__*/ b('SetCursor', '<HCURSOR>ptr -> <HCURSOR>ptr')
-/** 加载光标资源（hInstance 传 0 = 系统光标；名传 MAKEINTRESOURCE 整数，如 32512 = IDC_ARROW）；失败 → NULL */
-export const LoadCursor = /*@__PURE__*/ b('LoadCursorW', '<>ptr <>ptr -> <HCURSOR>ptr')
+/** 加载光标资源（hInstance 传 NULL = 系统光标；名传 MAKEINTRESOURCE 整数，如 32512 = IDC_ARROW）；失败 → NULL */
+export const LoadCursor = /*@__PURE__*/ b('LoadCursorW', '<HMODULE>ptr <>ptr -> <HCURSOR>ptr')
 /** 取光标屏幕坐标；出参 encode → call → decode（POINT.encode() 传 .ptr、POINT.decode(实例) 读回）；成功 → 非 0 */
 export const GetCursorPos = /*@__PURE__*/ b('GetCursorPos', '<POINT>ptr -> i32')
 /** 设光标屏幕坐标；成功 → 非 0 */
@@ -214,10 +215,10 @@ export const OpenClipboard = /*@__PURE__*/ b('OpenClipboard', '<HWND>ptr -> i32'
 export const CloseClipboard = /*@__PURE__*/ b('CloseClipboard', ' -> i32')
 /** 清空剪贴板（须先 OpenClipboard）；成功 → 非 0 */
 export const EmptyClipboard = /*@__PURE__*/ b('EmptyClipboard', ' -> i32')
-/** 取剪贴板数据句柄（须先 OpenClipboard + 有数据）；无 → 0 */
-export const GetClipboardData = /*@__PURE__*/ b('GetClipboardData', 'u32 -> <>ptr')
+/** 取剪贴板数据句柄（须先 OpenClipboard + 有数据）；无 → NULL */
+export const GetClipboardData = /*@__PURE__*/ b('GetClipboardData', 'u32 -> <HGLOBAL>ptr')
 /** 放数据进剪贴板（hMem 所有权移交系统）；成功 → 非 0 */
-export const SetClipboardData = /*@__PURE__*/ b('SetClipboardData', 'u32 <>ptr -> <>ptr')
+export const SetClipboardData = /*@__PURE__*/ b('SetClipboardData', 'u32 <HGLOBAL>ptr -> <HGLOBAL>ptr')
 /** 注册自定义剪贴板格式 ID；失败 → 0 */
 export const RegisterClipboardFormat = /*@__PURE__*/ b('RegisterClipboardFormatW', '<WCHAR>ptr -> u32')
 /** 剪贴板是否有指定格式数据；有 → 非 0 */
@@ -242,8 +243,8 @@ export const CheckMenuItem = /*@__PURE__*/ b('CheckMenuItem', '<HMENU>ptr u32 u3
 export const EnableMenuItem = /*@__PURE__*/ b('EnableMenuItem', '<HMENU>ptr u32 u32 -> i32')
 /** 取子菜单（按位置）；无 → NULL（出入参同为品牌 HMENU） */
 export const GetSubMenu = /*@__PURE__*/ b('GetSubMenu', '<HMENU>ptr i32 -> <HMENU>ptr')
-/** 弹出跟踪菜单（首参收品牌 HMENU；x,y 屏幕坐标；prcRect 可 NULL）；返回菜单项命令 ID 或 0 */
-export const TrackPopupMenu = /*@__PURE__*/ b('TrackPopupMenu', '<HMENU>ptr u32 i32 i32 i32 <>ptr <BYTE>ptr -> i32')
+/** 弹出跟踪菜单（首参收品牌 HMENU；x,y 屏幕坐标；prcRect 收 DeepPartial RECT 对象 / .ptr / NULL，hdc 收品牌 HDC / NULL）；返回菜单项命令 ID 或 0 */
+export const TrackPopupMenu = /*@__PURE__*/ b('TrackPopupMenu', '<HMENU>ptr u32 i32 i32 i32 <RECT>ptr <HDC>ptr -> i32', { RECT })
 /** 创建弹出菜单；失败 → NULL（返回品牌 HMENU，配对 DestroyMenu） */
 export const CreatePopupMenu = /*@__PURE__*/ b('CreatePopupMenu', ' -> <HMENU>ptr')
 
@@ -268,10 +269,10 @@ export const MessageBox = /*@__PURE__*/ b('MessageBoxW', '<HWND>ptr <WCHAR>ptr <
  *  <WCHAR>ptr 自动编码；uType = Win32 IMAGE_* 真值（BITMAP=0、CURSOR=1、ICON=2——与 gui.ImageType
  *  枚举当前值不同），fuLoad = Win32 LR_*（LOADFROMFILE=0x10、SHARED=0x8000，系统 IDI 需 SHARED）；
  *  失败 → 0 */
-export const LoadImage = /*@__PURE__*/ b('LoadImageW', '<>ptr <WCHAR>ptr u32 i32 i32 u32 -> <>ptr')
+export const LoadImage = /*@__PURE__*/ b('LoadImageW', '<HMODULE>ptr <WCHAR>ptr u32 i32 i32 u32 -> <>ptr')
 /** LoadImage——name 传资源 ID 序数（MAKEINTRESOURCE 位 <>ptr 直传 number，如 IDI_APPLICATION=32512）；
  *  其余参数同 LoadImage */
-export const LoadImageOrdinal = /*@__PURE__*/ b('LoadImageW', '<>ptr <>ptr u32 i32 i32 u32 -> <>ptr')
+export const LoadImageOrdinal = /*@__PURE__*/ b('LoadImageW', '<HMODULE>ptr <>ptr u32 i32 i32 u32 -> <>ptr')
 
 // ============ 杂项高频 ============
 

@@ -41,3 +41,10 @@ export const GetDIBits = /*@__PURE__*/ b('GetDIBits', '<HDC>ptr <>ptr u32 u32 <B
 export const GetObject = /*@__PURE__*/ b('GetObjectW', '<>ptr i32 <BYTE>ptr -> i32')
 /** 删除内存 DC（CreateCompatibleDC 建的）；成功 → 非 0 */
 export const DeleteDC = /*@__PURE__*/ b('DeleteDC', '<HDC>ptr -> i32')
+
+/** 用画刷图案填充矩形（x/y/w/h = 目标区；rop = PATCOPY/PATINVERT 等）；成功 → 非 0 */
+export const PatBlt = /*@__PURE__*/ b('PatBlt', '<HDC>ptr i32 i32 i32 i32 u32 -> i32')
+/** 把 DIB 位图画到目标 DC（DestWidth/Height 目标尺寸，xSrc/ySrc 起始源点，NumScans 扫描行数；
+ *  lpvBits 直接收 ArrayBuffer，lpbmi 传 BITMAPINFO 缓冲、coloruse = DIB_RGB_COLORS(0)）；返回扫描行数，失败 → 0 */
+export const SetDIBitsToDevice = /*@__PURE__*/ b('SetDIBitsToDevice',
+    '<HDC>ptr i32 i32 u32 u32 i32 i32 u32 u32 <BYTE>ptr <BYTE>ptr u32 -> i32')

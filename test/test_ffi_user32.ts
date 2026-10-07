@@ -55,9 +55,9 @@ export const suite = {
 
         t.section('user32: 输入 / 光标 / 菜单')
         t.checkTrue('GetKeyState 返回整数', Number.isInteger(GetKeyState(0x1b)))
-        t.checkTrue('LoadCursor(0, IDC_ARROW=32512) 非 0', LoadCursor(0, 32512) !== 0)
+        t.checkTrue('LoadCursor(NULL, IDC_ARROW=32512) 非 0', LoadCursor(NULL, 32512) !== 0)
         // 品牌流动（正例）：LoadCursor 返回 MaybePtr<'HCURSOR'> 直接喂 SetCursor 形参（先收窄空位）
-        const arrow = LoadCursor(0, 32512)
+        const arrow = LoadCursor(NULL, 32512)
         const prevCur = arrow !== 0 ? SetCursor(arrow) : null
         t.checkTrue('SetCursor(LoadCursor(...)) 返回句柄形态',
             arrow !== 0 && (prevCur === null || typeof prevCur === 'number'))

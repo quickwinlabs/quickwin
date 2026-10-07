@@ -1,4 +1,4 @@
-import { PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import '../lib/polyfill.js'
 import * as std from 'std'
 import * as gui from 'gui'
@@ -7,6 +7,8 @@ import type { Document, Page, Pixmap } from '../vendor/mupdf-wasm/mupdf.js'
 import { assertNonNullable } from '../lib/assert.js'
 import { bind, WCHAR } from '../lib/ffi/bind.js'
 import { OPENFILENAMEW } from '../lib/windows/structs.js'
+import { GetDC, ReleaseDC } from '../lib/windows/user32.js'
+import { PatBlt, SetDIBitsToDevice } from '../lib/windows/gdi32.js'
 
 const _user32 = win.LoadLibrary('user32.dll')
 const _gdi32 = win.LoadLibrary('gdi32.dll')
@@ -16,10 +18,6 @@ type MuPdf = typeof import('../vendor/mupdf-wasm/mupdf.js')
 if (!(_user32 && _gdi32 && _comdlg32)) std.exit(0)
 
 const GetOpenFileNameW = bind('comdlg32.dll', 'GetOpenFileNameW', '<BYTE>ptr -> u32')
-const SetDIBitsToDevice = bind('gdi32.dll', 'SetDIBitsToDevice', '<>ptr i32 i32 u32 u32 i32 i32 u32 u32 <BYTE>ptr <BYTE>ptr u32 -> i32')
-const GetDC = bind('user32.dll', 'GetDC', '<>ptr -> <>ptr')
-const ReleaseDC = bind('user32.dll', 'ReleaseDC', '<>ptr <>ptr -> i32')
-const PatBlt = bind('gdi32.dll', 'PatBlt', '<>ptr i32 i32 i32 i32 u32 -> u32')
 const WHITENESS = 0x00FF0062
 
 function makeBitmapInfo(w: number, h: number): PtrArrayBuffer<any> {
@@ -122,7 +120,7 @@ function openPdfFileDialog(): string | null {
     const ofn: PtrArrayBuffer<any> & { __keep?: ArrayBuffer[] } = OPENFILENAMEW.encode({
         lStructSize: OPENFILENAMEW.size,
         hwndOwner: hwndMain,
-        hInstance: 0,
+        hInstance: NULL,
         lpstrFilter: filterWide.ptr,
         lpstrCustomFilter: 0,
         nMaxCustFilter: 0,

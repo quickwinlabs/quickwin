@@ -1,4 +1,4 @@
-import { PtrArrayBuffer } from '../../ffi/ctype.js'
+import { NULL, PtrArrayBuffer } from '../../ffi/ctype.js'
 import { forwardRef, useState, useRef } from 'react'
 import * as gui from 'gui'
 import { bind, WCHAR } from '../../ffi/bind.js'
@@ -55,7 +55,7 @@ function openFileDialog(
   const ofn = OPENFILENAMEW.encode({
     lStructSize: OPENFILENAMEW.size,
     hwndOwner: owner,
-    hInstance: 0,
+    hInstance: NULL,
     lpstrFilter: filterWide.ptr,
     lpstrCustomFilter: 0,
     nMaxCustFilter: 0,

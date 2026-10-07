@@ -1,6 +1,6 @@
 import { useRef, useEffect, Children, cloneElement } from 'react'
 import * as gui from 'gui'
-import { PtrArrayBuffer } from '../../ffi/ctype.js'
+import { NULL, PtrArrayBuffer } from '../../ffi/ctype.js'
 import { TTTOOLINFOW } from '../../windows/structs.js'
 import { SetWindowPos } from '../../windows/user32.js'
 
@@ -10,7 +10,7 @@ export interface TooltipProps {
   balloon?: boolean
 }
 
-function buildToolInfo(hTarget: number, text: string): PtrArrayBuffer<any> {
+function buildToolInfo(hTarget: gui.HWND, text: string): PtrArrayBuffer<any> {
   const size = TTTOOLINFOW.size
   const textLen = (text.length + 1) * 2
   const buf = new PtrArrayBuffer(size + textLen)
@@ -20,7 +20,7 @@ function buildToolInfo(hTarget: number, text: string): PtrArrayBuffer<any> {
     hwnd: hTarget,
     uId: hTarget,
     rect: [0, 0, 0, 0],
-    hinst: 0,
+    hinst: NULL,
     lpszText: buf.ptr + size,
     lParam: 0,
     lpReserved: 0,

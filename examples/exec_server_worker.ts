@@ -82,7 +82,7 @@ try {
 // 编码：无统一代码页转换，各程序输出原生字节（qwin= UTF-8、系统命令= GBK）。
 // 同步阻塞读循环（worker 线程自转），主线程事件循环不受影响。
 // CreatePipe 的两个 HANDLE 出参槽：一个结构两个指针字段，读回走 decode
-const PIPE_HANDLES = /* @__PURE__ */ struct('PIPE_HANDLES', { hRead: '<>ptr', hWrite: '<>ptr' })
+const PIPE_HANDLES = /* @__PURE__ */ struct('PIPE_HANDLES', { hRead: '<HFILE>ptr', hWrite: '<HFILE>ptr' })
 
 function runCmd(id: number, cmd: string): number {
     // —— 管道 + 继承设置（读端不可继承，否则 EOF 永不触发）——

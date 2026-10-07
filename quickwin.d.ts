@@ -407,7 +407,8 @@ declare module "wolfssl" {
 }
 
 declare module "win" {
-    type HMODULE = number & { readonly __label: unique symbol };
+    /** 与 ffi 的 Ptr<"HMODULE"> 同型（ptrBrand string 键）——FFI 侧 <HMODULE>ptr 位（HINSTANCE 语义）直收 */
+    type HMODULE = number & { readonly ptrBrand: "HMODULE" };
 
     function LoadLibrary(libName: string): HMODULE | null;
     function GetProcAddress(hModule: HMODULE, procName: string): number | null;
@@ -419,12 +420,13 @@ declare module "win" {
 }
 
 declare module "gui" {
-    /** 与 ffi 的 Ptr<"HWND"> 结构同型（string 键 brand，见 lib/ffi/ctype.ts）——窗口句柄可在两体系间互传 */
+    /** 与 ffi 的 Ptr<"N"> 结构同型（ptrBrand string 键，见 lib/ffi/ctype.ts）——各句柄可在
+     *  gui 模块与 FFI 绑定两体系间互认直传（原 unique symbol 键只有 HWND 打通） */
     type HWND = number & { readonly ptrBrand: "HWND" };
-    type HMENU = number & { readonly __label: unique symbol };
-    type HFONT = number & { readonly __label: unique symbol };
-    type HICON = number & { readonly __label: unique symbol };
-    type WNDPROC = number & { readonly __label: unique symbol };
+    type HMENU = number & { readonly ptrBrand: "HMENU" };
+    type HFONT = number & { readonly ptrBrand: "HFONT" };
+    type HICON = number & { readonly ptrBrand: "HICON" };
+    type WNDPROC = number & { readonly ptrBrand: "WNDPROC" };
 
     function RegisterClass(className: string, wndProc?: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): number;
     function CreateWindow(className: string, title: string, style: number, x: number, y: number, width: number, height: number, parent: HWND | null, menu: HMENU | null): HWND | null;

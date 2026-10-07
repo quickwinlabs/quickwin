@@ -71,15 +71,15 @@ export const STARTUPINFOW = /* @__PURE__ */ struct('STARTUPINFOW', {
     wShowWindow: 'u16',
     cbReserved2: 'u16',
     lpReserved2: '<>ptr',
-    hStdInput: '<>ptr',
-    hStdOutput: '<>ptr',
-    hStdError: '<>ptr',
+    hStdInput: '<HFILE>ptr',
+    hStdOutput: '<HFILE>ptr',
+    hStdError: '<HFILE>ptr',
 })
 
 /** 新进程信息（CreateProcessW 出参位：x86 16B / x64 24B）：hProcess/hThread 用完要 CloseHandle */
 export const PROCESS_INFORMATION = /* @__PURE__ */ struct('PROCESS_INFORMATION', {
-    hProcess: '<>ptr',
-    hThread: '<>ptr',
+    hProcess: '<HPROCESS>ptr',
+    hThread: '<HTHREAD>ptr',
     dwProcessId: 'u32',
     dwThreadId: 'u32',
 })
@@ -116,8 +116,8 @@ export const BITMAPFILEHEADER = /* @__PURE__ */ struct('BITMAPFILEHEADER', {
  *  （即 XP 系统上的真实 sizeof=152/88） */
 export const OPENFILENAMEW = /* @__PURE__ */ struct('OPENFILENAMEW', {
     lStructSize: 'u32',
-    hwndOwner: '<>ptr',
-    hInstance: '<>ptr',
+    hwndOwner: '<HWND>ptr',
+    hInstance: '<HMODULE>ptr',
     lpstrFilter: '<>ptr',
     lpstrCustomFilter: '<>ptr',
     nMaxCustFilter: 'u32',
@@ -142,7 +142,7 @@ export const OPENFILENAMEW = /* @__PURE__ */ struct('OPENFILENAMEW', {
 
 /** BROWSEINFOW（SHBrowseForFolderW） */
 export const BROWSEINFOW = /* @__PURE__ */ struct('BROWSEINFOW', {
-    hwndOwner: '<>ptr',
+    hwndOwner: '<HWND>ptr',
     pidlRoot: '<>ptr',
     pszDisplayName: '<>ptr',
     lpszTitle: '<>ptr',
@@ -158,7 +158,7 @@ export const BROWSEINFOW = /* @__PURE__ */ struct('BROWSEINFOW', {
 // 用 ffi-struct 定义以复现 MSVC/嵌套结构的“尾 padding 传染”（内嵌 NMHDR 占满 24/12 字节）。
 // 各通知结构把它作为首字段嵌套（NMHDR.__struct），字段偏移由 struct 按进程位宽推出。
 export const NMHDR = /* @__PURE__ */ struct('NMHDR', {
-    hwndFrom: '<>ptr',
+    hwndFrom: '<HWND>ptr',
     idFrom: '<>ptr',
     code: 'i32',
 })
@@ -251,10 +251,10 @@ export const TCITEMW = /* @__PURE__ */ struct('TCITEMW', {
 export const TTTOOLINFOW = /* @__PURE__ */ struct('TTTOOLINFOW', {
     cbSize: 'u32',
     uFlags: 'u32',
-    hwnd: '<>ptr',
+    hwnd: '<HWND>ptr',
     uId: '<>ptr',
     rect: 'i32[4]',
-    hinst: '<>ptr',
+    hinst: '<HMODULE>ptr',
     lpszText: '<>ptr',
     lParam: '<>ptr',
     lpReserved: '<>ptr', // WinXP+ 追加字段（系统 sizeof 含之）

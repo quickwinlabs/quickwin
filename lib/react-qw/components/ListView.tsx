@@ -1,4 +1,4 @@
-import type { Ptr, PtrArrayBuffer } from '../../ffi/ctype.js'
+import { NULL, type Ptr, type PtrArrayBuffer } from '../../ffi/ctype.js'
 import { forwardRef, useRef, useEffect, type ForwardedRef } from 'react'
 import * as gui from 'gui'
 import { LvItemFlag, LvItemState, LvColumnMask } from 'gui'
@@ -309,7 +309,7 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
           const { iItem, iSubItem } = LVHITTESTINFO.decode(hit)
           const style = resolveCellStyle(columns, data, iItem, iSubItem)
           if (!style || style.cursor === undefined) return
-          const hc = LoadCursor(0, style.cursor)
+          const hc = LoadCursor(NULL, style.cursor)
           if (hc) {
             SetCursor(hc)
             return 1
