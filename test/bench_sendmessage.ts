@@ -16,7 +16,6 @@ const N = 500_000
 const N_S2 = 50_000
 const ROUNDS = 5
 const ROUNDS_S2 = 3
-const WM_NULL = 0x0000
 const WM_SETTEXT = 0x000c
 const WM_GETTEXT = 0x000d
 
@@ -41,17 +40,7 @@ const fSM = SendMessage
 const TEXT = 'bench'
 const buf = new PtrArrayBuffer<'WCHAR'>(64)
 
-// —— S1：WM_NULL 纯数字 lParam，最纯的入口链开销 ——
-function s1g(): number {
-    const t0 = Date.now()
-    for (let i = 0; i < N; i++) gSM(win, WM_NULL, 0, 0)
-    return Date.now() - t0
-}
-function s1f(): number {
-    const t0 = Date.now()
-    for (let i = 0; i < N; i++) fSM(win, WM_NULL, 0, 0)
-    return Date.now() - t0
-}
+// —— S1（WM_NULL 纯数字，最纯入口链开销）：实现已随首轮跑数移除，数据见 .agents/SENDMESSAGE_BENCH.md ——
 
 // —— S2：WM_SETTEXT 字符串 lParam（任务 3 多态点的真实成本形态）：
 //    gui 侧 C 内编码；FFI 侧调用点 WCHAR.encode 在循环内（迁移后的真实写法）——
