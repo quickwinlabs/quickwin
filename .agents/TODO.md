@@ -12,6 +12,7 @@
 - [ ] `test_url.ts` import cleanup: direct `import '../lib/url.js'` instead of polyfill
 - [ ] `test_fetch_wasm.ts`: integrate into Makefile or remove
 - [ ] Add `"type": "module"` to `package.json` to suppress Node.js warning
+- [ ] react-qw 的 React 错误被静默吞掉：`lib/react-qw/index.ts` `createRoot` 里 `reconciler.createContainer(...)` 第 7/8/9 参 `onUncaughtError`/`onCaughtError`/`onRecoverableError` 全传 `noop`，React 渲染期致命错误（放弃整树 → 白屏）无任何输出；且 React 错误重抛走微任务，qwin 对 Promise 回调里的异常也静默（实测 timer 回调 throw 打 stderr、微任务 throw 零输出），双通道都看不见。gallery 白屏排障的最大盲点。方案：这三个回调改传 `console.log('[React uncaught]', error, error.stack, info)`，加最小用例（render 里抛错）验证 stdout 能看到栈
 
 ## 低优先级
 - [x] 系统性优化 FFI：libffi 已移出构建（汇编桩，见 `.agents/REMOVE_LIBFFI_PLAN.md`）；`lib/ffi/bind.ts` 的 `bind()/bindLib()` DSL 以签名串声明类型/ABI，隐藏 `ffiCall` 参数类型数组与句柄宽度差异；`ListView.tsx`、`pdf_preview2.ts`、`PdfCanvas.tsx`、`PathPicker.tsx`、`pdf_viewer.tsx`、`setres.ts`、`test_ffi.ts` 已全部迁到 `bind()`，旧 `ffiCall`/`FFI_TYPE_*` 导出已删除
