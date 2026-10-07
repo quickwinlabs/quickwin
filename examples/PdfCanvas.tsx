@@ -1,3 +1,4 @@
+import { PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import { forwardRef, useRef } from 'react'
 import * as gui from 'gui'
 import { bind } from '../lib/ffi/bind.js'
@@ -7,8 +8,8 @@ const GetDC_ = bind('user32.dll', 'GetDC', '<>ptr -> <>ptr')
 const ReleaseDC_ = bind('user32.dll', 'ReleaseDC', '<>ptr <>ptr -> i32')
 const SetDIBitsToDevice_ = bind('gdi32.dll', 'SetDIBitsToDevice', '<>ptr i32 i32 u32 u32 i32 i32 u32 u32 <BYTE>ptr <BYTE>ptr u32 -> i32')
 
-function makeBitmapInfo(w: number, h: number): ArrayBuffer {
-  const bmi = new ArrayBuffer(40)
+function makeBitmapInfo(w: number, h: number): PtrArrayBuffer<any> {
+  const bmi = new PtrArrayBuffer(40)
   const bv = new DataView(bmi)
   bv.setUint32(0, 40, true)
   bv.setInt32(4, w, true)
@@ -19,7 +20,7 @@ function makeBitmapInfo(w: number, h: number): ArrayBuffer {
 }
 
 export interface PdfCanvasProps {
-  pixmap?: { data: ArrayBuffer; w: number; h: number }
+  pixmap?: { data: PtrArrayBuffer<any>; w: number; h: number }
   style?: WStyle
 }
 

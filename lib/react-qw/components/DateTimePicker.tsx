@@ -1,27 +1,11 @@
+import type { Ptr, PtrArrayBuffer } from '../../ffi/ctype.js'
 import { forwardRef, useRef, useEffect, useState, type Ref } from 'react'
 import * as gui from 'gui'
-import * as ffi from 'ffi'
-import { struct } from '../../ffi/struct.js'
 import { InvalidateRect } from '../../windows/user32.js'
 import { NULL } from '../../ffi/ctype.js'
-import { NMHDR, nmCode } from '../nmhdr.js'
+import { SYSTEMTIME, NMDATETIMECHANGE } from '../../windows/structs.js'
+import { nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
-
-const SYSTEMTIME = struct({
-  wYear: 'u16',
-  wMonth: 'u16',
-  wDayOfWeek: 'u16',
-  wDay: 'u16',
-  wHour: 'u16',
-  wMinute: 'u16',
-  wSecond: 'u16',
-  wMilliseconds: 'u16',
-})
-const NMDATETIMECHANGE = struct({
-  hdr: NMHDR.__struct,
-  dwFlags: 'u32',
-  st: SYSTEMTIME.__struct,
-})
 
 export interface DateTimePickerProps {
   value?: Date | null
@@ -33,11 +17,8 @@ export interface DateTimePickerProps {
   style?: WStyle
 }
 
-function bufPtr(buf: ArrayBuffer): number {
-  return ffi.bufferPtr(buf)
-}
 
-function dateToSysTimeBuf(d: Date): ArrayBuffer {
+function dateToSysTimeBuf(d: Date): PtrArrayBuffer<any> {
   // wDayOfWeek 设置时被忽略，缺省跳过 = 0
   return SYSTEMTIME.encode({
     wYear: d.getFullYear(),
@@ -73,7 +54,7 @@ const DateTimePicker = forwardRef(function DateTimePicker(
     const d = effectiveDate
     if (d) {
       const buf = dateToSysTimeBuf(d)
-      gui.SendMessage(h, gui.DtMsg.SETSYSTEMTIME, gui.DtFlag.GDT_VALID, bufPtr(buf))
+      gui.SendMessage(h, gui.DtMsg.SETSYSTEMTIME, gui.DtFlag.GDT_VALID, buf.ptr)
     } else {
       gui.SendMessage(h, gui.DtMsg.SETSYSTEMTIME, gui.DtFlag.GDT_NONE, 0)
     }
@@ -102,7 +83,7 @@ const DateTimePicker = forwardRef(function DateTimePicker(
           const code = nmCode(e.lParam)
           if (code === gui.DtNotifyCode.DATETIMECHANGE) {
             // NMDATETIMECHANGE: NMHDR + DWORD dwFlags + SYSTEMTIME st
-            const { dwFlags, st } = NMDATETIMECHANGE.decode(e.lParam)
+            const { dwFlags, st } = NMDATETIMECHANGE.decode(e.lParam as Ptr<'NMDATETIMECHANGE'>)
             if (dwFlags === gui.DtFlag.GDT_NONE) {
               if (!isControlled) setInternalDate(null)
               onChangeRef.current?.(null)

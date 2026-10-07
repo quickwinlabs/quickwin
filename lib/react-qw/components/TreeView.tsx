@@ -1,28 +1,9 @@
 import { forwardRef, useRef, useEffect, useState } from 'react'
 import * as gui from 'gui'
-import * as ffi from 'ffi'
 import { WCHAR } from '../../ffi/bind.js'
-import { struct } from '../../ffi/struct.js'
+import { TVITEM, TVINSERTSTRUCT } from '../../windows/structs.js'
 import { nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
-
-const TVITEM = struct({
-    mask: 'u32',
-    hItem: '<>ptr',
-    state: 'u32',
-    stateMask: 'u32',
-    pszText: '<>ptr',
-    cchTextMax: 'i32',
-    iImage: 'i32',
-    iSelectedImage: 'i32',
-    cChildren: 'i32',
-    lParam: '<>ptr',
-})
-const TVINSERTSTRUCT = struct({
-    hParent: '<>ptr',
-    hInsertAfter: '<>ptr',
-    item: TVITEM.__struct,
-})
 
 export interface TreeNode<D = unknown> {
   key?: string
@@ -38,9 +19,6 @@ export interface TreeViewProps<D> {
   style?: WStyle
 }
 
-function bufPtr(buf: ArrayBuffer): number {
-  return ffi.bufferPtr(buf)
-}
 
 function buildTvItem(textPtr: number, cChildren: number): ArrayBuffer {
     let mask = gui.TvIfFlag.TEXT
@@ -59,10 +37,10 @@ function insertItems(
   for (const node of nodes) {
     const cChildren = node.children && node.children.length > 0 ? 1 : 0
     const textBuf = WCHAR.encode(node.label)
-    const itemBuf = buildTvItem(bufPtr(textBuf), cChildren)
+    const itemBuf = buildTvItem(textBuf.ptr, cChildren)
     const item = TVITEM.decode(itemBuf)
     const tvins = TVINSERTSTRUCT.encode({ hParent: parentHandle, hInsertAfter: gui.TvInsertAfter.ROOT, item })
-    const hItem = gui.SendMessage(hTree, gui.TvMsg.INSERTITEMW, 0, bufPtr(tvins))
+    const hItem = gui.SendMessage(hTree, gui.TvMsg.INSERTITEMW, 0, tvins.ptr)
     hItemMap.set(hItem, node)
     if (node.key) keyMap.set(node.key, hItem)
     if (node.children && node.children.length > 0) {

@@ -1,4 +1,4 @@
-import * as ffi from 'ffi'
+import { PtrArrayBuffer } from './ffi/ctype.js'
 import * as gui from 'gui'
 import { bindLib } from './ffi/bind.js'
 import { DrawText, GetDC, ReleaseDC } from './windows/user32.js'
@@ -18,8 +18,8 @@ export function measureText(hdc: number, text: string, maxWidth: number): { widt
 }
 
 export function getButtonIdealSize(hwnd: gui.HWND): { width: number; height: number } {
-    const size = new ArrayBuffer(8)
-    gui.SendMessage(hwnd, gui.ButtonExtMsg.GETIDEALSIZE, 0, ffi.bufferPtr(size))
+    const size = new PtrArrayBuffer(8)
+    gui.SendMessage(hwnd, gui.ButtonExtMsg.GETIDEALSIZE, 0, size.ptr)
     const dv = new DataView(size)
     return { width: dv.getInt32(0, true), height: dv.getInt32(4, true) }
 }

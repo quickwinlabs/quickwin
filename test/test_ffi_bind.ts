@@ -5,7 +5,7 @@ import * as os from 'os'
 import { Tester } from './test_helper.js'
 import { bind, bindLib, closure, WCHAR, BYTE, type CodecMap } from '../lib/ffi/bind.js'
 import { struct } from '../lib/ffi/struct.js'
-import { NULL, type MaybePtr, Ptr, readScalar, writeScalar, PTR_SIZE } from '../lib/ffi/ctype.js'
+import { NULL, type MaybePtr, Ptr, PtrArrayBuffer, readScalar, writeScalar, PTR_SIZE } from '../lib/ffi/ctype.js'
 
 // 编译期断言工具（仅类型层，运行时无开销）
 type Equal<A, B> = (<G>() => G extends A ? 1 : 2) extends (<G>() => G extends B ? 1 : 2) ? true : false
@@ -44,8 +44,8 @@ function packArgs(kinds: string[], vals: (number | bigint)[]): ArrayBuffer {
 }
 
 // ASCII 字符串 ↔ ArrayBuffer（供 msvcrt _strtoui64/_i64toa 类函数用）
-function strToBuf(s: string): ArrayBuffer {
-    const b = new ArrayBuffer(s.length + 1)
+function strToBuf(s: string): PtrArrayBuffer<any> {
+    const b = new PtrArrayBuffer(s.length + 1)
     const u8 = new Uint8Array(b)
     for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i)
     return b
@@ -83,7 +83,7 @@ export const suite = {
             DrawTextW: '<>ptr <WCHAR>ptr i32 <BYTE>ptr i32 -> i32',
             ReleaseDC: '<>ptr <>ptr -> i32',
         })
-        const rect = new ArrayBuffer(16)
+        const rect = new PtrArrayBuffer(16)
         const dv = new DataView(rect)
         dv.setInt32(8, 500, true)
         const lines = user32.DrawTextW(dc, 'hello ffi-bind', -1, rect, gui.DrawTextFlag.CALCRECT)
@@ -138,12 +138,16 @@ export const suite = {
 
         t.section('kind strictness: <>ptr / <BYTE>ptr / <WCHAR>ptr')
         const setRectB = bind('user32.dll', 'SetRect', '<BYTE>ptr i32 i32 i32 i32 -> i32')
-        const rb = new ArrayBuffer(16)
+        const rb = new PtrArrayBuffer(16)
         const okR = setRectB(rb, 1, 2, 3, 4)
-        t.checkTrue('<BYTE>ptr accepts ArrayBuffer', okR !== 0)
+        t.checkTrue('<BYTE>ptr accepts PtrArrayBuffer', okR !== 0)
         const rbv = new DataView(rb)
         t.check('<BYTE>ptr writes through (left)', 1, rbv.getInt32(0, true))
         t.check('<BYTE>ptr writes through (bottom)', 4, rbv.getInt32(12, true))
+        // 类型层已挡住裸 ArrayBuffer；动态路径同样 fail-loud（BYTE.encode 的 instanceof 检查）
+        let plainErr: unknown = null
+        try { setRectB(new ArrayBuffer(16) as never, 1, 2, 3, 4) } catch (e) { plainErr = e }
+        t.checkTrue('<BYTE>ptr rejects plain ArrayBuffer (fail-loud)', String(plainErr).includes('PtrArrayBuffer'))
 
         let errPtr = ''
         try {
@@ -166,7 +170,7 @@ export const suite = {
         expectType<Equal<ParamsOf<'int -> i32'>[0], number>>()
         expectType<Equal<ParamsOf<'DWORD -> i32'>[0], number>>()
         expectType<Equal<ParamsOf<'u64 -> i32'>[0], bigint>>()
-        expectType<Equal<ParamsOf<'<BYTE>ptr -> i32'>[0], ArrayBuffer | MaybePtr<"BYTE">>>()
+        expectType<Equal<ParamsOf<'<BYTE>ptr -> i32'>[0], PtrArrayBuffer<any> | MaybePtr<"BYTE">>>()
         expectType<Equal<ParamsOf<'LPCWSTR -> i32'>[0], string | MaybePtr<"WCHAR">>>()
         expectType<Equal<RetOf<'<>ptr -> ptr'>, never>>()
         expectType<Equal<RetOf<'<>ptr -> i3z'>, never>>()
@@ -185,14 +189,14 @@ export const suite = {
         t.check('u64 return 2^53+1', 9007199254740993n, u64Prec)
 
         const i64toa = bind('msvcrt.dll', '_i64toa', 'i64 <BYTE>ptr i32 -> <>ptr')
-        const outI = new ArrayBuffer(64)
+        const outI = new PtrArrayBuffer(64)
         i64toa(-9223372036854775808n, outI, 10)
         t.check('i64 arg -2^63 toa', '-9223372036854775808', bufToString(outI))
         i64toa(9007199254740993n, outI, 10)
         t.check('i64 arg 2^53+1 toa', '9007199254740993', bufToString(outI))
 
         const ui64toa = bind('msvcrt.dll', '_ui64toa', 'u64 <BYTE>ptr i32 -> <>ptr')
-        const outU = new ArrayBuffer(64)
+        const outU = new PtrArrayBuffer(64)
         ui64toa(18446744073709551615n, outU, 10)
         t.check('u64 arg 2^64-1 toa', '18446744073709551615', bufToString(outU))
 
@@ -207,7 +211,7 @@ export const suite = {
         t.section('struct layout <NAME>ptr (explicit layouts; param encode + branded ptr return)')
         // 内建 <BYTE>ptr/<WCHAR>ptr 无需 layouts；用户 struct 由 ffi-struct 的
         // struct() 定义、显式传入（import 谁传谁，未用布局可被 tree-shake）。
-        const LOGBRUSH = struct({
+        const LOGBRUSH = struct('LOGBRUSH', {
             lbStyle: 'u32',
             lbColor: 'u32',
             lbHatch: '<>ptr',
@@ -229,11 +233,11 @@ export const suite = {
         if (brushL) t.checkTrue('bindLib DeleteObject succeeds', gdi32Lib.DeleteObject(brushL) !== 0)
 
         // 嵌套 struct（LOGPEN 内含 POINT）验证 ShapeOf 递归 + 子结构写入
-        const POINT = struct({
+        const POINT = struct('POINT', {
             x: 'i32',
             y: 'i32',
         })
-        const LOGPEN = struct({
+        const LOGPEN = struct('LOGPEN', {
             lopnStyle: 'u32',
             lopnWidth: POINT.__struct,
             lopnColor: 'u32',
@@ -279,7 +283,7 @@ export const suite = {
         t.checkTrue('RECT.decode(encode()) decodes out-param', rectV.right > rectV.left && rectV.bottom > rectV.top)
 
         // 成员 '<RECT>ptr'：decode 得到 Ptr<'RECT'>，可直接喂 <RECT>ptr 形参（品牌在类型层流动）。
-        const RECTPTR = struct({r: '<RECT>ptr'})
+        const RECTPTR = struct('RECTPTR', {r: '<RECT>ptr'})
         const box = RECTPTR.decode(RECTPTR.encode({ r: rectOut.ptr }))
         t.checkTrue('GetWindowRect(hwnd, member RECT*) succeeds', box.r !== 0 && getWindowRect(desktop, box.r) !== 0)
         const rectThroughMember = RECT.decode(rectOut)
@@ -289,7 +293,7 @@ export const suite = {
         // 返回位 <NAME>ptr → MaybePtr<NAME>（NULL|Ptr，0 保真，只读指针，品牌在类型层）。
         // 该品牌指针可直接喂给另一函数的 <NAME>ptr 形参（裸地址透传，不重编码）。
         // 链条：localtime(&t) 返回 struct tm* → asctime(tm*) 消费之。
-        const TM = struct({
+        const TM = struct('TM', {
             tm_sec: 'i32',
             tm_min: 'i32',
             tm_hour: 'i32',
@@ -302,7 +306,7 @@ export const suite = {
         })
         const localtime = bind('msvcrt.dll', 'localtime', '<BYTE>ptr -> <TM>ptr')
         const asctime = bind('msvcrt.dll', 'asctime', '<TM>ptr -> <>ptr', { TM })
-        const tbuf = new ArrayBuffer(8)   // time_t=0（32/64 位 time_t 都读起始字节）
+        const tbuf = new PtrArrayBuffer(8)   // time_t=0（32/64 位 time_t 都读起始字节）
         const tm = localtime(tbuf)
         t.checkTrue('localtime -> <TM>ptr returns branded pointer', tm !== 0)
         const asc = tm !== 0 ? readCStr(asctime(tm)) : ''
@@ -347,16 +351,16 @@ export const suite = {
         t.checkTrue('GetCommandLineW auto-decodes builtin <WCHAR>ptr to string',
             typeof cl === 'string' && cl.length > 0)
 
-        // WCHAR alloc/decode 往返：{ buf, ptr } 预分配 + 手填 UTF-16LE + 双态读回
+        // WCHAR alloc/decode 往返：PtrArrayBuffer 预分配 + 手填 UTF-16LE + 双态读回
         const walloc = WCHAR.alloc(8)
-        const wdv = new DataView(walloc.buf)
+        const wdv = new DataView(walloc)
         wdv.setUint16(0, 'h'.charCodeAt(0), true)
         wdv.setUint16(2, 'i'.charCodeAt(0), true)
         wdv.setUint16(4, 0, true)
-        t.check('WCHAR.alloc(8).buf = 16 bytes', 16, walloc.buf.byteLength)
+        t.check('WCHAR.alloc(8) = 16 bytes', 16, walloc.byteLength)
         t.check('WCHAR.decode(ptr) roundtrip', 'hi', WCHAR.decode(walloc.ptr))
-        t.check('WCHAR.decode(ArrayBuffer) roundtrip', 'hi', WCHAR.decode(walloc.buf))
-        t.check('BYTE.alloc(12).buf = 12 bytes', 12, BYTE.alloc(12).buf.byteLength)
+        t.check('WCHAR.decode(ArrayBuffer) roundtrip', 'hi', WCHAR.decode(walloc))
+        t.check('BYTE.alloc(12) = 12 bytes', 12, BYTE.alloc(12).byteLength)
 
         // out-only codec（只声明 decode）走入参位 → 编码期 fail-fast（不触 native 调用）
         const asctimeOutOnly = bind('msvcrt.dll', 'asctime', '<TM>ptr -> <>ptr',
@@ -451,11 +455,13 @@ export const suite = {
 
         t.section('closures: qsort (cdecl, msvcrt)')
         const qsort = bind('msvcrt.dll', 'qsort', '<BYTE>ptr <>ptr <>ptr <>ptr -> void')
-        const arr = new Uint32Array([5, 3, 8, 1])
+        const arrB = new PtrArrayBuffer(16)
+        const arr = new Uint32Array(arrB)
+        arr.set([5, 3, 8, 1])
         const readI32 = (p: number): number =>
             (ffi.readByte(p) | (ffi.readByte(p + 1) << 8) | (ffi.readByte(p + 2) << 16) | (ffi.readByte(p + 3) << 24))
         const cmp = closure('<>ptr <>ptr -> i32', (a, b) => readI32(a as number) - readI32(b as number), { stdcall: false })
-        qsort(arr.buffer, 4, 4, cmp.ptr)
+        qsort(arrB, 4, 4, cmp.ptr)
         t.check('qsort [0]', 1, arr[0])
         t.check('qsort [1]', 3, arr[1])
         t.check('qsort [2]', 5, arr[2])

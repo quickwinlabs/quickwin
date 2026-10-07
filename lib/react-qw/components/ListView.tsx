@@ -1,13 +1,16 @@
+import type { Ptr, PtrArrayBuffer } from '../../ffi/ctype.js'
 import { forwardRef, useRef, useEffect, type ForwardedRef } from 'react'
 import * as gui from 'gui'
 import { LvItemFlag, LvItemState, LvColumnMask } from 'gui'
 import * as ffi from 'ffi'
 import { WCHAR } from '../../ffi/bind.js'
-import { struct } from '../../ffi/struct.js'
-import { NMHDR, nmCode } from '../nmhdr.js'
+import { nmCode } from '../nmhdr.js'
 import { LoadCursor, SetCursor, ScreenToClient, GetCursorPos } from '../../windows/user32.js'
 import { CreateFontIndirect, DeleteObject, GetObject, SelectObject } from '../../windows/gdi32.js'
-import { LOGFONTW, POINT } from '../../windows/structs.js'
+import {
+  LOGFONTW, POINT, NMCUSTOMDRAW, NMLVCUSTOMDRAW, NMLISTVIEW,
+  LVHITTESTINFO, LVITEMW, LVCOLUMNW,
+} from '../../windows/structs.js'
 import type { WStyle } from '../jsx.d.ts'
 
 export function makeColorBlock(size: number, bgra: number): ArrayBuffer {
@@ -32,89 +35,12 @@ function writeU32(ptr: number, offset: number, v: number): void {
   ffi.writeByte(ptr + offset + 3, (v >> 24) & 0xFF)
 }
 
-function bufPtr(buf: ArrayBuffer): number {
-  return ffi.bufferPtr(buf)
-}
 
 const LV_WS = gui.WindowStyle.VISIBLE | gui.WindowStyle.BORDER | gui.WindowStyle.VSCROLL | gui.WindowStyle.HSCROLL
   | gui.ListViewStyle.REPORT | gui.ListViewStyle.SINGLESEL
 
-// ListView 通知结构（嵌套 NMHDR 以复现 MSVC 尾 padding 传染，offsetOf 保证 ia32/x64 均正确）。
-const NMCUSTOMDRAW = struct({
-  hdr: NMHDR.__struct,
-  dwDrawStage: 'u32',
-  hdc: '<HDC>ptr',
-  rc: 'i32[4]',
-  dwItemSpec: '<>ptr',
-  uItemState: 'u32',
-  lItemlParam: '<>ptr',
-})
-const NMLVCUSTOMDRAW = struct({
-  hdr: NMHDR.__struct,
-  dwDrawStage: 'u32',
-  hdc: '<HDC>ptr',
-  rc: 'i32[4]',
-  dwItemSpec: '<>ptr',
-  uItemState: 'u32',
-  lItemlParam: '<>ptr',
-  clrText: 'u32',
-  clrTextBk: 'u32',
-  iSubItem: 'i32',
-  dwItemType: 'u32',
-})
-// NMLISTVIEW / NMITEMACTIVATE 前缀字段布局一致（iItem..uChanged）
-const NMLISTVIEW = struct({
-  hdr: NMHDR.__struct,
-  iItem: 'i32',
-  iSubItem: 'i32',
-  uNewState: 'u32',
-  uOldState: 'u32',
-  uChanged: 'u32',
-  ptAction: 'i32[2]',
-  lParam: '<>ptr',
-})
 const CD_CLRTEXT = NMLVCUSTOMDRAW.offsetOf('clrText')
 const CD_CLRTEXTBK = NMLVCUSTOMDRAW.offsetOf('clrTextBk')
-// LVM_SUBITEMHITTEST 的 LVHITTESTINFO（24B）：pt 是入参，iItem/iSubItem 是出参（入参先置 -1）
-const LVHITTESTINFO = struct({
-  pt: 'i32[2]',
-  flags: 'u32',
-  iItem: 'i32',
-  iSubItem: 'i32',
-  iGroup: 'i32',
-})
-
-const LVITEMW = struct({
-  mask: 'u32',
-  iItem: 'i32',
-  iSubItem: 'i32',
-  state: 'u32',
-  stateMask: 'u32',
-  pszText: '<>ptr',
-  cchTextMax: 'i32',
-  iImage: 'i32',
-  lParam: '<>ptr',
-  iIndent: 'i32',
-  iGroupId: 'i32',
-  cColumns: 'u32',
-  puColumns: '<>ptr',
-  piColFmt: '<>ptr',
-  iGroup: 'i32',
-})
-
-const LVCOLUMNW = struct({
-  mask: 'u32',
-  fmt: 'i32',
-  cx: 'i32',
-  pszText: '<>ptr',
-  cchTextMax: 'i32',
-  iSubItem: 'i32',
-  iImage: 'i32',
-  iOrder: 'i32',
-  cxMin: 'i32',
-  cxDefault: 'i32',
-  cxIdeal: 'i32',
-})
 
 const fontCache = new Map<string, number>()
 
@@ -144,12 +70,12 @@ function getCellFont(hwnd: gui.HWND, style: CellStyle): number | null {
 }
 
 function handleCustomDraw<D>(lParam: number, columns: Column<D>[], data: D[], hwnd: gui.HWND | null): number {
-  const { dwDrawStage: stage } = NMCUSTOMDRAW.decode(lParam)
+  const { dwDrawStage: stage } = NMCUSTOMDRAW.decode(lParam as Ptr<'NMCUSTOMDRAW'>)
   if (stage === gui.CustomDrawStage.PREPAINT) return gui.CustomDrawFlag.NOTIFYITEMDRAW
   if (stage === gui.CustomDrawStage.ITEMPREPAINT) return gui.CustomDrawFlag.NOTIFYSUBITEMDRAW
   if (stage === gui.CustomDrawStage.SUBITEMPREPAINT) {
     // 只有子项阶段才按 NMLVCUSTOMDRAW（更大的结构）读，前面的阶段只读了 NMCUSTOMDRAW 的前缀
-    const cd = NMLVCUSTOMDRAW.decode(lParam)
+    const cd = NMLVCUSTOMDRAW.decode(lParam as Ptr<'NMLVCUSTOMDRAW'>)
     const style = resolveCellStyle(columns, data, cd.dwItemSpec, cd.iSubItem)
     if (!style) return gui.CustomDrawFlag.DODEFAULT
 
@@ -220,15 +146,15 @@ function resolveCellStyle<D>(columns: Column<D>[], data: D[], row: number, colIn
   return style || undefined
 }
 
-function makeLVItem(i: number, sub: number, text: string, image?: number): ArrayBuffer {
+function makeLVItem(i: number, sub: number, text: string, image?: number): PtrArrayBuffer<any> & { __textBuf?: ArrayBuffer } {
   const textBuf = WCHAR.encode(text)
-  const b: ArrayBuffer & { __textBuf?: ArrayBuffer } = LVITEMW.encode({
+  const b: PtrArrayBuffer<any> & { __textBuf?: ArrayBuffer } = LVITEMW.encode({
     mask: LvItemFlag.TEXT | (image !== undefined ? LvItemFlag.IMAGE : 0),
     iItem: i,
     iSubItem: sub,
     state: 0,
     stateMask: 0,
-    pszText: bufPtr(textBuf),
+    pszText: textBuf.ptr,
     cchTextMax: 0,
     iImage: image ?? 0,
     lParam: 0,
@@ -292,11 +218,11 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
     const n = columns.length
     for (let j = 0; j < n; j++) {
       const titleBuf = WCHAR.encode(columns[j]!.name)
-      const lvc: ArrayBuffer & { __titleBuf?: ArrayBuffer } = LVCOLUMNW.encode({
+      const lvc: PtrArrayBuffer<any> & { __titleBuf?: ArrayBuffer } = LVCOLUMNW.encode({
         mask: LvColumnMask.TEXT | LvColumnMask.WIDTH | LvColumnMask.FORMAT,
         fmt: alignToFmt(columns[j]!.align),
         cx: columns[j]!.width ?? 100,
-        pszText: bufPtr(titleBuf),
+        pszText: titleBuf.ptr,
         cchTextMax: 0,
         iSubItem: j,
         iImage: 0,
@@ -306,7 +232,7 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
         cxIdeal: 0,
       })
       lvc.__titleBuf = titleBuf
-      gui.SendMessage(h, gui.LvMsg.INSERTCOLUMNW, j, bufPtr(lvc))
+      gui.SendMessage(h, gui.LvMsg.INSERTCOLUMNW, j, lvc.ptr)
     }
   }, [columns])
 
@@ -321,11 +247,11 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
       const record = data[i]!
       const img = getIcon ? getIcon(record, i) : undefined
       const itemBuf = makeLVItem(i, 0, cellText(record, columns[0]!, i), img)
-      gui.SendMessage(h, gui.LvMsg.INSERTITEMW, 0, bufPtr(itemBuf))
+      gui.SendMessage(h, gui.LvMsg.INSERTITEMW, 0, itemBuf.ptr)
 
       for (let j = 1; j < nCols; j++) {
         const subBuf = makeLVItem(i, j, cellText(record, columns[j]!, i))
-        gui.SendMessage(h, gui.LvMsg.SETITEMW, 0, bufPtr(subBuf))
+        gui.SendMessage(h, gui.LvMsg.SETITEMW, 0, subBuf.ptr)
       }
     }
 
@@ -348,11 +274,11 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
             return handleCustomDraw(e.lParam, columns, data, lvRef.current)
           }
           if (code === gui.LvNotifyCode.ITEMCHANGING) {
-            const { uNewState, uOldState } = NMLISTVIEW.decode(e.lParam)
+            const { uNewState, uOldState } = NMLISTVIEW.decode(e.lParam as Ptr<'NMLISTVIEW'>)
             if ((uNewState & LvItemState.SELECTED) !== (uOldState & LvItemState.SELECTED)) return 1
           }
           if (code === gui.LvNotifyCode.CLICK) {
-            const { iItem, iSubItem } = NMLISTVIEW.decode(e.lParam)
+            const { iItem, iSubItem } = NMLISTVIEW.decode(e.lParam as Ptr<'NMLISTVIEW'>)
             const col = columns[iSubItem]
             const record = data[iItem]
             if (col?.onCellClick && record !== undefined) col.onCellClick(record, iItem)

@@ -3,7 +3,7 @@ import * as os from 'os'
 import * as std from 'std'
 import * as win from 'win'
 import '../text-codec.js'
-import { type C_BasicType, C_BasicType_No_Void, C_BasicType_Token, C_BasicType_Token_No_Void, cTokenToType, isCPtrToken, ArgJsTypeOfToken, RetJsTypeOfToken, normToken, PTR_SIZE, ptrName, type Ptr, readScalar, writeSlot } from './ctype.js'
+import { type C_BasicType, C_BasicType_No_Void, C_BasicType_Token, C_BasicType_Token_No_Void, cTokenToType, isCPtrToken, ArgJsTypeOfToken, RetJsTypeOfToken, normToken, PTR_SIZE, ptrName, type Ptr, readScalar, writeSlot, PtrArrayBuffer } from './ctype.js'
 
 // 形状刻意是「方法」而非裸函数：ffi-struct 的 struct()/union() 结果（StructDef）
 // 结构上即满足 encode 重载（无 buf 新建带品牌 .ptr 的 PtrArrayBuffer / 带 buf 写入既有
@@ -14,18 +14,20 @@ import { type C_BasicType, C_BasicType_No_Void, C_BasicType_Token, C_BasicType_T
 // decode 双态单参：native 品牌指针（返回位分派 / bufferPtr）逐字节读、调用方持有的
 // ArrayBuffer 直读。刻意没有 offset——out 参数恒从 buffer 起点读，嵌套偏移由布局
 // 字段（doDecode 的 base）承担，顶层再收 offset 只会掩盖"读错位置"这类错误。
-// 内建 WCHAR/BYTE 的 alloc 统一返回 { buf, ptr }：buf 喂 decode 直读，ptr 带品牌直接喂
-// <N>ptr 形参。
+// 内建 WCHAR/BYTE 的 encode/alloc 一律返回 PtrArrayBuffer：既是 decode 的直读 buffer，
+// .ptr 又带品牌直接喂 <N>ptr 形参——不再有 { buf, ptr } 结构包装。
 type Codec<N extends string = string, V = unknown, T = unknown> = {
-    encode?(v: V, buf?: ArrayBuffer, offset?: number): ArrayBuffer
+    encode?(v: V, buf?: PtrArrayBuffer<any>, offset?: number): PtrArrayBuffer<any>
     decode?(p: Ptr<N>| ArrayBuffer): V
-    alloc?(a: T): { buf: ArrayBuffer; ptr: Ptr<N> }
+    alloc?(a: T): PtrArrayBuffer<N>
 }
 // 约束层三件与 StructDef 形状一致，def 可整体透传；提取层按键存在性走（见下）。
+// 类型层硬约束：encode/alloc 只返回 PtrArrayBuffer——裸 ArrayBuffer 出不了 codec
+// （callPacked 参数位统一取 .ptr，调用方拿到的也是 .ptr，.buf 词汇从 codec 出口消失）。
 export type CodecMap = Record<string, {
-    encode?(v: any, buf?: ArrayBuffer, offset?: number): ArrayBuffer
+    encode?(v: any, buf?: PtrArrayBuffer<any>, offset?: number): PtrArrayBuffer<any>
     decode?(p: any): any
-    alloc?(a: any): { buf: ArrayBuffer; ptr: Ptr<any> }
+    alloc?(a: any): PtrArrayBuffer<any>
 }>
 
 const _dllCache: Map<string, win.HMODULE> = new Map()
@@ -114,7 +116,7 @@ function callPacked(proc: number, argTokens: C_BasicType_Token_No_Void[], retTok
                 if (!codec) {
                     // 未知布局落到这：只收 NULL / 有效地址 / codec 值，不静默当 0。
                     throw new Error(name === ''
-                        ? `ffi-bind: <>ptr expects number (NULL | Ptr), got ${typeof arg}; use <BYTE>ptr to pass an ArrayBuffer, or ffi.bufferPtr(buf)`
+                        ? `ffi-bind: <>ptr expects number (NULL | Ptr), got ${typeof arg}; use <BYTE>ptr with a PtrArrayBuffer (new PtrArrayBuffer(n)), or ffi.bufferPtr(buf) for an address`
                         : `ffi-bind: unknown layout "<${name}>ptr" (available: ${Object.keys(encoders).join(', ') || 'none'})`)
                 }
                 if (!codec.encode) {
@@ -123,7 +125,12 @@ function callPacked(proc: number, argTokens: C_BasicType_Token_No_Void[], retTok
                 }
                 const buf = codec.encode(arg)
                 held.push(buf)
-                writeSlot(dv, off, { k: 'ptr', v: ffi.bufferPtr(buf) })
+                // 类型层已保证 encode 返回 PtrArrayBuffer；这里再 fail-loud 兜一层
+                // （动态传入的无类型 codec 仍可能违反），然后直接取 .ptr——不再重算。
+                const p = (buf as PtrArrayBuffer<any>).ptr
+                if (typeof p !== 'number')
+                    throw new Error('ffi-bind: codec.encode must return a PtrArrayBuffer, got plain ArrayBuffer')
+                writeSlot(dv, off, { k: 'ptr', v: p })
             }
         }
         else {
@@ -169,12 +176,15 @@ type DecodeValue<T> = 'decode' extends keyof T
     : never
 
 // 入参布局表：用户 codec 解包成 JS 形，并注入两个内建 codec 的值域，
-// 使 <BYTE>ptr / <WCHAR>ptr 形参在类型层拿到 ArrayBuffer / string。
+// 使 <BYTE>ptr / <WCHAR>ptr 形参在类型层拿到 PtrArrayBuffer / string。
+// BYTE 用 PtrArrayBuffer<any> 收所有品牌：PAB<N> 因 .ptr 里的条件类型是不变型，
+// 写 string/'' 都收不下 struct.encode 的具体品牌——any 双向通，形状（必须是 PAB）
+// 才是硬约束，品牌本就由调用点自行声明。
 type BindEncoders<M> = {
     [K in keyof M]: EncodeValue<M[K]>
 } & {
     WCHAR: string;
-    BYTE: ArrayBuffer;
+    BYTE: PtrArrayBuffer<any>;
 }
 // 返回位布局表：只含 decode 值域。内建 WCHAR 注入与运行时（builtinCodecs.WCHAR
 // 无条件合并进 decoders）对齐——<WCHAR>ptr 返回直接拿 string；BYTE 无 decode，
@@ -188,12 +198,17 @@ type BindFn<S extends string, E, D> =
 // BYTE/WCHAR 拒绝裸 number（无句柄可 pin），提示改用 <>ptr。
 /** 内建 UTF-16 编解码：encode 入参序列化（UTF-16LE + NUL）；decode 双态单参——
  *  品牌指针逐字节读到 NUL（野指针无终止 4MiB 上限 fail-fast）、ArrayBuffer 直读到
- *  NUL 或末尾（out 参数未写 NUL 时按读满处理）；alloc 出参预分配返回 { buf, ptr }
- *  （a = 字符数，缺省 256；ptr 带 <WCHAR> 品牌直接喂形参）。类型取必需形态——
+ *  NUL 或末尾（out 参数未写 NUL 时按读满处理）；alloc 预分配返回带 .ptr 的
+ *  PtrArrayBuffer（a = 字符数，缺省 256）。类型取必需形态——
  *  内建三件齐备，调用无需空断言。 */
 export const WCHAR: Required<Codec<'WCHAR', string, number>> = {
     encode: (v: string) => {
-        return new TextEncoder('utf-16le').encode(v + '\0').buffer
+        // TextEncoder 没有 encodeInto：先编码再拷入带 .ptr 的 buffer（单次 memcpy，
+        // 编码逻辑仍全局唯一——这行是全部 UTF-16 字符串编码的唯一实现）。
+        const u8 = new TextEncoder('utf-16le').encode(v + '\0')
+        const out = new PtrArrayBuffer<'WCHAR'>(u8.byteLength)
+        new Uint8Array(out).set(u8)
+        return out
     },
     decode: (p) => {
         // 两分支同构（UTF-16LE code unit、拼接到 NUL 止），唯一差异是读法。
@@ -222,22 +237,20 @@ export const WCHAR: Required<Codec<'WCHAR', string, number>> = {
         }
         return s
     },
-    alloc: (size = 256) => {
-        const buf = new ArrayBuffer(size * 2)
-        return { buf, ptr: ffi.bufferPtr(buf) as Ptr<'WCHAR'> }
-    },
+    alloc: (size = 256) => new PtrArrayBuffer<'WCHAR'>(size * 2),
 }
-/** 内建字节缓冲：encode identity 直通（调用方持有 buffer 原地存活）；alloc 出参预
- *  分配返回 { buf, ptr }（a = 字节数；ptr 带 <BYTE> 品牌直接喂形参）。无 decode——
- *  地址不携带长度（无终止符），读回用 buf 原地读（native 写回后 DataView 直接取）。 */
-export const BYTE: Required<Pick<Codec<'BYTE', ArrayBuffer, number>, 'encode' | 'alloc'>> = {
+/** 内建字节缓冲：encode identity 直通（收 PtrArrayBuffer、原地存活，native 写回同一
+ *  buffer）；alloc 预分配返回带 .ptr 的 PtrArrayBuffer（a = 字节数）。无 decode——
+ *  地址不携带长度（无终止符），读回直接在 buffer 上 DataView / TypedArray 取。 */
+export const BYTE: Required<Pick<Codec<'BYTE', PtrArrayBuffer<any>, number>, 'encode' | 'alloc'>> = {
     encode: (v) => {
+        // identity 原地直通（native 写回同一 buffer），不能拷贝——只收自带 .ptr 的
+        // PtrArrayBuffer；普通 ArrayBuffer 过来 fail-loud，先包一层 new PtrArrayBuffer(n)。
+        if (!(v instanceof PtrArrayBuffer))
+            throw new Error('ffi-bind: <BYTE>ptr wants a PtrArrayBuffer (new PtrArrayBuffer(n) / BYTE.alloc / struct.encode), not a plain ArrayBuffer')
         return v
     },
-    alloc: (byteLen) => {
-        const buf = new ArrayBuffer(byteLen)
-        return { buf, ptr: ffi.bufferPtr(buf) as Ptr<'BYTE'> }
-    },
+    alloc: (byteLen) => new PtrArrayBuffer<'BYTE'>(byteLen),
 }
 // 运行时两张表是同一对象：参数位只调 .encode、返回位只调 .decode，互不干扰。
 const builtinCodecs: CodecMap = { WCHAR, BYTE }

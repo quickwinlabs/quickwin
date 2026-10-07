@@ -2,7 +2,7 @@ import * as std from 'std'
 import * as gui from 'gui'
 import * as win from 'win'
 import { bind } from '../lib/ffi/bind.js'
-import { NULL } from '../lib/ffi/ctype.js'
+import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
 
 const user32 = win.LoadLibrary('user32.dll')
 if (!user32) { print('LoadLibrary user32 failed'); std.exit(1) }
@@ -29,13 +29,13 @@ const DISP_CHANGE: Record<number, string> = {
     [-6]: 'BADDUALVIEW',
 }
 
-function newDevMode(): ArrayBuffer {
-    const buf = new ArrayBuffer(DEVMODE_SIZE)
+function newDevMode(): PtrArrayBuffer<any> {
+    const buf = new PtrArrayBuffer(DEVMODE_SIZE)
     new DataView(buf).setUint16(36, DEVMODE_SIZE, true)
     return buf
 }
 
-function enumMode(modeNum: number, buf: ArrayBuffer): number {
+function enumMode(modeNum: number, buf: PtrArrayBuffer<any>): number {
     return enumDisplaySettingsA(NULL, modeNum, buf)
 }
 

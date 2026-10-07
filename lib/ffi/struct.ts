@@ -153,9 +153,10 @@ export type StructDef<T extends { '#': 'struct' | 'union' }, N extends string = 
     readonly structAlign: number
     decode(buf: ArrayBuffer | Ptr<N>): ShapeOfC<T>
     // 重载分派：无/单参 = 新建 PtrArrayBuffer（零初值 / DeepPartial 初值），带品牌 .ptr
-    // 直接喂 <N>ptr 形参；带 buf = 写入调用方既有 buffer（返回其本身，供链式读回）。
+    // 直接喂 <N>ptr 形参；带 buf = 写入调用方既有 PtrArrayBuffer（返回其本身，供链式
+    // 读回）——encode 出口一律 PAB，裸 ArrayBuffer 不出 codec（与 CodecMap 同约束）。
     encode(v?: DeepPartial<ShapeOfC<T>>): PtrArrayBuffer<N>
-    encode(v: DeepPartial<ShapeOfC<T>>, buf: ArrayBuffer, offset?: number): ArrayBuffer
+    encode(v: DeepPartial<ShapeOfC<T>>, buf: PtrArrayBuffer<any>, offset?: number): PtrArrayBuffer<any>
     offsetOf(name: string): number
 }
 
@@ -528,9 +529,9 @@ function createStruct(t: C_Struct | C_Union): any {
             }
             return doDecode(new DataView(p), 0, fields)
         },
-        encode: ((v?: any, buf?: ArrayBuffer, offset: number = 0) => {
+        encode: ((v?: any, buf?: PtrArrayBuffer<any>, offset: number = 0) => {
             // 无 buf = 新建带品牌 ptr 的 PtrArrayBuffer（v 缺省时全字段 continue → 全 0，
-            // 等价旧 alloc()）；有 buf = 写入调用方 buffer（复用/预分配形态）。
+            // 等价旧 alloc()）；有 buf = 写入调用方 PtrArrayBuffer（复用/预分配形态）。
             const out = buf ?? new PtrArrayBuffer(size)
             doEncode(new DataView(out), offset, fields, v ?? {})
             return out

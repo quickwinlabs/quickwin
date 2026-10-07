@@ -11,14 +11,14 @@ import { LOGFONTW } from './structs.js'
 const b = <const S extends string, const LE extends CodecMap = {}>(name: string, sig: S, encoders?: LE) =>
     bind('gdi32.dll', name, sig, encoders)
 
-/** 创建实心画刷（color = 0x00BBGGRR）；失败 → null；配对 DeleteObject */
+/** 创建实心画刷（color = 0x00BBGGRR）；失败 → 0；配对 DeleteObject */
 export const CreateSolidBrush = /*@__PURE__*/ b('CreateSolidBrush', 'u32 -> <>ptr')
 /** 删除 GDI 对象（画刷/画笔/字体/位图等通用句柄，传 CreateXxx 返回的 number）；成功 → 非 0 */
 export const DeleteObject = /*@__PURE__*/ b('DeleteObject', '<>ptr -> i32')
 /** 取设备能力值（hdc 收品牌 HDC；index = LOGPIXELSX(88)/LOGPIXELSY(90)/BITSPIXEL 等） */
 export const GetDeviceCaps = /*@__PURE__*/ b('GetDeviceCaps', '<HDC>ptr i32 -> i32')
 /** 按 LOGFONTW 创建字体（入参位对象直传 DeepPartial：至少给 lfHeight 与 lfFaceName，其余缺省
- *  跳过保持 0）；失败 → null；配对 DeleteObject */
+ *  跳过保持 0）；失败 → 0；配对 DeleteObject */
 export const CreateFontIndirect = /*@__PURE__*/ b('CreateFontIndirectW', '<LOGFONTW>ptr -> <>ptr', { LOGFONTW })
 
 // ============ 内存 DC / 位图（截屏类流程：CreateCompatibleDC → SelectObject → BitBlt → GetDIBits）============

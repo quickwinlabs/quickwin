@@ -1,20 +1,9 @@
 import { forwardRef, useRef, useEffect, useState, type ReactNode } from 'react'
 import * as gui from 'gui'
-import * as ffi from 'ffi'
 import { WCHAR } from '../../ffi/bind.js'
-import { struct } from '../../ffi/struct.js'
+import { TCITEMW } from '../../windows/structs.js'
 import { nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
-
-const TCITEMW = struct({
-  mask: 'u32',
-  dwState: 'u32',
-  dwStateMask: 'u32',
-  pszText: '<>ptr',
-  cchTextMax: 'i32',
-  iImage: 'i32',
-  lParam: '<>ptr',
-})
 
 export interface TabProps {
   tabs: { title: string; content: ReactNode }[]
@@ -41,12 +30,12 @@ export const Tab = forwardRef<gui.HWND, TabProps>(
           mask: gui.TcItemFlag.TEXT,
           dwState: 0,
           dwStateMask: 0,
-          pszText: ffi.bufferPtr(titleBuf),
+          pszText: titleBuf.ptr,
           cchTextMax: tabs[i]!.title.length + 1,
           iImage: 0,
           lParam: 0,
         })
-        const tciPtr = ffi.bufferPtr(tci)
+        const tciPtr = tci.ptr
         gui.SendMessage(h, gui.TcMsg.INSERTITEMW, i, tciPtr)
       }
       gui.SendMessage(h, gui.TcMsg.SETCURSEL, sel, 0)

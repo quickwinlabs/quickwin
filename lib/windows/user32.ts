@@ -1,13 +1,13 @@
 // user32.dll 精选高频 API（85 个），逐函数独立导出：
 //   - 签名对照 mingw winuser.h 原型手写；未被 import 的绑定经 esbuild 摇树不进产物
 //   - WPARAM / LPARAM / LRESULT / UINT_PTR / LONG_PTR 及句柄混合值一律 <>ptr（指针宽度跨
-//     架构正确；返回值 0 归一为 null、有符号读对齐 C 版 JS_NewInt64——-1 哨兵等负值保真）
-//   - 入参字符串用 <WCHAR>ptr（string 编码为 UTF-16 + NUL，null → NULL 指针）；文本出参缓冲
-//     用 <BYTE>ptr（宽字符串出参配 WCHAR.alloc(n).buf 当 buffer、WCHAR.decode(buf) 读回）；
+//     架构正确；返回值 0 保真（C→JS 不做 0→null）、有符号读对齐 C 版 JS_NewInt64——-1 哨兵等负值保真）
+//   - 入参字符串用 <WCHAR>ptr（string 编码为 UTF-16 + NUL，无字符串传 NULL）；文本出参缓冲
+//     用 <BYTE>ptr（宽字符串出参配 WCHAR.alloc(n) 当 buffer、WCHAR.decode(buf) 读回）；
 //     回调参数用 <>ptr 接 closure() 的 ptr
 //   - 结构位按方向分流（结构定义见 ./structs.ts）：
 //       纯入参位 <N>ptr + 注册 encoder → DeepPartial 对象直传（缺省字段 doEncode 跳过）、
-//         encode().ptr、null 三形态；
+//         encode().ptr、NULL 三形态；
 //       出参/就地位 <N>ptr 不注册 encoder → 位只收 def 分配的 .ptr（对象 encode 进调用方拿不到
 //         的临时 buffer 会丢结果；ArrayBuffer 由 unknown layout fail-fast 拦下），
 //         读回走 N.decode(buf|ptr)。统一流程：encode → call → decode
@@ -15,7 +15,7 @@
 //   - HDC 借出/归还用 <HDC>ptr（品牌指针 Ptr<'HDC'>）：ReleaseDC 等归还位由 tsc 校验配对、
 //     拦住误传 HWND；DrawText/FillRect 等消费位仍收 <>ptr（brand 是 number 子类型可直传）
 //   - 返回/入参句柄位品牌化：HWND（窗口句柄形参与返回）、HMENU（菜单组出入参）、
-//     HCURSOR（LoadCursor/SetCursor）一律 <N>ptr → Ptr<'N'> | null；gui.HWND 与
+//     HCURSOR（LoadCursor/SetCursor）一律 <N>ptr → Ptr<'N'> | NULL；gui.HWND 与
 //     Ptr<"HWND"> 结构同型（quickwin.d.ts 字符串键 brand），react-qw 直传零桥接。
 //     异种句柄互传（如 GetDesktopWindow() → DestroyMenu）由 tsc 拦下。混合值位保持
 //     <>ptr：SetWindowPos 的 hWndInsertAfter（HWND_TOP 等常量）、AppendMenu.uIDNewItem
@@ -42,7 +42,7 @@ const LONG_PTR_SYM = os.arch === 'x64' ? 'PtrW' : 'W'
 
 // ============ 窗口 / 基本 ============
 
-/** 创建窗口（class/窗口名可传 string 或 null；hWndParent 收品牌 HWND、hMenu 收品牌 HMENU，均可 null）；失败 → null */
+/** 创建窗口（class/窗口名可传 string 或 NULL；hWndParent 收品牌 HWND、hMenu 收品牌 HMENU，均可 NULL）；失败 → NULL */
 export const CreateWindowEx = /*@__PURE__*/ b('CreateWindowExW',
     'u32 <WCHAR>ptr <WCHAR>ptr u32 i32 i32 i32 i32 <HWND>ptr <HMENU>ptr <>ptr <>ptr -> <HWND>ptr')
 /** 销毁窗口；成功 → 非 0 */
@@ -63,13 +63,13 @@ export const IsWindow = /*@__PURE__*/ b('IsWindow', '<HWND>ptr -> i32')
 export const IsWindowVisible = /*@__PURE__*/ b('IsWindowVisible', '<HWND>ptr -> i32')
 /** 窗口是否最小化；是 → 非 0 */
 export const IsIconic = /*@__PURE__*/ b('IsIconic', '<HWND>ptr -> i32')
-/** 取前台窗口句柄；无 → null */
+/** 取前台窗口句柄；无 → NULL */
 export const GetForegroundWindow = /*@__PURE__*/ b('GetForegroundWindow', ' -> <HWND>ptr')
 /** 请求设前台窗口；成功 → 非 0 */
 export const SetForegroundWindow = /*@__PURE__*/ b('SetForegroundWindow', '<HWND>ptr -> i32')
-/** 取桌面窗口句柄（恒非 null） */
+/** 取桌面窗口句柄（恒非 NULL） */
 export const GetDesktopWindow = /*@__PURE__*/ b('GetDesktopWindow', ' -> <HWND>ptr')
-/** 按类名+标题查找顶层窗口；无 → null（两个参数都可传 null） */
+/** 按类名+标题查找顶层窗口；无 → NULL（两个参数都可传 NULL） */
 export const FindWindow = /*@__PURE__*/ b('FindWindowW', '<WCHAR>ptr <WCHAR>ptr -> <HWND>ptr')
 /** 在 hWndParent 的子窗口链里按类名+标题查找，从 hWndChildAfter 之后开始（均可传 NULL：
  *  parent = NULL 遍历顶层窗口，childAfter = NULL 从头开始，class/title = NULL 不过滤）；
@@ -77,28 +77,28 @@ export const FindWindow = /*@__PURE__*/ b('FindWindowW', '<WCHAR>ptr <WCHAR>ptr 
 export const FindWindowEx = /*@__PURE__*/ b('FindWindowExW',
     '<HWND>ptr <HWND>ptr <WCHAR>ptr <WCHAR>ptr -> <HWND>ptr')
 /** 取窗口标题（宽字符写入 out buffer，返回写入字符数，不含 NUL）；
- *  out 传 WCHAR.alloc(n).buf（n = 字符数），读回 WCHAR.decode(buf) */
+ *  out 传 WCHAR.alloc(n)（n = 字符数），读回 WCHAR.decode(buf) */
 export const GetWindowText = /*@__PURE__*/ b('GetWindowTextW', '<HWND>ptr <BYTE>ptr i32 -> i32')
-/** 设窗口标题（传 string 或 null 清空）；成功 → 非 0 */
+/** 设窗口标题（传 string 或 NULL 清空）；成功 → 非 0 */
 export const SetWindowText = /*@__PURE__*/ b('SetWindowTextW', '<HWND>ptr <WCHAR>ptr -> i32')
 /** 取窗口标题长度（字符数，不含 NUL） */
 export const GetWindowTextLength = /*@__PURE__*/ b('GetWindowTextLengthW', '<HWND>ptr -> i32')
 /** 取窗口类名（宽字符写入 out buffer，返回字符数）；
- *  out 传 WCHAR.alloc(n).buf（n = 字符数），读回 WCHAR.decode(buf) */
+ *  out 传 WCHAR.alloc(n)（n = 字符数），读回 WCHAR.decode(buf) */
 export const GetClassName = /*@__PURE__*/ b('GetClassNameW', '<HWND>ptr <BYTE>ptr i32 -> i32')
-/** 取窗口附加数据（GWLP_* / GWL_* 索引）；0 → null（值有符号读；ia32 走 GetWindowLongW） */
+/** 取窗口附加数据（GWLP_* / GWL_* 索引）；0 保真（值有符号读；ia32 走 GetWindowLongW） */
 export const GetWindowLongPtr = /*@__PURE__*/ b('GetWindowLong' + LONG_PTR_SYM, '<HWND>ptr i32 -> <>ptr')
-/** 设窗口附加数据；返回先前值（0 → null，值有符号读） */
+/** 设窗口附加数据；返回先前值（0 保真，值有符号读） */
 export const SetWindowLongPtr = /*@__PURE__*/ b('SetWindowLong' + LONG_PTR_SYM, '<HWND>ptr i32 <>ptr -> <>ptr')
-/** 取窗口所属进程 ID 到 buffer（可传 null）；返回线程 ID */
+/** 取窗口所属进程 ID 到 buffer（可传 NULL）；返回线程 ID */
 export const GetWindowThreadProcessId = /*@__PURE__*/ b('GetWindowThreadProcessId', '<HWND>ptr <BYTE>ptr -> u32')
 /** 启用/禁用窗口输入；返回先前状态 */
 export const EnableWindow = /*@__PURE__*/ b('EnableWindow', '<HWND>ptr i32 -> i32')
-/** 取父窗口；无 → null */
+/** 取父窗口；无 → NULL */
 export const GetParent = /*@__PURE__*/ b('GetParent', '<HWND>ptr -> <HWND>ptr')
 /** 设父窗口；返回先前父窗口 */
 export const SetParent = /*@__PURE__*/ b('SetParent', '<HWND>ptr <HWND>ptr -> <HWND>ptr')
-/** 按关系（GW_* / GW_OWNER）取相邻窗口；无 → null */
+/** 按关系（GW_* / GW_OWNER）取相邻窗口；无 → NULL */
 export const GetWindow = /*@__PURE__*/ b('GetWindow', '<HWND>ptr u32 -> <HWND>ptr')
 /** 注册窗口类（WNDCLASSEXW 结构 buffer）；失败 → 0（ATOM） */
 export const RegisterClassEx = /*@__PURE__*/ b('RegisterClassExW', '<BYTE>ptr -> u16')
@@ -107,47 +107,47 @@ export const RegisterClassEx = /*@__PURE__*/ b('RegisterClassExW', '<BYTE>ptr ->
 
 /** 设输入焦点；返回先前焦点窗口 */
 export const SetFocus = /*@__PURE__*/ b('SetFocus', '<HWND>ptr -> <HWND>ptr')
-/** 取调用线程输入焦点；无 → null */
+/** 取调用线程输入焦点；无 → NULL */
 export const GetFocus = /*@__PURE__*/ b('GetFocus', ' -> <HWND>ptr')
-/** 取调用线程激活窗口；无 → null */
+/** 取调用线程激活窗口；无 → NULL */
 export const GetActiveWindow = /*@__PURE__*/ b('GetActiveWindow', ' -> <HWND>ptr')
 /** 设调用线程激活窗口；返回先前窗口 */
 export const SetActiveWindow = /*@__PURE__*/ b('SetActiveWindow', '<HWND>ptr -> <HWND>ptr')
 
 // ============ 消息循环 ============
 
-/** 取消息（MSG buffer，第二参 hwndFilter 收品牌 HWND 可 null；阻塞式，-1 = 出错、0 = WM_QUIT、>0 = 有消息）；分发前先 TranslateMessage */
+/** 取消息（MSG buffer，第二参 hwndFilter 收品牌 HWND 可 NULL；阻塞式，-1 = 出错、0 = WM_QUIT、>0 = 有消息）；分发前先 TranslateMessage */
 export const GetMessage = /*@__PURE__*/ b('GetMessageW', '<BYTE>ptr <HWND>ptr u32 u32 -> i32')
 /** 非阻塞查消息（第二参同上；wRemoveMsg = PM_NOREMOVE/PM_REMOVE）；有消息 → 非 0 */
 export const PeekMessage = /*@__PURE__*/ b('PeekMessageW', '<BYTE>ptr <HWND>ptr u32 u32 u32 -> i32')
 /** 把 WM_KEYDOWN/UP 转成字符消息（翻译结果留在队列）；可翻译 → 非 0 */
 export const TranslateMessage = /*@__PURE__*/ b('TranslateMessage', '<BYTE>ptr -> i32')
-/** 分发 MSG 给窗口过程；返回处理结果（0 → null，有符号读） */
+/** 分发 MSG 给窗口过程；返回处理结果（0 保真，有符号读） */
 export const DispatchMessage = /*@__PURE__*/ b('DispatchMessageW', '<BYTE>ptr -> <>ptr')
 /** 异步投递消息到窗口线程队列；成功 → 非 0 */
 export const PostMessage = /*@__PURE__*/ b('PostMessageW', '<HWND>ptr u32 <>ptr <>ptr -> i32')
-/** 同步发送消息并等窗口过程处理；返回处理结果（0 → null，有符号读） */
+/** 同步发送消息并等窗口过程处理；返回处理结果（0 保真，有符号读） */
 export const SendMessage = /*@__PURE__*/ b('SendMessageW', '<HWND>ptr u32 <>ptr <>ptr -> <>ptr')
 /** 退出消息循环（投递 WM_QUIT，wParam = 退出码） */
 export const PostQuitMessage = /*@__PURE__*/ b('PostQuitMessage', 'i32 -> void')
-/** 默认窗口过程（未处理消息的兜底）；返回处理结果（0 → null，有符号读） */
+/** 默认窗口过程（未处理消息的兜底）；返回处理结果（0 保真，有符号读） */
 export const DefWindowProc = /*@__PURE__*/ b('DefWindowProcW', '<HWND>ptr u32 <>ptr <>ptr -> <>ptr')
 /** 调用窗口过程（wndProc = GetWindowLongPtr(GWLP_WNDPROC) 读回的过程指针——无品牌混合位 <>ptr，
- *  仅对本线程窗口调用）；返回处理结果（0 → null，有符号读） */
+ *  仅对本线程窗口调用）；返回处理结果（0 保真，有符号读） */
 export const CallWindowProc = /*@__PURE__*/ b('CallWindowProcW', '<>ptr <HWND>ptr u32 <>ptr <>ptr -> <>ptr')
 /** 注册系统级唯一消息 ID（按字符串比较）；失败 → 0 */
 export const RegisterWindowMessage = /*@__PURE__*/ b('RegisterWindowMessageW', '<WCHAR>ptr -> u32')
 
 // ============ 绘制 / DC ============
 
-/** 取窗口 DC（hWnd 传 null → 桌面窗口）；返回品牌 HDC，失败 → null；用完必须 ReleaseDC 配对 */
+/** 取窗口 DC（hWnd 传 NULL → 桌面窗口）；返回品牌 HDC，失败 → NULL；用完必须 ReleaseDC 配对 */
 export const GetDC = /*@__PURE__*/ b('GetDC', '<HWND>ptr -> <HDC>ptr')
 /** 归还 GetDC/GetWindowDC 取的 DC（首参收品牌 HWND、第二参收品牌 HDC，误传编译不过）；成功 → 非 0 */
 export const ReleaseDC = /*@__PURE__*/ b('ReleaseDC', '<HWND>ptr <HDC>ptr -> i32')
 /** 让窗口把自己画进 hdcBlt（可截被遮挡 / 最小化的窗口；位图须按整窗尺寸建，从 (0,0) 填满）；
  *  nFlags = PW_CLIENTONLY(1) / PW_RENDERFULLCONTENT(2，Win8.1+)，XP/Win7 传 0；成功 → 非 0 */
 export const PrintWindow = /*@__PURE__*/ b('PrintWindow', '<HWND>ptr <HDC>ptr u32 -> i32')
-/** 取整个窗口（含边框标题）DC；返回品牌 HDC，失败 → null，配对 ReleaseDC */
+/** 取整个窗口（含边框标题）DC；返回品牌 HDC，失败 → NULL，配对 ReleaseDC */
 export const GetWindowDC = /*@__PURE__*/ b('GetWindowDC', '<HWND>ptr -> <HDC>ptr')
 /** 开始重绘（PAINTSTRUCT buffer 接收绘制信息）；返回品牌 HDC，配对 EndPaint */
 export const BeginPaint = /*@__PURE__*/ b('BeginPaint', '<HWND>ptr <BYTE>ptr -> <HDC>ptr')
@@ -158,7 +158,7 @@ export const EndPaint = /*@__PURE__*/ b('EndPaint', '<HWND>ptr <BYTE>ptr -> i32'
 export const DrawText = /*@__PURE__*/ b('DrawTextW', '<>ptr <WCHAR>ptr i32 <RECT>ptr i32 -> i32')
 /** 用画刷填充矩形（首参 HDC 同上；rect 收 DeepPartial RECT 对象 / encode().ptr；第三参 HBRUSH 无品牌 <>ptr）；返回填充高度 */
 export const FillRect = /*@__PURE__*/ b('FillRect', '<>ptr <RECT>ptr <>ptr -> i32', { RECT })
-/** 标记窗口区域失效（触发重绘；rect 收 DeepPartial RECT 对象 / RECT.encode().ptr，null 全窗）；成功 → 非 0 */
+/** 标记窗口区域失效（触发重绘；rect 收 DeepPartial RECT 对象 / RECT.encode().ptr，NULL 全窗）；成功 → 非 0 */
 export const InvalidateRect = /*@__PURE__*/ b('InvalidateRect', '<HWND>ptr <RECT>ptr i32 -> i32', { RECT })
 /** 立即重绘失效区域；成功 → 非 0 */
 export const UpdateWindow = /*@__PURE__*/ b('UpdateWindow', '<HWND>ptr -> i32')
@@ -167,7 +167,7 @@ export const UpdateWindow = /*@__PURE__*/ b('UpdateWindow', '<HWND>ptr -> i32')
 
 /** 设光标形状（第 1 参收品牌 HCURSOR，误传 HWND 编译不过）；返回先前光标 */
 export const SetCursor = /*@__PURE__*/ b('SetCursor', '<HCURSOR>ptr -> <HCURSOR>ptr')
-/** 加载光标资源（hInstance 传 0 = 系统光标；名传 MAKEINTRESOURCE 整数，如 32512 = IDC_ARROW）；失败 → null */
+/** 加载光标资源（hInstance 传 0 = 系统光标；名传 MAKEINTRESOURCE 整数，如 32512 = IDC_ARROW）；失败 → NULL */
 export const LoadCursor = /*@__PURE__*/ b('LoadCursorW', '<>ptr <>ptr -> <HCURSOR>ptr')
 /** 取光标屏幕坐标；出参 encode → call → decode（POINT.encode() 传 .ptr、POINT.decode(实例) 读回）；成功 → 非 0 */
 export const GetCursorPos = /*@__PURE__*/ b('GetCursorPos', '<POINT>ptr -> i32')
@@ -181,7 +181,7 @@ export const ScreenToClient = /*@__PURE__*/ b('ScreenToClient', '<HWND>ptr <POIN
 export const ClientToScreen = /*@__PURE__*/ b('ClientToScreen', '<HWND>ptr <POINT>ptr -> i32')
 /** 批量坐标系转换（POINT buffer，cPoints 个点）；返回偏移差的低/高 16 位打包值 */
 export const MapWindowPoints = /*@__PURE__*/ b('MapWindowPoints', '<HWND>ptr <HWND>ptr <BYTE>ptr u32 -> i32')
-/** 取当前捕获鼠标的窗口；无 → null */
+/** 取当前捕获鼠标的窗口；无 → NULL */
 export const GetCapture = /*@__PURE__*/ b('GetCapture', ' -> <HWND>ptr')
 /** 捕获鼠标输入到窗口；返回先前捕获窗口 */
 export const SetCapture = /*@__PURE__*/ b('SetCapture', '<HWND>ptr -> <HWND>ptr')
@@ -201,20 +201,20 @@ export const VkKeyScan = /*@__PURE__*/ b('VkKeyScanW', 'u32 -> i32')
 
 // ============ 计时器 ============
 
-/** 设定时器（hWnd/id 传 null/0 = 自动分配 id；lpTimerFunc 传 null 用 WM_TIMER）；失败 → null */
+/** 设定时器（hWnd/id 传 NULL/0 = 自动分配 id；lpTimerFunc 传 NULL 用 WM_TIMER）；失败 → 0 */
 export const SetTimer = /*@__PURE__*/ b('SetTimer', '<HWND>ptr <>ptr u32 <>ptr -> <>ptr')
 /** 杀定时器（id 用 SetTimer 返回值）；成功 → 非 0 */
 export const KillTimer = /*@__PURE__*/ b('KillTimer', '<HWND>ptr <>ptr -> i32')
 
 // ============ 剪贴板 ============
 
-/** 打开剪贴板（hWnd 可传 null）；成功 → 非 0，配对 CloseClipboard */
+/** 打开剪贴板（hWnd 可传 NULL）；成功 → 非 0，配对 CloseClipboard */
 export const OpenClipboard = /*@__PURE__*/ b('OpenClipboard', '<HWND>ptr -> i32')
 /** 关闭剪贴板；成功 → 非 0 */
 export const CloseClipboard = /*@__PURE__*/ b('CloseClipboard', ' -> i32')
 /** 清空剪贴板（须先 OpenClipboard）；成功 → 非 0 */
 export const EmptyClipboard = /*@__PURE__*/ b('EmptyClipboard', ' -> i32')
-/** 取剪贴板数据句柄（须先 OpenClipboard + 有数据）；无 → null */
+/** 取剪贴板数据句柄（须先 OpenClipboard + 有数据）；无 → 0 */
 export const GetClipboardData = /*@__PURE__*/ b('GetClipboardData', 'u32 -> <>ptr')
 /** 放数据进剪贴板（hMem 所有权移交系统）；成功 → 非 0 */
 export const SetClipboardData = /*@__PURE__*/ b('SetClipboardData', 'u32 <>ptr -> <>ptr')
@@ -225,14 +225,14 @@ export const IsClipboardFormatAvailable = /*@__PURE__*/ b('IsClipboardFormatAvai
 
 // ============ 菜单 ============
 
-/** 取窗口菜单；无菜单 → null（返回品牌 HMENU） */
+/** 取窗口菜单；无菜单 → NULL（返回品牌 HMENU） */
 export const GetMenu = /*@__PURE__*/ b('GetMenu', '<HWND>ptr -> <HMENU>ptr')
-/** 设/清窗口菜单（hMenu 传 null 清除；首参收品牌 HWND、第二参收品牌 HMENU，误传编译不过）；成功 → 非 0，改后需 DrawMenuBar */
+/** 设/清窗口菜单（hMenu 传 NULL 清除；首参收品牌 HWND、第二参收品牌 HMENU，误传编译不过）；成功 → 非 0，改后需 DrawMenuBar */
 export const SetMenu = /*@__PURE__*/ b('SetMenu', '<HWND>ptr <HMENU>ptr -> i32')
 /** 重画菜单栏（首参收品牌 HWND）；成功 → 非 0 */
 export const DrawMenuBar = /*@__PURE__*/ b('DrawMenuBar', '<HWND>ptr -> i32')
 /** 追加菜单项（首参收品牌 HMENU；uFlags = gui.MF 类常量；uIDNewItem 命令 ID 或子菜单句柄——
- *  混合位保持 <>ptr；lpNewItem 可 string/null）；成功 → 非 0 */
+ *  混合位保持 <>ptr；lpNewItem 可 string/NULL）；成功 → 非 0 */
 export const AppendMenu = /*@__PURE__*/ b('AppendMenuW', '<HMENU>ptr u32 <>ptr <WCHAR>ptr -> i32')
 /** 销毁菜单（收品牌 HMENU，误传 HWND 编译不过）；成功 → 非 0 */
 export const DestroyMenu = /*@__PURE__*/ b('DestroyMenu', '<HMENU>ptr -> i32')
@@ -240,11 +240,11 @@ export const DestroyMenu = /*@__PURE__*/ b('DestroyMenu', '<HMENU>ptr -> i32')
 export const CheckMenuItem = /*@__PURE__*/ b('CheckMenuItem', '<HMENU>ptr u32 u32 -> u32')
 /** 启用/禁用/灰化菜单项；返回先前状态 */
 export const EnableMenuItem = /*@__PURE__*/ b('EnableMenuItem', '<HMENU>ptr u32 u32 -> i32')
-/** 取子菜单（按位置）；无 → null（出入参同为品牌 HMENU） */
+/** 取子菜单（按位置）；无 → NULL（出入参同为品牌 HMENU） */
 export const GetSubMenu = /*@__PURE__*/ b('GetSubMenu', '<HMENU>ptr i32 -> <HMENU>ptr')
-/** 弹出跟踪菜单（首参收品牌 HMENU；x,y 屏幕坐标；prcRect 可 null）；返回菜单项命令 ID 或 0 */
+/** 弹出跟踪菜单（首参收品牌 HMENU；x,y 屏幕坐标；prcRect 可 NULL）；返回菜单项命令 ID 或 0 */
 export const TrackPopupMenu = /*@__PURE__*/ b('TrackPopupMenu', '<HMENU>ptr u32 i32 i32 i32 <>ptr <BYTE>ptr -> i32')
-/** 创建弹出菜单；失败 → null（返回品牌 HMENU，配对 DestroyMenu） */
+/** 创建弹出菜单；失败 → NULL（返回品牌 HMENU，配对 DestroyMenu） */
 export const CreatePopupMenu = /*@__PURE__*/ b('CreatePopupMenu', ' -> <HMENU>ptr')
 
 // ============ 滚动条 ============
@@ -259,15 +259,15 @@ export const ShowScrollBar = /*@__PURE__*/ b('ShowScrollBar', '<HWND>ptr u32 i32
 
 // ============ 对话框 ============
 
-/** 消息框（首参收品牌 HWND 可 null；仅在确实要弹窗时调用；MB_* 常量见 MSDN）；返回按钮 ID */
+/** 消息框（首参收品牌 HWND 可 NULL；仅在确实要弹窗时调用；MB_* 常量见 MSDN）；返回按钮 ID */
 export const MessageBox = /*@__PURE__*/ b('MessageBoxW', '<HWND>ptr <WCHAR>ptr <WCHAR>ptr u32 -> i32')
 
 // ============ 图像 ============
 
-/** LoadImage——name 传 string（hinst=null 系统 IDI 图标或 .ico 文件路径；hinst=模块句柄则为资源名），
+/** LoadImage——name 传 string（hinst=NULL 系统 IDI 图标或 .ico 文件路径；hinst=模块句柄则为资源名），
  *  <WCHAR>ptr 自动编码；uType = Win32 IMAGE_* 真值（BITMAP=0、CURSOR=1、ICON=2——与 gui.ImageType
  *  枚举当前值不同），fuLoad = Win32 LR_*（LOADFROMFILE=0x10、SHARED=0x8000，系统 IDI 需 SHARED）；
- *  失败 → null */
+ *  失败 → 0 */
 export const LoadImage = /*@__PURE__*/ b('LoadImageW', '<>ptr <WCHAR>ptr u32 i32 i32 u32 -> <>ptr')
 /** LoadImage——name 传资源 ID 序数（MAKEINTRESOURCE 位 <>ptr 直传 number，如 IDI_APPLICATION=32512）；
  *  其余参数同 LoadImage */

@@ -1,7 +1,7 @@
 import * as std from 'std'
 import * as win from 'win'
 import { bind } from '../lib/ffi/bind.js'
-import { NULL } from '../lib/ffi/ctype.js'
+import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import { Tester } from './test_helper.js'
 
 // ABI 边界回归：覆盖 REMOVE_LIBFFI_PLAN.md §4.2 的维度，全部用真实 Win32/CRT
@@ -56,10 +56,13 @@ export const suite = {
         t.section('param count 3 (<BYTE>ptr <BYTE>ptr u32 -> ptr)')
         if (has(crt, 'memcpy')) {
             const memcpy = bind('msvcrt.dll', 'memcpy', '<BYTE>ptr <BYTE>ptr u32 -> <>ptr')
-            const src = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8])
-            const dst = new Uint8Array(8)
-            const r = memcpy(dst.buffer as ArrayBuffer, src.buffer as ArrayBuffer, 8)
-            const rd = Array.from(new Uint8Array(dst.buffer as ArrayBuffer)).join(',')
+            const srcB = new PtrArrayBuffer(8)
+            const src = new Uint8Array(srcB)
+            src.set([1, 2, 3, 4, 5, 6, 7, 8])
+            const dstB = new PtrArrayBuffer(8)
+            const dst = new Uint8Array(dstB)
+            const r = memcpy(dstB, srcB, 8)
+            const rd = Array.from(dst).join(',')
             t.check('memcpy copied bytes', '1,2,3,4,5,6,7,8', rd)
             t.checkTrue('memcpy returns dest ptr', typeof r === 'number' && r !== 0)
         } else t.skipCase('memcpy missing')
@@ -67,7 +70,7 @@ export const suite = {
         t.section('param count 4 + all-int-regs (u32 u32 <BYTE>ptr i32 -> i32)')
         if (has(k32, 'GetLocaleInfoA')) {
             const getLocaleInfoA = bind('kernel32.dll', 'GetLocaleInfoA', 'u32 u32 <BYTE>ptr i32 -> i32')
-            const buf = new ArrayBuffer(64)
+            const buf = new PtrArrayBuffer(64)
             const n = getLocaleInfoA(0x0409, 0x00001001 /* LOCALE_SENGLANGUAGE */, buf, 64)
             if (n > 0) {
                 const s = readAscii(buf, n)
@@ -79,7 +82,7 @@ export const suite = {
         t.section('param count 5 (<BYTE>ptr i32 i32 i32 i32 -> i32)')
         if (has(usr, 'SetRect')) {
             const setRect = bind('user32.dll', 'SetRect', '<BYTE>ptr i32 i32 i32 i32 -> i32')
-            const rc = new ArrayBuffer(16)
+            const rc = new PtrArrayBuffer(16)
             const ok = setRect(rc, 1, 2, 30, 40)
             const dv = new DataView(rc)
             t.checkTrue('SetRect returns nonzero', ok !== 0)
@@ -99,7 +102,7 @@ export const suite = {
         t.section('param count 8 (u32 u32 <WCHAR>ptr i32 <BYTE>ptr i32 <>ptr <>ptr -> i32)')
         if (has(k32, 'WideCharToMultiByte')) {
             const wideCharToMultiByte = bind('kernel32.dll', 'WideCharToMultiByte', 'u32 u32 <WCHAR>ptr i32 <BYTE>ptr i32 <>ptr <>ptr -> i32')
-            const out = new ArrayBuffer(16)
+            const out = new PtrArrayBuffer(16)
             // 显式给长度（cchWideChar=2）避免 -1 空终止语义下返回值是否含 '\0' 的版本差异。
             const n = wideCharToMultiByte(0 /* CP_ACP */, 0, 'AB', 2, out, 16, NULL, NULL)
             t.check('WideCharToMultiByte char count', 2, n)
@@ -115,7 +118,7 @@ export const suite = {
                 '<>ptr i32 i32 u32 u32 i32 i32 u32 u32 <BYTE>ptr <BYTE>ptr u32 -> i32')
             const hdc = createCompatibleDC(0)
             if (hdc) {
-                const bmi = new ArrayBuffer(40)
+                const bmi = new PtrArrayBuffer(40)
                 const bdv = new DataView(bmi)
                 bdv.setUint32(0, 40, true)      // biSize
                 bdv.setInt32(4, 1, true)        // biWidth
@@ -123,7 +126,7 @@ export const suite = {
                 bdv.setUint16(12, 1, true)      // biPlanes
                 bdv.setUint16(14, 32, true)     // biBitCount
                 bdv.setUint32(16, 0, true)      // biCompression = BI_RGB
-                const bits = new ArrayBuffer(4)
+                const bits = new PtrArrayBuffer(4)
                 const lines = setDIBitsToDevice(hdc, 0, 0, 1, 1, 0, 0, 0, 1, bits, bmi, 0 /* DIB_RGB_COLORS */)
                 t.check('SetDIBitsToDevice scanlines copied', 1, lines)
                 deleteDC(hdc)
@@ -139,14 +142,14 @@ export const suite = {
         t.section('int/float mix: f64 <BYTE>ptr -> f64')
         if (has(crt, 'frexp')) {
             const frexp = bind('msvcrt.dll', 'frexp', 'f64 <BYTE>ptr -> f64')
-            const e = new ArrayBuffer(4)
+            const e = new PtrArrayBuffer(4)
             const m = frexp(12.0, e)
             t.check('frexp(12).mantissa', 0.75, m)
             t.check('frexp(12).exponent', 4, new DataView(e).getInt32(0, true))
         } else t.skipCase('frexp missing')
         if (has(crt, 'modf')) {
             const modf = bind('msvcrt.dll', 'modf', 'f64 <BYTE>ptr -> f64')
-            const ip = new ArrayBuffer(8)
+            const ip = new PtrArrayBuffer(8)
             const frac = modf(3.75, ip)
             t.check('modf(3.75).frac', 0.75, frac)
             t.check('modf(3.75).int', 3.0, new DataView(ip).getFloat64(0, true))
@@ -179,7 +182,7 @@ export const suite = {
         if (has(k32, 'InterlockedExchange64') && has(k32, 'InterlockedIncrement64')) {
             const exchange64 = bind('kernel32.dll', 'InterlockedExchange64', '<BYTE>ptr i64 -> i64')
             const increment64 = bind('kernel32.dll', 'InterlockedIncrement64', '<BYTE>ptr -> i64')
-            const cell = new ArrayBuffer(8)
+            const cell = new PtrArrayBuffer(8)
             exchange64(cell, -2n)
             t.check('InterlockedIncrement64(-2)', -1n, increment64(cell))
         } else t.skipCase('Interlocked*64 missing')
@@ -187,7 +190,7 @@ export const suite = {
         t.section('64-bit arg transport (InterlockedExchange64)')
         if (has(k32, 'InterlockedExchange64')) {
             const exchange64 = bind('kernel32.dll', 'InterlockedExchange64', '<BYTE>ptr i64 -> i64')
-            const cell = new ArrayBuffer(8)
+            const cell = new PtrArrayBuffer(8)
             const prev0 = exchange64(cell, 4294967297n)  // 2^32+1：超过 32 位
             const prev1 = exchange64(cell, -1n)          // 64 位全 1
             const prev2 = exchange64(cell, 0n)

@@ -1,8 +1,8 @@
+import { PtrArrayBuffer } from '../../ffi/ctype.js'
 import { forwardRef, useState, useRef } from 'react'
 import * as gui from 'gui'
-import * as ffi from 'ffi'
 import { bind, WCHAR } from '../../ffi/bind.js'
-import { OPENFILENAMEW, BROWSEINFOW } from '../../win-common-structs.js'
+import { OPENFILENAMEW, BROWSEINFOW } from '../../windows/structs.js'
 import type { WStyle } from '../jsx.d.ts'
 
 function makeBindings() {
@@ -44,7 +44,7 @@ function openFileDialog(
   const dll = ensureDlls()
   if (!dll) return null
 
-  const fileBuf = new ArrayBuffer(260 * 2)
+  const fileBuf = WCHAR.alloc(260)
   const filterWide = WCHAR.encode(filter)
   const titleWide = title ? WCHAR.encode(title) : null
 
@@ -56,16 +56,16 @@ function openFileDialog(
     lStructSize: OPENFILENAMEW.size,
     hwndOwner: owner,
     hInstance: 0,
-    lpstrFilter: ffi.bufferPtr(filterWide),
+    lpstrFilter: filterWide.ptr,
     lpstrCustomFilter: 0,
     nMaxCustFilter: 0,
     nFilterIndex: 0,
-    lpstrFile: ffi.bufferPtr(fileBuf),
+    lpstrFile: fileBuf.ptr,
     nMaxFile: 260,
     lpstrFileTitle: 0,
     nMaxFileTitle: 0,
     lpstrInitialDir: 0,
-    lpstrTitle: titleWide ? ffi.bufferPtr(titleWide) : 0,
+    lpstrTitle: titleWide ? titleWide.ptr : 0,
     Flags: flags,
     nFileOffset: 0,
     nFileExtension: 0,
@@ -109,7 +109,7 @@ function openFolderDialog(owner: gui.HWND, title: string | undefined): string | 
     hwndOwner: owner,
     pidlRoot: 0,
     pszDisplayName: 0,
-    lpszTitle: titleWide ? ffi.bufferPtr(titleWide) : 0,
+    lpszTitle: titleWide ? titleWide.ptr : 0,
     ulFlags: 0x00000041,
     lpfn: 0,
     lParam: 0,
@@ -119,7 +119,7 @@ function openFolderDialog(owner: gui.HWND, title: string | undefined): string | 
   const pidl = dll.SHBrowseForFolderW(bi)
   if (!pidl) return null
 
-  const pathBuf = new ArrayBuffer(260 * 2)
+  const pathBuf = new PtrArrayBuffer(260 * 2)
   const ok = dll.SHGetPathFromIDListW(pidl, pathBuf)
   dll.CoTaskMemFree(pidl)
 

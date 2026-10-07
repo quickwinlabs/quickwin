@@ -4,7 +4,7 @@
 //   - 结构位按方向分流（结构定义见 ./structs.ts，布局随进程位宽，struct 按 os.arch 推）：
 //       STARTUPINFOW 纯入参位注册 encoder → DeepPartial 对象直传；
 //       PROCESS_INFORMATION 出参位不注册 → 只收 def 分配的 .ptr，读回走 decode
-//   - 缓冲区 / DWORD 出参位用 <BYTE>ptr 直接收 ArrayBuffer（Uint32Array(1).buffer 读回）
+//   - 缓冲区 / DWORD 出参位用 <BYTE>ptr 直接收 PtrArrayBuffer（DataView / TypedArray 原地读回）
 //   - 空指针位（lpApplicationName / lpProcessAttributes 等）传 NULL（来自 ../ffi/ctype.js）；
 //     传 JS null/undefined 会在参数槽 fail-loud
 //   - 返回值 0 保真（C→JS 不做 0→null）；BOOL 型返回 i32，成功 → 非 0，失败 → 0（原因见 GetLastError）
@@ -47,5 +47,5 @@ export const ReadFile = /*@__PURE__*/ b('ReadFile', '<>ptr <BYTE>ptr u32 <BYTE>p
 /** 取调用线程最近一次 Win32 错误码 */
 export const GetLastError = /*@__PURE__*/ b('GetLastError', ' -> u32')
 /** 取 System32 目录路径（宽字符）到 lpBuffer，uSize 为缓冲 WCHAR 数；
- *  out 传 WCHAR.alloc(n).buf，读回 WCHAR.decode(buf)；返回写入的字符数（不含 NUL，0 失败） */
+ *  out 传 WCHAR.alloc(n)，读回 WCHAR.decode(buf)；返回写入的字符数（不含 NUL，0 失败） */
 export const GetSystemDirectory = /*@__PURE__*/ b('GetSystemDirectoryW', '<BYTE>ptr u32 -> u32')

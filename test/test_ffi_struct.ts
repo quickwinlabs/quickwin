@@ -2,7 +2,7 @@ import * as os from 'os'
 import { Tester } from './test_helper.js'
 import { struct, union } from '../lib/ffi/struct.js'
 import { bind, } from '../lib/ffi/bind.js'
-import { type MaybePtr, Ptr } from '../lib/ffi/ctype.js'
+import { type MaybePtr, Ptr, PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import type { C_Union } from '../lib/ffi/ctype.js'
 
 // 编译期断言工具（仅类型层，运行时无开销）
@@ -14,14 +14,14 @@ function expectType<T extends true>(_value?: T): void { }
 expectType<Equal<Ptr<''>, number>>(true)
 expectType<Equal<Ptr<never>, never> extends false ? true : false>(true)
 
-const RECT = struct('RECT', {
+const RECT = /* @__PURE__ */ struct('RECT', {
     left: 'i32',
     top: 'i32',
     right: 'i32',
     bottom: 'i32',
 })
 
-const TVITEM = struct({
+const TVITEM = /* @__PURE__ */ struct('TVITEM', {
     mask: 'u32',
     hItem: '<>ptr',
     state: 'u32',
@@ -33,7 +33,7 @@ const TVITEM = struct({
     cChildren: 'i32',
     lParam: '<>ptr',
 })
-const TVINSERTSTRUCT = struct({
+const TVINSERTSTRUCT = /* @__PURE__ */ struct('TVINSERTSTRUCT', {
     hParent: '<>ptr',
     hInsertAfter: '<>ptr',
     item: TVITEM.__struct,
@@ -55,10 +55,10 @@ export const suite = {
         t.check('offsetOf left', 0, RECT.offsetOf('left'))
         t.check('offsetOf bottom', 12, RECT.offsetOf('bottom'))
 
-        // decode 入参随 N 品牌化：命名 RECT 收 ArrayBuffer | Ptr<'RECT'>，
-        // 未命名 TVITEM（N=''）归一 ArrayBuffer | number
+        // decode 入参随 N 品牌化：命名 struct 收 ArrayBuffer | Ptr<其名字>，
+        // 未命名（N=''）才归一 ArrayBuffer | number
         expectType<Equal<Parameters<typeof RECT.decode>[0], ArrayBuffer | Ptr<'RECT'>>>(true)
-        expectType<Equal<Parameters<typeof TVITEM.decode>[0], ArrayBuffer | number>>(true)
+        expectType<Equal<Parameters<typeof TVITEM.decode>[0], ArrayBuffer | Ptr<'TVITEM'>>>(true)
         if (false) {
             // @ts-expect-error plain number is not assignable to ArrayBuffer | Ptr<'RECT'>
             RECT.decode(123)
@@ -69,7 +69,7 @@ export const suite = {
         const getWindowRectLayout = bind('user32.dll', 'GetWindowRect', '<>ptr <RECT>ptr -> int', { RECT })
         const getDesktopWindow = bind('user32.dll', 'GetDesktopWindow', ' -> <>ptr')
         const hwnd = getDesktopWindow()
-        const wrect = new ArrayBuffer(16)
+        const wrect = new PtrArrayBuffer(16)
         const ok = getWindowRect(hwnd, wrect)
         t.checkTrue('GetWindowRect succeeds', ok !== 0)
         const wr = RECT.decode(wrect)
@@ -107,7 +107,7 @@ export const suite = {
         t.check('nested ptr pszText', 0x44444444, got.item.pszText)
 
         t.section('C typedef aliases (int/DWORD/LPARAM/LONG_PTR/short)')
-        const M = struct({
+        const M = struct('M', {
             n: 'int',        // 别名 → i32（字段值位收别名，normToken 归一）
             d: 'DWORD',      // 别名 → u32
             w: 'LPARAM',     // 别名 → <>ptr
@@ -126,7 +126,7 @@ export const suite = {
         t.check('LONG_PTR', 0x11223344, m.q)
 
         t.section('alias in sugar（数组糖/位域糖收别名）')
-        const AS = struct({
+        const AS = struct('AS', {
             v: 'DWORD[4]',   // 别名元素糖 → u32[4]
             f: 'DWORD:3',    // 别名位域糖 → u32:3
         })
@@ -188,15 +188,15 @@ export const suite = {
         }
 
         t.section('struct() entry: pack 选项 + 键尾 @N（alignas）')
-        const P = struct({ a: 'u8', b: 'u32', c: 'u8' }, { pack: 1 })
+        const P = struct('P', { a: 'u8', b: 'u32', c: 'u8' }, { pack: 1 })
         t.check('pack(1) size == 6', 6, P.size)
         t.check('pack(1) offsetOf b', 1, P.offsetOf('b'))
-        const AL = struct({ a: 'u8', 'b@8': 'u32' })
+        const AL = struct('AL', { a: 'u8', 'b@8': 'u32' })
         t.check('@N offsetOf a', 0, AL.offsetOf('a'))
         t.check('@N offsetOf b（字段名已剥离 @N）', 8, AL.offsetOf('b'))
 
         t.section('utf-16le string[8] roundtrip & truncation')
-        const W = struct({name: 'u16[8]@utf-16le' })
+        const W = struct('W', {name: 'u16[8]@utf-16le' })
         t.check('utf16[8].size == 16', 16, W.size)
         const wb = W.encode({ name: 'hello' })
         t.check('read back "hello"', 'hello', W.decode(wb).name)
@@ -205,7 +205,7 @@ export const suite = {
         t.check('utf16 terminator[14..15] == 0', 0, new DataView(lb).getUint16(14, true))
 
         t.section("utf-8 string[8] roundtrip & truncation")
-        const C = struct({name: 'u8[8]@utf-8' })
+        const C = struct('C', {name: 'u8[8]@utf-8' })
         t.check('char[8].size == 8', 8, C.size)
         const cb = C.encode({ name: 'hi' })
         t.check('read back "hi"', 'hi', C.decode(cb).name)
@@ -215,13 +215,13 @@ export const suite = {
         t.check('char terminator[7] == 0', 0, new DataView(ctrunc).getUint8(7))
 
         t.section('string sugar: 布局与解释正交（错配 roundtrip）')
-        const XS = struct({ buf: 'u8[8]@utf-16le' })
+        const XS = struct('XS', { buf: 'u8[8]@utf-16le' })
         t.check('u8[8]@utf-16le size == 8（encoding 不参与布局）', 8, XS.size)
         const xsd = XS.decode(XS.encode({ buf: 'AB' }))
         t.check('8 字节按 utf-16le 解出 "AB"', 'AB', xsd.buf)
 
         t.section('string sugar as array element')
-        const SA = struct({ rows: { '#': 'array', element: 'u16[4]@utf-16le', length: 3 } })
+        const SA = struct('SA', { rows: { '#': 'array', element: 'u16[4]@utf-16le', length: 3 } })
         t.check('string[4]×3 size == 24', 24, SA.size)
         const sad = SA.decode(SA.encode({ rows: ['ab', 'cd', 'ef'] }))
         t.check('rows[0]', 'ab', sad.rows[0])
@@ -229,13 +229,13 @@ export const suite = {
         expectType<Equal<ReturnType<typeof SA.decode>['rows'], [string, string, string]>>()
 
         t.section('键侧 alignas @N 与值侧 encoding @ 并存')
-        const KV = struct({ a: 'u8', 's@8': 'u16[4]@utf-8' })
+        const KV = struct('KV', { a: 'u8', 's@8': 'u16[4]@utf-8' })
         t.check('offsetOf a', 0, KV.offsetOf('a'))
         t.check('offsetOf s（键尾 @8 生效）', 8, KV.offsetOf('s'))
         t.check('KV size == 16', 16, KV.size)
 
         t.section('numeric arrays roundtrip (CArray)')
-        const A = struct({
+        const A = struct('A', {
             v: 'u16[4]',
             k: 'i32[2]',
         })
@@ -248,18 +248,18 @@ export const suite = {
         t.check('i32[1]', 300000, ad.k[1])
 
         t.section('T[1] stays an array (no scalar degradation)')
-        const ONE = struct({v: 'u16[1]'})
+        const ONE = struct('ONE', {v: 'u16[1]'})
         t.check('size == 2', 2, ONE.size)
         const one = ONE.decode(ONE.encode({ v: [42] }))
         t.check('length 1', 1, one.v.length)
         t.check('[0]', 42, one.v[0])
 
         t.section('array of struct roundtrip (stride = child size)')
-        const PT = struct({
+        const PT = struct('PT', {
             x: 'i32',
             y: 'i32',
         })
-        const POLY = struct({
+        const POLY = struct('POLY', {
             count: 'u32',
             pts: { '#': 'array', element: PT.__struct, length: 3 },
         })
@@ -296,7 +296,7 @@ export const suite = {
         t.check('top-level # stripped（仍按函数名 struct 布局）', 8, H.size)
 
         t.section("pointer member '<>ptr' raw vs '<T>ptr' branded")
-        const PTR = struct({
+        const PTR = struct('PTR', {
             raw: '<>ptr',
             r: '<RECT>ptr',
             tag: 'u32',
@@ -317,7 +317,7 @@ export const suite = {
         expectType<Equal<ReturnType<typeof PTR.decode>['r'], MaybePtr<'RECT'>>>()
 
         t.section('f32/f64 layout (MSVC: f@0, double@8)')
-        const FL = struct({
+        const FL = struct('FL', {
             f: 'f32',      // float
             d: 'f64',      // double
         })
@@ -328,7 +328,7 @@ export const suite = {
         t.check('double', -2.25, fr.d)
 
         t.section('comctl dialog structs track 32/64-bit ABI')
-        const TCITEMW = struct({
+        const TCITEMW = struct('TCITEMW', {
             mask: 'u32',
             dwState: 'u32',
             dwStateMask: 'u32',
@@ -341,7 +341,7 @@ export const suite = {
         t.check('TCITEMW.offsetOf pszText', is64 ? 16 : 12, TCITEMW.offsetOf('pszText'))
         t.check('TCITEMW.offsetOf cchTextMax', is64 ? 24 : 16, TCITEMW.offsetOf('cchTextMax'))
 
-        const TTTOOLINFOW = struct({
+        const TTTOOLINFOW = struct('TTTOOLINFOW', {
             cbSize: 'u32',
             uFlags: 'u32',
             hwnd: '<>ptr',
@@ -355,7 +355,7 @@ export const suite = {
         t.check('TTTOOLINFOW.size', is64 ? 72 : 48, TTTOOLINFOW.size)
         t.check('TTTOOLINFOW.offsetOf lpszText', is64 ? 48 : 36, TTTOOLINFOW.offsetOf('lpszText'))
 
-        const OPENFILENAMEW = struct({
+        const OPENFILENAMEW = struct('OPENFILENAMEW', {
             lStructSize: 'u32',
             hwndOwner: '<>ptr',
             hInstance: '<>ptr',
@@ -385,7 +385,7 @@ export const suite = {
         t.check('OPENFILENAMEW.offsetOf Flags', is64 ? 96 : 52, OPENFILENAMEW.offsetOf('Flags'))
         t.check('OPENFILENAMEW.offsetOf lpstrTitle', is64 ? 88 : 48, OPENFILENAMEW.offsetOf('lpstrTitle'))
 
-        const BROWSEINFOW = struct({
+        const BROWSEINFOW = struct('BROWSEINFOW', {
             hwndOwner: '<>ptr',
             pidlRoot: '<>ptr',
             pszDisplayName: '<>ptr',
@@ -400,7 +400,7 @@ export const suite = {
         t.check('BROWSEINFOW.offsetOf ulFlags', is64 ? 32 : 16, BROWSEINFOW.offsetOf('ulFlags'))
 
         t.section('NMHDR（嵌套时 MSVC 尾 padding 传染）')
-        const NMHDR = struct({
+        const NMHDR = struct('NMHDR', {
             hwndFrom: '<>ptr',
             idFrom: '<>ptr',
             code: 'i32',
@@ -409,7 +409,7 @@ export const suite = {
         t.check('NMHDR.offsetOf code', is64 ? 16 : 8, NMHDR.offsetOf('code'))
 
         t.section('NMCUSTOMDRAW / NMLVCUSTOMDRAW (ListView custom draw)')
-        const NMCUSTOMDRAW = struct({
+        const NMCUSTOMDRAW = struct('NMCUSTOMDRAW', {
             hdr: NMHDR.__struct,
             dwDrawStage: 'u32',
             hdc: '<>ptr',
@@ -422,7 +422,7 @@ export const suite = {
         t.check('NMCUSTOMDRAW.offsetOf dwDrawStage', is64 ? 24 : 12, NMCUSTOMDRAW.offsetOf('dwDrawStage'))
         t.check('NMCUSTOMDRAW.offsetOf hdc', is64 ? 32 : 16, NMCUSTOMDRAW.offsetOf('hdc'))
         t.check('NMCUSTOMDRAW.offsetOf dwItemSpec', is64 ? 56 : 36, NMCUSTOMDRAW.offsetOf('dwItemSpec'))
-        const NMLVCUSTOMDRAW = struct({
+        const NMLVCUSTOMDRAW = struct('NMLVCUSTOMDRAW', {
             hdr: NMHDR.__struct,
             dwDrawStage: 'u32',
             hdc: '<>ptr',
@@ -441,7 +441,7 @@ export const suite = {
         t.check('NMLVCUSTOMDRAW.offsetOf iSubItem', is64 ? 88 : 56, NMLVCUSTOMDRAW.offsetOf('iSubItem'))
 
         t.section('NMLISTVIEW / NMITEMACTIVATE')
-        const NMLISTVIEW = struct({
+        const NMLISTVIEW = struct('NMLISTVIEW', {
             hdr: NMHDR.__struct,
             iItem: 'i32',
             iSubItem: 'i32',
@@ -458,7 +458,7 @@ export const suite = {
         t.check('NMLISTVIEW.offsetOf uOldState', is64 ? 36 : 24, NMLISTVIEW.offsetOf('uOldState'))
 
         t.section('LVITEMW / LVCOLUMNW')
-        const LVITEMW = struct({
+        const LVITEMW = struct('LVITEMW', {
             mask: 'u32',
             iItem: 'i32',
             iSubItem: 'i32',
@@ -480,7 +480,7 @@ export const suite = {
         t.check('LVITEMW.offsetOf pszText', is64 ? 24 : 20, LVITEMW.offsetOf('pszText'))
         t.check('LVITEMW.offsetOf iImage', is64 ? 36 : 28, LVITEMW.offsetOf('iImage'))
         t.check('LVITEMW.offsetOf lParam', is64 ? 40 : 32, LVITEMW.offsetOf('lParam'))
-        const LVCOLUMNW = struct({
+        const LVCOLUMNW = struct('LVCOLUMNW', {
             mask: 'u32',
             fmt: 'i32',
             cx: 'i32',
@@ -499,7 +499,7 @@ export const suite = {
         t.check('LVCOLUMNW.offsetOf iOrder', is64 ? 36 : 28, LVCOLUMNW.offsetOf('iOrder'))
 
         t.section('NMDATETIMECHANGE')
-        const SYSTEMTIME = struct({
+        const SYSTEMTIME = struct('SYSTEMTIME', {
             wYear: 'u16',
             wMonth: 'u16',
             wDayOfWeek: 'u16',
@@ -509,7 +509,7 @@ export const suite = {
             wSecond: 'u16',
             wMilliseconds: 'u16',
         })
-        const NMDATETIMECHANGE = struct({
+        const NMDATETIMECHANGE = struct('NMDATETIMECHANGE', {
             hdr: NMHDR.__struct,
             dwFlags: 'u32',
             st: SYSTEMTIME.__struct,
@@ -519,14 +519,14 @@ export const suite = {
         t.check('NMDATETIMECHANGE.offsetOf st', is64 ? 28 : 16, NMDATETIMECHANGE.offsetOf('st'))
 
         t.section('NMLINK szUrl offset')
-        const LITEM = struct({
+        const LITEM = struct('LITEM', {
             mask: 'u32',
             iLink: 'i32',
             state: 'u32',
             stateMask: 'u32',
             szID: 'u16[48]@utf-16le',
         })
-        const NMLINK = struct({
+        const NMLINK = struct('NMLINK', {
             hdr: NMHDR.__struct,
             item: LITEM.__struct,
             szUrl: 'u16[2084]@utf-16le',
@@ -541,7 +541,7 @@ export const suite = {
         {
             // 字段按序写入同一 buffer：写 d 时单元里已有 a/b/c 的位，
             // 若 writeBitfield 不做读改写（直接 val<<bit）会把 a/b/c 清零。
-            const BF = struct({
+            const BF = struct('BF', {
                 a: 'u32:3',
                 b: 'u32:5',
                 c: 'u32:4',
@@ -561,7 +561,7 @@ export const suite = {
 
         t.section('bitfield roundtrip: signed sign extension')
         {
-            const SB = struct({
+            const SB = struct('SB', {
                 s: 'i32:8',
                 u: 'u32:4',
             })
@@ -576,7 +576,7 @@ export const suite = {
 
         t.section('bitfield roundtrip: overflow starts a new unit')
         {
-            const OV = struct({
+            const OV = struct('OV', {
                 a: 'u32:30',
                 b: 'u32:4',   // 30+4=34 > 32 → 新单元，剩余 2 位废弃
                 c: 'u32',
@@ -660,7 +660,7 @@ export const suite = {
 
         // 类型层：位域成员值类型是 number
         {
-            const BF = struct({
+            const BF = struct('BF', {
                 a: 'u32:3',
                 s: 'i32:8',
             })
@@ -672,7 +672,7 @@ export const suite = {
         t.section('bitfield width>53: bigint roundtrip (u64/i64)')
         {
             // u64:60 + u64:4 同单元混合形态：>53 的字段 bigint、≤53 的字段 number
-            const W64 = struct({
+            const W64 = struct('W64', {
                 u: 'u64:60',
                 v: 'u64:4',
             })
@@ -686,7 +686,7 @@ export const suite = {
             expectType<Equal<ReturnType<typeof W64.decode>['v'], number>>()
 
             // i64:60 负值符号扩展 → 精确 bigint（回归：曾被有符号分支的 Number() 截断）
-            const I64 = struct({ s: 'i64:60' })
+            const I64 = struct('I64', { s: 'i64:60' })
             const neg = -12345678901234567n
             t.check('i64:60 负值精确往返', neg, I64.decode(I64.encode({ s: neg })).s)
             // 符号位为 0 的正值：width>53 → 依然 bigint
@@ -698,11 +698,11 @@ export const suite = {
             }
 
             // 分界：53 → number（2^53-1 精确），54 → bigint（2^54-1 精确）
-            const B53 = struct({ a: 'u64:53' })
+            const B53 = struct('B53', { a: 'u64:53' })
             expectType<Equal<ReturnType<typeof B53.decode>['a'], number>>()
             t.check('u64:53 边界 number 精确', 9007199254740991,
                 B53.decode(B53.encode({ a: 9007199254740991 })).a)
-            const B54 = struct({ a: 'u64:54' })
+            const B54 = struct('B54', { a: 'u64:54' })
             expectType<Equal<ReturnType<typeof B54.decode>['a'], bigint>>()
             t.check('u64:54 边界 bigint 精确', 18014398509481983n,
                 B54.decode(B54.encode({ a: 18014398509481983n })).a)

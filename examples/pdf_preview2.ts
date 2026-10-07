@@ -1,12 +1,12 @@
+import { PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import '../lib/polyfill.js'
 import * as std from 'std'
 import * as gui from 'gui'
 import * as win from 'win'
-import * as ffi from 'ffi'
 import type { Document, Page, Pixmap } from '../vendor/mupdf-wasm/mupdf.js'
 import { assertNonNullable } from '../lib/assert.js'
 import { bind, WCHAR } from '../lib/ffi/bind.js'
-import { OPENFILENAMEW } from '../lib/win-common-structs.js'
+import { OPENFILENAMEW } from '../lib/windows/structs.js'
 
 const _user32 = win.LoadLibrary('user32.dll')
 const _gdi32 = win.LoadLibrary('gdi32.dll')
@@ -22,8 +22,8 @@ const ReleaseDC = bind('user32.dll', 'ReleaseDC', '<>ptr <>ptr -> i32')
 const PatBlt = bind('gdi32.dll', 'PatBlt', '<>ptr i32 i32 i32 i32 u32 -> u32')
 const WHITENESS = 0x00FF0062
 
-function makeBitmapInfo(w: number, h: number): ArrayBuffer {
-    const bmi = new ArrayBuffer(40)
+function makeBitmapInfo(w: number, h: number): PtrArrayBuffer<any> {
+    const bmi = new PtrArrayBuffer(40)
     const bv = new DataView(bmi)
     bv.setUint32(0, 40, true)
     bv.setInt32(4, w, true)
@@ -44,7 +44,7 @@ function wideToStr(buf: ArrayBuffer): string {
 }
 
 interface PixmapInfo {
-    data: ArrayBuffer; w: number; h: number
+    data: PtrArrayBuffer<any>; w: number; h: number
 }
 
 let hwndMain: gui.HWND | null = null
@@ -100,7 +100,8 @@ function renderPdfPage(mupdf: MuPdf, filePath: string, pageIndex: number): Pixma
         const srcStride = pixmap.getStride()
         const w = pixmap.getWidth(), h = pixmap.getHeight()
         const dibStride = Math.floor((w * 3 + 3) / 4) * 4
-        const dib = new Uint8Array(h * dibStride)
+        const dibBuffer = new PtrArrayBuffer(h * dibStride)
+        const dib = new Uint8Array(dibBuffer)
         for (let y = 0; y < h; y++) {
             const srcOff = y * srcStride, dstOff = y * dibStride
             for (let x = 0; x < w; x++) {
@@ -109,24 +110,24 @@ function renderPdfPage(mupdf: MuPdf, filePath: string, pageIndex: number): Pixma
             }
         }
         const totalPages = cachedDoc.countPages()
-        return { data: dib.buffer, w, h, totalPages }
+        return { data: dibBuffer, w, h, totalPages }
     } catch (e) { std.printf('Error rendering: %s\n', String(e)); clearCachedDoc(); return null }
     finally { if (pixmap) try { pixmap.destroy() } catch {}; if (page) try { page.destroy() } catch {} }
 }
 
 function openPdfFileDialog(): string | null {
     assertNonNullable(hwndMain)
-    const fileBuf = new ArrayBuffer(260 * 2)
+    const fileBuf = WCHAR.alloc(260)
     const filterWide = WCHAR.encode('PDF Files\0*.pdf\0All Files\0*.*\0\0')
-    const ofn: ArrayBuffer & { __keep?: ArrayBuffer[] } = OPENFILENAMEW.encode({
+    const ofn: PtrArrayBuffer<any> & { __keep?: ArrayBuffer[] } = OPENFILENAMEW.encode({
         lStructSize: OPENFILENAMEW.size,
         hwndOwner: hwndMain,
         hInstance: 0,
-        lpstrFilter: ffi.bufferPtr(filterWide),
+        lpstrFilter: filterWide.ptr,
         lpstrCustomFilter: 0,
         nMaxCustFilter: 0,
         nFilterIndex: 0,
-        lpstrFile: ffi.bufferPtr(fileBuf),
+        lpstrFile: fileBuf.ptr,
         nMaxFile: 260,
         lpstrFileTitle: 0,
         nMaxFileTitle: 0,

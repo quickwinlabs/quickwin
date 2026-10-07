@@ -1,14 +1,14 @@
+import { PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import '../lib/polyfill.js'
 import * as std from 'std'
 import * as gui from 'gui'
 import * as win from 'win'
-import * as ffi from 'ffi'
 import type { Document, Page, Pixmap } from '../vendor/mupdf-wasm/mupdf.js'
 import { useState } from 'react'
 import { render, Button, Input, ScrollView } from '../lib/react-qw/index.js'
 import { bind, WCHAR } from '../lib/ffi/bind.js'
 import { PdfCanvas } from './PdfCanvas.js'
-import { OPENFILENAMEW } from '../lib/win-common-structs.js'
+import { OPENFILENAMEW } from '../lib/windows/structs.js'
 
 type MuPdf = typeof import('../vendor/mupdf-wasm/mupdf.js')
 
@@ -34,17 +34,17 @@ function wideToStr(buf: ArrayBuffer): string {
 }
 
 function openPdfFileDialog(owner: number): string | null {
-  const fileBuf = new ArrayBuffer(260 * 2)
+  const fileBuf = WCHAR.alloc(260)
   const filterWide = WCHAR.encode('PDF Files\0*.pdf\0All Files\0*.*\0\0')
-  const ofn: ArrayBuffer & { __keep?: ArrayBuffer[] } = OPENFILENAMEW.encode({
+  const ofn: PtrArrayBuffer<any> & { __keep?: ArrayBuffer[] } = OPENFILENAMEW.encode({
     lStructSize: OPENFILENAMEW.size,
     hwndOwner: owner,
     hInstance: 0,
-    lpstrFilter: ffi.bufferPtr(filterWide),
+    lpstrFilter: filterWide.ptr,
     lpstrCustomFilter: 0,
     nMaxCustFilter: 0,
     nFilterIndex: 0,
-    lpstrFile: ffi.bufferPtr(fileBuf),
+    lpstrFile: fileBuf.ptr,
     nMaxFile: 260,
     lpstrFileTitle: 0,
     nMaxFileTitle: 0,
@@ -94,7 +94,7 @@ async function loadMupdf(): Promise<MuPdf | null> {
 }
 
 interface PixmapInfo {
-  data: ArrayBuffer
+  data: PtrArrayBuffer<any>
   w: number
   h: number
 }
@@ -155,7 +155,7 @@ function renderPdfPage(mupdf: MuPdf, filePath: string, pageIndex: number): Pixma
     const dibStride = Math.floor((w * 3 + 3) / 4) * 4
 
     const dibSize = h * dibStride
-    const dibBuffer = new ArrayBuffer(dibSize)
+    const dibBuffer = new PtrArrayBuffer(dibSize)
     const dib = new Uint8Array(dibBuffer)
 
     for (let y = 0; y < h; y++) {

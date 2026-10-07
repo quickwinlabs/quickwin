@@ -1,6 +1,5 @@
 import { forwardRef, useState, useRef, useEffect } from 'react'
 import * as gui from 'gui'
-import * as ffi from 'ffi'
 import { WCHAR } from '../../ffi/bind.js'
 import type { WStyle } from '../jsx.d.ts'
 
@@ -35,7 +34,7 @@ export const Input = forwardRef<gui.HWND, InputProps>(
       const h = inputRef.current
       if (!h || !placeholder) return
       const buf = WCHAR.encode(placeholder)
-      gui.SendMessage(h, gui.EditMsg.SETCUEBANNER, 1, ffi.bufferPtr(buf))
+      gui.SendMessage(h, gui.EditMsg.SETCUEBANNER, 1, buf.ptr)
     }, [placeholder])
 
     return (

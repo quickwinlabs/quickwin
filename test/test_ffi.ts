@@ -3,7 +3,7 @@ import * as win from 'win'
 import * as ffi from 'ffi'
 import * as os from 'os'
 import { bind, bindLib } from '../lib/ffi/bind.js'
-import { NULL } from '../lib/ffi/ctype.js'
+import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import { Tester } from './test_helper.js'
 
 const MAX_WCHARS = 4096
@@ -89,10 +89,12 @@ export const suite = {
 
         const flags = 0x06
         const level = 2
-        const neededBuf = new Uint32Array(new ArrayBuffer(4))
-        const returnedBuf = new Uint32Array(new ArrayBuffer(4))
+        const neededB = new PtrArrayBuffer(4)
+        const neededBuf = new Uint32Array(neededB)
+        const returnedB = new PtrArrayBuffer(4)
+        const returnedBuf = new Uint32Array(returnedB)
 
-        const ret1 = EnumPrintersW(flags, NULL, level, NULL, 0, neededBuf.buffer, returnedBuf.buffer)
+        const ret1 = EnumPrintersW(flags, NULL, level, NULL, 0, neededB, returnedB)
         std.printf('  first call: ret=%d needed=%d returned=%d\n', ret1, neededBuf[0], returnedBuf[0])
         if (neededBuf[0]! > 0) {
             t.checkTrue('pcbNeeded > 0', neededBuf[0]! > 0)
@@ -103,15 +105,15 @@ export const suite = {
             return
         }
 
-        const printerBuf = new ArrayBuffer(neededBuf[0]!)
+        const printerBuf = new PtrArrayBuffer(neededBuf[0]!)
         const ret2 = EnumPrintersW(
             flags,
             NULL,
             level,
             printerBuf,
             neededBuf[0]!,
-            neededBuf.buffer,
-            returnedBuf.buffer
+            neededB,
+            returnedB
         )
         t.checkTrue('EnumPrintersW succeeds', ret2 !== 0)
         if (ret2 === 0) return
