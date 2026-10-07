@@ -154,6 +154,10 @@ cd docker
 流程：`run.sh` 杀旧 QEMU（`--fresh` 时重建 overlay）→ `ln -s` `_build` 到 `ci_share/quickwin` → `unix2dos` run.bat → 启动 → 等 `/health`。  
 `run.bat` 只做防火墙/portproxy + `start exec_server`；`http_test.sh` 内部确保容器 `serve_test :18923`。
 
+> **改了 `examples/exec_server*.ts` 或其 lib 依赖后，只跑 `make js` 不生效**——guest 里跑的
+> `exec_server.exe` 内嵌的是 brotli 打包的旧 JS。改动后构建顺序：`make js` → `make exec_server`
+> （重新 brotli 内嵌）→ `./run.sh <vm> --restart` 加载新 exe（原文见 `.agents/EXEC_SERVER.md`）。
+
 Win7 用 `qwin.exe`（64 位），XP 用 `qwin-x86.exe`（32 位），`http_test.sh` 按 VM 参数选 exe；`run.bat` 按 `ver` 选日志文件名。
 
 > hostfwd 端口（win7:**8007** / xp:**8005**）只在容器网络里，宿主直连不通；本地须 `podman exec quickwin-dev` 进容器跑上述脚本。CI 在容器内直接跑，无此问题。
