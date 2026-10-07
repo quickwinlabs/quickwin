@@ -1,6 +1,7 @@
 import { forwardRef, useRef, useEffect, useState } from 'react'
 import * as gui from 'gui'
 import * as ffi from 'ffi'
+import { WCHAR } from '../../ffi/bind.js'
 import { struct } from '../../ffi/struct.js'
 import { nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
@@ -37,14 +38,6 @@ export interface TreeViewProps<D> {
   style?: WStyle
 }
 
-function textToUtf16(s: string): ArrayBuffer {
-  const buf = new ArrayBuffer((s.length + 1) * 2)
-  const dv = new DataView(buf)
-  for (let i = 0; i < s.length; i++)
-    dv.setUint16(i * 2, s.charCodeAt(i), true)
-  return buf
-}
-
 function bufPtr(buf: ArrayBuffer): number {
   return ffi.bufferPtr(buf)
 }
@@ -65,7 +58,7 @@ function insertItems(
 ): void {
   for (const node of nodes) {
     const cChildren = node.children && node.children.length > 0 ? 1 : 0
-    const textBuf = textToUtf16(node.label)
+    const textBuf = WCHAR.encode(node.label)
     const itemBuf = buildTvItem(bufPtr(textBuf), cChildren)
     const item = TVITEM.decode(itemBuf)
     const tvins = TVINSERTSTRUCT.encode({ hParent: parentHandle, hInsertAfter: gui.TvInsertAfter.ROOT, item })

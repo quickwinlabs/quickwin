@@ -6,7 +6,7 @@ import * as ffi from 'ffi'
 import type { Document, Page, Pixmap } from '../vendor/mupdf-wasm/mupdf.js'
 import { useState } from 'react'
 import { render, Button, Input, ScrollView } from '../lib/react-qw/index.js'
-import { bind } from '../lib/ffi/bind.js'
+import { bind, WCHAR } from '../lib/ffi/bind.js'
 import { PdfCanvas } from './PdfCanvas.js'
 import { OPENFILENAMEW } from '../lib/win-common-structs.js'
 
@@ -22,13 +22,6 @@ if (!_user32 || !_gdi32 || !_comdlg32) {
 
 const GetOpenFileNameW_ = bind('comdlg32.dll', 'GetOpenFileNameW', '<BYTE>ptr -> u32')
 
-function strToWide(str: string): ArrayBuffer {
-  const buf = new ArrayBuffer((str.length + 1) * 2)
-  const dv = new DataView(buf)
-  for (let i = 0; i < str.length; i++) dv.setUint16(i * 2, str.charCodeAt(i), true)
-  return buf
-}
-
 function wideToStr(buf: ArrayBuffer): string {
   const dv = new DataView(buf)
   const chars: number[] = []
@@ -42,7 +35,7 @@ function wideToStr(buf: ArrayBuffer): string {
 
 function openPdfFileDialog(owner: number): string | null {
   const fileBuf = new ArrayBuffer(260 * 2)
-  const filterWide = strToWide('PDF Files\0*.pdf\0All Files\0*.*\0\0')
+  const filterWide = WCHAR.encode('PDF Files\0*.pdf\0All Files\0*.*\0\0')
   const ofn: ArrayBuffer & { __keep?: ArrayBuffer[] } = OPENFILENAMEW.encode({
     lStructSize: OPENFILENAMEW.size,
     hwndOwner: owner,

@@ -5,7 +5,7 @@ import * as win from 'win'
 import * as ffi from 'ffi'
 import type { Document, Page, Pixmap } from '../vendor/mupdf-wasm/mupdf.js'
 import { assertNonNullable } from '../lib/assert.js'
-import { bind } from '../lib/ffi/bind.js'
+import { bind, WCHAR } from '../lib/ffi/bind.js'
 import { OPENFILENAMEW } from '../lib/win-common-structs.js'
 
 const _user32 = win.LoadLibrary('user32.dll')
@@ -31,10 +31,6 @@ function makeBitmapInfo(w: number, h: number): ArrayBuffer {
     bv.setUint16(12, 1, true)
     bv.setUint16(14, 24, true)
     return bmi
-}
-
-function strToWide(str: string): ArrayBuffer {
-    return new TextEncoder('utf-16le').encode(str + '\0').buffer
 }
 
 function wideToStr(buf: ArrayBuffer): string {
@@ -121,7 +117,7 @@ function renderPdfPage(mupdf: MuPdf, filePath: string, pageIndex: number): Pixma
 function openPdfFileDialog(): string | null {
     assertNonNullable(hwndMain)
     const fileBuf = new ArrayBuffer(260 * 2)
-    const filterWide = strToWide('PDF Files\0*.pdf\0All Files\0*.*\0\0')
+    const filterWide = WCHAR.encode('PDF Files\0*.pdf\0All Files\0*.*\0\0')
     const ofn: ArrayBuffer & { __keep?: ArrayBuffer[] } = OPENFILENAMEW.encode({
         lStructSize: OPENFILENAMEW.size,
         hwndOwner: hwndMain,

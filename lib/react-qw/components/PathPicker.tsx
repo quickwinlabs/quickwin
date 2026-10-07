@@ -1,7 +1,7 @@
 import { forwardRef, useState, useRef } from 'react'
 import * as gui from 'gui'
 import * as ffi from 'ffi'
-import { bind } from '../../ffi/bind.js'
+import { bind, WCHAR } from '../../ffi/bind.js'
 import { OPENFILENAMEW, BROWSEINFOW } from '../../win-common-structs.js'
 import type { WStyle } from '../jsx.d.ts'
 
@@ -27,10 +27,6 @@ function ensureDlls(): DllBindings | null {
   return _bindings
 }
 
-function strToWide(s: string): ArrayBuffer {
-  return new TextEncoder('utf-16le').encode(s + '\0').buffer
-}
-
 const _decoder = new TextDecoder('utf-16le')
 
 function wideToStr(buf: ArrayBuffer, offset = 0): string {
@@ -49,8 +45,8 @@ function openFileDialog(
   if (!dll) return null
 
   const fileBuf = new ArrayBuffer(260 * 2)
-  const filterWide = strToWide(filter)
-  const titleWide = title ? strToWide(title) : null
+  const filterWide = WCHAR.encode(filter)
+  const titleWide = title ? WCHAR.encode(title) : null
 
   let flags = 0x1000 | 0x0800 | 0x0008
   if (multiple) flags |= 0x0200
@@ -107,7 +103,7 @@ function openFolderDialog(owner: gui.HWND, title: string | undefined): string | 
   const dll = ensureDlls()
   if (!dll) return null
 
-  const titleWide = title ? strToWide(title) : null
+  const titleWide = title ? WCHAR.encode(title) : null
 
   const bi = BROWSEINFOW.encode({
     hwndOwner: owner,

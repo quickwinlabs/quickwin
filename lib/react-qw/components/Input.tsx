@@ -1,15 +1,8 @@
 import { forwardRef, useState, useRef, useEffect } from 'react'
 import * as gui from 'gui'
 import * as ffi from 'ffi'
+import { WCHAR } from '../../ffi/bind.js'
 import type { WStyle } from '../jsx.d.ts'
-
-function textToUtf16(s: string): ArrayBuffer {
-  const buf = new ArrayBuffer((s.length + 1) * 2)
-  const dv = new DataView(buf)
-  for (let i = 0; i < s.length; i++)
-    dv.setUint16(i * 2, s.charCodeAt(i), true)
-  return buf
-}
 
 export interface InputProps {
   value?: string
@@ -41,7 +34,7 @@ export const Input = forwardRef<gui.HWND, InputProps>(
     useEffect(() => {
       const h = inputRef.current
       if (!h || !placeholder) return
-      const buf = textToUtf16(placeholder)
+      const buf = WCHAR.encode(placeholder)
       gui.SendMessage(h, gui.EditMsg.SETCUEBANNER, 1, ffi.bufferPtr(buf))
     }, [placeholder])
 

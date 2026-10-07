@@ -4,7 +4,7 @@ import * as ffi from 'ffi'
 import { struct } from '../../ffi/struct.js'
 import { InvalidateRect } from '../../windows/user32.js'
 import { NULL } from '../../ffi/ctype.js'
-import { NMHDR, nmCode, readI32At, readU16At } from '../nmhdr.js'
+import { NMHDR, nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
 
 const SYSTEMTIME = struct({
@@ -38,17 +38,16 @@ function bufPtr(buf: ArrayBuffer): number {
 }
 
 function dateToSysTimeBuf(d: Date): ArrayBuffer {
-  const buf = new ArrayBuffer(16)
-  const dv = new DataView(buf)
-  dv.setUint16(0, d.getFullYear(), true)
-  dv.setUint16(2, d.getMonth() + 1, true)
-  dv.setUint16(4, 0, true)            // wDayOfWeek (ignored on set)
-  dv.setUint16(6, d.getDate(), true)
-  dv.setUint16(8, d.getHours(), true)
-  dv.setUint16(10, d.getMinutes(), true)
-  dv.setUint16(12, d.getSeconds(), true)
-  dv.setUint16(14, d.getMilliseconds(), true)
-  return buf
+  // wDayOfWeek 设置时被忽略，缺省跳过 = 0
+  return SYSTEMTIME.encode({
+    wYear: d.getFullYear(),
+    wMonth: d.getMonth() + 1,
+    wDay: d.getDate(),
+    wHour: d.getHours(),
+    wMinute: d.getMinutes(),
+    wSecond: d.getSeconds(),
+    wMilliseconds: d.getMilliseconds(),
+  })
 }
 
 const DateTimePicker = forwardRef(function DateTimePicker(
@@ -103,19 +102,12 @@ const DateTimePicker = forwardRef(function DateTimePicker(
           const code = nmCode(e.lParam)
           if (code === gui.DtNotifyCode.DATETIMECHANGE) {
             // NMDATETIMECHANGE: NMHDR + DWORD dwFlags + SYSTEMTIME st
-            const st = NMDATETIMECHANGE.offsetOf('st')
-            const dwFlags = readI32At(e.lParam, NMDATETIMECHANGE.offsetOf('dwFlags'))
+            const { dwFlags, st } = NMDATETIMECHANGE.decode(e.lParam)
             if (dwFlags === gui.DtFlag.GDT_NONE) {
               if (!isControlled) setInternalDate(null)
               onChangeRef.current?.(null)
             } else {
-              const year = readU16At(e.lParam, st + 0)
-              const month = readU16At(e.lParam, st + 2)
-              const day = readU16At(e.lParam, st + 6)
-              const hour = readU16At(e.lParam, st + 8)
-              const min = readU16At(e.lParam, st + 10)
-              const sec = readU16At(e.lParam, st + 12)
-              const d = new Date(year, month - 1, day, hour, min, sec)
+              const d = new Date(st.wYear, st.wMonth - 1, st.wDay, st.wHour, st.wMinute, st.wSecond)
               if (!isControlled) setInternalDate(d)
               onChangeRef.current?.(d)
             }

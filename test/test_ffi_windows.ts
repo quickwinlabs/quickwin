@@ -4,9 +4,11 @@ import {
     GetDesktopWindow, CreatePopupMenu, DestroyMenu, GetDC, ReleaseDC,
     LoadImage, LoadImageOrdinal, SetScrollInfo, GetScrollInfo,
 } from '../lib/windows/user32.js'
-import { GetDeviceCaps, CreateSolidBrush, DeleteObject, CreateFontIndirect } from '../lib/windows/gdi32.js'
+import {
+    GetDeviceCaps, CreateSolidBrush, DeleteObject, CreateFontIndirect, GetObject, SelectObject, CreateCompatibleDC, DeleteDC,
+} from '../lib/windows/gdi32.js'
 import { ImageListCreate, ImageListDestroy } from '../lib/windows/comctl32.js'
-import { SCROLLINFO } from '../lib/windows/structs.js'
+import { LOGFONTW, SCROLLINFO } from '../lib/windows/structs.js'
 
 export const suite = {
     run(t: Tester) {
@@ -21,6 +23,48 @@ export const suite = {
         const font = CreateFontIndirect({ lfHeight: -16, lfWeight: 400, lfCharSet: 1, lfFaceName: 'Arial' })
         t.checkTrue('CreateFontIndirect(DeepPartial LOGFONTW) 非 0', font !== 0)
         if (font !== 0) t.checkTrue('DeleteObject(font) 成功', DeleteObject(font) !== 0)
+
+        // react-qw ListView.getCellFont 的流程：GetObject 读出现有字体 → decode → 叠加粗/斜/下划线 → 重建 → 回读
+        t.section('gdi32: 字体读出-改写-重建往返（GetObject → decode → CreateFontIndirect → GetObject）')
+        const base = CreateFontIndirect({ lfHeight: -18, lfWeight: 400, lfCharSet: 1, lfFaceName: 'Arial' })
+        if (base !== 0) {
+            const lf0 = LOGFONTW.encode()
+            t.checkTrue('GetObject(font) 写入 LOGFONTW.size 字节', GetObject(base, LOGFONTW.size, lf0) === LOGFONTW.size)
+            const b0 = LOGFONTW.decode(lf0)
+            t.check('读出 lfHeight', -18, b0.lfHeight)
+            t.check('读出 lfWeight', 400, b0.lfWeight)
+            t.check('读出 lfItalic（未设）', 0, b0.lfItalic)
+            const styled = CreateFontIndirect({ ...b0, lfWeight: 700, lfItalic: 1, lfUnderline: 1 })
+            t.checkTrue('叠加样式后重建非 0', styled !== 0)
+            if (styled !== 0) {
+                const lf1 = LOGFONTW.encode()
+                GetObject(styled, LOGFONTW.size, lf1)
+                const b1 = LOGFONTW.decode(lf1)
+                t.check('重建后 lfWeight', 700, b1.lfWeight)
+                t.check('重建后 lfItalic', 1, b1.lfItalic)
+                t.check('重建后 lfUnderline', 1, b1.lfUnderline)
+                t.check('底字体的 lfHeight 保留', -18, b1.lfHeight)
+                t.check('底字体的 lfCharSet 保留', 1, b1.lfCharSet)
+                t.check('底字体的字体名保留', b0.lfFaceName, b1.lfFaceName)
+                t.checkTrue('DeleteObject(styled) 成功', DeleteObject(styled) !== 0)
+            }
+            t.checkTrue('DeleteObject(base) 成功', DeleteObject(base) !== 0)
+        }
+
+        // 内存 DC 选入字体：SelectObject 返回被替换的旧对象，选回后可删除新对象（截屏与 ListView 自绘共用）
+        t.section('gdi32: CreateCompatibleDC / SelectObject 往返')
+        const memDc = CreateCompatibleDC(NULL)
+        t.checkTrue('CreateCompatibleDC(NULL) 非 0', memDc !== 0)
+        if (memDc !== 0) {
+            const f2 = CreateFontIndirect({ lfHeight: -12, lfFaceName: 'Arial' })
+            if (f2 !== 0) {
+                const old = SelectObject(memDc, f2)
+                t.checkTrue('SelectObject 返回旧对象非 0', old !== 0)
+                t.check('再选回旧对象，返回刚选入的字体', f2, SelectObject(memDc, old))
+                t.checkTrue('DeleteObject(f2) 成功', DeleteObject(f2) !== 0)
+            }
+            t.checkTrue('DeleteDC 成功', DeleteDC(memDc) !== 0)
+        }
 
         t.section('gdi32: GetDeviceCaps（<HDC>ptr 跨 user32 品牌互认）')
         const hdc = GetDC(NULL)

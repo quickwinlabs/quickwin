@@ -5,7 +5,7 @@ import {
     GetDesktopWindow, IsWindow, IsWindowVisible, GetSystemMetrics, GetClientRect,
     GetWindowTextLength, GetClassName, FindWindow, SetTimer, KillTimer,
     GetKeyState, LoadCursor, SetCursor, GetMenu, DestroyMenu, GetForegroundWindow,
-    GetDC, ReleaseDC, EnumWindows,
+    GetDC, ReleaseDC, EnumWindows, FindWindowEx,
 } from '../lib/windows/user32.js'
 import { RECT } from '../lib/windows/structs.js'
 
@@ -94,5 +94,20 @@ export const suite = {
         t.check('EnumWindows 返回 1（枚举完成）', 1, EnumWindows(enumClos.ptr, NULL))
         t.checkTrue('回调计数 ≥ 1', count >= 1)
         enumClos.dispose()
+
+        // EnumWindows（快照）与 FindWindowEx(NULL, prev) 链式遍历应得到同一组顶层窗口（实测两者顺序不同，
+        // 所以只比集合，不比顺序）。
+        // 回调只收集：回调内抛异常会被吞成返回 0（枚举静默提前结束），所以不在回调里做别的。
+        t.section('user32: EnumWindows ≡ FindWindowEx 链遍历（顶层窗口集合）')
+        const viaEnum: number[] = []
+        const collect = closure('<HWND>ptr <>ptr -> i32', (h) => { viaEnum.push(h); return 1 })
+        try { EnumWindows(collect.ptr, NULL) } finally { collect.dispose() }
+        const viaChain: number[] = []
+        for (let h = FindWindowEx(NULL, NULL, NULL, NULL); h && viaChain.length < 100000;
+            h = FindWindowEx(NULL, h, NULL, NULL)) viaChain.push(h)
+        t.checkTrue('两种遍历都非空', viaEnum.length > 0 && viaChain.length > 0)
+        t.check('窗口数量一致', viaEnum.length, viaChain.length)
+        const sorted = (a: number[]): string => a.slice().sort((x, y) => x - y).join(',')
+        t.check('窗口集合一致（忽略顺序）', sorted(viaEnum), sorted(viaChain))
     },
 }

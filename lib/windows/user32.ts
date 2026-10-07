@@ -71,6 +71,11 @@ export const SetForegroundWindow = /*@__PURE__*/ b('SetForegroundWindow', '<HWND
 export const GetDesktopWindow = /*@__PURE__*/ b('GetDesktopWindow', ' -> <HWND>ptr')
 /** 按类名+标题查找顶层窗口；无 → null（两个参数都可传 null） */
 export const FindWindow = /*@__PURE__*/ b('FindWindowW', '<WCHAR>ptr <WCHAR>ptr -> <HWND>ptr')
+/** 在 hWndParent 的子窗口链里按类名+标题查找，从 hWndChildAfter 之后开始（均可传 NULL：
+ *  parent = NULL 遍历顶层窗口，childAfter = NULL 从头开始，class/title = NULL 不过滤）；
+ *  无更多窗口 → NULL。链式遍历：FindWindowEx(NULL, prev, NULL, NULL) */
+export const FindWindowEx = /*@__PURE__*/ b('FindWindowExW',
+    '<HWND>ptr <HWND>ptr <WCHAR>ptr <WCHAR>ptr -> <HWND>ptr')
 /** 取窗口标题（宽字符写入 out buffer，返回写入字符数，不含 NUL）；
  *  out 传 WCHAR.alloc(n).buf（n = 字符数），读回 WCHAR.decode(buf) */
 export const GetWindowText = /*@__PURE__*/ b('GetWindowTextW', '<HWND>ptr <BYTE>ptr i32 -> i32')
@@ -139,6 +144,9 @@ export const RegisterWindowMessage = /*@__PURE__*/ b('RegisterWindowMessageW', '
 export const GetDC = /*@__PURE__*/ b('GetDC', '<HWND>ptr -> <HDC>ptr')
 /** 归还 GetDC/GetWindowDC 取的 DC（首参收品牌 HWND、第二参收品牌 HDC，误传编译不过）；成功 → 非 0 */
 export const ReleaseDC = /*@__PURE__*/ b('ReleaseDC', '<HWND>ptr <HDC>ptr -> i32')
+/** 让窗口把自己画进 hdcBlt（可截被遮挡 / 最小化的窗口；位图须按整窗尺寸建，从 (0,0) 填满）；
+ *  nFlags = PW_CLIENTONLY(1) / PW_RENDERFULLCONTENT(2，Win8.1+)，XP/Win7 传 0；成功 → 非 0 */
+export const PrintWindow = /*@__PURE__*/ b('PrintWindow', '<HWND>ptr <HDC>ptr u32 -> i32')
 /** 取整个窗口（含边框标题）DC；返回品牌 HDC，失败 → null，配对 ReleaseDC */
 export const GetWindowDC = /*@__PURE__*/ b('GetWindowDC', '<HWND>ptr -> <HDC>ptr')
 /** 开始重绘（PAINTSTRUCT buffer 接收绘制信息）；返回品牌 HDC，配对 EndPaint */

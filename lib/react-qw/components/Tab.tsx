@@ -1,6 +1,7 @@
 import { forwardRef, useRef, useEffect, useState, type ReactNode } from 'react'
 import * as gui from 'gui'
 import * as ffi from 'ffi'
+import { WCHAR } from '../../ffi/bind.js'
 import { struct } from '../../ffi/struct.js'
 import { nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
@@ -14,14 +15,6 @@ const TCITEMW = struct({
   iImage: 'i32',
   lParam: '<>ptr',
 })
-
-function textToUtf16(s: string): ArrayBuffer {
-  const buf = new ArrayBuffer((s.length + 1) * 2)
-  const dv = new DataView(buf)
-  for (let i = 0; i < s.length; i++)
-    dv.setUint16(i * 2, s.charCodeAt(i), true)
-  return buf
-}
 
 export interface TabProps {
   tabs: { title: string; content: ReactNode }[]
@@ -43,7 +36,7 @@ export const Tab = forwardRef<gui.HWND, TabProps>(
       if (!h) return
       gui.SendMessage(h, gui.TcMsg.DELETEALLITEMS, 0, 0)
       for (let i = 0; i < tabs.length; i++) {
-        const titleBuf = textToUtf16(tabs[i]!.title)
+        const titleBuf = WCHAR.encode(tabs[i]!.title)
         const tci = TCITEMW.encode({
           mask: gui.TcItemFlag.TEXT,
           dwState: 0,

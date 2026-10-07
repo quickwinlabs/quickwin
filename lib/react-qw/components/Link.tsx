@@ -1,9 +1,9 @@
 import { forwardRef, useRef, useEffect, type Ref } from 'react'
 import * as gui from 'gui'
-import * as ffi from 'ffi'
 import { InvalidateRect } from '../../windows/user32.js'
 import { NULL } from '../../ffi/ctype.js'
-import { nmCode, NMHDR_SIZE } from '../nmhdr.js'
+import { struct } from '../../ffi/struct.js'
+import { NMHDR, nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
 
 export interface LinkProps {
@@ -13,17 +13,20 @@ export interface LinkProps {
   style?: WStyle
 }
 
-function readUtf16(ptr: number, offset: number, maxWords: number): string {
-  const chars: string[] = []
-  for (let i = 0; i < maxWords; i++) {
-    const lo = ffi.readByte(ptr + offset + i * 2)
-    const hi = ffi.readByte(ptr + offset + i * 2 + 1)
-    const code = (hi << 8) | lo
-    if (code === 0) break
-    chars.push(String.fromCharCode(code))
-  }
-  return chars.join('')
-}
+// NMLINK = NMHDR + LITEM。MAX_LINKID_TEXT = 48，L_MAX_URL_LENGTH = 2048 + 32 + sizeof("://") = 2084；
+// 宽字符数组走字符串糖（'u16[N]@utf-16le'），decode 直接得到 string（读到 NUL 为止）。
+const LITEM = struct({
+  mask: 'u32',
+  iLink: 'i32',
+  state: 'u32',
+  stateMask: 'u32',
+  szID: 'u16[48]@utf-16le',
+  szUrl: 'u16[2084]@utf-16le',
+})
+const NMLINK = struct({
+  hdr: NMHDR.__struct,
+  item: LITEM.__struct,
+})
 
 const Link = forwardRef(function Link(
   { href, children, onClick, style }: LinkProps,
@@ -50,9 +53,7 @@ const Link = forwardRef(function Link(
         if (e.msg === gui.WmMsg.NOTIFY) {
           const code = nmCode(e.lParam)
           if (code === gui.SysLinkNotifyCode.CLICK || code === gui.SysLinkNotifyCode.RETURN) {
-            // NMLINK: NMHDR(12/20) + LITEM{ mask,iLink,state,stateMask (16B) + szID[48] (96B) } → szUrl
-            const url = readUtf16(e.lParam, NMHDR_SIZE + 112, 2048)
-            onClickRef.current?.(url)
+            onClickRef.current?.(NMLINK.decode(e.lParam).item.szUrl)
           }
         }
       }}

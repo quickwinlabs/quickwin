@@ -15,7 +15,7 @@ import { Tester } from './test_helper.js'
 //   负数返回 i32/i16/i8：lstrcmpW；i64：InterlockedIncrement64
 //   窄整型负值传参：abs(i8/i16/u8/u16)
 //   大 64 位传参：InterlockedExchange64
-//   指针 NULL：GetDC(null)、IsWindow(null)；undefined 不是指针合法值，应拒绝
+//   指针 NULL：GetDC(NULL)、IsWindow(NULL)；null/undefined 不是指针合法值，应拒绝
 
 function readAscii(buf: ArrayBuffer, len: number): string {
     const dv = new DataView(buf)

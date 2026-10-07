@@ -49,3 +49,61 @@ export const LOGFONTW = struct('LOGFONTW', {
     lfPitchAndFamily: 'u8',
     lfFaceName: 'u16[32]@utf-16le',
 })
+
+/** 进程启动信息（CreateProcessW 纯入参位）：指针字段随进程位宽（x86 68B / x64 104B，struct 按 os.arch 推，
+ *  os.arch 是编译期进程指针宽度，WOW64 下 32 位进程得 ia32 布局）。cb 必须 = STARTUPINFOW.size
+ *  （结构自描述是 Win32 要求）；dwFlags 含 STARTF_USESTDHANDLES(0x100) 时才读 hStd* */
+export const STARTUPINFOW = struct('STARTUPINFOW', {
+    cb: 'u32',
+    lpReserved: '<>ptr',
+    lpDesktop: '<>ptr',
+    lpTitle: '<>ptr',
+    dwX: 'u32',
+    dwY: 'u32',
+    dwXSize: 'u32',
+    dwYSize: 'u32',
+    dwXCountChars: 'u32',
+    dwYCountChars: 'u32',
+    dwFillAttribute: 'u32',
+    dwFlags: 'u32',
+    wShowWindow: 'u16',
+    cbReserved2: 'u16',
+    lpReserved2: '<>ptr',
+    hStdInput: '<>ptr',
+    hStdOutput: '<>ptr',
+    hStdError: '<>ptr',
+})
+
+/** 新进程信息（CreateProcessW 出参位：x86 16B / x64 24B）：hProcess/hThread 用完要 CloseHandle */
+export const PROCESS_INFORMATION = struct('PROCESS_INFORMATION', {
+    hProcess: '<>ptr',
+    hThread: '<>ptr',
+    dwProcessId: 'u32',
+    dwThreadId: 'u32',
+})
+
+/** 位图信息头（40B）：GetDIBits/SetDIBitsToDevice 的 BITMAPINFO 头部（32bpp BI_RGB 无颜色表，
+ *  头部即全部）；biHeight 负 = 自顶向下；写 BMP 文件时也是文件内的信息头 */
+export const BITMAPINFOHEADER = struct('BITMAPINFOHEADER', {
+    biSize: 'u32',
+    biWidth: 'i32',
+    biHeight: 'i32',
+    biPlanes: 'u16',
+    biBitCount: 'u16',
+    biCompression: 'u32',
+    biSizeImage: 'u32',
+    biXPelsPerMeter: 'i32',
+    biYPelsPerMeter: 'i32',
+    biClrUsed: 'u32',
+    biClrImportant: 'u32',
+})
+
+/** BMP 文件头（14B，pack 2：文件格式按 2 字节紧凑排布，不是 Win32 调用的结构）：
+ *  bfType = 0x4d42（'BM'），bfOffBits = 14 + 40（文件头 + 信息头，无颜色表） */
+export const BITMAPFILEHEADER = struct('BITMAPFILEHEADER', {
+    bfType: 'u16',
+    bfSize: 'u32',
+    bfReserved1: 'u16',
+    bfReserved2: 'u16',
+    bfOffBits: 'u32',
+}, { pack: 2 })
