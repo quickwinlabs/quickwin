@@ -112,8 +112,8 @@ type ShapeOfC<M> = Lift<_ShapeOfC<M>>
 // 数组字段维持"要么给全、要么整个缺省"（整个缺省由外层 continue 拦下）。
 export type DeepPartial<T> =
     T extends readonly unknown[] ? T
-    : T extends object ? { [K in keyof T]?: DeepPartial<T[K]> }
-    : T
+    : T extends number | string | boolean | bigint | symbol ? T
+    : { [K in keyof T]?: DeepPartial<T[K]> }
 
 
 // ============================================================

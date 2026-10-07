@@ -1,4 +1,4 @@
-import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { NULL, MaybePtr, PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import '../lib/polyfill.js'
 import * as std from 'std'
 import * as gui from 'gui'
@@ -33,7 +33,7 @@ function wideToStr(buf: ArrayBuffer): string {
   return String.fromCharCode(...chars)
 }
 
-function openPdfFileDialog(owner: number): string | null {
+function openPdfFileDialog(owner: MaybePtr<'HWND'>): string | null {
   const fileBuf = WCHAR.alloc(260)
   const filterWide = WCHAR.encode('PDF Files\0*.pdf\0All Files\0*.*\0\0')
   const ofn: PtrArrayBuffer<any> & { __keep?: ArrayBuffer[] } = OPENFILENAMEW.encode({
@@ -182,7 +182,7 @@ function renderPdfPage(mupdf: MuPdf, filePath: string, pageIndex: number): Pixma
   }
 }
 
-function App({ mupdf, mainHwnd: hwnd }: { mupdf: MuPdf; mainHwnd: number }) {
+function App({ mupdf, mainHwnd: hwnd }: { mupdf: MuPdf; mainHwnd: gui.HWND }) {
   const [filePath, setFilePath] = useState('')
   const [currentPage, setCurrentPage] = useState(0)
   const [pixmap, setPixmap] = useState<PixmapInfo | undefined>(undefined)
