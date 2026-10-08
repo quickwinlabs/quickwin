@@ -738,6 +738,7 @@ static void print_enums(void) {
     DEC(VERTRES, VERTRES);
     DEC(LOGPIXELSX, LOGPIXELSX);
     DEC(LOGPIXELSY, LOGPIXELSY);
+    DEC(BITSPIXEL, BITSPIXEL);
     printf("    }\n\n");
 
     printf("    // Static controls\n");

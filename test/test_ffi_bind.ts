@@ -281,8 +281,8 @@ export const suite = {
         const getWindowRect = bind('user32.dll', 'GetWindowRect', '<>ptr <RECT>ptr -> i32', { RECT })
         const getDesktopWindow = bind('user32.dll', 'GetDesktopWindow', ' -> <>ptr')
         const desktop = getDesktopWindow()
-        const rectOut = RECT.encode()
-        t.checkTrue('GetWindowRect(hwnd, RECT.encode().ptr) succeeds', getWindowRect(desktop, rectOut.ptr) !== 0)
+        const rectOut = RECT.alloc()
+        t.checkTrue('GetWindowRect(hwnd, RECT.alloc().ptr) succeeds', getWindowRect(desktop, rectOut.ptr) !== 0)
         const rectV = RECT.decode(rectOut)
         t.checkTrue('RECT.decode(encode()) decodes out-param', rectV.right > rectV.left && rectV.bottom > rectV.top)
 
@@ -446,6 +446,37 @@ export const suite = {
             t.checkTrue('17×u32 创建期抛错（fail-fast 而非静默垃圾）', err17.includes('capture window'))
         }
 
+        t.section('closures: ! token 0 检查（dispatch 侧，与 callPacked 同语义）')
+        {
+            // 参数位：签名承诺 C 传非空，喂 0 → 跳过回调（fn 不被调用）+ 结果槽 0
+            let argCalled = false
+            const nnArg = closure('<>ptr! -> i32', (_p) => { argCalled = true; return 7 })
+            const rr1 = new ArrayBuffer(8)
+            ffi.ffiCall(nnArg.ptr, packArgs(['ptr'], [0]), rr1, 0)
+            t.checkTrue('closure <>ptr! 喂 0：回调被跳过（fn 未执行）', !argCalled)
+            t.check('closure <>ptr! 喂 0：结果槽保持 0', 0, new DataView(rr1).getInt32(0, true))
+            const rr2 = new ArrayBuffer(8)
+            ffi.ffiCall(nnArg.ptr, packArgs(['ptr'], [0x2000]), rr2, 0)
+            t.checkTrue('closure <>ptr! 非空：回调执行', argCalled)
+            t.check('closure <>ptr! 非空：返回值送达', 7, new DataView(rr2).getInt32(0, true))
+            nnArg.dispose()
+
+            // 返回位正例：fn 返回非零 → 检查通过、正常写槽
+            const nnRet = closure('i32 -> <>ptr!', (_n) => 0x3000)
+            const rr3 = new ArrayBuffer(8)
+            ffi.ffiCall(nnRet.ptr, packArgs(['i32'], [1]), rr3, 0)
+            t.check('closure 返回 ! 非零：正常写槽', 0x3000, readScalar(new DataView(rr3), 0, 'ptr'))
+            nnRet.dispose()
+            // 返回位负例：fn 返回 0 → printf 诊断 + 不写槽；C 侧 retbuf 初值恒零
+            // （quickjs-ffi-closure.c zero8 拷贝），终值 0 与「写了 0」不可分——
+            // 值层面只验分发不炸、槽保持 0（诊断走 stdout，见上方 printf）。
+            const nnRet0 = closure('i32 -> <>ptr!', (_n) => 0)
+            const rr4 = new ArrayBuffer(8)
+            ffi.ffiCall(nnRet0.ptr, packArgs(['i32'], [1]), rr4, 0)
+            t.check('closure 返回 ! 违约：分发不炸、槽 0', 0, readScalar(new DataView(rr4), 0, 'ptr'))
+            nnRet0.dispose()
+        }
+
         t.section('closures: EnumWindows (stdcall, end-to-end)')
         const enumWindows = bind('user32.dll', 'EnumWindows', '<>ptr <>ptr -> i32')
         let wcount = 0
@@ -482,5 +513,85 @@ export const suite = {
         t.check('0 保真（原 0 归一为 null）', 0, readScalar(pdv, 0, 'ptr'))
         writeScalar(pdv, 0, { k: 'ptr', v: 0x7FFFFFFF })
         t.check('正哨兵往返', 0x7FFFFFFF, readScalar(pdv, 0, 'ptr'))
+
+        t.section('ptr! non-null token: 运行时 0 检查（写槽前 / 返回后）')
+        const dcScreen = bind('user32.dll', 'GetDC', '<>ptr -> <>ptr')(0)
+        // 参数位：禁 NULL 且传 0 → 写槽前当场 throw，错误带签名上下文与位号
+        try {
+            bind('user32.dll', 'GetDC', '<>ptr! -> <>ptr')(0)
+            t.checkTrue('GetDC(0) 参数位标 ! 后应 throw', false)
+        } catch (e) {
+            t.checkTrue('! 参数位 throw 带签名上下文', String(e).includes('<>ptr!'))
+            t.checkTrue('! 参数位 throw 带位号', String(e).includes('arg#1'))
+        }
+        // 正例：非零值照传、ABI 不受修饰影响
+        const drawText = bind('user32.dll', 'DrawTextW', '<>ptr! <WCHAR>ptr i32 <BYTE>ptr i32 -> i32')
+        const dtRect = new PtrArrayBuffer(16)
+        if (dcScreen) {
+            t.checkTrue('DrawTextW 非空 DC 通过 ! 参数位',
+                drawText(dcScreen, 'hi !', -1, dtRect, gui.DrawTextFlag.CALCRECT) > 0)
+            try {
+                drawText(0, 'hi !', -1, dtRect, gui.DrawTextFlag.CALCRECT)
+                t.checkTrue('DrawTextW NULL DC 标 ! 后应 throw', false)
+            } catch (e) { t.checkTrue('! 参数位（第 1 位）throw 指明 arg#1', String(e).includes('arg#1')) }
+        }
+        // 返回位：找不到必返 NULL → 标 ! 返回位当场 throw
+        try {
+            bind('user32.dll', 'FindWindowW', '<WCHAR>ptr <WCHAR>ptr -> <>ptr!')('No.Such.Class', 'No.Such.Title')
+            t.checkTrue('FindWindowW 返回 0 标 ! 后应 throw', false)
+        } catch (e) {
+            t.checkTrue('! 返回位 throw 带返回 token', String(e).includes('return <>ptr! got 0'))
+        }
+
+        t.section('token @Enum: 运行时归一（槽宽/ABI 只看底档）')
+        const glPlain = bind('kernel32.dll', 'GetLastError', ' -> u32')()
+        const glEnum = bind('kernel32.dll', 'GetLastError', ' -> u32@ErrorCode')()
+        const glUnknown = bind('kernel32.dll', 'GetLastError', ' -> u32@NopeEnum')()
+        t.check('返回位 @Enum 标注归一后取值一致', glPlain as number, glEnum as unknown)
+        t.check('返回位未知枚举名同样归一（不炸）', glPlain as number, glUnknown as unknown)
+
+        // 编译期：修饰对精确类型的影响（Equal 不成立即 tsc 报错）
+        expectType<Equal<ParamsOf<'<X>ptr i32 -> i32'>[0], MaybePtr<'X'>>>()
+        expectType<Equal<ParamsOf<'<X>ptr! i32 -> i32'>[0], Ptr<'X'>>>()
+        expectType<Equal<RetOf<'<>ptr -> <X>ptr'>, MaybePtr<'X'>>>()
+        expectType<Equal<RetOf<'<>ptr -> <X>ptr!'>, Ptr<'X'>>>()
+        expectType<Equal<RetOf<'i32 -> i32'>, number>>()
+        // @Enum 未知枚举名：参数位塌 never（fail-loud），返回位塌 unknown（never 会全放行）
+        expectType<Equal<ParamsOf<'i32@NopeEnum -> i32'>[0], never>>()
+        expectType<Equal<RetOf<'i32 -> i32@NopeEnum'>, unknown>>()
+        // 返回位已知枚举名：钉住 pattern 命中后 = EnumMap 值域（分支失配落 unknown 时此条转红）
+        expectType<Equal<RetOf<'i32 -> u32@ErrorCode'>, EnumMap['ErrorCode']>>()
+
+        // struct 字段 '!'：EncodeIn 必填（省略 = 编译错）+ decode 0 断言（后置兜底）
+        t.section("struct 字段 '!': encode 必填 + decode 0 断言")
+        const S2 = struct('S2', { p: '<X>ptr', q: '<X>ptr!' })
+        S2.alloc()                                          // 出参槽分配的无参语义在 alloc，不在 encode
+        try {
+            S2.decode(new PtrArrayBuffer(16))               // 全 0 槽（alloc 等价）→ '!' 字段读出 0 → throw
+            t.checkTrue('decode 对 ! 字段 0 断言 throw', false)
+        } catch (e) {
+            t.checkTrue('decode ! 字段 0 断言指明字段名', String(e).includes('"q"'))
+        }
+        const s2buf = new PtrArrayBuffer(16)
+        new DataView(s2buf).setUint32(S2.offsetOf('q'), 0x1234, true)   // 填非零 q（偏移动态，双架构）
+        const d2 = S2.decode(s2buf)
+        expectType<Equal<typeof d2.p, MaybePtr<'X'>>>()
+        expectType<Equal<typeof d2.q, Ptr<'X'>>>()
+        S2.encode(d2)
+        // @ts-expect-error EncodeIn：'!' 字段 q 必填 —— 省略即编译错，不静默写 0
+        S2.encode({ p: NULL })
+
+        // 编译期：@Enum 值域 —— 枚举成员与域内字面量放行，宽 number / 异种枚举拒绝
+        if (false) {
+            const sw = bind('user32.dll', 'ShowWindow', '<X>ptr i32@ShowWindowCmd -> i32')
+            const sp = bind('user32.dll', 'SetWindowPos', '<X>ptr <>ptr@SetWindowPosHwnd i32 i32 i32 i32 u32 -> i32')
+            sw(NULL, gui.ShowWindowCmd.SHOW)  // 枚举成员
+            sw(NULL, 5)                       // 域内字面量（5 = SW_SHOW）
+            sp(NULL, gui.SetWindowPosHwnd.TOP, 0, 0, 0, 0, gui.SetWindowPosFlag.SWP_NOSIZE)
+            // @ts-expect-error 域外字面量被拦（11152 不是任何 ShowWindow 命令）
+            sw(NULL, 0x2B90)
+            // @ts-expect-error 跨枚举误用：HWND_TOP/TOPMOST 不是 ShowWindow 命令
+            sw(NULL, gui.SetWindowPosHwnd.TOP)
+        }
     },
 }

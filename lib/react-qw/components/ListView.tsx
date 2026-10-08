@@ -55,7 +55,7 @@ function getCellFont(hwnd: gui.HWND, style: CellStyle): number | null {
   let base: Parameters<typeof CreateFontIndirect>[0] = { lfHeight: -13 }
   const cur = gui.SendMessage(hwnd, gui.WmMsg.GETFONT, 0, 0)
   if (cur) {
-    const lf = LOGFONTW.encode()
+    const lf = LOGFONTW.alloc()
     if (!GetObject(cur, LOGFONTW.size, lf)) return null
     base = LOGFONTW.decode(lf)
   }
@@ -299,7 +299,7 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
           if (!h) return
 
           // GetCursorPos 出参写入初值 → ScreenToClient 就地更新 → decode 读回
-          const pt = POINT.encode()
+          const pt = POINT.alloc()
           if (!GetCursorPos(pt.ptr)) return
           ScreenToClient(h, pt.ptr)
           const { x: sx, y: sy } = POINT.decode(pt)

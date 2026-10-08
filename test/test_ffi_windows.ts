@@ -28,7 +28,7 @@ export const suite = {
         t.section('gdi32: 字体读出-改写-重建往返（GetObject → decode → CreateFontIndirect → GetObject）')
         const base = CreateFontIndirect({ lfHeight: -18, lfWeight: 400, lfCharSet: 1, lfFaceName: 'Arial' })
         if (base !== 0) {
-            const lf0 = LOGFONTW.encode()
+            const lf0 = LOGFONTW.alloc()
             t.checkTrue('GetObject(font) 写入 LOGFONTW.size 字节', GetObject(base, LOGFONTW.size, lf0) === LOGFONTW.size)
             const b0 = LOGFONTW.decode(lf0)
             t.check('读出 lfHeight', -18, b0.lfHeight)
@@ -37,7 +37,7 @@ export const suite = {
             const styled = CreateFontIndirect({ ...b0, lfWeight: 700, lfItalic: 1, lfUnderline: 1 })
             t.checkTrue('叠加样式后重建非 0', styled !== 0)
             if (styled !== 0) {
-                const lf1 = LOGFONTW.encode()
+                const lf1 = LOGFONTW.alloc()
                 GetObject(styled, LOGFONTW.size, lf1)
                 const b1 = LOGFONTW.decode(lf1)
                 t.check('重建后 lfWeight', 700, b1.lfWeight)

@@ -68,7 +68,7 @@ export const STARTUPINFOW = /* @__PURE__ */ struct('STARTUPINFOW', {
     dwYCountChars: 'u32',
     dwFillAttribute: 'u32',
     dwFlags: 'u32',
-    wShowWindow: 'u16',
+    wShowWindow: 'u16@ShowWindowCmd',
     cbReserved2: 'u16',
     lpReserved2: '<>ptr',
     hStdInput: '<HFILE>ptr',
@@ -76,10 +76,13 @@ export const STARTUPINFOW = /* @__PURE__ */ struct('STARTUPINFOW', {
     hStdError: '<HFILE>ptr',
 })
 
-/** 新进程信息（CreateProcessW 出参位：x86 16B / x64 24B）：hProcess/hThread 用完要 CloseHandle */
+/** 新进程信息（CreateProcessW 出参位：x86 16B / x64 24B）：hProcess/hThread 用完要 CloseHandle。
+ *  字段标 '!'：CreatePipe/CreateProcess 成功路径下句柄必非零 —— decode 直出 Ptr 免收窄，
+ *  且对 0 当场 throw：忘判 CreateProcess 成功就 decode 时在 decode 处拦下（下游 '! 消费位'
+ *  的 callPacked 检查为第二层兜底）。 */
 export const PROCESS_INFORMATION = /* @__PURE__ */ struct('PROCESS_INFORMATION', {
-    hProcess: '<HPROCESS>ptr',
-    hThread: '<HTHREAD>ptr',
+    hProcess: '<HPROCESS>ptr!',
+    hThread: '<HTHREAD>ptr!',
     dwProcessId: 'u32',
     dwThreadId: 'u32',
 })

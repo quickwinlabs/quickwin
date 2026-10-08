@@ -20,7 +20,7 @@ export const DeleteObject = /*@__PURE__*/ b('DeleteObject', '<>ptr -> i32')
 /** 取设备能力值（hdc 收品牌 HDC；index = LOGPIXELSX(88)/LOGPIXELSY(90)/BITSPIXEL 等）
  *  @param args_0 hdc 设备上下文（HDC 品牌）
  *  @param args_1 index 能力索引（LOGPIXELSX = 88，LOGPIXELSY = 90，BITSPIXEL = 12 等） */
-export const GetDeviceCaps = /*@__PURE__*/ b('GetDeviceCaps', '<HDC>ptr i32 -> i32')
+export const GetDeviceCaps = /*@__PURE__*/ b('GetDeviceCaps', '<HDC>ptr! i32@DeviceCap -> i32')
 /** 按 LOGFONTW 创建字体（入参位对象直传 DeepPartial：至少给 lfHeight 与 lfFaceName，其余缺省
  *  跳过保持 0）；失败 → 0；配对 DeleteObject
  *  @param args_0 lplf LOGFONTW 对象（DeepPartial 直传） */
@@ -36,11 +36,11 @@ export const CreateCompatibleDC = /*@__PURE__*/ b('CreateCompatibleDC', '<HDC>pt
  *  @param args_0 hdc 参考 DC（决定位图格式，须为屏幕或真实 DC）
  *  @param args_1 cx 宽度（像素）
  *  @param args_2 cy 高度（像素） */
-export const CreateCompatibleBitmap = /*@__PURE__*/ b('CreateCompatibleBitmap', '<HDC>ptr i32 i32 -> <>ptr')
+export const CreateCompatibleBitmap = /*@__PURE__*/ b('CreateCompatibleBitmap', '<HDC>ptr! i32 i32 -> <>ptr')
 /** 把 GDI 对象选进 hdc，返回被替换的旧对象（用完选回去再删除新对象）；失败 → NULL
  *  @param args_0 hdc 目标 DC（HDC 品牌）
  *  @param args_1 h 新对象句柄（HGDIOBJ 通称，<>ptr 收宽） */
-export const SelectObject = /*@__PURE__*/ b('SelectObject', '<HDC>ptr <>ptr -> <>ptr')
+export const SelectObject = /*@__PURE__*/ b('SelectObject', '<HDC>ptr! <>ptr -> <>ptr')
 /** 位块传送（dwRop 如 SRCCOPY = 0x00CC0020）；成功 → 非 0
  *  @param args_0 hdcDest 目标 DC
  *  @param args_1 xDest 目标左上角 x
@@ -51,7 +51,8 @@ export const SelectObject = /*@__PURE__*/ b('SelectObject', '<HDC>ptr <>ptr -> <
  *  @param args_6 x1 源起始 x
  *  @param args_7 y1 源起始 y
  *  @param args_8 dwRop 光栅操作码（SRCCOPY = 0x00CC0020） */
-export const BitBlt = /*@__PURE__*/ b('BitBlt', '<HDC>ptr i32 i32 i32 i32 <HDC>ptr i32 i32 u32 -> i32')
+// hdcDest 非空（!）；hdcSrc 在 PATCOPY 等特定 rop 下 C 允许 NULL，保持可空档。
+export const BitBlt = /*@__PURE__*/ b('BitBlt', '<HDC>ptr! i32 i32 i32 i32 <HDC>ptr i32 i32 u32 -> i32')
 /** 取位图像素到 lpvBits（直接收 ArrayBuffer；lpbmi 为 BITMAPINFO，32bpp BI_RGB 无颜色表时头部即全部：
  *  传 BITMAPINFOHEADER.encode({...}).ptr；有颜色表的格式由调用方自备更大的缓冲）；
  *  uUsage = DIB_RGB_COLORS(0)；返回成功取到的扫描行数，失败 → 0
@@ -62,16 +63,16 @@ export const BitBlt = /*@__PURE__*/ b('BitBlt', '<HDC>ptr i32 i32 i32 i32 <HDC>p
  *  @param args_4 lpvBits 像素接收缓冲（ArrayBuffer）
  *  @param args_5 lpbmi BITMAPINFO 缓冲（BITMAPINFOHEADER.encode({...}).ptr）
  *  @param args_6 uUsage DIB_RGB_COLORS(0) */
-export const GetDIBits = /*@__PURE__*/ b('GetDIBits', '<HDC>ptr <>ptr u32 u32 <BYTE>ptr <>ptr u32 -> i32')
+export const GetDIBits = /*@__PURE__*/ b('GetDIBits', '<HDC>ptr! <>ptr u32 u32 <BYTE>ptr <>ptr u32 -> i32')
 /** 取 GDI 对象信息到 lpv（hFont → LOGFONTW 等；cb = 缓冲字节数，如 LOGFONTW.size；
- *  out 传 LOGFONTW.encode()）；返回写入的字节数，失败 → 0
+ *  out 传 LOGFONTW.alloc()）；返回写入的字节数，失败 → 0
  *  @param args_0 h GDI 对象句柄（字体/画笔/位图等）
  *  @param args_1 cb 输出缓冲字节数（如 LOGFONTW.size）
- *  @param args_2 lpv 输出缓冲（LOGFONTW.encode() 等） */
+ *  @param args_2 lpv 输出缓冲（LOGFONTW.alloc() 等） */
 export const GetObject = /*@__PURE__*/ b('GetObjectW', '<>ptr i32 <BYTE>ptr -> i32')
 /** 删除内存 DC（CreateCompatibleDC 建的）；成功 → 非 0
  *  @param args_0 hdc 要删的 DC（HDC 品牌） */
-export const DeleteDC = /*@__PURE__*/ b('DeleteDC', '<HDC>ptr -> i32')
+export const DeleteDC = /*@__PURE__*/ b('DeleteDC', '<HDC>ptr! -> i32')
 
 /** 用画刷图案填充矩形（x/y/w/h = 目标区；rop = PATCOPY/PATINVERT 等）；成功 → 非 0
  *  @param args_0 hdc 目标 DC
@@ -80,7 +81,7 @@ export const DeleteDC = /*@__PURE__*/ b('DeleteDC', '<HDC>ptr -> i32')
  *  @param args_3 w 宽度
  *  @param args_4 h 高度
  *  @param args_5 rop 光栅操作码（PATCOPY 等） */
-export const PatBlt = /*@__PURE__*/ b('PatBlt', '<HDC>ptr i32 i32 i32 i32 u32 -> i32')
+export const PatBlt = /*@__PURE__*/ b('PatBlt', '<HDC>ptr! i32 i32 i32 i32 u32 -> i32')
 /** 把 DIB 位图画到目标 DC（DestWidth/Height 目标尺寸，xSrc/ySrc 起始源点，NumScans 扫描行数；
  *  lpvBits 直接收 ArrayBuffer，lpbmi 传 BITMAPINFO 缓冲、coloruse = DIB_RGB_COLORS(0)）；返回扫描行数，失败 → 0
  *  @param args_0 hdc 目标 DC
@@ -96,4 +97,4 @@ export const PatBlt = /*@__PURE__*/ b('PatBlt', '<HDC>ptr i32 i32 i32 i32 u32 ->
  *  @param args_10 lpbmi BITMAPINFO 缓冲
  *  @param args_11 iUsage DIB_RGB_COLORS(0) */
 export const SetDIBitsToDevice = /*@__PURE__*/ b('SetDIBitsToDevice',
-    '<HDC>ptr i32 i32 u32 u32 i32 i32 u32 u32 <BYTE>ptr <BYTE>ptr u32 -> i32')
+    '<HDC>ptr! i32 i32 u32 u32 i32 i32 u32 u32 <BYTE>ptr <BYTE>ptr u32 -> i32')

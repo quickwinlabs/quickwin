@@ -82,11 +82,12 @@ try {
 // 编码：无统一代码页转换，各程序输出原生字节（qwin= UTF-8、系统命令= GBK）。
 // 同步阻塞读循环（worker 线程自转），主线程事件循环不受影响。
 // CreatePipe 的两个 HANDLE 出参槽：一个结构两个指针字段，读回走 decode
-const PIPE_HANDLES = /* @__PURE__ */ struct('PIPE_HANDLES', { hRead: '<HFILE>ptr', hWrite: '<HFILE>ptr' })
+// CreatePipe 成功后两端句柄必非零（失败已在下方 throw）——字段标 '!'，decode 直出 Ptr
+const PIPE_HANDLES = /* @__PURE__ */ struct('PIPE_HANDLES', { hRead: '<HFILE>ptr!', hWrite: '<HFILE>ptr!' })
 
 function runCmd(id: number, cmd: string): number {
     // —— 管道 + 继承设置（读端不可继承，否则 EOF 永不触发）——
-    const pipe = PIPE_HANDLES.encode()
+    const pipe = PIPE_HANDLES.alloc()
     if (!CreatePipe(pipe.ptr, pipe.ptr + PIPE_HANDLES.offsetOf('hWrite'), NULL, 0)) {
         throw new Error('CreatePipe err=' + GetLastError())
     }
@@ -95,7 +96,7 @@ function runCmd(id: number, cmd: string): number {
     SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0)
 
     // —— STARTUPINFO（写端作为子进程 stdout/stderr）——
-    const pi = PROCESS_INFORMATION.encode()
+    const pi = PROCESS_INFORMATION.alloc()
     const u = IS_WIN11 ? '/u ' : ''
     const cmdline = `${sysDir}\\cmd.exe ${u}/c ${cmd}`
     if (!CreateProcess(NULL, cmdline, NULL, NULL, 1, 0, NULL, NULL,
@@ -284,7 +285,7 @@ function captureWindow(id: number, hwnd: Ptr<'HWND'>, area: 'window' | 'client',
         throw new Error('window minimized：mode=screen 只会截到它下方的桌面，改用 mode=print')
     }
 
-    const wRect = RECT.encode()
+    const wRect = RECT.alloc()
     if (!GetWindowRect(hwnd, wRect.ptr)) {
         throw new Error('GetWindowRect(hwnd=' + hwnd + ')=0：窗口不存在或已销毁')
     }
@@ -297,7 +298,7 @@ function captureWindow(id: number, hwnd: Ptr<'HWND'>, area: 'window' | 'client',
     let cw = ww
     let ch = wh
     if (area === 'client') {
-        const cRect = RECT.encode()
+        const cRect = RECT.alloc()
         if (!GetClientRect(hwnd, cRect.ptr)) throw new Error('GetClientRect(hwnd=' + hwnd + ')=0')
         // 客户区坐标以客户区左上角为原点，left/top 恒为 0，不是窗口→客户的偏移；
         // 边框和标题栏的位移必须用 ClientToScreen(0,0) 单独查。尺寸取差值（同理不假设 left/top）。
@@ -351,7 +352,7 @@ function listWindows(id: number): void {
     })
     try { EnumWindows(collect.ptr, NULL) } finally { collect.dispose() }
 
-    const wRect = RECT.encode()
+    const wRect = RECT.alloc()
     const tb = WCHAR.alloc(WIDE_BUF_CHARS)
     const cb = WCHAR.alloc(WIDE_BUF_CHARS)
 

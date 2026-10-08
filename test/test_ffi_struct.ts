@@ -1,4 +1,5 @@
 import * as os from 'os'
+import * as gui from 'gui'
 import { Tester } from './test_helper.js'
 import { struct, union } from '../lib/ffi/struct.js'
 import { bind, } from '../lib/ffi/bind.js'
@@ -77,8 +78,8 @@ export const suite = {
 
         // out 参数：encode() 新建零 buffer 返回 PtrArrayBuffer<'RECT'> → .ptr 直接喂
         // <RECT>ptr，读回走 def.decode(实例)（ArrayBuffer 分支直读）
-        t.section('RECT.encode() out-param → PtrArrayBuffer')
-        const out = RECT.encode()
+        t.section('RECT.alloc() out-param → PtrArrayBuffer')
+        const out = RECT.alloc()
         t.checkTrue('encode() exposes ArrayBuffer subclass + ptr', out instanceof ArrayBuffer && typeof out.ptr === 'number')
         t.checkTrue('GetWindowRect(hwnd, out.ptr) succeeds', getWindowRectLayout(hwnd, out.ptr) !== 0)
         const or = RECT.decode(out)
@@ -309,7 +310,7 @@ export const suite = {
         t.check('offsetOf raw', 0, PTR.offsetOf('raw'))
         t.check('offsetOf r', is64 ? 8 : 4, PTR.offsetOf('r'))
         t.check('offsetOf tag', is64 ? 16 : 8, PTR.offsetOf('tag'))
-        const rawOut = RECT.encode()
+        const rawOut = RECT.alloc()
         const pd = PTR.decode(PTR.encode({ raw: rawOut.ptr, r: rawOut.ptr, tag: 7 }))
         t.check('raw roundtrip', rawOut.ptr, pd.raw)
         t.check('r roundtrip', rawOut.ptr, pd.r)
@@ -710,6 +711,88 @@ export const suite = {
             expectType<Equal<ReturnType<typeof B54.decode>['a'], bigint>>()
             t.check('u64:54 边界 bigint 精确', 18014398509481983n,
                 B54.decode(B54.encode({ a: 18014398509481983n })).a)
+        }
+
+        // ============ token @Enum：struct 字段值域 ============
+        t.section('struct 字段 @Enum: 词汇定义点拒绝 + 值域收窄 + 必填判定')
+        {
+            // 定义点拒绝（∉ SimpleValue —— 未知枚举名与拼错 token 同一道闸）。if(false)
+            // 纯类型层断言：位域反例运行时 normToken 也会 throw，不执行。
+            if (false) {
+                // @ts-expect-error 未知枚举名（TypoEnum ∉ keyof EnumMap）
+                struct('Bad1', { m: 'u32@TypoEnum' })
+                // @ts-expect-error 位域单元不收 @（值域标注对位域无意义，词汇拒）
+                struct('Bad2', { m: 'u32@WmMsg:3' })
+                // @ts-expect-error ptr 位未知枚举名
+                struct('Bad3', { p: '<>ptr@TypoEnum' })
+                // @ts-expect-error 数组糖元素同样受词汇守卫
+                struct('Bad4', { a: 'u32@TypoEnum[4]' })
+            }
+
+            // 合法定义：数字位 + ptr 位 @ 标注
+            const EV = struct('EV', {
+                msg: 'u32@WmMsg',              // WM_NULL = 0 ∈ 值域 → encode 可省
+                key: 'u32@MouseKeyFlag',       // 仅 MK_SHIFT = 4，0 ∉ 值域 → encode 必填
+                hp: '<>ptr@SetWindowPosHwnd',  // ptr 位（HWND_TOP = 0 ∈ → 可省）
+            })
+
+            // decode：值域收窄（与 bind 签名位同构；异种枚举/域外字面量由枚举 nominal 拦）
+            const dev = EV.decode(EV.encode({ key: 4 }))
+            expectType<Equal<typeof dev.msg, EnumMap['WmMsg']>>()
+            expectType<Equal<typeof dev.key, EnumMap['MouseKeyFlag']>>()
+            expectType<Equal<typeof dev.hp, EnumMap['SetWindowPosHwnd']>>()
+            t.check('数字位 @ 字段归一往返', 4, dev.key)
+
+            // encode 必填判定：0 ∉ 值域的 @ 字段必填（省略 = 新槽写 0 = 静默违约）；
+            // 0 ∈ 值域可省。下面 { key } 行能编译即 msg/hp 可省的断言。
+            EV.encode({ key: gui.MouseKeyFlag.MK_SHIFT })
+            // @ts-expect-error key 必填：省略即编译错（0 ∉ MouseKeyFlag）
+            EV.encode({ msg: 0 })
+            if (false) {
+                // @ts-expect-error 域外字面量（3 不是任何 MK_ 标志）
+                EV.encode({ key: 3 })
+                // @ts-expect-error 跨枚举误用（WmMsg 成员不是 MouseKeyFlag）
+                EV.encode({ key: gui.WmMsg.CREATE })
+            }
+
+            // 数组糖元素带 @：lower 递归归一（normToken 剥 @）+ 元素值域
+            const EA = struct('EA', { msgs: 'u32@WmMsg[4]' })
+            const dea = EA.decode(EA.encode({ msgs: [0, 1, 2, 0] }))
+            expectType<Equal<(typeof dea.msgs)[number], EnumMap['WmMsg']>>()
+            t.check('数组 @ 元素运行时归一往返', 2, dea.msgs[2])
+        }
+
+        // ============ EncodeIn 后序穿透：嵌套/数组子树含必填 ⇒ 父键必给 ============
+        t.section('EncodeIn DFS 后序：子树含必填 ⇒ 键必填；值后序合成（非必填兄弟可省）')
+        {
+            // 嵌套子结构含 '!'（内层强制）+ 标量/字符串糖（内层可省：''/0 是合法零值）
+            const NSUB = struct('NSUB', { hp: '<X>ptr!', rest: 'u32', s: 'u16[4]@utf-8' })
+            const NOUT = struct('NOUT', { top: 'u32', sub: NSUB.__struct })
+            // decode 造全量对象（hp 槽预填非零，绕 '!' 的 decode 0 断言）
+            const nbuf = new PtrArrayBuffer(NOUT.size)
+            new DataView(nbuf).setUint32(NOUT.offsetOf('sub') + NSUB.offsetOf('hp'), 0x1234, true)
+            const dn = NOUT.decode(nbuf)
+            NOUT.encode(dn)                                // 全量回喂 ✓
+            NOUT.encode({ sub: dn.sub })                   // 顶层 top 可省 ✓
+            // B 形态关键钉：内层非必填兄弟 rest/s 可省（A「全量严格形」形态此行编译错）
+            NOUT.encode({ sub: { hp: dn.sub.hp } })
+            // @ts-expect-error 嵌套穿透：sub 子树含 '!' ⇒ sub 必填 —— 省略即编译错
+            NOUT.encode({ top: 1 })
+            // @ts-expect-error 内层 '!' 必填：sub.hp 省略即编译错，不静默写 0
+            NOUT.encode({ sub: { rest: 1 } })
+
+            // 数组穿透：元素 0 ∉ 值域 ⇒ 整组必填（省 = 元素全 0 静默违约）
+            const ARMAND = struct('ARMAND', { keys: 'u32@MouseKeyFlag[2]' })
+            ARMAND.encode({ keys: [4, 4] })
+            // @ts-expect-error 数组含必填元素：整组省略即编译错
+            ARMAND.encode({})
+
+            // weak-type 防线在「无必填」分支保持：裸 number 与全可选形无公共键（TS2559）。
+            // if(false) 纯类型层断言（运行时 encode(123) 会炸，不执行）。
+            if (false) {
+                // @ts-expect-error 无必填 struct 的入参退化纯 DeepPartial，裸 number 被拦
+                RECT.encode(123)
+            }
         }
     },
 }

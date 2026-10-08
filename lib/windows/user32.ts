@@ -7,7 +7,7 @@
 //     回调参数用 <>ptr 接 closure() 的 ptr
 //   - 结构位按方向分流（结构定义见 ./structs.ts）：
 //       纯入参位 <N>ptr + 注册 encoder → DeepPartial 对象直传（缺省字段 doEncode 跳过）、
-//         encode().ptr、NULL 三形态；
+//         alloc().ptr、NULL 三形态；
 //       出参/就地位 <N>ptr 不注册 encoder → 位只收 def 分配的 .ptr（对象 encode 进调用方拿不到
 //         的临时 buffer 会丢结果；ArrayBuffer 由 unknown layout fail-fast 拦下），
 //         读回走 N.decode(buf|ptr)。统一流程：encode → call → decode
@@ -64,7 +64,7 @@ export const DestroyWindow = /*@__PURE__*/ b('DestroyWindow', '<HWND>ptr -> i32'
 /** 显示/隐藏窗口（nCmdShow = gui.WindowStyle 类常量）；返回先前可见性
  *  @param args_0 hWnd 窗口句柄
  *  @param args_1 nCmdShow 显示命令（SW_SHOW/SW_HIDE 等） */
-export const ShowWindow = /*@__PURE__*/ b('ShowWindow', '<HWND>ptr i32 -> i32')
+export const ShowWindow = /*@__PURE__*/ b('ShowWindow', '<HWND>ptr i32@ShowWindowCmd -> i32')
 /** 移动/缩放窗口；bRepaint 非 0 重绘
  *  @param args_0 hWnd 窗口句柄
  *  @param args_1 x 新左上角 x
@@ -81,14 +81,16 @@ export const MoveWindow = /*@__PURE__*/ b('MoveWindow', '<HWND>ptr i32 i32 i32 i
  *  @param args_4 cx 新宽度
  *  @param args_5 cy 新高度
  *  @param args_6 uFlags SWP_* 标志（SWP_NOMOVE=0x2/SWP_NOSIZE=0x1 等） */
-export const SetWindowPos = /*@__PURE__*/ b('SetWindowPos', '<HWND>ptr <>ptr i32 i32 i32 i32 u32 -> i32')
-/** 取窗口外框矩形（屏幕坐标）；出参 encode → call → decode：RECT.encode() 传 .ptr、RECT.decode(实例) 读回
+// hwndInsertAfter 标 <>ptr@SetWindowPosHwnd：该位收 HWND_TOP 等窗口序常量（非任意窗口句柄），
+// 值域是枚举而非句柄 —— 指针位 @ 标注试点。
+export const SetWindowPos = /*@__PURE__*/ b('SetWindowPos', '<HWND>ptr <>ptr@SetWindowPosHwnd i32 i32 i32 i32 u32 -> i32')
+/** 取窗口外框矩形（屏幕坐标）；出参 encode → call → decode：RECT.alloc() 传 .ptr、RECT.decode(实例) 读回
  *  @param args_0 hWnd 窗口句柄
- *  @param args_1 lpRect 出参槽，传 RECT.encode().ptr、RECT.decode 读回 */
+ *  @param args_1 lpRect 出参槽，传 RECT.alloc().ptr、RECT.decode 读回 */
 export const GetWindowRect = /*@__PURE__*/ b('GetWindowRect', '<HWND>ptr <RECT>ptr -> i32')
 /** 取窗口客户区矩形；出参同上（encode → call → decode）
  *  @param args_0 hWnd 窗口句柄
- *  @param args_1 lpRect 出参槽，传 RECT.encode().ptr、RECT.decode 读回 */
+ *  @param args_1 lpRect 出参槽，传 RECT.alloc().ptr、RECT.decode 读回 */
 export const GetClientRect = /*@__PURE__*/ b('GetClientRect', '<HWND>ptr <RECT>ptr -> i32')
 /** 是否有效窗口句柄；是 → 非 0
  *  @param args_0 hWnd 待校验窗口句柄 */
@@ -141,12 +143,12 @@ export const GetClassName = /*@__PURE__*/ b('GetClassNameW', '<HWND>ptr <BYTE>pt
 /** 取窗口附加数据（GWLP_* / GWL_* 索引）；0 保真（值有符号读；ia32 走 GetWindowLongW）
  *  @param args_0 hWnd 窗口句柄
  *  @param args_1 nIndex 索引（GWLP_WNDPROC/GWLP_USERDATA/GWL_STYLE 等） */
-export const GetWindowLongPtr = /*@__PURE__*/ b('GetWindowLong' + LONG_PTR_SYM, '<HWND>ptr i32 -> <>ptr')
+export const GetWindowLongPtr = /*@__PURE__*/ b('GetWindowLong' + LONG_PTR_SYM, '<HWND>ptr i32@Gwlp -> <>ptr')
 /** 设窗口附加数据；返回先前值（0 保真，值有符号读）
  *  @param args_0 hWnd 窗口句柄
  *  @param args_1 nIndex 索引（GWLP_* / GWL_*）
  *  @param args_2 dwNewLong 新值（<>ptr 收整数或指针混合值） */
-export const SetWindowLongPtr = /*@__PURE__*/ b('SetWindowLong' + LONG_PTR_SYM, '<HWND>ptr i32 <>ptr -> <>ptr')
+export const SetWindowLongPtr = /*@__PURE__*/ b('SetWindowLong' + LONG_PTR_SYM, '<HWND>ptr i32@Gwlp <>ptr -> <>ptr')
 /** 取窗口所属进程 ID 到 buffer（可传 NULL）；返回线程 ID
  *  @param args_0 hWnd 窗口句柄
  *  @param args_1 lpdwProcessId 出参槽，传 Uint32Array(1).buffer 或 NULL */
@@ -165,7 +167,7 @@ export const SetParent = /*@__PURE__*/ b('SetParent', '<HWND>ptr <HWND>ptr -> <H
 /** 按关系（GW_* / GW_OWNER）取相邻窗口；无 → NULL
  *  @param args_0 hWnd 窗口句柄
  *  @param args_1 uCmd 关系（GW_CHILD=4/GW_HWNDNEXT=2/GW_OWNER=4 等 GW_*） */
-export const GetWindow = /*@__PURE__*/ b('GetWindow', '<HWND>ptr u32 -> <HWND>ptr')
+export const GetWindow = /*@__PURE__*/ b('GetWindow', '<HWND>ptr u32@GetWindowCmd -> <HWND>ptr')
 /** 注册窗口类（WNDCLASSEXW 结构 buffer）；失败 → 0（ATOM）
  *  @param args_0 lpwcx WNDCLASSEXW 结构 buffer（自备字节缓冲） */
 export const RegisterClassEx = /*@__PURE__*/ b('RegisterClassExW', '<BYTE>ptr -> u16')
@@ -186,7 +188,7 @@ export const SetActiveWindow = /*@__PURE__*/ b('SetActiveWindow', '<HWND>ptr -> 
 // ============ 消息循环 ============
 
 /** 取消息（MSG buffer，第二参 hwndFilter 收品牌 HWND 可 NULL；阻塞式，-1 = 出错、0 = WM_QUIT、>0 = 有消息）；分发前先 TranslateMessage
- *  @param args_0 lpMsg MSG 出参缓冲（MSG.encode().ptr 或自备 buffer）
+ *  @param args_0 lpMsg MSG 出参缓冲（MSG.alloc().ptr 或自备 buffer）
  *  @param args_1 hWndFilter 窗口过滤（品牌 HWND，可 NULL）
  *  @param args_2 wMsgFilterMin 消息下限，0 = 不过滤
  *  @param args_3 wMsgFilterMax 消息上限，0 = 不过滤 */
@@ -209,13 +211,13 @@ export const DispatchMessage = /*@__PURE__*/ b('DispatchMessageW', '<BYTE>ptr ->
  *  @param args_1 Msg 消息号（WM_*）
  *  @param args_2 wParam 消息参数（<>ptr 混合位）
  *  @param args_3 lParam 消息参数（<>ptr 混合位） */
-export const PostMessage = /*@__PURE__*/ b('PostMessageW', '<HWND>ptr u32 <>ptr <>ptr -> i32')
+export const PostMessage = /*@__PURE__*/ b('PostMessageW', '<HWND>ptr u32@AnyMsg <>ptr <>ptr -> i32')
 /** 同步发送消息并等窗口过程处理；返回处理结果（0 保真，有符号读）
  *  @param args_0 hWnd 目标窗口（品牌 HWND）
  *  @param args_1 Msg 消息号（WM_*）
  *  @param args_2 wParam 消息参数（整数或缓冲指针）
  *  @param args_3 lParam 消息参数（整数或缓冲指针） */
-export const SendMessage = /*@__PURE__*/ b('SendMessageW', '<HWND>ptr u32 <>ptr <>ptr -> <>ptr')
+export const SendMessage = /*@__PURE__*/ b('SendMessageW', '<HWND>ptr u32@AnyMsg <>ptr <>ptr -> <>ptr')
 /** 退出消息循环（投递 WM_QUIT，wParam = 退出码）
  *  @param args_0 nExitCode 退出码 */
 export const PostQuitMessage = /*@__PURE__*/ b('PostQuitMessage', 'i32 -> void')
@@ -224,7 +226,7 @@ export const PostQuitMessage = /*@__PURE__*/ b('PostQuitMessage', 'i32 -> void')
  *  @param args_1 Msg 消息号
  *  @param args_2 wParam 消息参数
  *  @param args_3 lParam 消息参数 */
-export const DefWindowProc = /*@__PURE__*/ b('DefWindowProcW', '<HWND>ptr u32 <>ptr <>ptr -> <>ptr')
+export const DefWindowProc = /*@__PURE__*/ b('DefWindowProcW', '<HWND>ptr u32@AnyMsg <>ptr <>ptr -> <>ptr')
 /** 调用窗口过程（wndProc = GetWindowLongPtr(GWLP_WNDPROC) 读回的过程指针——无品牌混合位 <>ptr，
  *  仅对本线程窗口调用）；返回处理结果（0 保真，有符号读）
  *  @param args_0 lpPrevWndFunc 原窗口过程指针（<>ptr 无品牌）
@@ -232,7 +234,7 @@ export const DefWindowProc = /*@__PURE__*/ b('DefWindowProcW', '<HWND>ptr u32 <>
  *  @param args_2 Msg 消息号
  *  @param args_3 wParam 消息参数
  *  @param args_4 lParam 消息参数 */
-export const CallWindowProc = /*@__PURE__*/ b('CallWindowProcW', '<>ptr <HWND>ptr u32 <>ptr <>ptr -> <>ptr')
+export const CallWindowProc = /*@__PURE__*/ b('CallWindowProcW', '<>ptr <HWND>ptr u32@AnyMsg <>ptr <>ptr -> <>ptr')
 /** 注册系统级唯一消息 ID（按字符串比较）；失败 → 0
  *  @param args_0 lpString 消息名 string */
 export const RegisterWindowMessage = /*@__PURE__*/ b('RegisterWindowMessageW', '<WCHAR>ptr -> u32')
@@ -245,13 +247,13 @@ export const GetDC = /*@__PURE__*/ b('GetDC', '<HWND>ptr -> <HDC>ptr')
 /** 归还 GetDC/GetWindowDC 取的 DC（首参收品牌 HWND、第二参收品牌 HDC，误传编译不过）；成功 → 非 0
  *  @param args_0 hWnd 取 DC 时的窗口句柄
  *  @param args_1 hdc 要归还的 DC（品牌 HDC） */
-export const ReleaseDC = /*@__PURE__*/ b('ReleaseDC', '<HWND>ptr <HDC>ptr -> i32')
+export const ReleaseDC = /*@__PURE__*/ b('ReleaseDC', '<HWND>ptr <HDC>ptr! -> i32')
 /** 让窗口把自己画进 hdcBlt（可截被遮挡 / 最小化的窗口；位图须按整窗尺寸建，从 (0,0) 填满）；
  *  nFlags = PW_CLIENTONLY(1) / PW_RENDERFULLCONTENT(2，Win8.1+)，XP/Win7 传 0；成功 → 非 0
  *  @param args_0 hWnd 被截窗口（品牌 HWND）
  *  @param args_1 hdcBlt 目标 DC（品牌 HDC）
  *  @param args_2 nFlags PW_* 标志，XP/Win7 传 0 */
-export const PrintWindow = /*@__PURE__*/ b('PrintWindow', '<HWND>ptr <HDC>ptr u32 -> i32')
+export const PrintWindow = /*@__PURE__*/ b('PrintWindow', '<HWND>ptr <HDC>ptr! u32 -> i32')
 /** 取整个窗口（含边框标题）DC；返回品牌 HDC，失败 → NULL，配对 ReleaseDC
  *  @param args_0 hWnd 窗口句柄 */
 export const GetWindowDC = /*@__PURE__*/ b('GetWindowDC', '<HWND>ptr -> <HDC>ptr')
@@ -270,13 +272,13 @@ export const EndPaint = /*@__PURE__*/ b('EndPaint', '<HWND>ptr <BYTE>ptr -> i32'
  *  @param args_2 cchText 字符数（-1 = 自动算到 NUL）
  *  @param args_3 lpRect 矩形（CALCRECT 时就地写回：RECT.encode(初值) 传 .ptr、decode 读回）
  *  @param args_4 uFormat DT_* 排版标志（gui.DrawTextFlag） */
-export const DrawText = /*@__PURE__*/ b('DrawTextW', '<HDC>ptr <WCHAR>ptr i32 <RECT>ptr i32 -> i32')
-/** 用画刷填充矩形（首参收品牌 HDC；rect 收 DeepPartial RECT 对象 / encode().ptr；第三参 HBRUSH 无品牌 <>ptr）；返回填充高度
+export const DrawText = /*@__PURE__*/ b('DrawTextW', '<HDC>ptr! <WCHAR>ptr i32 <RECT>ptr i32 -> i32')
+/** 用画刷填充矩形（首参收品牌 HDC；rect 收 DeepPartial RECT 对象 / RECT.alloc().ptr；第三参 HBRUSH 无品牌 <>ptr）；返回填充高度
  *  @param args_0 hdc 目标 DC（品牌 HDC）
- *  @param args_1 lprc 矩形（DeepPartial RECT 对象或 RECT.encode().ptr）
+ *  @param args_1 lprc 矩形（DeepPartial RECT 对象或 RECT.alloc().ptr）
  *  @param args_2 hbr 画刷句柄（HBRUSH，无品牌 <>ptr） */
-export const FillRect = /*@__PURE__*/ b('FillRect', '<HDC>ptr <RECT>ptr <>ptr -> i32', { RECT })
-/** 标记窗口区域失效（触发重绘；rect 收 DeepPartial RECT 对象 / RECT.encode().ptr，NULL 全窗）；成功 → 非 0
+export const FillRect = /*@__PURE__*/ b('FillRect', '<HDC>ptr! <RECT>ptr <>ptr -> i32', { RECT })
+/** 标记窗口区域失效（触发重绘；rect 收 DeepPartial RECT 对象 / RECT.alloc().ptr，NULL 全窗）；成功 → 非 0
  *  @param args_0 hWnd 窗口句柄
  *  @param args_1 lpRect 失效区域（DeepPartial RECT / .ptr / NULL = 全窗）
  *  @param args_2 bErase 非 0 先擦背景 */
@@ -294,8 +296,8 @@ export const SetCursor = /*@__PURE__*/ b('SetCursor', '<HCURSOR>ptr -> <HCURSOR>
  *  @param args_0 hInstance 模块句柄（品牌 HMODULE，NULL = 系统光标）
  *  @param args_1 lpCursorName MAKEINTRESOURCE 整数（如 32512 = IDC_ARROW），<>ptr 直传 */
 export const LoadCursor = /*@__PURE__*/ b('LoadCursorW', '<HMODULE>ptr <>ptr -> <HCURSOR>ptr')
-/** 取光标屏幕坐标；出参 encode → call → decode（POINT.encode() 传 .ptr、POINT.decode(实例) 读回）；成功 → 非 0
- *  @param args_0 lpPoint 出参槽，传 POINT.encode().ptr、POINT.decode 读回 */
+/** 取光标屏幕坐标；出参 encode → call → decode（POINT.alloc() 传 .ptr、POINT.decode(实例) 读回）；成功 → 非 0
+ *  @param args_0 lpPoint 出参槽，传 POINT.alloc().ptr、POINT.decode 读回 */
 export const GetCursorPos = /*@__PURE__*/ b('GetCursorPos', '<POINT>ptr -> i32')
 /** 设光标屏幕坐标；成功 → 非 0
  *  @param args_0 x 屏幕 x

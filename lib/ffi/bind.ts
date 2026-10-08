@@ -17,7 +17,9 @@ import { type C_BasicType, C_BasicType_No_Void, C_BasicType_Token, C_BasicType_T
 // 内建 WCHAR/BYTE 的 encode/alloc 一律返回 PtrArrayBuffer：既是 decode 的直读 buffer，
 // .ptr 又带品牌直接喂 <N>ptr 形参——不再有 { buf, ptr } 结构包装。
 type Codec<N extends string = string, V = unknown, T = unknown> = {
-    encode?(v: V, buf?: PtrArrayBuffer<any>, offset?: number): PtrArrayBuffer<any>
+    // encode 顶层不收 offset（与 decode 对齐）：PAB 的 .ptr 恒指向起点，写入位置由
+    // buf 自身表达；嵌套偏移由布局字段承担。
+    encode?(v: V, buf?: PtrArrayBuffer<any>): PtrArrayBuffer<any>
     decode?(p: Ptr<N>| ArrayBuffer): V
     alloc?(a: T): PtrArrayBuffer<N>
 }
@@ -25,7 +27,7 @@ type Codec<N extends string = string, V = unknown, T = unknown> = {
 // 类型层硬约束：encode/alloc 只返回 PtrArrayBuffer——裸 ArrayBuffer 出不了 codec
 // （callPacked 参数位统一取 .ptr，调用方拿到的也是 .ptr，.buf 词汇从 codec 出口消失）。
 export type CodecMap = Record<string, {
-    encode?(v: any, buf?: PtrArrayBuffer<any>, offset?: number): PtrArrayBuffer<any>
+    encode?(v: any, buf?: PtrArrayBuffer<any>): PtrArrayBuffer<any>
     decode?(p: any): any
     alloc?(a: any): PtrArrayBuffer<any>
 }>
@@ -41,30 +43,48 @@ function loadDll(dll: string): win.HMODULE {
     return loaded
 }
 
-function parseSig(sig: string): { argTokens: C_BasicType_Token_No_Void[]; retToken: C_BasicType_Token } {
+// 解析后的签名：'!' 修饰留在 token 尾缀上（token 即契约——运行时要执法的语义跟着
+// token 走，0 检查看尾缀即可，无独立 flag 可被解构丢失）；'@' 由 normToken 剥掉
+// （纯类型层语义，运行时不校验）。签名原文留作错误上下文。互斥单修饰语法下合法
+// token 的 '!' 修饰必以 '!' 结尾（品牌名里的 '!' 在 <>ptr 之前，不影响尾判）。
+type ParsedSig = {
+    argTokens: C_BasicType_Token_No_Void[]
+    retToken: C_BasicType_Token
+    sig: string
+}
+
+function parseSig(sig: string): ParsedSig {
     const parts = sig.split(' -> ')
     if (parts.length !== 2) {
         throw new Error(`ffi-bind: invalid signature "${sig}" (expected "arg1 arg2 -> ret")`)
     }
     // 零参数签名是 ' -> u32'，此时 parts[0]===''，split(' ') 会产出 ['']；
     // 空串必须先滤掉，否则 normToken('') 抛 Unknown token 整个 suite 崩。
-    const _args = parts[0]!.split(' ').filter(t => t !== '').map(normToken)
-    const args: C_BasicType_Token_No_Void[] = []
-    for (const arg of _args) {
-        if (arg === 'void') {
+    const rawArgs = parts[0]!.split(' ').filter(t => t !== '')
+    const argTokens: C_BasicType_Token_No_Void[] = []
+    for (const raw of rawArgs) {
+        // '@Name' 枚举标注由 normToken 剥（槽宽/ABI 只看底档），名字合法性由类型层拦
+        // （未知枚举塌 never）；结构侧的 '@'（键 alignas / 值 encoding）不走本路径——
+        // bind 签名是 token 修饰的唯一入口。
+        const tok = normToken(raw)
+        if (tok === 'void') {
             throw new Error("Void can not in args")
         }
-        args.push(arg)
+        argTokens.push(tok)
     }
 
     // 裸 'ptr'/非法 token 由类型层拦截（C_BasicType_Token 已 Exclude 'ptr'、拼错 token 塌成 never）；
     // 运行时再比较只会得到 TS2367「两类型无重叠」——类型已表达的约束不重复校验。
-    return { argTokens: args, retToken: normToken(parts[1]!) }
+    return {
+        argTokens,
+        retToken: normToken(parts[1]!),
+        sig,
+    }
 }
 
 function makeFn(proc: number, sig: string, encoders: CodecMap, decoders: CodecMap): (...a: unknown[]) => unknown {
-    const { argTokens, retToken } = parseSig(sig)
-    return (...a: unknown[]) => callPacked(proc, argTokens, retToken, a, encoders, decoders)
+    const ps = parseSig(sig)
+    return (...a: unknown[]) => callPacked(proc, ps, a, encoders, decoders)
 }
 
 // 每个参数在 argFrame 里占的字节数。与 quickjs-ffi-type.h 的 qwin_ffi_arg_size[]
@@ -78,7 +98,7 @@ const IA32_ARG_SIZE: Record<C_BasicType_No_Void, number> = {
 // x64 桩无条件双读 slots[0..3]，故 argFrame 至少 4 个槽（32 字节）
 const X64_MIN_SLOTS = 4
 
-function callPacked(proc: number, argTokens: C_BasicType_Token_No_Void[], retToken: C_BasicType_Token, args: any[], encoders: CodecMap, decoders: CodecMap): unknown {
+function callPacked(proc: number, { argTokens, retToken, sig }: ParsedSig, args: any[], encoders: CodecMap, decoders: CodecMap): unknown {
     const is64 = os.arch === 'x64'
 
     const getWidth = (t: C_BasicType_Token_No_Void, is64: boolean): number => {
@@ -99,12 +119,16 @@ function callPacked(proc: number, argTokens: C_BasicType_Token_No_Void[], retTok
 
     for (let i = 0; i < argTokens.length; i++) {
         const argToken = argTokens[i]!
+        const nonnull = argToken.endsWith('!')   // '!' 留在 token 尾缀上，此处按尾缀执法
         const arg = args[i]
         if (isCPtrToken(argToken)) {
             const name = ptrName(argToken)   // '' = <>ptr 裸地址档
             if (typeof arg === 'number') {
                 // 裸地址 / NULL / 品牌指针（都是 number）透传，不重编码。
                 // 合法值形态由类型层约束（MaybePtr | codec 形，如 <BYTE>ptr 另收 ArrayBuffer）。
+                if (nonnull && arg === 0)
+                    throw new Error(`ffi-bind: ${sig}: arg#${i + 1} <${name}>ptr! got 0 ` +
+                        `(null pointer forbidden here; the token marks this position non-null)`)
                 writeSlot(dv, off, { k: 'ptr', v: arg })
             } else {
                 if (arg === null || arg === undefined) {
@@ -130,6 +154,9 @@ function callPacked(proc: number, argTokens: C_BasicType_Token_No_Void[], retTok
                 const p = (buf as PtrArrayBuffer<any>).ptr
                 if (typeof p !== 'number')
                     throw new Error('ffi-bind: codec.encode must return a PtrArrayBuffer, got plain ArrayBuffer')
+                if (nonnull && p === 0)
+                    throw new Error(`ffi-bind: ${sig}: arg#${i + 1} <${name}>ptr! encode produced 0 ` +
+                        `(null pointer forbidden here)`)
                 writeSlot(dv, off, { k: 'ptr', v: p })
             }
         }
@@ -143,6 +170,10 @@ function callPacked(proc: number, argTokens: C_BasicType_Token_No_Void[], retTok
     const retIsFp = retToken === 'f32' || retToken === 'f64'
     ffi.ffiCall(proc, argFrame, retBuf, retIsFp ? 1 : 0)
     const raw = readRet(cTokenToType(retToken), retBuf)
+    // 返回位 '!' = 「C 保证非零」的作者担保，标错由这里当场 throw 兜底（显式崩溃而非静默流窜）。
+    if (retToken.endsWith('!') && raw === 0)
+        throw new Error(`ffi-bind: ${sig}: return ${retToken} got 0 ` +
+            `(the token promises C never returns null here)`)
     // 返回位自动解码：品牌指针且该键声明了 decode → 交还 JS 值；
     // 空指针 0 恒原样返回（无可读内容，不进 decode），裸 <>ptr / 无 decode 的键原样返回。
     if (isCPtrToken(retToken) && raw !== 0) {
@@ -308,25 +339,40 @@ const leakRegistry: FinalizationRegistry<{ sig: string, ptr: number }> =
     })
 
 // 共享解码/编码助手：由每个闭包的 wrapper 调用（wrapper 闭包捕获 args/ret/fn）。
-function dispatchClosure(args: C_BasicType_No_Void[], ret: C_BasicType, fn: (...a: unknown[]) => unknown,
-    frameBuf: ArrayBuffer, retBuf: ArrayBuffer): void {
+// args/ret 为「底档 + '!' 绑定」的记录（与 ParsedSig 同形态——修饰随 token 走，
+// 消费者要么整体拿到、要么整体拿不到）。'!' 违约（C 传入 0 / fn 返回 0）打印诊断并
+// 中止本次分发（fn 不被调用 / 结果槽保持 0），与 fn-throw 同风格：此处不 throw，
+// 异常通道只留给用户回调（C 桩捕获 wrapper 异常并清零，quickjs-ffi-closure.c）。
+function dispatchClosure(
+    args: { tok: C_BasicType_No_Void, nonnull: boolean }[],
+    ret: { tok: C_BasicType, nonnull: boolean },
+    fn: (...a: unknown[]) => unknown,
+    frameBuf: ArrayBuffer, retBuf: ArrayBuffer, sig: string): void {
     const dv = new DataView(retBuf)
     const is64 = os.arch === 'x64'
     const fv = new DataView(frameBuf)
     const a: unknown[] = []
     let off = 0
     for (let i = 0; i < args.length; i++) {
-        const k = args[i]!
+        const spec = args[i]!
+        const k = spec.tok
+        let v: unknown
         if (is64) {
             const fp = k === 'f32' || k === 'f64'
             const base = fp
                 ? (i < 4 ? 128 + i * 8 : 32 + (i - 4) * 8)   // xmm 区（前 4）/ 溢出区
                 : (i < 4 ? i * 8 : 32 + (i - 4) * 8)          // 整数寄存器区 / 溢出区
-            a.push(readScalar(fv, base, k))
+            v = readScalar(fv, base, k)
         } else {
-            a.push(readScalar(fv, off, k))
+            v = readScalar(fv, off, k)
             off += IA32_ARG_SIZE[k]
         }
+        // 参数位 '!' = 「C 保证非空」的作者担保，C 传 0 即标错 → 跳过回调。
+        if (spec.nonnull && v === 0) {
+            std.printf('[ffi] closure %s: arg#%d got 0 (! promise violated by caller), skipping callback\n', sig, i + 1)
+            return
+        }
+        a.push(v)
     }
     let r: any
     try {
@@ -335,14 +381,21 @@ function dispatchClosure(args: C_BasicType_No_Void[], ret: C_BasicType, fn: (...
         std.printf('[ffi] closure callback threw: %s\n', String(err))
         return                            // 结果槽保持 0
     }
-    if (ret !== 'void') {
-        writeSlot(dv, 0, { k: ret, v: r })
+    // 返回位 '!' = 「JS 保证非零」的作者担保，fn 返回 0 即标错 → 不写结果槽。
+    if (ret.nonnull && r === 0) {
+        std.printf('[ffi] closure %s: return got 0 (! promise violated by callback), leaving result slot 0\n', sig)
+        return
+    }
+    if (ret.tok !== 'void') {
+        writeSlot(dv, 0, { k: ret.tok, v: r })
     }
 }
 
 /** 把 JS 函数变成可传给 Win32 API 的函数指针（同步同线程回调）。
  *  sig 为回调签名：实参只许 BasicKind（ptr 槽 0 保真读回 NULL | Ptr），
  *  返回只许 void|u8..u64|i8..i64|f32|f64|ptr（u64/i64 走 EDX:EAX，x64 走 RAX）。
+ *  '!' 标记位运行时校验（与 bind 调用位同语义，见 dispatchClosure）：参数位 C 传入 0
+ *  → 打印诊断并跳过回调；返回位 fn 返回 0 → 保持结果槽 0。
  *  opts.stdcall 仅 ia32 有效（默认 true，Win32 回调标准 CALLBACK）；msvcrt 等
  *  cdecl 库回调传 { stdcall: false }。x64 恒由调用方清栈，无需指定。
  *  参数上限：x64 至多 16 个、ia32 栈区至多 64 字节（C 桩定长捕获窗），超限抛错。
@@ -354,26 +407,26 @@ function dispatchClosure(args: C_BasicType_No_Void[], ret: C_BasicType, fn: (...
 export function closure<S extends string>(sig: S, fn: BindFn<S, {}, {}>,
     opts?: { stdcall?: boolean }): { ptr: number; dispose(): void } {
     const { argTokens, retToken } = parseSig(sig)
-    const argTypes = argTokens.map(cTokenToType)
-    const retType = cTokenToType(retToken)
+    const argSpecs = argTokens.map(t => ({ tok: cTokenToType(t), nonnull: t.endsWith('!') }))
+    const retSpec = { tok: cTokenToType(retToken), nonnull: retToken.endsWith('!') }
     const is64 = os.arch === 'x64'
-    const stackCapture = argTypes.reduce((s, k) => s + IA32_ARG_SIZE[k], 0)
+    const stackCapture = argSpecs.reduce((s, x) => s + IA32_ARG_SIZE[x.tok], 0)
     // C 桩捕获窗定长（quickjs-ffi-closure.c：x64 栈区 96B=12 槽，第 5 参起在栈上，
     // 即至多 16 参；ia32 16×4B）——超限 dispatch 会读到捕获缓冲之外的垃圾，或
     // RangeError 被吞成返回 0，故创建期 fail-fast。扩容改 C 侧 buf 尺寸并同步放宽。
-    if (is64 ? argTypes.length > 16 : stackCapture > 64) {
+    if (is64 ? argSpecs.length > 16 : stackCapture > 64) {
         throw new Error(`ffi-bind: closure signature exceeds capture window ` +
             `(${is64 ? 'max 16 params' : 'max 64 stack bytes'}): ${sig}`)
     }
     const argBytes = (opts?.stdcall === false || is64) ? 0 : stackCapture
-    const retKind = retToken === 'f32' ? 1
-        : retToken === 'f64' ? 2
-            : (retToken === 'u64' || retToken === 'i64') ? 3
+    const retKind = retSpec.tok === 'f32' ? 1
+        : retSpec.tok === 'f64' ? 2
+            : (retSpec.tok === 'u64' || retSpec.tok === 'i64') ? 3
                 : 0
-    // per-closure wrapper：闭包捕获 args/ret/fn，C 侧只存它 + ctx；回调永远
-    // 回到创建它的 context（无跨 context 全局、无 registry）。
+    // per-closure wrapper：闭包捕获 argSpecs/retSpec/fn/sig，C 侧只存它 + ctx；回调
+    // 永远回到创建它的 context（无跨 context 全局、无 registry）。
     const wrapper = (frameBuf: ArrayBuffer, retBuf: ArrayBuffer): void => {
-        dispatchClosure(argTypes, retType, fn as (...a: unknown[]) => unknown, frameBuf, retBuf)
+        dispatchClosure(argSpecs, retSpec, fn as (...a: unknown[]) => unknown, frameBuf, retBuf, sig)
     }
     const ptr = ffi.closureNew(argBytes, retKind, wrapper)
     let done = false

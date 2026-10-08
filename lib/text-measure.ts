@@ -5,7 +5,7 @@ import { SelectObject } from './windows/gdi32.js'
 import { RECT } from './windows/structs.js'
 
 export function measureText(hdc: Ptr<'HDC'>, text: string, maxWidth: number): { width: number; height: number } {
-    // rect 双向位不注册 encoder（CALCRECT 就地写回）：encode() 新建 + DeepPartial 初值一步到位
+    // rect 双向位不注册 encoder（CALCRECT 就地写回）：encode(初值) 新建 + DeepPartial 初值一步到位
     //（left/top/bottom 缺省跳过保持 0）→ 传 .ptr → decode 读回
     const r = RECT.encode({ right: maxWidth })
     DrawText(hdc, text, -1, r.ptr, gui.DrawTextFlag.CALCRECT)

@@ -716,6 +716,7 @@ declare module "gui" {
         VERTRES = 10, // 0xA
         LOGPIXELSX = 88, // 0x58
         LOGPIXELSY = 90, // 0x5A
+        BITSPIXEL = 12, // 0xC
     }
 
     // Static controls

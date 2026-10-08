@@ -1,4 +1,5 @@
 ﻿/// <reference path="quickwin_const.d.ts" />
+/// <reference path="quickwin_enum_map.d.ts" />
 interface ImportMeta {
     url: string
 }

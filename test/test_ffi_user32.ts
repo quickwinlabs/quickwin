@@ -22,7 +22,7 @@ export const suite = {
             typeof GetForegroundWindow() === 'number')
 
         t.section('user32: RECT 出参（encode → call → decode 字段直读）')
-        const rectOut = RECT.encode()
+        const rectOut = RECT.alloc()
         t.check('GetClientRect(desktop)', 1, GetClientRect(desk, rectOut.ptr))
         const rect = RECT.decode(rectOut)
         t.check('客户区宽 = SM_CXSCREEN', GetSystemMetrics(0), rect.right - rect.left)

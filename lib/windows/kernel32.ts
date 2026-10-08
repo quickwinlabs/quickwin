@@ -30,10 +30,10 @@ export const CreatePipe = /*@__PURE__*/ b('CreatePipe', '<>ptr <>ptr <>ptr u32 -
  *  @param args_0 hHandle 文件/管道句柄（HFILE 品牌）
  *  @param args_1 dwMask 要改的标志位掩码（HANDLE_FLAG_*）
  *  @param args_2 dwFlags 标志新值（继承 = 1，不继承 = 0） */
-export const SetHandleInformation = /*@__PURE__*/ b('SetHandleInformation', '<HFILE>ptr u32 u32 -> i32')
+export const SetHandleInformation = /*@__PURE__*/ b('SetHandleInformation', '<HFILE>ptr! u32 u32 -> i32')
 /** 建进程（lpApplicationName / lpCommandLine 为 string 或 NULL；lpStartupInfo 传对象
  *  { cb: STARTUPINFOW.size, dwFlags, hStd* … }（cb 必填），lpProcessInformation 传
- *  PROCESS_INFORMATION.encode().ptr、读回 PROCESS_INFORMATION.decode；
+ *  PROCESS_INFORMATION.alloc().ptr、读回 PROCESS_INFORMATION.decode；
  *  bInheritHandles 非 0 继承句柄）；成功 → 非 0
  *  @param args_0 lpApplicationName 可执行文件路径 string 或 NULL
  *  @param args_1 lpCommandLine 命令行 string（含参数）或 NULL
@@ -44,7 +44,7 @@ export const SetHandleInformation = /*@__PURE__*/ b('SetHandleInformation', '<HF
  *  @param args_6 lpEnvironment 环境块，传 NULL 继承当前环境
  *  @param args_7 lpCurrentDirectory 工作目录 string 或 NULL
  *  @param args_8 lpStartupInfo STARTUPINFOW 对象（cb 必填）
- *  @param args_9 lpProcessInformation 出参槽，传 PROCESS_INFORMATION.encode().ptr */
+ *  @param args_9 lpProcessInformation 出参槽，传 PROCESS_INFORMATION.alloc().ptr */
 export const CreateProcess = /*@__PURE__*/ b('CreateProcessW',
     '<WCHAR>ptr <WCHAR>ptr <>ptr <>ptr i32 u32 <>ptr <WCHAR>ptr <STARTUPINFOW>ptr <PROCESS_INFORMATION>ptr -> i32',
     { STARTUPINFOW })
@@ -55,7 +55,7 @@ export const WaitForSingleObject = /*@__PURE__*/ b('WaitForSingleObject', '<>ptr
 /** 取进程退出码到 lpExitCode（DWORD 出参：传 Int32Array(1).buffer 读回带符号码）；成功 → 非 0
  *  @param args_0 hProcess 进程句柄（HPROCESS 品牌）
  *  @param args_1 lpExitCode 出参槽，传 Int32Array(1).buffer 读回退出码 */
-export const GetExitCodeProcess = /*@__PURE__*/ b('GetExitCodeProcess', '<HPROCESS>ptr <BYTE>ptr -> i32')
+export const GetExitCodeProcess = /*@__PURE__*/ b('GetExitCodeProcess', '<HPROCESS>ptr! <BYTE>ptr -> i32')
 /** 关闭内核对象句柄；成功 → 非 0
  *  @param args_0 hObject 要关闭的句柄（任意内核对象，<>ptr 收宽） */
 export const CloseHandle = /*@__PURE__*/ b('CloseHandle', '<>ptr -> i32')
@@ -69,7 +69,7 @@ export const CloseHandle = /*@__PURE__*/ b('CloseHandle', '<>ptr -> i32')
  *  @param args_2 nNumberOfBytesToRead 请求读取的字节数
  *  @param args_3 lpNumberOfBytesRead 出参槽，传 Uint32Array(1).buffer 读实际字节数
  *  @param args_4 lpOverlapped 重叠结构，传 NULL（同步读） */
-export const ReadFile = /*@__PURE__*/ b('ReadFile', '<HFILE>ptr <BYTE>ptr u32 <BYTE>ptr <>ptr -> i32')
+export const ReadFile = /*@__PURE__*/ b('ReadFile', '<HFILE>ptr! <BYTE>ptr u32 <BYTE>ptr <>ptr -> i32')
 
 // ============ 系统 / 错误 ============
 

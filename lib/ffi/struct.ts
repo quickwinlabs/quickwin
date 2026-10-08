@@ -46,9 +46,16 @@ type N =
     | 50 | 51 | 52 | 53;
 
 // 规范 token（SimpleToken 守卫后，T 恒为规范形）→ JS 形状：'<T>ptr' → MaybePtr（0 保真，
-// 对齐 C 版）；数字档 → JsType 映射。落不到两者的（'void'、裸 'ptr'、拼错 token）塌 never。
+// 对齐 C 版）；'<T>ptr!' → Ptr（非空担保：decode 直出非空品牌且运行时 0 断言，见 doDecode；
+// 下游 '! 消费位'由 bind 的 callPacked 兜底）；'@E' → EnumMap 值域（与 bind 签名位同构：
+// decode 出值域收窄、encode 收同型 —— 异种枚举/域外字面量由枚举 nominal 拦，运行时值域
+// 校验按设计留 Phase 2）；数字档 → JsType 映射。落不到的（'void'、裸 'ptr'、拼错 token）
+// 塌 never。
 type ValOf<T> =
-    T extends `<${infer B}>ptr` ? MaybePtr<B>
+    T extends `<${infer B}>ptr!` ? Ptr<B>
+    : T extends `<${string}>ptr@${infer E extends keyof EnumMap}` ? EnumMap[E]
+    : T extends `<${infer B}>ptr` ? MaybePtr<B>
+    : T extends `${infer U}@${infer E extends keyof EnumMap}` ? (U extends C_Number ? EnumMap[E] : never)
     : T extends C_Number ? C_TypeJsTypeMap[T]
     : never
 
@@ -114,6 +121,53 @@ export type DeepPartial<T> =
     : T extends number | string | boolean | bigint | symbol ? T
     : { [K in keyof T]?: DeepPartial<T[K]> }
 
+// encode 物化入参：缺省字段运行时跳过（doEncode 的 undefined-continue —— 不动 buffer，
+// 新建槽等价写 0），decode 返回仍是全字段 ShapeOfC。
+// 必填集 = '!' 字段（非空担保，省略 = 槽留 0 违约）∪ '@' 值域字段中 0 ∉ 值域的（省略 =
+// 新槽写 0，0 不在枚举值域同样是静默违约；0 ∈ 值域或宽 number 值域可省 —— 省略产生的 0
+// 本身就是合法枚举值）。判定从 T 的**原始 token** 按 DFS 后序递归展开（子先判、父取 OR）：
+// 原文 token 是标注的唯一权威，且 `<>ptr!` 的 '!' 在形上已塌进裸 number（Ptr<''> 空品牌
+// 归一），只有 token 能看见。数组（`{'#':'array'}` 与 `u32@E[N]` 糖）按**元素**穿透 ——
+// 整组省略 = 元素全 0，违约同理；嵌套 struct/union 递归字段 —— 子树含必填 ⇒ 本键必填，
+// 堵掉「encode 通过、decode 0 断言炸」的嵌套/数组缺口。
+// 必填键的值经 EncodeValOfT **后序合成**：嵌套 struct/union 再套同一 EncodeShapeOfC
+// （内层必填键强制、非必填兄弟维持 DeepPartial 可省 —— 与运行时逐字段对应：省略兄弟 =
+// 写 0，合法零值），标量/数组取全量形。其余字段维持 DeepPartial 缺省语义（省略 = 跳过，
+// 新建槽写 0 / 复用槽留旧值）。
+// 无必填字段时整体退化为纯 DeepPartial、**不进交集**：`{} & {全可选}` 会绕过 TS 的
+// weak-type 检查（TS2559 'no properties in common' 不再触发），裸 number/string 就此
+// 混进任何 codec 实参位（asctime(123) 回归实测）。元组包一层防 never 分发。
+type IsSubtreeMandatory<D> =
+    // —— 结构形态：DFS 后序（先子后父）——
+    D extends { '#': 'array', element: infer E } ? IsSubtreeMandatory<E>
+    : D extends { '#': 'struct' | 'union' }
+        ? (true extends { [K in keyof D]-?: IsSubtreeMandatory<D[K]> extends true ? true : false }[keyof D] ? true : false)
+    // —— token 形态：分支序对齐 ShapeOfValue（字符串糖先于数组糖，编码 @ 先于枚举 @）——
+    : D extends `${string}[${number}]@${string}` ? false            // 字符串糖（'u16[4]@utf-8'）：'' 合法 → 可省
+    : D extends `${infer TK extends SimpleToken}[${string}]` ? IsSubtreeMandatory<TK>   // 数组糖穿透元素
+    : D extends `${string}:${number}` ? false                       // 位域：数值零合法 → 可省
+    : D extends `<${string}>ptr!` ? true                            // '!'（含裸 <>ptr! —— 形塌 number，token 是唯一判据）
+    : D extends `<${string}>ptr@${infer E extends keyof EnumMap}` ? (0 extends EnumMap[E] ? false : true)
+    : D extends `${infer U}@${infer E extends keyof EnumMap}`
+        ? (U extends C_Number ? (0 extends EnumMap[E] ? false : true) : false)
+    : false
+// 必填键 → 其**原始声明值**的映射（`as` 重映射一步完成过滤 + alignas 归一 + 剔 '#'）。
+type MandatoryDeclKeys<T> = {
+    [K in keyof T]-?: IsSubtreeMandatory<T[K]> extends true ? FieldKey<K> : never
+}[keyof T]
+// 必填键的值：嵌套 struct/union 后序递归同一形态，其余（标量/数组/糖）取全量形。
+type EncodeValOfT<D> =
+    D extends { '#': 'struct' | 'union' } ? EncodeShapeOfC<D>
+    : ShapeOfValue<D>
+type EncodeShapeOfC<T> =
+    DeepPartial<ShapeOfC<T>> & {
+        [K in keyof T as IsSubtreeMandatory<T[K]> extends true ? FieldKey<K> : never]-?: EncodeValOfT<T[K]>
+    }
+type EncodeIn<T extends { '#': 'struct' | 'union' }> =
+    [MandatoryDeclKeys<T>] extends [never]
+        ? DeepPartial<ShapeOfC<T>>
+        : EncodeShapeOfC<T>
+
 
 // ============================================================
 // 运行时类型
@@ -139,23 +193,34 @@ export type Field = {
     offset: number
     size: number
     type: FieldType
+    /** '!' 标注字段（原文 token `<X>ptr!`）：decode 读出 0 当场 throw（后置兜底 ——
+     *  C 没填 / 拿未填充槽 decode 都在这里拦，见 doDecode）。 */
+    nonnull?: true
 }
 export type Fields = Field[]
 
 // T 约束 = '#' 声明本身：struct()/union() 构造的 `{'#':'struct'} & M` 可证 —— M 是平铺
 // 字段表（SimpleMember 无 '#' 键），交叉的 '#' 取字面声明。形状层不设约束的理由见 ShapeOfC。
-// N = 布局品牌（struct(name, …) 传入）：decode 入参与 encode().ptr 同品牌。默认 '' ——
+// N = 布局品牌（struct(name, …) 传入）：decode 入参与 alloc().ptr 同品牌。默认 '' ——
 // `Ptr<''>` 归一裸 number（与旧 never 守卫结果相同），品牌化 def 未来收窄时签名不用再动。
 export type StructDef<T extends { '#': 'struct' | 'union' }, N extends string = ''> = {
     readonly __struct: T
     readonly size: number
     readonly structAlign: number
     decode(buf: ArrayBuffer | Ptr<N>): ShapeOfC<T>
-    // 重载分派：无/单参 = 新建 PtrArrayBuffer（零初值 / DeepPartial 初值），带品牌 .ptr
-    // 直接喂 <N>ptr 形参；带 buf = 写入调用方既有 PtrArrayBuffer（返回其本身，供链式
-    // 读回）——encode 出口一律 PAB，裸 ArrayBuffer 不出 codec（与 CodecMap 同约束）。
-    encode(v?: DeepPartial<ShapeOfC<T>>): PtrArrayBuffer<N>
-    encode(v: DeepPartial<ShapeOfC<T>>, buf: PtrArrayBuffer<any>, offset?: number): PtrArrayBuffer<any>
+    // alloc = 出参槽分配（全新全 0：'!' 字段的 0 是出参哨兵，decode 的 0 断言兜 C 没填）；
+    // encode = 物化（C 要读的对象），带品牌 .ptr 直接喂 <N>ptr 形参。'!' 字段在 EncodeIn
+    // 里必填 —— 省略即编译错，不静默写 0 / 复用槽留旧值（DFS 后序穿透嵌套与数组：子树/
+    // 数组元素含必填 ⇒ 该键必给，值后序合成到内层）。带 buf = 写入调用方既有
+    // PtrArrayBuffer（返回其本身，供链式读回）——encode 出口一律 PAB，裸 ArrayBuffer
+    // 不出 codec（与 CodecMap 同约束）。动态调用方无参 encode 由运行时 throw 兜底。
+    alloc(): PtrArrayBuffer<N>
+    encode(v: EncodeIn<T>): PtrArrayBuffer<N>
+    // 带 buf = 写入调用方既有 PtrArrayBuffer（复用/预分配形态，返回其本身供链式读回）。
+    // 刻意没有 offset —— 与 decode 同理（bind.ts CodecMap 注释）：PAB 的 .ptr 恒指向起点，
+    // 顶层再收 offset 只会掩盖"写错位置"且返回值 .ptr 对不上写入点；嵌套偏移由布局字段
+    // （doEncode 的 base）承担。
+    encode(v: EncodeIn<T>, buf: PtrArrayBuffer<any>): PtrArrayBuffer<any>
     offsetOf(name: string): number
 }
 
@@ -302,6 +367,9 @@ export function computeStructLayout(t: C_Struct | C_Union): Layout {
         const name = m ? m[1]! : rawName
         const alignas = m ? Number(m[2]) : 0
         const { size, align: natural, type } = lower(v)
+        // '!' 非空担保标记（原文 `<X>ptr!`）：lower 里 normToken 已拒掉 'u32!'/'HANDLE!' 等
+        // 非法尾缀，能走到这里的 '!' 尾必是指针 token —— 记到 Field 上供 decode 的 0 断言。
+        const nonnull = typeof v === 'string' && v.endsWith('!')
         let align = natural
         if (pack > 0) align = Math.min(pack, align)
         if (alignas) align = Math.max(align, alignas)
@@ -349,7 +417,7 @@ export function computeStructLayout(t: C_Struct | C_Union): Layout {
         const offset = alignUp(cursor, align)
 
         if (!name.startsWith('$')) {
-            fields.push({ name: name, offset, size, type })
+            fields.push({ name: name, offset, size, type, ...(nonnull ? { nonnull: true as const } : {}) })
         } else {
             // 匿名聚合：内嵌 fields 已 lower 好，offset 平移到本成员起点。
             if (type.tag !== 'struct' && type.tag !== 'union')
@@ -492,8 +560,15 @@ function writeElement(dv: DataView, off: number, t: FieldType, size: number, val
 
 function doDecode(dv: DataView, base: number, fields: Fields): Record<string, unknown> {
     const out: Record<string, unknown> = {}
-    for (const f of fields)
-        out[f.name] = readElement(dv, base + f.offset, f.type, f.size)
+    for (const f of fields) {
+        const v = readElement(dv, base + f.offset, f.type, f.size)
+        // '!' 非空担保的后置兜底：C 没填（忘判成功就 decode）或拿未填充槽（decode(alloc())）
+        // 读出 0 —— 当场 throw，不让 0 带 Ptr 品牌流到下游 '! 消费位'。成功路径必非零，不触发。
+        if (f.nonnull && v === 0)
+            throw new Error(`ffi-struct: decode: '!' field "${f.name}" got 0 ` +
+                `(C did not fill it, or decode was called on an unfilled slot)`)
+        out[f.name] = v
+    }
     return out
 }
 
@@ -528,11 +603,16 @@ function createStruct(t: C_Struct | C_Union): any {
             }
             return doDecode(new DataView(p), 0, fields)
         },
-        encode: ((v?: any, buf?: PtrArrayBuffer<any>, offset: number = 0) => {
-            // 无 buf = 新建带品牌 ptr 的 PtrArrayBuffer（v 缺省时全字段 continue → 全 0，
-            // 等价旧 alloc()）；有 buf = 写入调用方 PtrArrayBuffer（复用/预分配形态）。
+        alloc: (() => new PtrArrayBuffer(size)) as StructDef<any, any>['alloc'],
+        encode: ((v: any, buf?: PtrArrayBuffer<any>) => {
+            // fail-loud：无参 = 分配语义，走 alloc()；这里绝不静默零填充 —— 类型层由
+            // EncodeIn 拦 '!' 字段省略，动态/JS 调用方由本 throw 兜住。顶层不收 offset
+            // （与 decode 对齐，见 StructDef 注释），恒从 buffer 起点写。
+            if (v === undefined || v === null)
+                throw new Error(`ffi-struct: encode(v) requires an argument; ` +
+                    `use alloc() for a zeroed out-param slot`)
             const out = buf ?? new PtrArrayBuffer(size)
-            doEncode(new DataView(out), offset, fields, v ?? {})
+            doEncode(new DataView(out), 0, fields, v)
             return out
         }) as StructDef<any, any>['encode'],
         offsetOf: (name: string) => {
@@ -561,7 +641,7 @@ function buildDecl(kind: 'struct' | 'union', member: Record<string, unknown>, pa
 }
 
 /** 平铺字段表定义结构体（token/`X[n]`/`unit:width`/`'#'` 声明均可，见 ctype.ts §4）。
- *  给 name 则 encode().ptr 与 decode 入参带 Ptr<name> 品牌。 */
+ *  给 name 则 alloc().ptr 与 decode 入参带 Ptr<name> 品牌。 */
 type StructOf<M, N extends string = ''> = StructDef<{ '#': 'struct', '#pack'?: number } & M, N>
 type UnionOf<M, N extends string = ''> = StructDef<{ '#': 'union', '#pack'?: number } & M, N>
 export function struct<const M extends SimpleMember>(member: M, opts?: AggOpts): StructOf<M>
