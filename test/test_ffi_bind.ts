@@ -5,7 +5,7 @@ import * as os from 'os'
 import { Tester } from './test_helper.js'
 import { bind, bindLib, closure, WCHAR, BYTE, type CodecMap } from '../lib/ffi/bind.js'
 import { struct } from '../lib/ffi/struct.js'
-import { NULL, type MaybePtr, Ptr, PtrArrayBuffer, readScalar, writeScalar, PTR_SIZE } from '../lib/ffi/ctype.js'
+import { NULL, type MaybePtr, Ptr, PtrArrayBuffer, readScalar, writeScalar, PTR_SIZE, normToken } from '../lib/ffi/ctype.js'
 
 // 编译期断言工具（仅类型层，运行时无开销）
 type Equal<A, B> = (<G>() => G extends A ? 1 : 2) extends (<G>() => G extends B ? 1 : 2) ? true : false
@@ -167,13 +167,18 @@ export const suite = {
         expectType<Equal<ParamsOf<'<>ptr -> i32'>[0], MaybePtr<''>>>()
         expectType<[ParamsOf<'<>ptr -> i32'>[0]] extends [number] ? true : false>()
         expectType<[number] extends [ParamsOf<'<>ptr -> i32'>[0]] ? true : false>()
-        expectType<Equal<ParamsOf<'int -> i32'>[0], number>>()
-        expectType<Equal<ParamsOf<'DWORD -> i32'>[0], number>>()
+        expectType<Equal<ParamsOf<'i32 -> i32'>[0], number>>()
+        // 别名机制已移除：typedef 名塌 never（与 'i3z' 同路径，见上）
+        expectType<Equal<ParamsOf<'DWORD -> i32'>[0], never>>()
         expectType<Equal<ParamsOf<'u64 -> i32'>[0], bigint>>()
         expectType<Equal<ParamsOf<'<BYTE>ptr -> i32'>[0], PtrArrayBuffer<any> | MaybePtr<"BYTE">>>()
-        expectType<Equal<ParamsOf<'LPCWSTR -> i32'>[0], string | MaybePtr<"WCHAR">>>()
-        expectType<Equal<RetOf<'<>ptr -> ptr'>, never>>()
-        expectType<Equal<RetOf<'<>ptr -> i3z'>, never>>()
+        expectType<Equal<ParamsOf<'<WCHAR>ptr -> i32'>[0], string | MaybePtr<"WCHAR">>>()
+        // 别名机制已移除：'LPCWSTR' 塌 never（字符串 codec 只挂在 <WCHAR>ptr 品牌位上）
+        expectType<Equal<ParamsOf<'LPCWSTR -> i32'>[0], never>>()
+        // 返回位非法 token 塌 unknown（never 是 bottom 在返回位被全放行，unknown 逼收窄；
+        // 与参数位塌 never 拦调用的不对称是设计）
+        expectType<Equal<RetOf<'<>ptr -> ptr'>, unknown>>()
+        expectType<Equal<RetOf<'<>ptr -> i3z'>, unknown>>()
         expectType<Equal<RetOf<'<>ptr -> <BYTE>ptr'>, MaybePtr<"BYTE">>>()
         expectType<Equal<RetOf<'<>ptr -> void'>, void>>()
         expectType<Equal<RetOf<'<>ptr -> i32'>, number>>()
@@ -247,10 +252,9 @@ export const suite = {
         t.checkTrue('CreatePenIndirect(<LOGPEN>ptr nested) returns HPEN', !!pen)
         if (pen) t.checkTrue('DeleteObject(HPEN) succeeds', deleteObject(pen) !== 0)
 
-        // C typedef LPCWSTR 归一化到 '<WCHAR>ptr'
-        const lstrcmpAlias = bind('kernel32.dll', 'lstrcmpW', 'LPCWSTR LPCWSTR -> i32')
-        const rAlias = lstrcmpAlias('a', 'b')
-        t.checkTrue('LPCWSTR alias normalizes to <WCHAR>ptr', rAlias < 0)
+        // 别名机制已移除：normToken 对 typedef 名 fail-loud（动态签名串的运行时防线）
+        try { normToken('LPCWSTR'); t.checkTrue('normToken 拒别名 LPCWSTR', false) }
+        catch (e) { t.checkTrue('normToken 拒别名 LPCWSTR', String(e).includes('LPCWSTR')) }
 
         // 未知布局：延迟解析 —— bind 期不再抛；仅当真的收到「结构形」实参时才报错，
         // 并列出内建 + 已传入的可选项。纯 number（NULL / 地址）透传不需要布局。

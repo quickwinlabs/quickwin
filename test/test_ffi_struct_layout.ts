@@ -516,8 +516,8 @@ export const suite = {
                 rejected({ '#': 'struct', x: 'u32:1[2]' as any }))
             t.check('anonymous bitfield rejected', true,
                 rejected({ '#': 'struct', $anon1: 'u32:1' } as any))
-            t.check('float bitfield unit rejected（归一后非整数档）', true,
-                rejected({ '#': 'struct', x: 'float:3' as any }))
+            t.check('f32 bitfield unit rejected（归一后非整数档）', true,
+                rejected({ '#': 'struct', x: 'f32:3' as any }))
             t.check('unknown bitfield unit rejected', true,
                 rejected({ '#': 'struct', x: 'i3z:3' as any }))
             t.check('array with #pack rejected（#pack 仅 struct/union）', true,

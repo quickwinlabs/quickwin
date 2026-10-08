@@ -11,7 +11,7 @@
 //       出参/就地位 <N>ptr 不注册 encoder → 位只收 def 分配的 .ptr（对象 encode 进调用方拿不到
 //         的临时 buffer 会丢结果；ArrayBuffer 由 unknown layout fail-fast 拦下），
 //         读回走 N.decode(buf|ptr)。统一流程：encode → call → decode
-//   - 签名里的 LPCWSTR 若语义是 MAKEINTRESOURCE 整数（如 LoadCursorW 光标名），该位用 <>ptr
+//   - 签名里的 <WCHAR>ptr 若语义是 MAKEINTRESOURCE 整数（如 LoadCursorW 光标名），该位用 <>ptr
 //   - HDC 借出/归还与消费位统一 <HDC>ptr（品牌指针 Ptr<'HDC'>）：ReleaseDC 等归还位由 tsc
 //     校验配对拦住误传 HWND，DrawText/FillRect 等消费位同收品牌、拦住裸 number 误传
 //   - 返回/入参句柄位品牌化：HWND（窗口句柄形参与返回）、HMENU（菜单组出入参）、

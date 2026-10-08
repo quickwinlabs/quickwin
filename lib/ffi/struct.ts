@@ -5,7 +5,6 @@ import {
     C_TypeJsTypeMap,
     isCPtrToken,
     normToken,
-    Norm,
     MaybePtr,
     PTR_SIZE,
     PtrArrayBuffer,
@@ -46,17 +45,17 @@ type N =
     | 40 | 41 | 42 | 43 | 44 | 45 | 46 | 47 | 48 | 49
     | 50 | 51 | 52 | 53;
 
-// 规范 token（Norm 后）→ JS 形状：'<T>ptr' → MaybePtr（0 保真，对齐 C 版）；数字档 → JsType 映射。
-// 归一后落不到两者的（'void'、裸 'ptr'、拼错 token）塌 never。
+// 规范 token（SimpleToken 守卫后，T 恒为规范形）→ JS 形状：'<T>ptr' → MaybePtr（0 保真，
+// 对齐 C 版）；数字档 → JsType 映射。落不到两者的（'void'、裸 'ptr'、拼错 token）塌 never。
 type ValOf<T> =
     T extends `<${infer B}>ptr` ? MaybePtr<B>
     : T extends C_Number ? C_TypeJsTypeMap[T]
     : never
 
-// 位域糖 → 形状：unit 归一后非整数档（如 'float:3' → 'f32'）塌 never（运行时同报错）；
-// width ≤53 可被 number 精确表示 → number，否则 bigint。
+// 位域糖 → 形状：unit 非整数档（如 'f32:3'；T 已被 SimpleToken 守卫限定为规范 token）
+// 塌 never（运行时同报错）；width ≤53 可被 number 精确表示 → number，否则 bigint。
 type BitShape<T extends string, W extends number> =
-    Norm<T> extends C_Integer ? (W extends N ? number : bigint) : never
+    T extends C_Integer ? (W extends N ? number : bigint) : never
 
 // 值 → 形状。对象值一律按 '#' 分派（无「裸嵌套 map 默认 struct」—— 漏写 '#' 是错误）。
 // 字符串糖（值尾带 @encoding）在数组糖之前判别 —— 两形态本不相交（数组糖以 ] 收尾），
@@ -64,7 +63,7 @@ type BitShape<T extends string, W extends number> =
 // （string 永不 extends number → 塌 never），要用 `L extends `${number}`` 检查；
 // U/L/E 都在条件里被引用，避免未使用的 infer 触发 TS6196。
 type ShapeOfValue<V> =
-    V extends infer T extends SimpleToken ? ValOf<Norm<T>>
+    V extends infer T extends SimpleToken ? ValOf<T>
     : V extends `${infer U}[${infer L}]@${infer E}`
       ? (U extends 'u8' | 'u16' ? (L extends `${number}` ? (E extends Encoding ? string : never) : never) : never)
     : V extends `${infer T extends SimpleToken}[${infer L extends number}]` ? Tuple<ShapeOfValue<T>, L>
@@ -180,7 +179,7 @@ type Layout = {
 const isCNumberToken = (t: C_BasicType_Token): t is C_Number =>
     SizeAlign[t as C_Number] !== undefined
 
-// 值 → { size, align, FieldType }：字符串先试字符串糖/数组糖/位域糖，再按 token（含别名）归一；
+// 值 → { size, align, FieldType }：字符串先试字符串糖/数组糖/位域糖，再按 token 归一；
 // 对象值一律按 '#' 分派 —— 无「裸嵌套 map 默认 struct」，漏写 '#' 直接报错。
 // 字符串无 '#' 声明形式（词汇只有糖，见 ctype.ts §4）：旧写法落到末尾 unknown '#' 报错。
 function lower(v: unknown): { size: number, align: number, type: FieldType } {
@@ -209,11 +208,11 @@ function lower(v: unknown): { size: number, align: number, type: FieldType } {
                 type: { tag: 'array', elementType: el.type, elementSize: el.size },
             }
         }
-        const b = /^([A-Za-z_]\w*):(\d+)$/.exec(v)          // 'u32:3' → 位域糖（'float:3' 归一后非整数档被拒）
+        const b = /^([A-Za-z_]\w*):(\d+)$/.exec(v)          // 'u32:3' → 位域糖（'f32:3' 归一后非整数档被拒）
         if (b) {
             const rawUnit = b[1]!
             const unit = normToken(rawUnit)
-            // 'void'/'<>ptr' 查表为 undefined、'float' 归一到 'f32' —— 都不是合法位域单元。
+            // 'void'/'<>ptr' 查表为 undefined、'float' 等别名 normToken 直接抛 —— 都不是合法位域单元。
             if (!isCNumberToken(unit) || unit === 'f32' || unit === 'f64')
                 throw new Error(`ffi-struct: bitfield unit must be an integer type, got "${rawUnit}"`)
             const width = Number(b[2])
@@ -226,8 +225,8 @@ function lower(v: unknown): { size: number, align: number, type: FieldType } {
             // bit 是单元内偏移，由 computeStructLayout 的位域状态机填写；这里占位 0。
             return { size: s, align: s, type: { tag: 'bitfield', unit, bit: 0, width } }
         }
-        // token / 别名 / 指针 token。normToken：'HANDLE'/'LPARAM' → '<>ptr' —— 别名归一出的
-        // 指针 token 必须在归一后判型，否则落 unknown kind；'void' 归一后无大小、
+        // 规范 token / 指针 token（别名机制已移除：'DWORD' 等 normToken 直接抛）。
+        // 归一后必须先判指针形，否则落 unknown kind；'void' 归一后无大小、
         // 裸 'ptr'/'i3z' 未知 —— 都在这里抛（原先由 SizeAlign 查表兜住，现归一并入）。
         const k = normToken(v)
         if (isCPtrToken(k))
@@ -561,7 +560,7 @@ function buildDecl(kind: 'struct' | 'union', member: Record<string, unknown>, pa
     return decl as unknown as C_Struct | C_Union
 }
 
-/** 平铺字段表定义结构体（token/别名/`X[n]`/`unit:width`/`'#'` 声明均可，见 ctype.ts §4）。
+/** 平铺字段表定义结构体（token/`X[n]`/`unit:width`/`'#'` 声明均可，见 ctype.ts §4）。
  *  给 name 则 encode().ptr 与 decode 入参带 Ptr<name> 品牌。 */
 type StructOf<M, N extends string = ''> = StructDef<{ '#': 'struct', '#pack'?: number } & M, N>
 type UnionOf<M, N extends string = ''> = StructDef<{ '#': 'union', '#pack'?: number } & M, N>

@@ -65,8 +65,8 @@ export const suite = {
         }
 
         t.section('GetWindowRect fills RECT buffer')
-        const getWindowRect = bind('user32.dll', 'GetWindowRect', '<>ptr <BYTE>ptr -> int')
-        const getWindowRectLayout = bind('user32.dll', 'GetWindowRect', '<>ptr <RECT>ptr -> int', { RECT })
+        const getWindowRect = bind('user32.dll', 'GetWindowRect', '<>ptr <BYTE>ptr -> i32')
+        const getWindowRectLayout = bind('user32.dll', 'GetWindowRect', '<>ptr <RECT>ptr -> i32', { RECT })
         const getDesktopWindow = bind('user32.dll', 'GetDesktopWindow', ' -> <>ptr')
         const hwnd = getDesktopWindow()
         const wrect = new PtrArrayBuffer(16)
@@ -106,35 +106,39 @@ export const suite = {
         t.check('nested cChildren', 5, got.item.cChildren)
         t.check('nested ptr pszText', 0x44444444, got.item.pszText)
 
-        t.section('C typedef aliases (int/DWORD/LPARAM/LONG_PTR/short)')
+        t.section('mixed scalar layout (i32/u32/i16/<>ptr；别名机制已移除)')
         const M = struct('M', {
-            n: 'int',        // 别名 → i32（字段值位收别名，normToken 归一）
-            d: 'DWORD',      // 别名 → u32
-            w: 'LPARAM',     // 别名 → <>ptr
-            s: 'short',      // 别名 → i16
-            q: 'LONG_PTR',   // 别名 → <>ptr
+            n: 'i32',
+            d: 'u32',
+            w: '<>ptr',
+            s: 'i16',
+            q: '<>ptr',
         })
-        t.check(`aliased size (${os.arch})`, is64 ? 32 : 20, M.size)
+        t.check(`mixed size (${os.arch})`, is64 ? 32 : 20, M.size)
         const mb = M.encode({ n: -5, d: 0xFFFFFFFF, w: 0xAABBCCDD, s: -7, q: 0x11223344 })
         const m = M.decode(mb)
-        t.check('int -5', -5, m.n)
-        t.check('DWORD', 0xFFFFFFFF, m.d)
+        t.check('i32 -5', -5, m.n)
+        t.check('u32 0xFFFFFFFF', 0xFFFFFFFF, m.d)
         // ptr 位有符号读（对齐 C 版 JS_NewInt64）：0xAABBCCDD 在 ia32 按 4 字节
         // 存取 → 符号扩展读成负；x64 8 字节高位 0 → 仍为正
-        t.check('LPARAM', is64 ? 0xAABBCCDD : -1430532899, m.w)
-        t.check('short -7', -7, m.s)
-        t.check('LONG_PTR', 0x11223344, m.q)
+        t.check('<>ptr 符号读', is64 ? 0xAABBCCDD : -1430532899, m.w)
+        t.check('i16 -7', -7, m.s)
+        t.check('<>ptr 0x11223344', 0x11223344, m.q)
+        // 别名机制已移除：typedef 名塌出词汇表 —— struct 字段值只收规范 token
+        // （仅类型层断言，包成函数体不执行，避免运行时 fail-loud 崩掉 suite）
+        // @ts-expect-error typedef 别名 'DWORD' 已移除
+        void (() => struct('XD', { d: 'DWORD' }))
 
-        t.section('alias in sugar（数组糖/位域糖收别名）')
+        t.section('array sugar + trailing bitfield（数组糖与尾随位域单元并存）')
         const AS = struct('AS', {
-            v: 'DWORD[4]',   // 别名元素糖 → u32[4]
-            f: 'DWORD:3',    // 别名位域糖 → u32:3
+            v: 'u32[4]',
+            f: 'u32:3',
         })
         t.check('size == 20 (16 + 位域单元)', 20, AS.size)
         t.check('f offset == 16', 16, AS.offsetOf('f'))
         const asd = AS.decode(AS.encode({ v: [1, 2, 3, 4], f: 5 }))
-        t.check('DWORD[4][1]', 2, asd.v[1])
-        t.check('DWORD:3', 5, asd.f)
+        t.check('u32[4][1]', 2, asd.v[1])
+        t.check('u32:3', 5, asd.f)
         expectType<Equal<ReturnType<typeof AS.decode>['f'], number>>()
 
         t.section('union() entry roundtrip')

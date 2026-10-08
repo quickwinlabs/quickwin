@@ -2,14 +2,14 @@ import { bufferPtr } from 'ffi'
 import * as os from 'os'
 
 // ============================================================
-// 语法词汇 —— struct/bind 共用的 C 类型描述。标量直接写 token 字符串（'i32'/'DWORD'），
+// 语法词汇 —— struct/bind 共用的 C 类型描述。标量直接写规范 token 字符串（'i32'/'u32'），
 // 指针写 '<>ptr'（裸地址）或 '<NAME>ptr'（带名）；对象值一律带 '#' 声明键（见 §4）。
 // 只描述「C 声明怎么写」（unit/length/encoding 等意图）；内存布局与读写视图由
 // struct.ts 的 computeStructLayout/lower 单独 lower 成 layout IR。
 //
 // 叶子模块：刻意不依赖 win/std/text-codec，可被 struct 直接引用，
 // 避免「只用 struct」的调用方被动加载整个 bind 运行时。
-// 四段按依赖序：§1 kind 词汇表 → §2 指针布局与品牌 → §3 C 别名与 token 归一 → §4 值词汇。
+// 四段按依赖序：§1 kind 词汇表 → §2 指针布局与品牌 → §3 token 词表与白名单（normToken） → §4 值词汇。
 // ============================================================
 
 // ============================================================
@@ -17,7 +17,7 @@ import * as os from 'os'
 //   C_BasicType(12)  bind 签名 token / lower 后 IR 共用
 //   C_Number(10)    结构体字段的数字档
 //   C_Integer(8)    C_Number 去浮点 —— 位域存储单元只能是整数档
-//   Token(11+指针)  C_ALIAS / Norm / Arg·Ret JsTypeOfToken 的操作面（见 §3）
+//   Token(11+指针)  C_BasicType_Token / Arg·Ret JsTypeOfToken 的操作面（见 §3）
 // 排除项：'void' 无大小；裸 'ptr' 用户面禁写（须写 '<>ptr'），内部保留 ——
 // 唯一随架构变宽的标量档。lower 后所有指针归一为 kind 'ptr'，名字被擦掉。
 // ============================================================
@@ -63,9 +63,9 @@ type First =
 
 // ============================================================
 // §4 值词汇（SimpleValue）—— 字段值/数组元素的全部合法形态：
-//   token/别名   'u32' | 'DWORD'（别名经 normToken 归一；'void'/裸 'ptr' 运行时拒绝）
+//   token        'u32'（规范 token 词汇；'void'/裸 'ptr'/拼错 token 运行时拒绝 —— typedef 别名已移除）
 //   数组糖       'u32[4]'（仅 token 元素 —— 更复杂的元素写 '#' array 声明）
-//   位域糖       'u32:3'（unit 位收别名，归一后须为整数档）
+//   位域糖       'u32:3'（unit 位归一后须为整数档）
 //   字符串糖     'u16[128]@utf-16le'（布局 unit[length] × 解释 @encoding 正交：
 //                size = typesize × length 由 unit/length 决定，encoding 只管怎么读写
 //                这些字节 —— 错配如 'u8[128]@utf-16le' 也语义自洽。与键侧 alignas 同
@@ -78,8 +78,8 @@ type First =
 // 参数是平铺字段表（不含 '#'），'#'/`#pack` 由构造器写入 __struct。
 // ============================================================
 
-// token 值面：规范 token（含 '<T>ptr'）∪ C 别名键。'void' 除外 —— 无大小，不能作字段值。
-export type SimpleToken = Exclude<keyof C_ALIAS_MAP, 'void'> | `<${string}>ptr`
+// token 值面：规范 token（C_Number 档）∪ 指针形。'void' 除外 —— 无大小，不能作字段值。
+export type SimpleToken = C_Number | `<${string}>ptr`
 
 // 平铺字段表：struct()/union() 参数与 '#' 声明的字段部分（声明类型见下方 C_Struct/C_Union）。
 // 键侧词汇：'k@N' = alignas N（键尾 @+数字，字段名不含 '@'）；'$x' = 匿名槽（只收聚合）。
@@ -151,62 +151,44 @@ export const NULL = 0 as NULL
 export type MaybePtr<T extends string> =
     NULL | Ptr<T>
 
-const C_ALIAS = {
-    void: 'void', u8: 'u8', i8: 'i8', u16: 'u16', i16: 'i16', u32: 'u32', i32: 'i32',
-    u64: 'u64', i64: 'i64', f32: 'f32', f64: 'f64',
-    int: 'i32', long: 'i32', short: 'i16', char: 'i8', float: 'f32', double: 'f64',
-    DWORD: 'u32', UINT: 'u32', ULONG: 'u32', LONG: 'i32', BOOL: 'i32', HRESULT: 'i32',
-    SHORT: 'i16', USHORT: 'u16', BYTE: 'u8', WCHAR: 'u16',
-    LONG_PTR: '<>ptr', ULONG_PTR: '<>ptr', INT_PTR: '<>ptr', UINT_PTR: '<>ptr', DWORD_PTR: '<>ptr',
-    SIZE_T: '<>ptr', WPARAM: '<>ptr', LPARAM: '<>ptr',
-    HANDLE: '<>ptr', HWND: '<>ptr', HDC: '<>ptr', HMODULE: '<>ptr', HFONT: '<>ptr', HBRUSH: '<>ptr',
-    HICON: '<>ptr', HBITMAP: '<>ptr', LPVOID: '<>ptr', LPCVOID: '<>ptr',
-    LPCWSTR: '<WCHAR>ptr', PCWSTR: '<WCHAR>ptr', LPWSTR: '<WCHAR>ptr',
-} as const satisfies Record<string, C_BasicType_Token>
-
-export type C_ALIAS_MAP = typeof C_ALIAS
-
+// 用户 token 词表 → JS 类型。刻意不含 'ptr'：用户面禁写裸 ptr，Arg/Ret 的
+// `K & keyof` 索引到 never 自塌拒绝；IR 层 kind 含 'ptr' 的消费者（Entry）
+// 自行 `& { ptr: number }` 增量。
 export type C_TypeJsTypeMap = {
     u8: number; i8: number; u16: number; i16: number
     u32: number; i32: number; i64: bigint, u64: bigint
-    f32: number; f64: number, ptr: number
+    f32: number; f64: number
 }
 
 export type TokenArgJsTypeMap = C_TypeJsTypeMap
 export type TokenReturnJsTypeMap = C_TypeJsTypeMap & { void: void }
 
-// token 的类型层归一（运行时对应 normToken）。约束刻意保持 string 而非 Token：
-// 非法 token（如 'i3z'）要塌成 never 而不是报 TS2344 —— `& keyof` 把交集约成 never，
-// 索引出 never 让调用点拿到 never。收紧到 Token 会把「拼错 token」从 never 变成硬错误。
-export type Norm<K extends string> = K extends `<${string}>ptr` ? K : C_ALIAS_MAP[K & keyof C_ALIAS_MAP]
-
 // token → JS 类型（实参语境）。L = 布局名→JS 形；M/D 已固化（TokenArgJsTypeMap /
-// never —— 'void' 等非法档塌 never）。指针位收 MaybePtr（NULL | Ptr，与返回位同型）。
+// never —— 'void'/裸 'ptr'/拼错 token 经 map[never] 塌 never，参数位调用点全红
+// fail-loud）。指针位收 MaybePtr（NULL | Ptr，与返回位同型）。泛型未解析位
+// （K = string —— closure/bindLib 泛型体内）由 `string & keyof map` = 全键联合兜底
+// 成非 never —— 否则 BindFn 塌 (never)=>never 使内层强转失去可比性。
 export type ArgJsTypeOfToken<K extends string, L> =
-    Norm<K> extends infer S ?
-    S extends `<${infer N}>ptr` ? MaybePtr<N> | L[N & keyof L] :
-    TokenArgJsTypeMap[S & keyof TokenArgJsTypeMap] extends never ? never
-    : TokenArgJsTypeMap[S & keyof TokenArgJsTypeMap]
-    : never
+    K extends `<${infer N}>ptr` ? MaybePtr<N> | L[N & keyof L] :
+    TokenArgJsTypeMap[K & keyof TokenArgJsTypeMap] extends never ? never
+    : TokenArgJsTypeMap[K & keyof TokenArgJsTypeMap]
 
 // token → JS 类型（返回语境）。D = 返回位布局表 decode 值域：该键有 decode →
 // D[N] | NULL（解码结果替换地址，空指针 0 保真为 NULL）；否则 MaybePtr<N>，
-// 与实参位同型（空品牌 <''> 归一裸 number，联合坍缩）。
-export type RetJsTypeOfToken<K extends string, D> = Norm<K> extends infer S ?
-    S extends `<${infer N}>ptr`
+// 与实参位同型（空品牌 <''> 归一裸 number，联合坍缩）。非法 token（'i3z'/裸 'ptr'）
+// 经 map[never] 塌 unknown —— 返回位刻意不是 never：never 是 bottom 会被任意使用
+// 全放行，unknown 逼调用方显式收窄（与参数位 never 拦调用的不对称是设计）。
+export type RetJsTypeOfToken<K extends string, D> =
+    K extends `<${infer N}>ptr`
         ? (D[N & keyof D] extends never ? MaybePtr<N> : D[N & keyof D] | NULL)
-        : TokenReturnJsTypeMap[S & keyof TokenReturnJsTypeMap] extends never ? unknown
-        : TokenReturnJsTypeMap[S & keyof TokenReturnJsTypeMap]
-    : never
+        : TokenReturnJsTypeMap[K & keyof TokenReturnJsTypeMap] extends never ? unknown
+        : TokenReturnJsTypeMap[K & keyof TokenReturnJsTypeMap]
 
-// token 归一：C/Windows typedef 别名 → 规范形式（'HANDLE' → '<>ptr' 等）；非别名原样返回。
-
+// token 归一：只收规范 token（C_BASIC_TYPE 去 'ptr' = C_Number ∪ 'void'，由 §1 唯一手写
+// 清单派生）与指针形；拼错 token、已移除的 typedef 别名（'DWORD'/'HANDLE'）一律 fail-loud。
 export function normToken(t: string): C_BasicType_Token {
     if (isCPtrToken(t)) return t
-    const isKey = (k: string): k is keyof C_ALIAS_MAP => k in C_ALIAS;
-    if (isKey(t)) {
-        return C_ALIAS[t]
-    }
+    if (t !== 'ptr' && (C_BASIC_TYPE as readonly string[]).includes(t)) return t as C_BasicType_Token
     throw new Error("Unknown token: " + t)
 }
 
@@ -231,8 +213,9 @@ export function readScalar(dv: DataView, off: number, k: C_BasicType_No_Void): n
     }
 }
 
+// IR kind 词汇（C_BasicType_No_Void 含 'ptr'）——用户词表无 ptr 档，这里自行增量。
 type Entry =
-    { [K in C_BasicType_No_Void]: { k: K; v: C_TypeJsTypeMap[K] } }[C_BasicType_No_Void];
+    { [K in C_BasicType_No_Void]: { k: K; v: (C_TypeJsTypeMap & { ptr: number })[K] } }[C_BasicType_No_Void];
 
 /** 内存写：按 sizeof 精确写，供 struct 字段编码用。小整数只占自己的字节，
  *  否则 `{a:u8,b:u8}` 这类紧凑布局会被 setUint32 越界覆盖相邻字段。 */
