@@ -105,7 +105,6 @@ When run without a script file argument, `qwin.exe` checks for embedded JS at th
 | `fetch` | `import './lib/fetch.js'` | adds `fetch()`, `Response`, `Headers` to globalThis |
 | `websocket` | `import './lib/websocket.js'` | adds `WebSocket` to globalThis |
 | `polyfill` | `import './lib/polyfill.js'` | adds `TextEncoder`, `URL`, `btoa`/`atob`, `setTimeout` to globalThis |
-| `preact` | `lib/preact/...` | JSX → Win32 renderer (`render`, `useState`, `useEffect`) |
 | `react-qw` | `lib/react-qw/` | React Custom Renderer for Win32 GUI ([docs](lib/react-qw/)) |
 
 ## Worker

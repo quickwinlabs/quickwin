@@ -46,7 +46,7 @@
 
 把句柄（HWND/HDC/WPARAM…）在 ia32 上按 8 字节宽传 → 被调函数（stdcall 读 4 字节）只消费 4 字节 → **后续所有参数栈偏移错位** → DrawTextW 参数错乱、text-measure 测宽为 0。
 
-修复：句柄统一走指针宽（签名里写 `'<>ptr'` → 内部 kind `'ptr'`，槽宽 `PTR_SIZE = os.arch === 'x64' ? 8 : 4`），`ffi-bind` 把 `*PTR/HANDLE/HWND/WPARAM/LPARAM...` 全部归一为 `'<>ptr'`。**指针宽由目标架构决定，勿手选 `u32/u64`。**
+修复：句柄统一走指针宽——签名里直接写 `'<>ptr'`（裸地址档）或品牌形 `'<HWND>ptr'`（lower 后同样归一为 kind `'ptr'`，槽宽 `PTR_SIZE = os.arch === 'x64' ? 8 : 4`）。**注意：早期 `ffi-bind` 曾把 `*PTR/HANDLE/HWND/WPARAM/LPARAM...` 等 typedef 名自动归一为 `'<>ptr'`，该别名机制已移除**（2026-10-08，token 词汇单一化）——现在写 `'HANDLE'` 类 typedef 名在类型层塌 `never` + 运行时 `Unknown token`，必须写规范 token。**指针宽由目标架构决定，勿手选 `u32/u64`。**
 
 ## 2. 返回值 read-back：必须知道宽度 + 符号
 
@@ -96,7 +96,6 @@ QEMU 回归：`docker/http_test.sh <xp|win11> ffi` 应全过（win11 = x64、xp 
 - [ ] varargs 暂不支持；若将来支持，float 参数必须按 `f64` 声明（default argument promotion）
 - [ ] f32 返回 read-back 读 4 字节（x86/Win64 只写低 4 字节，高位未定义）
 - [ ] 改过 `qwin*.exe` 后 QEMU 测试前 `./run.sh <vm> --restart`（Windows SMB 按路径缓存 exe）
-- [ ] 参数槽宽 `ARG_SIZE` 与 `quickjs-ffi-type.h` 的 `qwin_ffi_arg_size[]` 保持一致
 
 ## 5. 相关提交
 

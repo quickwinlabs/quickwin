@@ -104,7 +104,6 @@ _build/exec_server.exe
 | `fetch` | `import './lib/fetch.js'` | 向 globalThis 添加 `fetch()`、`Response`、`Headers` |
 | `websocket` | `import './lib/websocket.js'` | 向 globalThis 添加 `WebSocket` |
 | `polyfill` | `import './lib/polyfill.js'` | 向 globalThis 添加 `TextEncoder`、`URL`、`btoa`/`atob`、`setTimeout` |
-| `preact` | `lib/preact/...` | JSX → Win32 渲染器（`render`、`useState`、`useEffect`） |
 | `react-qw` | `lib/react-qw/` | 面向 Win32 GUI 的 React 自定义渲染器（[文档](lib/react-qw/)） |
 
 ## Worker
