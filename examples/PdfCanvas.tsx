@@ -3,21 +3,16 @@ import { forwardRef, useRef } from 'react'
 import * as gui from 'gui'
 import { GetDC, ReleaseDC } from '../lib/windows/user32.js'
 import { SetDIBitsToDevice } from '../lib/windows/gdi32.js'
+import { BITMAPINFOHEADER } from '../lib/windows/structs.js'
 import type { WStyle } from '../lib/react-qw/jsx.d.ts'
 
-function makeBitmapInfo(w: number, h: number): PtrArrayBuffer<any> {
-  const bmi = new PtrArrayBuffer(40)
-  const bv = new DataView(bmi)
-  bv.setUint32(0, 40, true)
-  bv.setInt32(4, w, true)
-  bv.setInt32(8, -h, true)
-  bv.setUint16(12, 1, true)
-  bv.setUint16(14, 24, true)
-  return bmi
+function makeBitmapInfo(w: number, h: number) {
+  // biHeight 负 = 自顶向下（DIB 原点左上）；biCompression 缺省 0 = BI_RGB 无压缩
+  return BITMAPINFOHEADER.encode({ biSize: BITMAPINFOHEADER.size, biWidth: w, biHeight: -h, biPlanes: 1, biBitCount: 24 })
 }
 
 export interface PdfCanvasProps {
-  pixmap?: { data: PtrArrayBuffer<any>; w: number; h: number }
+  pixmap?: { data: PtrArrayBuffer<string>; w: number; h: number }
   style?: WStyle
 }
 

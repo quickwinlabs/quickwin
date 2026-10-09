@@ -169,7 +169,7 @@ export const SetParent = /*@__PURE__*/ b('SetParent', '<HWND>ptr <HWND>ptr -> <H
  *  @param args_1 uCmd 关系（GW_CHILD=4/GW_HWNDNEXT=2/GW_OWNER=4 等 GW_*） */
 export const GetWindow = /*@__PURE__*/ b('GetWindow', '<HWND>ptr u32@GetWindowCmd -> <HWND>ptr')
 /** 注册窗口类（WNDCLASSEXW 结构 buffer）；失败 → 0（ATOM）
- *  @param args_0 lpwcx WNDCLASSEXW 结构 buffer（自备字节缓冲） */
+ *  @param args_0 lpwcx WNDCLASSEXW.encode({ cbSize: WNDCLASSEXW.size, ... }).ptr（见 structs.ts） */
 export const RegisterClassEx = /*@__PURE__*/ b('RegisterClassExW', '<BYTE>ptr -> u16')
 
 // ============ 焦点 / 激活 ============
@@ -259,7 +259,7 @@ export const PrintWindow = /*@__PURE__*/ b('PrintWindow', '<HWND>ptr <HDC>ptr! u
 export const GetWindowDC = /*@__PURE__*/ b('GetWindowDC', '<HWND>ptr -> <HDC>ptr')
 /** 开始重绘（PAINTSTRUCT buffer 接收绘制信息）；返回品牌 HDC，配对 EndPaint
  *  @param args_0 hWnd 重绘窗口
- *  @param args_1 lpPaint 出参槽，自备 PAINTSTRUCT 字节缓冲 */
+ *  @param args_1 lpPaint 出参槽，PAINTSTRUCT.alloc().ptr（见 structs.ts） */
 export const BeginPaint = /*@__PURE__*/ b('BeginPaint', '<HWND>ptr <BYTE>ptr -> <HDC>ptr')
 /** 结束重绘（传 BeginPaint 同一 buffer）；成功 → 非 0
  *  @param args_0 hWnd 重绘窗口
@@ -494,3 +494,19 @@ export const SystemParametersInfo = /*@__PURE__*/ b('SystemParametersInfoW', 'u3
  *  @param args_0 lpEnumFunc 回调指针（closure(stdcall)().ptr），回调返 0 停止
  *  @param args_1 lParam 透传给回调的附加值（<>ptr，常传 0） */
 export const EnumWindows = /*@__PURE__*/ b('EnumWindows', '<>ptr <>ptr -> i32')
+
+// ============ 显示模式（分辨率/刷新率）============
+
+/** 枚举显示模式（iDevNum 从 0 递增直到返回 0；当前设置传 ENUM_CURRENT_SETTINGS=-1）；
+ *  lpDevMode 传 DEVMODEW.encode({ dmSize: DEVMODEW.size }).ptr（in/out 位不注册 encoder，
+ *  API 就地填充后走 DEVMODEW.decode(buf) 读回）；找到 → 非 0
+ *  @param args_0 lpszDeviceName 设备名（NULL = 主显示设备）
+ *  @param args_1 iDevNum 模式序号（0 起递增；-1 = 当前设置）
+ *  @param args_2 lpDevMode DEVMODEW 出参缓冲（<DEVMODEW>ptr 只收 def 的 .ptr） */
+export const EnumDisplaySettings = /*@__PURE__*/ b('EnumDisplaySettingsW', '<WCHAR>ptr u32 <DEVMODEW>ptr -> i32')
+/** 改显示模式（lpDevMode 须先枚举/预置 dmSize+dmFields，DM_PELSWIDTH|DM_PELSHEIGHT 等决定
+ *  生效项；dwFlags 传 0 = 临时、CDS_UPDATEREGISTRY = 写注册表持久化）；返回 DISP_CHANGE_*
+ *  （0 = DISP_CHANGE_SUCCESSFUL）
+ *  @param args_0 lpDevMode DEVMODEW 缓冲（in/out，收 encode(...).ptr）
+ *  @param args_1 dwFlags CDS_* 标志（0 = 仅当前会话） */
+export const ChangeDisplaySettings = /*@__PURE__*/ b('ChangeDisplaySettingsW', '<DEVMODEW>ptr u32 -> i32')

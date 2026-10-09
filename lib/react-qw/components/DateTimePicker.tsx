@@ -1,4 +1,4 @@
-import type { Ptr, PtrArrayBuffer } from '../../ffi/ctype.js'
+import type { Ptr } from '../../ffi/ctype.js'
 import { forwardRef, useRef, useEffect, useState, type Ref } from 'react'
 import * as gui from 'gui'
 import { InvalidateRect } from '../../windows/user32.js'
@@ -18,7 +18,7 @@ export interface DateTimePickerProps {
 }
 
 
-function dateToSysTimeBuf(d: Date): PtrArrayBuffer<any> {
+function dateToSysTimeBuf(d: Date) {
   // wDayOfWeek 设置时被忽略，缺省跳过 = 0
   return SYSTEMTIME.encode({
     wYear: d.getFullYear(),

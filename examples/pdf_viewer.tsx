@@ -1,72 +1,35 @@
-import { NULL, MaybePtr, PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { MaybePtr, PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import '../lib/polyfill.js'
 import * as std from 'std'
 import * as gui from 'gui'
-import * as win from 'win'
 import type { Document, Page, Pixmap } from '../vendor/mupdf-wasm/mupdf.js'
 import { useState } from 'react'
 import { render, Button, Input, ScrollView } from '../lib/react-qw/index.js'
-import { bind, WCHAR } from '../lib/ffi/bind.js'
+import { WCHAR } from '../lib/ffi/bind.js'
 import { PdfCanvas } from './PdfCanvas.js'
 import { OPENFILENAMEW } from '../lib/windows/structs.js'
+import { GetOpenFileName } from '../lib/windows/comdlg32.js'
 
 type MuPdf = typeof import('../vendor/mupdf-wasm/mupdf.js')
-
-const _user32 = win.LoadLibrary('user32.dll')
-const _gdi32 = win.LoadLibrary('gdi32.dll')
-const _comdlg32 = win.LoadLibrary('comdlg32.dll')
-if (!_user32 || !_gdi32 || !_comdlg32) {
-  gui.MessageBox('Failed to load system libraries')
-  std.exit(0)
-}
-
-const GetOpenFileNameW_ = bind('comdlg32.dll', 'GetOpenFileNameW', '<BYTE>ptr -> u32')
-
-function wideToStr(buf: ArrayBuffer): string {
-  const dv = new DataView(buf)
-  const chars: number[] = []
-  for (let i = 0; i < buf.byteLength; i += 2) {
-    const c = dv.getUint16(i, true)
-    if (c === 0) break
-    chars.push(c)
-  }
-  return String.fromCharCode(...chars)
-}
 
 function openPdfFileDialog(owner: MaybePtr<'HWND'>): string | null {
   const fileBuf = WCHAR.alloc(260)
   const filterWide = WCHAR.encode('PDF Files\0*.pdf\0All Files\0*.*\0\0')
-  const ofn: PtrArrayBuffer<any> & { __keep?: ArrayBuffer[] } = OPENFILENAMEW.encode({
+  // 缺省字段跳过 = fresh buffer 上留 0
+  const ofn: PtrArrayBuffer<'OPENFILENAMEW'> & { __keep?: ArrayBuffer[] } = OPENFILENAMEW.encode({
     lStructSize: OPENFILENAMEW.size,
     hwndOwner: owner,
-    hInstance: NULL,
     lpstrFilter: filterWide.ptr,
-    lpstrCustomFilter: 0,
-    nMaxCustFilter: 0,
-    nFilterIndex: 0,
     lpstrFile: fileBuf.ptr,
     nMaxFile: 260,
-    lpstrFileTitle: 0,
-    nMaxFileTitle: 0,
-    lpstrInitialDir: 0,
-    lpstrTitle: 0,
     Flags: 0x1000 | 0x0800 | 0x0004,
-    nFileOffset: 0,
-    nFileExtension: 0,
-    lpstrDefExt: 0,
-    lCustData: 0,
-    lpfnHook: 0,
-    lpTemplateName: 0,
-    pvReserved: 0,
-    dwReserved: 0,
-    FlagsEx: 0,
   })
   ofn.__keep = [fileBuf, filterWide]
 
-  const ret = GetOpenFileNameW_(ofn)
+  const ret = GetOpenFileName(ofn)
   if (!ret) return null
 
-  const path = wideToStr(fileBuf)
+  const path = WCHAR.decode(fileBuf)
   return path.length > 0 ? path : null
 }
 
@@ -94,7 +57,7 @@ async function loadMupdf(): Promise<MuPdf | null> {
 }
 
 interface PixmapInfo {
-  data: PtrArrayBuffer<any>
+  data: PtrArrayBuffer<string>
   w: number
   h: number
 }

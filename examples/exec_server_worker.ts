@@ -1,6 +1,6 @@
 import * as os from 'os'
 import * as std from 'std'
-import { bind, closure, WCHAR } from '../lib/ffi/bind.js'
+import { closure, WCHAR } from '../lib/ffi/bind.js'
 import { NULL, type Ptr, PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import { struct } from '../lib/ffi/struct.js'
 import {
@@ -14,8 +14,10 @@ import {
 import {
     BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, SelectObject,
 } from '../lib/windows/gdi32.js'
+import { RtlGetVersion } from '../lib/windows/ntdll.js'
 import {
     BITMAPFILEHEADER, BITMAPINFOHEADER, POINT, PROCESS_INFORMATION, RECT, STARTUPINFOW,
+    OSVERSIONINFO_148,
 } from '../lib/windows/structs.js'
 
 // worker 没有可观测的输出通道：绑定失败会静默中断 worker 脚本，主线程永远等不到消息。
@@ -52,23 +54,13 @@ try {
 
 // win11（NT 10.x）上用 `/u` 让 cmd 内置输出直接写 UTF-16LE，绕开 ACP（Tiny11 缺
 // c_*.nls 且 ACP=1252，中文会退化成 `?`）。win7/XP 的 ACP=936 本来就无损，保持原样。
-// 版本信息缓冲按 148 字节分配并把 dwOSVersionInfoSize 填成同值（尾部 128 字节 = szCSDVersion 区），
-// 否则 RtlGetVersion 会越界写坏 worker 堆导致子进程挂起。注意这不是标准 OSVERSIONINFOW
-// （宽字符 szCSDVersion[128] 应为 276B）；148 是 win11 上实测过的值，保持不变，故用本地结构而非标准定义。
-const OSVERSIONINFO_148 = /* @__PURE__ */ struct('OSVERSIONINFO_148', {
-    dwOSVersionInfoSize: 'u32',
-    dwMajorVersion: 'u32',
-    dwMinorVersion: 'u32',
-    dwBuildNumber: 'u32',
-    dwPlatformId: 'u32',
-    szCSDVersion: 'u8[128]',
-})
+// 版本缓冲用 OSVERSIONINFO_148（148B 特制布局，标准 OSVERSIONINFOW 会越界写坏 worker 堆，
+// 定义与缘由见 lib/windows/structs.ts）。RtlGetVersion 绑定随 ntdll 模块加载（与
+// kernel32/user32/gdi32 同款 fail-loud）；下方 try/catch 只兜运行期失败落 VER-FAIL 诊断。
 let IS_WIN11 = false
 try {
-    // ntdll 仅此一个函数，不单开文件；绑定失败落 VER-FAIL 诊断（见 diagFile）
-    const rtlGetVersion = bind('ntdll.dll', 'RtlGetVersion', '<BYTE>ptr -> i32')
     const vi = OSVERSIONINFO_148.encode({ dwOSVersionInfoSize: OSVERSIONINFO_148.size })
-    if (rtlGetVersion(vi) === 0) {
+    if (RtlGetVersion(vi) === 0) {
         IS_WIN11 = OSVERSIONINFO_148.decode(vi).dwMajorVersion >= 10
     }
 } catch (ex) {

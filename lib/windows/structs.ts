@@ -21,6 +21,12 @@ export const POINT = /* @__PURE__ */ struct('POINT', {
     y: 'i32',
 })
 
+/** 尺寸（8B，双架构同布局）：Button BM_GETIDEALSIZE 等出参槽（cx/cy 像素） */
+export const SIZE = /* @__PURE__ */ struct('SIZE', {
+    cx: 'i32',
+    cy: 'i32',
+})
+
 /** 滚动参数（28B）：cbSize 必须 = SCROLLINFO.size（结构自描述是 Win32 要求，缺省跳过帮不了）；
  *  fMask = SIF_* 决定 Set 写哪些项 / Get 读哪些项 */
 export const SCROLLINFO = /* @__PURE__ */ struct('SCROLLINFO', {
@@ -322,4 +328,95 @@ export const LVCOLUMNW = /* @__PURE__ */ struct('LVCOLUMNW', {
     cxMin: 'i32',
     cxDefault: 'i32',
     cxIdeal: 'i32',
+})
+
+// ── 消息循环 / 绘制 / 窗口类（user32；偏移经 MinGW 头 x64+ia32 双架构实测）────────
+
+/** MSG（48B x64 / 28B ia32）：GetMessage/PeekMessage/DispatchMessage 的消息槽 */
+export const MSG = /* @__PURE__ */ struct('MSG', {
+    hwnd: '<HWND>ptr',
+    message: 'u32',
+    wParam: '<>ptr',
+    lParam: '<>ptr',
+    time: 'u32',
+    pt: POINT.__struct,
+})
+
+/** PAINTSTRUCT（72B x64 / 64B ia32）：BeginPaint 出参（整结构由 API 写入），EndPaint 归还 */
+export const PAINTSTRUCT = /* @__PURE__ */ struct('PAINTSTRUCT', {
+    hdc: '<HDC>ptr',
+    fErase: 'i32',
+    rcPaint: RECT.__struct,
+    fRestore: 'i32',
+    fIncUpdate: 'i32',
+    rgbReserved: 'u8[32]',
+})
+
+/** WNDCLASSEXW（80B x64 / 48B ia32）：RegisterClassExW 入参；cbSize 必须 = WNDCLASSEXW.size */
+export const WNDCLASSEXW = /* @__PURE__ */ struct('WNDCLASSEXW', {
+    cbSize: 'u32',
+    style: 'u32',
+    lpfnWndProc: '<>ptr',
+    cbClsExtra: 'i32',
+    cbWndExtra: 'i32',
+    hInstance: '<HMODULE>ptr',
+    hIcon: '<>ptr',
+    hCursor: '<>ptr',
+    hbrBackground: '<>ptr',
+    lpszMenuName: '<>ptr',
+    lpszClassName: '<>ptr',
+    hIconSm: '<>ptr',
+})
+
+// ── 显示模式（user32 EnumDisplaySettingsW/ChangeDisplaySettingsW）────────────────
+
+/** DEVMODEW（220B，双架构同布局）：显示模式描述。dmFields = DM_* 决定 Change 生效项。
+ *  union 的 display 分支平铺（dmPosition/ dmDisplayOrientation/ dmDisplayFixedOutput）——
+ *  printer 分支同为 16B，平铺后偏移与 sizeof 均与实测一致；printer 场景不在本库用途内。
+ *  dmSize/ dmDriverExtra 入参先置（dmSize = DEVMODEW.size；dmDriverExtra = 0），否则 API 拒绝 */
+export const DEVMODEW = /* @__PURE__ */ struct('DEVMODEW', {
+    dmDeviceName: 'u16[32]@utf-16le',
+    dmSpecVersion: 'u16',
+    dmDriverVersion: 'u16',
+    dmSize: 'u16',
+    dmDriverExtra: 'u16',
+    dmFields: 'u32',
+    dmPosition: 'i32[2]',
+    dmDisplayOrientation: 'u32',
+    dmDisplayFixedOutput: 'u32',
+    dmColor: 'i16',
+    dmDuplex: 'i16',
+    dmYResolution: 'i16',
+    dmTTOption: 'i16',
+    dmCollate: 'i16',
+    dmFormName: 'u16[32]@utf-16le',
+    dmLogPixels: 'u16',
+    dmBitsPerPel: 'u32',
+    dmPelsWidth: 'u32',
+    dmPelsHeight: 'u32',
+    dmDisplayFlags: 'u32',
+    dmDisplayFrequency: 'u32',
+    dmICMMethod: 'u32',
+    dmICMIntent: 'u32',
+    dmMediaType: 'u32',
+    dmDitherType: 'u32',
+    dmReserved1: 'u32',
+    dmReserved2: 'u32',
+    dmPanningWidth: 'u32',
+    dmPanningHeight: 'u32',
+})
+
+// ── 系统版本（ntdll RtlGetVersion）────────────────────────────────────────────
+
+/** RtlGetVersion 的版本信息缓冲（148B，非标准 OSVERSIONINFOW）：按 148 字节分配并把
+ *  dwOSVersionInfoSize 填成同值（尾部 128 字节 = szCSDVersion 区），否则 RtlGetVersion
+ *  会越界写坏调用方堆导致子进程挂起。标准 OSVERSIONINFOW（宽字符 szCSDVersion[128]）
+ *  应为 276B；148 是 win11 上实测过的值，保持不变 */
+export const OSVERSIONINFO_148 = /* @__PURE__ */ struct('OSVERSIONINFO_148', {
+    dwOSVersionInfoSize: 'u32',
+    dwMajorVersion: 'u32',
+    dwMinorVersion: 'u32',
+    dwBuildNumber: 'u32',
+    dwPlatformId: 'u32',
+    szCSDVersion: 'u8[128]',
 })

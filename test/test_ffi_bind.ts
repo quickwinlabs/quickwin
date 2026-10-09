@@ -44,7 +44,7 @@ function packArgs(kinds: string[], vals: (number | bigint)[]): ArrayBuffer {
 }
 
 // ASCII 字符串 ↔ ArrayBuffer（供 msvcrt _strtoui64/_i64toa 类函数用）
-function strToBuf(s: string): PtrArrayBuffer<any> {
+function strToBuf(s: string): PtrArrayBuffer<string> {
     const b = new PtrArrayBuffer(s.length + 1)
     const u8 = new Uint8Array(b)
     for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i)

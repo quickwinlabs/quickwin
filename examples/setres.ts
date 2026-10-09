@@ -1,17 +1,9 @@
 import * as std from 'std'
 import * as gui from 'gui'
-import * as win from 'win'
-import { bind } from '../lib/ffi/bind.js'
-import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { NULL } from '../lib/ffi/ctype.js'
+import { ChangeDisplaySettings, EnumDisplaySettings } from '../lib/windows/user32.js'
+import { DEVMODEW } from '../lib/windows/structs.js'
 
-const user32 = win.LoadLibrary('user32.dll')
-if (!user32) { print('LoadLibrary user32 failed'); std.exit(1) }
-
-const enumDisplaySettingsA = bind('user32.dll', 'EnumDisplaySettingsA', '<>ptr i32 <BYTE>ptr -> i32')
-const changeDisplaySettingsA = bind('user32.dll', 'ChangeDisplaySettingsA', '<BYTE>ptr u32 -> i32')
-
-/** DEVMODEA used by EnumDisplaySettings; driver reports actual dmSize (often 124). */
-const DEVMODE_SIZE = 220
 const DM_PELSWIDTH = 0x00800000
 const DM_PELSHEIGHT = 0x01000000
 const ENUM_CURRENT_SETTINGS = -1
@@ -29,41 +21,31 @@ const DISP_CHANGE: Record<number, string> = {
     [-6]: 'BADDUALVIEW',
 }
 
-function newDevMode(): PtrArrayBuffer<any> {
-    const buf = new PtrArrayBuffer(DEVMODE_SIZE)
-    new DataView(buf).setUint16(36, DEVMODE_SIZE, true)
-    return buf
-}
-
-function enumMode(modeNum: number, buf: PtrArrayBuffer<any>): number {
-    return enumDisplaySettingsA(NULL, modeNum, buf)
-}
-
-function getPels(dv: DataView): [number, number, number] {
-    return [dv.getUint32(108, true), dv.getUint32(112, true), dv.getUint32(120, true)]
+function newDevMode() {
+    // dmSize = 结构自身大小是 Win32 要求（否则 API 拒绝）；其余字段由 Enum 就地填充
+    return DEVMODEW.encode({ dmSize: DEVMODEW.size })
 }
 
 function applyFromCurrent(w: number, h: number, flags: number, label: string): number | null {
     const dm = newDevMode()
-    if (!enumMode(ENUM_CURRENT_SETTINGS, dm)) {
+    if (!EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, dm.ptr)) {
         print(label + ': EnumDisplaySettings CURRENT failed')
         return null
     }
-    const dv = new DataView(dm)
-    const before = getPels(dv)
-    const size = dv.getUint16(36, true)
-    const extra = dv.getUint16(38, true)
-    const fields = dv.getUint32(40, true)
-    const bpp = dv.getUint32(104, true)
-    const freq = dv.getUint32(120, true)
-    print(label + ': base size=' + size + ' extra=' + extra + ' fields=0x' + fields.toString(16) +
-        ' ' + before[0] + 'x' + before[1] + '@' + freq + ' bpp=' + bpp)
+    const cur = DEVMODEW.decode(dm)
+    print(label + ': base size=' + cur.dmSize + ' extra=' + cur.dmDriverExtra +
+        ' fields=0x' + cur.dmFields.toString(16) +
+        ' ' + cur.dmPelsWidth + 'x' + cur.dmPelsHeight +
+        '@' + cur.dmDisplayFrequency + ' bpp=' + cur.dmBitsPerPel)
 
-    dv.setUint32(40, fields | DM_PELSWIDTH | DM_PELSHEIGHT, true)
-    dv.setUint32(108, w, true)
-    dv.setUint32(112, h, true)
+    // 复用同一 buffer 原地改三项（encode 缺省字段跳过 = 保留 Enum 填的其余项）
+    DEVMODEW.encode({
+        dmFields: cur.dmFields | DM_PELSWIDTH | DM_PELSHEIGHT,
+        dmPelsWidth: w,
+        dmPelsHeight: h,
+    }, dm)
 
-    const ret = changeDisplaySettingsA(dm, flags)
+    const ret = ChangeDisplaySettings(dm.ptr, flags)
     print(label + ': ChangeDisplaySettings ' + w + 'x' + h +
         ' flags=0x' + flags.toString(16) + ' ret=' + ret + ' (' + (DISP_CHANGE[ret] ?? '?') + ')')
     return ret
@@ -81,11 +63,10 @@ print('before GetScreenSize: ' + JSON.stringify(gui.GetScreenSize()))
 const probe = newDevMode()
 const modes32: string[] = []
 for (let i = 0; i < 200; i++) {
-    if (!enumMode(i, probe)) break
-    const dv = new DataView(probe)
-    if (dv.getUint32(104, true) !== 32) continue
-    const p = getPels(dv)
-    modes32.push(p[0] + 'x' + p[1] + '@' + p[2])
+    if (!EnumDisplaySettings(NULL, i, probe.ptr)) break
+    const dm = DEVMODEW.decode(probe)
+    if (dm.dmBitsPerPel !== 32) continue
+    modes32.push(dm.dmPelsWidth + 'x' + dm.dmPelsHeight + '@' + dm.dmDisplayFrequency)
 }
 print('32bpp modes sample: ' + modes32.slice(0, 25).join(', ') + (modes32.length > 25 ? ' ...' : ''))
 

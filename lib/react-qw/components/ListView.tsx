@@ -146,9 +146,9 @@ function resolveCellStyle<D>(columns: Column<D>[], data: D[], row: number, colIn
   return style || undefined
 }
 
-function makeLVItem(i: number, sub: number, text: string, image?: number): PtrArrayBuffer<any> & { __textBuf?: ArrayBuffer } {
+function makeLVItem(i: number, sub: number, text: string, image?: number): PtrArrayBuffer<'LVITEMW'> & { __textBuf?: ArrayBuffer } {
   const textBuf = WCHAR.encode(text)
-  const b: PtrArrayBuffer<any> & { __textBuf?: ArrayBuffer } = LVITEMW.encode({
+  const b: PtrArrayBuffer<'LVITEMW'> & { __textBuf?: ArrayBuffer } = LVITEMW.encode({
     mask: LvItemFlag.TEXT | (image !== undefined ? LvItemFlag.IMAGE : 0),
     iItem: i,
     iSubItem: sub,
@@ -218,7 +218,7 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
     const n = columns.length
     for (let j = 0; j < n; j++) {
       const titleBuf = WCHAR.encode(columns[j]!.name)
-      const lvc: PtrArrayBuffer<any> & { __titleBuf?: ArrayBuffer } = LVCOLUMNW.encode({
+      const lvc: PtrArrayBuffer<'LVCOLUMNW'> & { __titleBuf?: ArrayBuffer } = LVCOLUMNW.encode({
         mask: LvColumnMask.TEXT | LvColumnMask.WIDTH | LvColumnMask.FORMAT,
         fmt: alignToFmt(columns[j]!.align),
         cx: columns[j]!.width ?? 100,

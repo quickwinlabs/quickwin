@@ -1,48 +1,26 @@
-import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import '../lib/polyfill.js'
 import * as std from 'std'
 import * as gui from 'gui'
-import * as win from 'win'
 import type { Document, Page, Pixmap } from '../vendor/mupdf-wasm/mupdf.js'
 import { assertNonNullable } from '../lib/assert.js'
-import { bind, WCHAR } from '../lib/ffi/bind.js'
-import { OPENFILENAMEW } from '../lib/windows/structs.js'
+import { WCHAR } from '../lib/ffi/bind.js'
+import { BITMAPINFOHEADER, OPENFILENAMEW } from '../lib/windows/structs.js'
+import { GetOpenFileName } from '../lib/windows/comdlg32.js'
 import { GetDC, ReleaseDC } from '../lib/windows/user32.js'
 import { PatBlt, SetDIBitsToDevice } from '../lib/windows/gdi32.js'
 
-const _user32 = win.LoadLibrary('user32.dll')
-const _gdi32 = win.LoadLibrary('gdi32.dll')
-const _comdlg32 = win.LoadLibrary('comdlg32.dll')
-
 type MuPdf = typeof import('../vendor/mupdf-wasm/mupdf.js')
-if (!(_user32 && _gdi32 && _comdlg32)) std.exit(0)
 
-const GetOpenFileNameW = bind('comdlg32.dll', 'GetOpenFileNameW', '<BYTE>ptr -> u32')
 const WHITENESS = 0x00FF0062
 
-function makeBitmapInfo(w: number, h: number): PtrArrayBuffer<any> {
-    const bmi = new PtrArrayBuffer(40)
-    const bv = new DataView(bmi)
-    bv.setUint32(0, 40, true)
-    bv.setInt32(4, w, true)
-    bv.setInt32(8, -h, true)
-    bv.setUint16(12, 1, true)
-    bv.setUint16(14, 24, true)
-    return bmi
-}
-
-function wideToStr(buf: ArrayBuffer): string {
-    const dv = new DataView(buf)
-    const chars: number[] = []
-    for (let i = 0; i < buf.byteLength; i += 2) {
-        const c = dv.getUint16(i, true); if (c === 0) break
-        chars.push(c)
-    }
-    return String.fromCharCode(...chars)
+function makeBitmapInfo(w: number, h: number) {
+    // biHeight 负 = 自顶向下（DIB 原点左上）；biCompression 缺省 0 = BI_RGB 无压缩
+    return BITMAPINFOHEADER.encode({ biSize: BITMAPINFOHEADER.size, biWidth: w, biHeight: -h, biPlanes: 1, biBitCount: 24 })
 }
 
 interface PixmapInfo {
-    data: PtrArrayBuffer<any>; w: number; h: number
+    data: PtrArrayBuffer<string>; w: number; h: number
 }
 
 let hwndMain: gui.HWND | null = null
@@ -117,34 +95,18 @@ function openPdfFileDialog(): string | null {
     assertNonNullable(hwndMain)
     const fileBuf = WCHAR.alloc(260)
     const filterWide = WCHAR.encode('PDF Files\0*.pdf\0All Files\0*.*\0\0')
-    const ofn: PtrArrayBuffer<any> & { __keep?: ArrayBuffer[] } = OPENFILENAMEW.encode({
+    // 缺省字段跳过 = fresh buffer 上留 0
+    const ofn: PtrArrayBuffer<'OPENFILENAMEW'> & { __keep?: ArrayBuffer[] } = OPENFILENAMEW.encode({
         lStructSize: OPENFILENAMEW.size,
         hwndOwner: hwndMain,
-        hInstance: NULL,
         lpstrFilter: filterWide.ptr,
-        lpstrCustomFilter: 0,
-        nMaxCustFilter: 0,
-        nFilterIndex: 0,
         lpstrFile: fileBuf.ptr,
         nMaxFile: 260,
-        lpstrFileTitle: 0,
-        nMaxFileTitle: 0,
-        lpstrInitialDir: 0,
-        lpstrTitle: 0,
         Flags: 0x1000 | 0x0800 | 0x0004,
-        nFileOffset: 0,
-        nFileExtension: 0,
-        lpstrDefExt: 0,
-        lCustData: 0,
-        lpfnHook: 0,
-        lpTemplateName: 0,
-        pvReserved: 0,
-        dwReserved: 0,
-        FlagsEx: 0,
     })
     ofn.__keep = [fileBuf, filterWide]
-    const ret = GetOpenFileNameW(ofn)
-    return ret ? wideToStr(fileBuf) : null
+    const ret = GetOpenFileName(ofn)
+    return ret ? WCHAR.decode(fileBuf) : null
 }
 
 function updateScrollRange(): void {

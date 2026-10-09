@@ -1,8 +1,8 @@
-import { PtrArrayBuffer, type Ptr } from './ffi/ctype.js'
+import type { Ptr } from './ffi/ctype.js'
 import * as gui from 'gui'
 import { DrawText, GetDC, ReleaseDC } from './windows/user32.js'
 import { SelectObject } from './windows/gdi32.js'
-import { RECT } from './windows/structs.js'
+import { RECT, SIZE } from './windows/structs.js'
 
 export function measureText(hdc: Ptr<'HDC'>, text: string, maxWidth: number): { width: number; height: number } {
     // rect 双向位不注册 encoder（CALCRECT 就地写回）：encode(初值) 新建 + DeepPartial 初值一步到位
@@ -14,10 +14,11 @@ export function measureText(hdc: Ptr<'HDC'>, text: string, maxWidth: number): { 
 }
 
 export function getButtonIdealSize(hwnd: gui.HWND): { width: number; height: number } {
-    const size = new PtrArrayBuffer(8)
+    // SIZE 纯出参位（GETIDEALSIZE 就地写回）：alloc → 传 .ptr → decode 读回
+    const size = SIZE.alloc()
     gui.SendMessage(hwnd, gui.ButtonExtMsg.GETIDEALSIZE, 0, size.ptr)
-    const dv = new DataView(size)
-    return { width: dv.getInt32(0, true), height: dv.getInt32(4, true) }
+    const { cx, cy } = SIZE.decode(size)
+    return { width: cx, height: cy }
 }
 
 export function measureTextForHwnd(hwnd: gui.HWND, text: string): { width: number; height: number } {

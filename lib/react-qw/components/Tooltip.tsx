@@ -10,7 +10,7 @@ export interface TooltipProps {
   balloon?: boolean
 }
 
-function buildToolInfo(hTarget: gui.HWND, text: string): PtrArrayBuffer<any> {
+function buildToolInfo(hTarget: gui.HWND, text: string): PtrArrayBuffer<string> {
   const size = TTTOOLINFOW.size
   const textLen = (text.length + 1) * 2
   const buf = new PtrArrayBuffer(size + textLen)

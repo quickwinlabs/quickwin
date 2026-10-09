@@ -1,39 +1,11 @@
-import { NULL, PtrArrayBuffer } from '../../ffi/ctype.js'
 import { forwardRef, useState, useRef } from 'react'
 import * as gui from 'gui'
-import { bind, WCHAR } from '../../ffi/bind.js'
+import { WCHAR } from '../../ffi/bind.js'
 import { OPENFILENAMEW, BROWSEINFOW } from '../../windows/structs.js'
+import { GetOpenFileName } from '../../windows/comdlg32.js'
+import { SHBrowseForFolder, SHGetPathFromIDList } from '../../windows/shell32.js'
+import { CoTaskMemFree } from '../../windows/ole32.js'
 import type { WStyle } from '../jsx.d.ts'
-
-function makeBindings() {
-  return {
-    GetOpenFileNameW: bind('comdlg32.dll', 'GetOpenFileNameW', '<BYTE>ptr -> u32'),
-    SHBrowseForFolderW: bind('shell32.dll', 'SHBrowseForFolderW', '<BYTE>ptr -> <>ptr'),
-    SHGetPathFromIDListW: bind('shell32.dll', 'SHGetPathFromIDListW', '<>ptr <BYTE>ptr -> u32'),
-    CoTaskMemFree: bind('ole32.dll', 'CoTaskMemFree', '<>ptr -> void'),
-  }
-}
-type DllBindings = ReturnType<typeof makeBindings>
-
-let _bindings: DllBindings | null = null
-
-function ensureDlls(): DllBindings | null {
-  if (_bindings) return _bindings
-  try {
-    _bindings = makeBindings()
-  } catch {
-    return null
-  }
-  return _bindings
-}
-
-const _decoder = new TextDecoder('utf-16le')
-
-function wideToStr(buf: ArrayBuffer, offset = 0): string {
-  const str = _decoder.decode(new Uint8Array(buf, offset))
-  const nullIdx = str.indexOf('\0')
-  return nullIdx >= 0 ? str.substring(0, nullIdx) : str
-}
 
 function openFileDialog(
   owner: gui.HWND,
@@ -41,9 +13,6 @@ function openFileDialog(
   title: string | undefined,
   multiple: boolean,
 ): string | string[] | null {
-  const dll = ensureDlls()
-  if (!dll) return null
-
   const fileBuf = WCHAR.alloc(260)
   const filterWide = WCHAR.encode(filter)
   const titleWide = title ? WCHAR.encode(title) : null
@@ -52,78 +21,48 @@ function openFileDialog(
   if (multiple) flags |= 0x0200
   flags |= 0x80000
 
+  // 缺省字段跳过 = fresh buffer 上留 0
   const ofn = OPENFILENAMEW.encode({
     lStructSize: OPENFILENAMEW.size,
     hwndOwner: owner,
-    hInstance: NULL,
     lpstrFilter: filterWide.ptr,
-    lpstrCustomFilter: 0,
-    nMaxCustFilter: 0,
-    nFilterIndex: 0,
     lpstrFile: fileBuf.ptr,
     nMaxFile: 260,
-    lpstrFileTitle: 0,
-    nMaxFileTitle: 0,
-    lpstrInitialDir: 0,
-    lpstrTitle: titleWide ? titleWide.ptr : 0,
+    lpstrTitle: titleWide?.ptr ?? 0,
     Flags: flags,
-    nFileOffset: 0,
-    nFileExtension: 0,
-    lpstrDefExt: 0,
-    lCustData: 0,
-    lpfnHook: 0,
-    lpTemplateName: 0,
-    pvReserved: 0,
-    dwReserved: 0,
-    FlagsEx: 0,
   })
 
-  const ret = dll.GetOpenFileNameW(ofn)
+  const ret = GetOpenFileName(ofn)
   if (!ret) return null
 
   if (!multiple) {
-    return wideToStr(fileBuf)
+    return WCHAR.decode(fileBuf)
   }
 
-  const dir = wideToStr(fileBuf)
-  let pos = (dir.length + 1) * 2
-  const files: string[] = []
-  while (pos < fileBuf.byteLength) {
-    const f = wideToStr(fileBuf, pos)
-    if (f.length === 0) break
-    files.push(dir + '\\' + f)
-    pos += (f.length + 1) * 2
-  }
-
-  if (files.length === 0) return [dir]
-  return files
+  // 多选缓冲：dir\0 file1\0 file2\0 \0 —— 整缓冲一次解码按 NUL 拆分
+  const strs = new TextDecoder('utf-16le').decode(new Uint8Array(fileBuf)).split('\0')
+  const dir = strs[0] ?? ''
+  const files = strs.slice(1).filter((f) => f.length > 0).map((f) => dir + '\\' + f)
+  return files.length > 0 ? files : [dir]
 }
 
 function openFolderDialog(owner: gui.HWND, title: string | undefined): string | null {
-  const dll = ensureDlls()
-  if (!dll) return null
-
   const titleWide = title ? WCHAR.encode(title) : null
 
   const bi = BROWSEINFOW.encode({
     hwndOwner: owner,
-    pidlRoot: 0,
-    pszDisplayName: 0,
-    lpszTitle: titleWide ? titleWide.ptr : 0,
+    lpszTitle: titleWide?.ptr ?? 0,
     ulFlags: 0x00000041,
-    lpfn: 0,
-    lParam: 0,
-    iImage: 0,
   })
 
-  const pidl = dll.SHBrowseForFolderW(bi)
+  const pidl = SHBrowseForFolder(bi)
   if (!pidl) return null
 
-  const pathBuf = new PtrArrayBuffer(260 * 2)
-  const ok = dll.SHGetPathFromIDListW(pidl, pathBuf)
-  dll.CoTaskMemFree(pidl)
+  const pathBuf = WCHAR.alloc(260)
+  const ok = SHGetPathFromIDList(pidl, pathBuf)
+  CoTaskMemFree(pidl)
 
-  return ok ? wideToStr(pathBuf) : null
+  return ok ? WCHAR.decode(pathBuf) : null
 }
 
 interface PathPickerBase {
