@@ -17,7 +17,8 @@ export const suite = {
             else { t.fail++; std.printf('  FAIL: %s\n', name) }
         }
 
-        // ── wolfSSL_read return contract: ArrayBuffer | null, never number ──
+        // ── wolfSSL_read return contract: raw int, data lands in the
+        //    caller-owned buffer (thin wrapper — errors stay numbers) ──
         t.section('wolfSSL_read contract (HTTPS /large/65536)')
         await new Promise<void>((resolve) => {
             const s = sock.socket()
@@ -34,10 +35,9 @@ export const suite = {
             let sentRequest = false
             let total = 0
             const EXPECTED = 65536
-            let sawNumber = false
-            let sawArray = false
-            let sawNull = false
-            let nullErrOk = true
+            let sawNonNumber = false
+            let sawEof = false
+            let errOk = true
             let done = false
 
             const finish = () => {
@@ -47,10 +47,10 @@ export const suite = {
                 assert('connected', connected)
                 assert('handshake ok', handshakeDone)
                 assert('request sent', sentRequest)
-                assert('received some data', sawArray && total > 0)
-                assert('wolfSSL_read never returned number', !sawNumber)
-                assert('wolfSSL_read returned null on no-data/EOF', sawNull)
-                assert('null path get_error in {WANT_READ,WANT_WRITE,ZERO_RETURN}', nullErrOk)
+                assert('received full body', total >= EXPECTED)
+                assert('wolfSSL_read always returned number', !sawNonNumber)
+                assert('no-data/EOF observed via int (0 or ZERO_RETURN)', sawEof)
+                assert('n<=0 get_error in {WANT_READ,WANT_WRITE,ZERO_RETURN}', errOk)
                 if (ssl) { wolfssl.wolfSSL_free(ssl); ssl = null }
                 if (ctx) { wolfssl.wolfSSL_CTX_free(ctx); ctx = null }
                 sock.closesocket(s)
@@ -72,39 +72,39 @@ export const suite = {
             }
 
             const onReadable = () => {
-                // Drain until content complete or null
+                // Drain until EOF (n===0 / ZERO_RETURN) or WANT_* hands back
+                // to the event loop.
                 for (let guard = 0; guard < 10000; guard++) {
-                    const d = wolfssl.wolfSSL_read(ssl!, 8192)
-                    if (d === null) {
-                        sawNull = true
-                        const err = wolfssl.wolfSSL_get_error(ssl!, -1)
-                        if (err !== WANT_READ && err !== WANT_WRITE && err !== ZERO_RETURN) {
-                            nullErrOk = false
-                            std.printf('    null get_error=%d\n', err)
-                        }
-                        if (err === ZERO_RETURN || err === 1 || err === 5) {
-                            // EOF / fatal — done draining
-                            break
-                        }
-                        // WANT_*: wait for next FD_READ/WRITE
-                        return
-                    }
-                    if (typeof d === 'number') {
-                        // Pre-fix C API returns number 0/-1 — record and stop
-                        sawNumber = true
-                        std.printf('    FAIL got number %d (want ArrayBuffer|null)\n', d)
+                    const buf = new ArrayBuffer(8192)
+                    const n = wolfssl.wolfSSL_read(ssl!, buf)
+                    if (typeof n !== 'number') {
+                        sawNonNumber = true
+                        std.printf('    FAIL got non-number %s (want int)\n', String(n))
                         finish()
                         return
                     }
-                    if (d instanceof ArrayBuffer) {
-                        sawArray = true
-                        total += d.byteLength
+                    if (n > 0) {
+                        total += n
                         // Keep draining after the body is complete: the point of
                         // this suite is the no-data/EOF contract, so a full body
-                        // must not short-circuit the read that would observe null.
+                        // must not short-circuit the read that would observe it.
+                        continue
                     }
+                    const err = wolfssl.wolfSSL_get_error(ssl!, n)
+                    if (err !== WANT_READ && err !== WANT_WRITE && err !== ZERO_RETURN) {
+                        errOk = false
+                        std.printf('    n=%d get_error=%d outside {WANT_READ,WANT_WRITE,ZERO_RETURN}\n', n, err)
+                        finish()
+                        return
+                    }
+                    if (n === 0 || err === ZERO_RETURN) {
+                        sawEof = true
+                        break
+                    }
+                    // WANT_*: wait for next FD_READ/WRITE
+                    return
                 }
-                if (total >= EXPECTED) finish()
+                if (sawEof) finish()
             }
 
             sock.set_on_event(s, (event: { lNetworkEvents: number; iErrorCode: number[] }) => {
@@ -163,17 +163,17 @@ export const suite = {
 
                 if (event.lNetworkEvents & sock.FdEvent.FD_CLOSE) {
                     // drain remaining then finish
-                    if (ssl && sentRequest && !sawNumber) {
+                    if (ssl && sentRequest && !sawNonNumber) {
                         onReadable()
                     }
-                    if (!sawNumber) {
-                        // Even if short, require null contract seen OR full body
-                        if (!sawNull && total < EXPECTED && total > 0) {
-                            // got data but no null — still OK if full body; if short, null expected
-                            sawNull = true // server close without extra null read is edge; don't fail
+                    if (!sawNonNumber) {
+                        // Server close without an observed EOF read is an edge —
+                        // don't fail if the body already completed.
+                        if (!sawEof && total < EXPECTED && total > 0) {
+                            sawEof = true
                         }
-                        if (total >= EXPECTED || sawNull) finish()
-                        else assert('data before close', false); if (!done) finish()
+                        if (total >= EXPECTED || sawEof) finish()
+                        else { assert('data before close', false); if (!done) finish() }
                     }
                 }
             })

@@ -225,7 +225,18 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                         if (s !== null && s < 0 && !ssl) break
                         let data: ArrayBuffer | null
                         if (isHTTPS && ssl) {
-                            data = wolfssl.wolfSSL_read(ssl, 8192)
+                            const buf = new ArrayBuffer(8192)
+                            const n = wolfssl.wolfSSL_read(ssl, buf)
+                            if (n > 0) {
+                                data = buf.slice(0, n)
+                            } else {
+                                const err = wolfssl.wolfSSL_get_error(ssl, n)
+                                if (err === wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_READ ||
+                                    err === wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_WRITE) break
+                                if (n === 0 || err === wolfssl.ErrorCode.WOLFSSL_ERROR_ZERO_RETURN) break
+                                doReject(new Error('TLS read failed: ' + err))
+                                return
+                            }
                         } else if (s !== null && s >= 0) {
                             data = sock.recv(s, 8192)
                         } else { break }
@@ -295,7 +306,23 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                         if (s !== null && s < 0 && !ssl) break
                         let data: ArrayBuffer | null
                         if (isHTTPS && ssl) {
-                            data = wolfssl.wolfSSL_read(ssl, 8192)
+                            const buf = new ArrayBuffer(8192)
+                            const n = wolfssl.wolfSSL_read(ssl, buf)
+                            if (n > 0) {
+                                data = buf.slice(0, n)
+                            } else {
+                                const err = wolfssl.wolfSSL_get_error(ssl, n)
+                                if (err === wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_READ ||
+                                    err === wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_WRITE) break
+                                if (n === 0 || err === wolfssl.ErrorCode.WOLFSSL_ERROR_ZERO_RETURN) break
+                                // Fatal TLS error mid-body: the response already
+                                // resolved, so fail the body stream instead of
+                                // silently waiting for an FD event that never comes.
+                                if (_controller) { try { _controller.error(new Error('TLS read failed: ' + err)) } catch { /* already closed */ } }
+                                stream = null
+                                cleanupSocket()
+                                return
+                            }
                         } else if (s !== null && s >= 0) {
                             data = sock.recv(s, 8192)
                         } else { break }
@@ -335,7 +362,12 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                         if (s !== null && s < 0 && !ssl) break
                         let data: ArrayBuffer | null
                         if (isHTTPS && ssl) {
-                            data = wolfssl.wolfSSL_read(ssl, 8192)
+                            const buf = new ArrayBuffer(8192)
+                            const n = wolfssl.wolfSSL_read(ssl, buf)
+                            // Best-effort drain: any non-data result (EOF, WANT_*,
+                            // late error) ends the drain — the stream closes below.
+                            if (n > 0) data = buf.slice(0, n)
+                            else break
                         } else if (s !== null && s >= 0) {
                             data = sock.recv(s, 8192)
                         } else { break }

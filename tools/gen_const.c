@@ -920,6 +920,7 @@ static void print_enums(void) {
     printf("    export const enum ErrorCode {\n");
     DEC(WOLFSSL_ERROR_WANT_READ, WOLFSSL_ERROR_WANT_READ);
     DEC(WOLFSSL_ERROR_WANT_WRITE, WOLFSSL_ERROR_WANT_WRITE);
+    DEC(WOLFSSL_ERROR_ZERO_RETURN, WOLFSSL_ERROR_ZERO_RETURN);
     printf("    }\n\n");
 
     printf("}\n");

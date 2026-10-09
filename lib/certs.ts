@@ -212,13 +212,18 @@ tL4ndQavEi51mI38AjEAi/V3bNTIZargCyzuFJ0nN6T5U6VR5CmD1/iQMVtCnwr1
 -----END CERTIFICATE-----`
 
 // Register at import time. Importers of this module get the anchors
-// without writing any code themselves.
-wolfssl.addTrustedCA(GLOBALSIGN_R3)
-wolfssl.addTrustedCA(GLOBALSIGN_R1)
-wolfssl.addTrustedCA(USERTRUST_ECC_CA)
-wolfssl.addTrustedCA(DIGICERT_GLOBAL_G2)
-wolfssl.addTrustedCA(GLOBALSIGN_R46)
-wolfssl.addTrustedCA(ISRG_X1)
-wolfssl.addTrustedCA(ISRG_X2)
+// without writing any code themselves. addTrustedCA only returns the
+// slot count (-1 when full/empty); the fatal-vs-not decision is ours.
+function trust(pem: string): void {
+    if (wolfssl.addTrustedCA(pem) < 0)
+        throw new Error('certs: trust store full or empty PEM')
+}
+trust(GLOBALSIGN_R3)
+trust(GLOBALSIGN_R1)
+trust(USERTRUST_ECC_CA)
+trust(DIGICERT_GLOBAL_G2)
+trust(GLOBALSIGN_R46)
+trust(ISRG_X1)
+trust(ISRG_X2)
 
 export const TRUSTED_CA_COUNT = 7

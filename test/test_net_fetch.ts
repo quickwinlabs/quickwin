@@ -298,9 +298,10 @@ export const suite = {
             }
         }
 
-        // ── large HTTPS body (wolfSSL_read null regression) ──
-        // Pre-fix: wolfSSL_read returned number -1 on WANT_READ →
-        // receivedBytes became NaN → stream never closed → hang.
+        // ── large HTTPS body (wolfSSL_read int contract) ──
+        // read returns the raw int; -1/WANT_READ must never leak into
+        // byte accounting (regression: a leaked -1 made receivedBytes
+        // NaN → stream never closed → hang).
         t.section('large HTTPS body')
         {
             const LARGE = 200000

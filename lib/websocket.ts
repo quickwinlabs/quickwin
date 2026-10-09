@@ -363,7 +363,18 @@ class WebSocketImpl {
                     while (true) {
                         let data: ArrayBuffer | null
                         if (isWSS && this._ssl) {
-                            data = wolfssl.wolfSSL_read(this._ssl, 8192)
+                            const buf = new ArrayBuffer(8192)
+                            const n = wolfssl.wolfSSL_read(this._ssl, buf)
+                            if (n > 0) {
+                                data = buf.slice(0, n)
+                            } else {
+                                const err = wolfssl.wolfSSL_get_error(this._ssl, n)
+                                if (err === wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_READ ||
+                                    err === wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_WRITE) break
+                                if (n === 0 || err === wolfssl.ErrorCode.WOLFSSL_ERROR_ZERO_RETURN) break
+                                doError(new Error('TLS read failed: ' + err))
+                                return
+                            }
                         } else if (this._sock !== null && this._sock >= 0) {
                             data = sock.recv(this._sock, 8192)
                         } else { break }
@@ -460,7 +471,19 @@ class WebSocketImpl {
         while (true) {
             let data: ArrayBuffer | null
             if (this._ssl) {
-                data = wolfssl.wolfSSL_read(this._ssl, 8192)
+                const buf = new ArrayBuffer(8192)
+                const n = wolfssl.wolfSSL_read(this._ssl, buf)
+                if (n > 0) {
+                    data = buf.slice(0, n)
+                } else {
+                    const err = wolfssl.wolfSSL_get_error(this._ssl, n)
+                    if (err === wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_READ ||
+                        err === wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_WRITE) break
+                    if (n === 0 || err === wolfssl.ErrorCode.WOLFSSL_ERROR_ZERO_RETURN) break
+                    this._fireError(new Error('TLS read failed: ' + err))
+                    if (this._state !== State.CLOSED) this._setState(State.CLOSED)
+                    return
+                }
             } else if (this._sock !== null && this._sock >= 0) {
                 data = sock.recv(this._sock, 8192)
             } else { break }

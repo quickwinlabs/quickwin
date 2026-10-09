@@ -896,6 +896,7 @@ declare module "wolfssl" {
     export const enum ErrorCode {
         WOLFSSL_ERROR_WANT_READ = 2, // 0x2
         WOLFSSL_ERROR_WANT_WRITE = 3, // 0x3
+        WOLFSSL_ERROR_ZERO_RETURN = 6, // 0x6
     }
 
 }

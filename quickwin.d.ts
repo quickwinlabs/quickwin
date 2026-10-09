@@ -382,8 +382,9 @@ declare module "wolfssl" {
     function wolfSSL_CTX_load_verify_locations(ctx: WOLFSSL_CTX, file: string, path?: string): number;
     function wolfSSL_check_domain_name(ssl: WOLFSSL, name: string): number;
     /** Add a PEM to the process-wide trusted CA store (fixed capacity).
-     *  Returns the new entry count, or throws if the store is full. Entries
-     *  are applied by loadTrustedCerts() at handshake setup time, not retroactively. */
+     *  Returns the new entry count (1..8), or -1 on empty PEM / full store;
+     *  the caller decides whether -1 is fatal. Entries are applied by
+     *  loadTrustedCerts() at handshake setup time, not retroactively. */
     function addTrustedCA(pem: string): number;
     /** Load the OS CA store plus every entry of the trusted CA store into ctx.
      *  Returns how many store entries were loaded. */
@@ -397,14 +398,17 @@ declare module "wolfssl" {
     function wolfSSL_connect(ssl: WOLFSSL): number;
     function wolfSSL_shutdown(ssl: WOLFSSL): number;
     function wolfSSL_write(ssl: WOLFSSL, buf: ArrayBuffer): number;
-    /** 成功返回 ArrayBuffer；EOF/暂无数据/错误返回 null（区分用 wolfSSL_get_error：6=ZERO_RETURN 关闭，2=WANT_READ） */
-    function wolfSSL_read(ssl: WOLFSSL, sz: number): ArrayBuffer | null;
+    /** 读入 buf（大小取 buf.byteLength），返回 wolfSSL 原始返回值：
+     *  >0=字节数（数据在 buf[0..ret)），0=对端正常关闭，<0=错误；
+     *  语义用 wolfSSL_get_error(ssl, ret) 区分（2=WANT_READ 暂无数据，6=ZERO_RETURN 关闭） */
+    function wolfSSL_read(ssl: WOLFSSL, buf: ArrayBuffer): number;
     function wolfSSL_get_error(ssl: WOLFSSL, ret: number): number;
     function wolfSSL_UseSNI(ssl: WOLFSSL, type: SniType, name: string, len?: number): number;
 
     function wolfSSLv23_client_method(): WOLFSSL_METHOD;
     function wolfTLSv1_2_client_method(): WOLFSSL_METHOD;
-    function wolfTLSv1_3_client_method(): WOLFSSL_METHOD;
+    /** 此 wolfSSL 构建禁用 TLSv1.3：返回 0（无 method 指针），调用方自行判定 */
+    function wolfTLSv1_3_client_method(): WOLFSSL_METHOD | 0;
 
 }
 

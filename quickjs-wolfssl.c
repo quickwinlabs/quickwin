@@ -35,7 +35,8 @@ static JSValue js_wolfTLSv1_2_client_method(JSContext *ctx, JSValueConst this_va
 
 static JSValue js_wolfTLSv1_3_client_method(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-    return JS_ThrowTypeError(ctx, "TLSv1.3 not supported in this wolfSSL build");
+    /* This build has TLS1.3 disabled — no method pointer to return. */
+    return JS_NewInt32(ctx, 0);
 }
 
 static JSValue js_wolfSSL_CTX_new(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -116,29 +117,21 @@ static JSValue js_wolfSSL_connect(JSContext *ctx, JSValueConst this_val, int arg
 static JSValue js_wolfSSL_read(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     int64_t ssl_ptr;
-    int size = 4096;
 
     if (JS_ToInt64(ctx, &ssl_ptr, argv[0]))
         return JS_ThrowTypeError(ctx, "ssl pointer required");
 
-    if (argc > 1 && !JS_IsUndefined(argv[1]))
-        JS_ToInt32(ctx, &size, argv[1]);
-    
-    WOLFSSL *ssl = (WOLFSSL *)(size_t)ssl_ptr;
-    uint8_t *buf = malloc(size);
+    size_t size;
+    uint8_t *buf = JS_GetArrayBuffer(ctx, &size, argv[1]);
     if (!buf)
-        return JS_ThrowTypeError(ctx, "Out of memory");
-    
-    int ret = wolfSSL_read(ssl, buf, size);
-    if (ret <= 0) {
-        free(buf);
-        return JS_NULL;
-    }
-    
-    JSValue arr = JS_NewArrayBufferCopy(ctx, buf, ret);
-    free(buf);
-    
-    return arr;
+        return JS_ThrowTypeError(ctx, "buf must be ArrayBuffer");
+
+    WOLFSSL *ssl = (WOLFSSL *)(size_t)ssl_ptr;
+    int ret = wolfSSL_read(ssl, buf, (int)size);
+
+    /* Raw wolfSSL result: >0 bytes, 0 clean close, <0 error. The caller
+     * interprets it via wolfSSL_get_error(ssl, ret). */
+    return JS_NewInt32(ctx, ret);
 }
 
 static JSValue js_wolfSSL_write(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -311,9 +304,8 @@ static JSValue js_wolf_ca_store_add(JSContext *ctx, JSValueConst this_val, int a
         return JS_EXCEPTION;
     n = qw_ca_store_add(pem, len);
     JS_FreeCString(ctx, pem);
-    if (n < 0)
-        return JS_ThrowTypeError(ctx,
-                                 "addTrustedCA: empty PEM or trust store is full");
+    /* n: new entry count (1..QW_CA_SLOTS), or -1 for empty PEM / full store.
+     * The throw-vs-fail decision belongs to the JS caller. */
     return JS_NewInt32(ctx, n);
 }
 
