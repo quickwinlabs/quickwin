@@ -64,7 +64,10 @@ export function createRoot(container: gui.HWND | RootWindowConfig) {
   }
   const root = reconciler.createContainer(
     hwnd, 0, null, false, null, '',
-    noop, noop, noop, noop,
+    (error, info) => console.log('[React uncaught]', error, error.stack, info.componentStack),
+    (error, info) => console.log('[React caught]', error, error.stack, info.componentStack),
+    (error, info) => console.log('[React recoverable]', error, error.stack, info.componentStack),
+    noop,
   )
   const rootInst: Instance = { hwnd, type: '_root', props: { type: '_root', style: { flexDirection: 'column', alignItems: 'stretch' } }, children: [] }
   instancesByHwnd.set(hwnd, rootInst)
