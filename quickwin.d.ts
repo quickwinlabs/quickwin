@@ -359,6 +359,7 @@ declare module "sock" {
     function accept(sock: SockHandle): { handle: SockHandle; addr: string; port: number } | null;
     /** getsockname(sock) — 返回本地绑定地址 { addr, port }（port=0 自动分配后可用它查询实际端口） */
     function getsockname(sock: SockHandle): { addr: string; port: number } | null;
+    /** send(sock, buf, flags?) — 返回实际送出字节数；非阻塞缓冲满返回 0（入队等 FD_WRITE 重发）；真错误返回 -1 */
     function send(sock: SockHandle, buf: ArrayBuffer, flags?: number): number;
     function recv(sock: SockHandle, size?: number, flags?: number): ArrayBuffer | null;
     function closesocket(sock: SockHandle): void;

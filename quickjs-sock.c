@@ -409,6 +409,16 @@ static JSValue js_send(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
     if (argc > 2) JS_ToInt32(ctx, &flags, argv[2]);
 
     int ret = send(sock->fd, (const char*)buf, (int)size, flags);
+    if (ret == SOCKET_ERROR) {
+        int err = WSAGetLastError();
+        /* Non-blocking send buffer full is not an error: return 0
+           (zero bytes taken) so callers queue the data and retry on
+           FD_WRITE (WSAEventSelect re-arms FD_WRITE after WSAEWOULDBLOCK).
+           Only genuine socket errors map to -1. */
+        if (err == WSAEWOULDBLOCK)
+            return JS_NewInt32(ctx, 0);
+        return JS_NewInt32(ctx, -1);
+    }
     return JS_NewInt32(ctx, ret);
 }
 
