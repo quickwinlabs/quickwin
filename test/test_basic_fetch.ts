@@ -38,5 +38,22 @@ export const suite = {
             const body = await r.text()
             assert('body decoded without trailer footer', body === 'chunkA/chunkB')
         }
+
+        t.section('protocol whitelist (reject non-http(s))')
+        {
+            const badUrls = [
+                'file:///C:/secret.txt',
+                'data:text/plain,hello',
+                'javascript:alert(1)',
+                'ftp://example.com/resource',
+            ]
+            for (const u of badUrls) {
+                let err = ''
+                let rejected = false
+                try { await fetch(u) }
+                catch (e: unknown) { rejected = true; err = (e as Error).message }
+                assert(`reject ${u} with TypeError`, rejected && err.includes('unsupported protocol'))
+            }
+        }
     }
 }

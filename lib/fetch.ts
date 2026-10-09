@@ -78,6 +78,9 @@ const ST_DONE = 5
 
 async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
     const parsedUrl = new URL(req.url)
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        throw new TypeError('fetch: unsupported protocol "' + parsedUrl.protocol + '"')
+    }
     const method = req.method
     const headers = new HeadersImpl(req.headers)
     const timeout = req.timeout || 30000
