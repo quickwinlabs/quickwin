@@ -6,11 +6,16 @@
 //   - 结构位按方向分流：CreateFontIndirect 的 LOGFONTW 是纯入参位，注册 encoder 收
 //     DeepPartial 对象直传（缺省字段跳过 = 保持 0 合法零值语义）
 import { bind, type CodecMap } from '../ffi/bind.js'
+import { structArray } from '../ffi/struct.js'
 import { LOGFONTW, POINT, RECT } from './structs.js'
 
 // dll 名部分应用（工厂转调保泛型 infer，见 lib/windows/user32.ts 头注释；第三参透传 encoders）
 const b = <const S extends string, const LE extends CodecMap = {}>(name: string, sig: S, encoders?: LE) =>
     bind('gdi32.dll', name, sig, encoders)
+
+// 点数组编解码对（Polyline/Polygon/PlgBlt 共享）：注册后 <POINT>ptr 位收元素数组
+// （值域由 encoder 推导），C 侧 NULL 位传 NULL（number 直通），[]/单对象 fail-loud
+const POINTArr = structArray(POINT)
 
 /** 创建实心画刷；配对 DeleteObject
  *  @returns 失败 → 0
@@ -135,7 +140,7 @@ export const GetStretchBltMode = /*@__PURE__*/ b('GetStretchBltMode', '<HDC>ptr!
  *  源区随之缩放到三点形）
  *  @returns 成功 → 非 0
  *  @param args_0 hdcDest 目标 DC
- *  @param args_1 lpPoint 三点数组 [左上, 右上, 左下]（<POINT*>ptr，必须 3 点）
+ *  @param args_1 lpPoint 三点数组 [左上, 右上, 左下]（structArray(POINT) encoder，必须 3 点）
  *  @param args_2 hdcSrc 源 DC
  *  @param args_3 xSrc 源区左上 x
  *  @param args_4 ySrc 源区左上 y
@@ -145,7 +150,7 @@ export const GetStretchBltMode = /*@__PURE__*/ b('GetStretchBltMode', '<HDC>ptr!
  *  @param args_8 xMask 掩码内起点 x（掩码为 NULL 时忽略）
  *  @param args_9 yMask 掩码内起点 y */
 export const PlgBlt = /*@__PURE__*/ b('PlgBlt',
-    '<HDC>ptr! <POINT*>ptr <HDC>ptr i32 i32 i32 i32 <>ptr i32 i32 -> i32', { POINT })
+    '<HDC>ptr! <POINT>ptr <HDC>ptr i32 i32 i32 i32 <>ptr i32 i32 -> i32', { POINT: POINTArr })
 /** 单色掩码位块传送：掩码非零处取前景三元 rop、零处取背景三元 rop；
  *  dwRop = MAKEROP4(fore, back) 打包（gdi32.ts 不导出辅助，公式内联）：
  *    rop = (((back << 8) & 0xFF000000) | fore) >>> 0
@@ -293,15 +298,16 @@ export const LineTo = /*@__PURE__*/ b('LineTo', '<HDC>ptr! i32 i32 -> i32')
 /** 画折线（当前画笔描边，不填充、不自动闭合）
  *  @returns 成功 → 非 0
  *  @param args_0 hdc 目标 DC
- *  @param args_1 pts 点数组（<POINT*>ptr 数组位；空数组引擎编为 NULL，C 侧返回 0）
+ *  @param args_1 pts 点数组（structArray(POINT) encoder 直传元素数组；NULL 位传 NULL，
+ *                []/单对象 fail-loud）
  *  @param args_2 cPoints 点数（= pts.length，C 侧显式计数位） */
-export const Polyline = /*@__PURE__*/ b('Polyline', '<HDC>ptr! <POINT*>ptr i32 -> i32', { POINT })
+export const Polyline = /*@__PURE__*/ b('Polyline', '<HDC>ptr! <POINT>ptr i32 -> i32', { POINT: POINTArr })
 /** 多边形（画笔描边 + 当前画刷填充，首尾自动闭合）
  *  @returns 成功 → 非 0
  *  @param args_0 hdc 目标 DC
- *  @param args_1 pts 点数组（<POINT*>ptr 数组位，空数组引擎编为 NULL）
+ *  @param args_1 pts 点数组（structArray(POINT) encoder 直传元素数组；NULL 位传 NULL）
  *  @param args_2 cPoints 点数（= pts.length） */
-export const Polygon = /*@__PURE__*/ b('Polygon', '<HDC>ptr! <POINT*>ptr i32 -> i32', { POINT })
+export const Polygon = /*@__PURE__*/ b('Polygon', '<HDC>ptr! <POINT>ptr i32 -> i32', { POINT: POINTArr })
 /** 矩形（画笔描边 + 当前画刷填充；右/下边缘不画入区域）
  *  @returns 成功 → 非 0
  *  @param args_0 hdc 目标 DC

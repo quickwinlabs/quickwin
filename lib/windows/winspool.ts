@@ -3,8 +3,8 @@
 //   - 打印机句柄（OpenPrinter 的 HPRINTER* 出参槽写回）位宽无关：出参槽 = <BYTE>ptr
 //     收 PtrArrayBuffer(8) + readPtr 读回 number，作业链句柄位 <>ptr 收宽（批 5 HKey 同型）
 //   - 结构位按方向分流（结构定义见 ./structs.ts）：DOC_INFO_1W 纯入参位注册 encoder →
-//     对象直传；PRINTER_INFO_2W 出参数组不注册 → EnumPrinters 缓冲按元素遍历，
-//     指针字段 decode/readPtr 跟进字符串
+//     对象直传；PRINTER_INFO_2W 出参数组不注册 → structArray(PRINTER_INFO_2W).decode
+//     (buf, count) 读回（缓冲尾部含字符串，须显式 count），指针字段跟进读字符串
 //   - 枚举标注：DeviceCap 是单选查询位标枚举；PrinterEnum 是 LOCAL|CONNECTIONS 可组合
 //     flags → 裸 u32 + JSDoc（组合 OR 结果不是枚举成员，位标枚举反而传不进）
 import { bind, type CodecMap } from '../ffi/bind.js'

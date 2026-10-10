@@ -112,8 +112,8 @@ export const DOC_INFO_1W = /* @__PURE__ */ struct('DOC_INFO_1W', {
 
 /** PRINTER_INFO_2W（13 指针 + 8 DWORD：x64 136B / ia32 84B，双架构已由 test_ffi raw 实测）：
  *  EnumPrinters(Level=2) 出参数组元素。指针字段 decode 出地址 number，字符串须
- *  readPtr + 逐字宽读跟进；数组 = 单缓冲按元素遍历（stride = .size，元素间无空洞）。
- *  纯出参不注册 encoder */
+ *  逐字宽读跟进；数组 = 单缓冲读回（structArray().decode(buf, count)：元素间无空洞，
+ *  但缓冲尾部含字符串区 → byteLength 非整数倍，须显式 count）。纯出参不注册 encoder */
 export const PRINTER_INFO_2W = /* @__PURE__ */ struct('PRINTER_INFO_2W', {
     pServerName: '<>ptr',
     pPrinterName: '<>ptr',

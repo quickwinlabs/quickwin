@@ -44,14 +44,12 @@ export type C_BasicType_Token_No_Void = Exclude<C_BasicType_Token, 'void'>
 // 字符（'+'/'-'/'1' 开头等）不进词法 —— 与 <1abc>ptr/<X-y>ptr 同策略：正则不匹配、
 // 绑定时落通用 Unknown token，类型层不设专属禁分支（运行时兜底，无静默通过）。旧版
 // ([^<>\s]*) 通配曾使 <FOO+>ptr 被静默当品牌 'FOO+' 接受——语义字形必须结构可见。
-const PTR_TOKEN_RE = /^<([A-Za-z_]\w*[*]?|)>ptr(!|@[A-Za-z_]\w*)?$/
+const PTR_TOKEN_RE = /^<([A-Za-z_]\w*|)>ptr(!|@[A-Za-z_]\w*)?$/
 
 export function isCPtrToken(t: string): t is `<${string}>ptr` | `${string}ptr!` | `${string}ptr@${string}` { return PTR_TOKEN_RE.test(t) }
 export function ptrName<const N extends string>(t: `<${N}>ptr` | `<${N}>ptr!`): N {
     const m = PTR_TOKEN_RE.exec(t)
-    const name = m?.[1] || ""
-    // 数组字形 '*' 是 token 的语义修饰而非品牌的一部分：codec 查表/品牌都用裸名。
-    return (name.endsWith('*') ? name.slice(0, -1) : name) as N
+    return (m?.[1] || "") as N
 }
 /**
  * @description `<${string}>ptr` / `<${string}>ptr!` -> 'ptr'
@@ -210,16 +208,9 @@ declare global {
 // 泛型体内）由 `string & keyof map` = 全键联合兜底成非 never —— 否则 BindFn 塌
 // (never)=>never 使内层强转失去可比性。
 export type ArgJsTypeOfToken<K extends string, L> =
-    // '*' 的三条禁用形（与 normToken 词法规则一一对应）并成单条 union 守卫：'*'+'!'（'*'
-    // 位空数组合法且引擎编为 NULL，'!' 必然误伤）、'*'+'@'（元素值域是另一个维度）、
-    // 裸 '<*>ptr'（无布局可依）。禁用形在链首塌 never（参数位 never = 调用点全红，与拼错
-    // token 同策略），必须先于能意外捕获它们的通用分支（如 '<X*>ptr!' 会落 '<N>ptr!'
-    // 分支拿到 Ptr<'X*'> —— 静默放行运行时必炸的 token）。其余非标识符名字形
-    // （'<X+>ptr'/'<1abc>ptr'）不设专属分支：落 '<N>ptr' 通配、运行时 Unknown token 兜底。
-    K extends `<${string}*>ptr!` | `<${string}*>ptr@${string}` | `<*>ptr${string}` ? never :
-    // '<N*>ptr' 入参连续数组位：元素形 = 单对象位的 L[N]（codec 只声明单对象 encode，
-    // 数组性由 token 派生），整位 = 元素数组 ∪ number 直通（预建缓冲 .ptr 热路径 / NULL）。
-    K extends `<${infer N}*>ptr` ? readonly L[N & keyof L][] | MaybePtr<N> :
+    // 非标识符名字形（'<X+>ptr'/'<X*>ptr'/'<1abc>ptr'）不设专属分支：落 '<N>ptr'
+    // 通配、运行时 Unknown token 兜底（'*' 已非 token 字形 —— 数组物化走
+    // structArray(def) encoder 的值域推导，token/引擎/类型层零数组概念）。
     K extends `<${infer N}>ptr!` ? Ptr<N> | L[N & keyof L] :
     K extends `<${string}>ptr@${infer E extends keyof EnumMap}` ? EnumMap[E] :
     K extends `<${infer N}>ptr` ? MaybePtr<N> | L[N & keyof L] :
@@ -236,10 +227,6 @@ export type ArgJsTypeOfToken<K extends string, L> =
 // never：never 是 bottom 会被任意使用全放行，unknown 逼调用方显式收窄（与参数位
 // never 拦调用的不对称是设计）。
 export type RetJsTypeOfToken<K extends string, D> =
-    // '*' 数组字形禁用于返回位（decode 恒从起点读，出数组的长度从哪来是另一个设计）——
-    // 返回位非法形的既有策略：塌 unknown 逼显式收窄（不是 never——never 是 bottom 会被
-    // 任意使用放行），运行时由 parseSig 拦。
-    K extends `<${string}*>ptr${string}` ? unknown :
     K extends `<${infer N}>ptr!`
         ? (D[N & keyof D] extends never ? Ptr<N> : D[N & keyof D])
         : K extends `<${string}>ptr@${infer E extends keyof EnumMap}`
@@ -255,26 +242,14 @@ export type RetJsTypeOfToken<K extends string, D> =
 // 清单派生）与指针形；拼错 token、已移除的 typedef 别名（'DWORD'/'HANDLE'）一律 fail-loud。
 export function normToken(t: string): C_BasicType_Token {
     if (isCPtrToken(t)) {
-        // 只剥 '@Name'（枚举标注是纯类型层语义，运行时不校验、不理解）；'!'/'*' 保留在
-        // token 上——运行时要执法的语义（0 检查 / 数组分派）跟着 token 走到 callPacked，
+        // 只剥 '@Name'（枚举标注是纯类型层语义，运行时不校验、不理解）；'!' 保留在
+        // token 上——运行时要执法的语义（0 检查）跟着 token 走到 callPacked，
         // 无独立 flag 可被解构丢失。槽宽/ABI 判型走 isCPtrToken，带修饰不受影响。
         const m = PTR_TOKEN_RE.exec(t)
         const name = m?.[1] || ''
         const mod = m?.[2]
-        // 数组字形 '*' 的词法规则（沿 '!'/ '@' 的"越界报错"先例）：裸 '<*>ptr' 无布局
-        // 可依、'*' 与 '!''@' 组合语义冲突 —— 正则已把 '+' 等非标识符字符挡在词法外
-        // （与 <1abc>ptr 同落 Unknown token），这里只管 '*' 自身的组合禁令。
-        if (name.endsWith('*')) {
-            // '*'+!'：'*' 位空数组合法且引擎编为 NULL(0)，'!' 必然误伤合法调用 —— 永久
-            // 拒绝（想表达"非空"需另一个字形，带真实绑定需求再议）。'*'+'@'：数组元素
-            // 的值域是另一个维度。
-            if (mod === '!')
-                throw new Error(`ffi: '<${name}>ptr!' combination is forbidden ` +
-                    `('*' allows empty arrays, '!' forbids null pointers): ${t}`)
-            if (mod !== undefined)
-                throw new Error(`ffi: '*' cannot combine with '@' (element value-domain is a separate topic): ${t}`)
-        }
-        // 剥 '@'（纯类型层语义）；'!'/ '*' 形随 token 走。
+        // 剥 '@'（纯类型层语义）；'!' 形随 token 走。（'*' 等词法外字符不设专属分支：
+        // 不匹配正则，落末尾 Unknown token —— 与 '<X+>ptr' 同待遇。）
         return (mod?.startsWith('@') ? `<${name}>ptr` : t) as C_BasicType_Token
     }
     // 整数档尾缀 '@Name'（枚举值域标注，与 ptr 位的 '@' 同源）：剥掉归一到原 token，

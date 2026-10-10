@@ -85,7 +85,7 @@ export const suite = {
             CreatePen(gui.BackgroundMode.TRANSPARENT, 1, 0)
             // @ts-expect-error '<HDC>ptr!' 禁空位不收 NULL
             Rectangle(NULL, 0, 0, 1, 1)
-            // @ts-expect-error <POINT*>ptr 数组位不收裸对象（单对象对 C 是越界基址）
+            // @ts-expect-error encoder 数组位不收裸对象（单对象对 C 是越界基址）
             Polyline(0 as Ptr<'HDC'>, { x: 1, y: 2 }, 1)
             // @ts-expect-error MoveToEx 出参位刻意不注册 encoder：只收 .ptr / NULL，不收对象形
             MoveToEx(0 as Ptr<'HDC'>, 0, 0, { x: 1, y: 2 })
@@ -141,7 +141,7 @@ export const suite = {
         SelectObject(mem, oldBrush)
         DeleteObject(brush)
 
-        t.section('Polyline: <POINT*>ptr position + empty array → NULL')
+        t.section('Polyline: encoder array position + NULL passthrough')
         clearWhite()
         const pen = CreatePen(gui.PenStyle.SOLID, 1, GREEN)
         t.checkTrue('pen created', !!pen)
@@ -152,9 +152,12 @@ export const suite = {
         t.check('on-line = green', GREEN, px(50, 100))
         t.check('row above = white', WHITE, px(50, 99))
         t.check('row below = white', WHITE, px(50, 101))
-        // 空数组 → 引擎单点确定性编 NULL（0 元素 = 缓冲不存在），C 拒收返回 0 ——
-        // 若走 PAB(0)（非 0 的 1 字节堆指针）GDI 不会因 NULL 失败。
-        t.check('empty array encodes NULL (C returns 0)', 0, Polyline(mem, [], 0))
+        // 空位语义：encoder 对 [] fail-loud（PAB(0) 永不产出），NULL 由调用方显式传
+        // —— C 拒收 NULL 返回 0。
+        let arrErr = ''
+        try { Polyline(mem, [], 0) } catch (e) { arrErr = String(e) }
+        t.checkTrue('[] fail-loud at encoder (never PAB(0))', arrErr.includes('non-empty'))
+        t.check('NULL position (C returns 0)', 0, Polyline(mem, NULL, 0))
 
         t.section('MoveToEx/LineTo: out-param + line pixels')
         t.checkTrue('MoveToEx NULL lppt ok', MoveToEx(mem, 10, 10, NULL) !== 0)

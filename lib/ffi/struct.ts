@@ -214,29 +214,18 @@ export type StructDef<T extends { '#': 'struct' | 'union' }, N extends string = 
     // 数组元素含必填 ⇒ 该键必给，值后序合成到内层）。带 buf = 写入调用方既有
     // PtrArrayBuffer（返回其本身，供链式读回）——encode 出口一律 PAB，裸 ArrayBuffer
     // 不出 codec（与 CodecMap 同约束）。动态调用方无参 encode 由运行时 throw 兜底。
-    alloc(): PtrArrayBuffer<N>
+    /** n（默认 1）= 按本布局 size 步长连续分配 n 个元素的零填充缓冲（出参数组场景，
+     *  品牌 .ptr 直接喂 <N>ptr 位）。n < 1 / 非整数运行时 throw ——
+     *  任何路径都不产出 PAB(0)（其 .ptr 是"非 0 的 1 字节堆指针"，会骗过 C 的 NULL
+     *  防御；空位语义由调用方显式传 NULL）。 */
+    alloc(n?: number): PtrArrayBuffer<N>
     encode(v: EncodeIn<T>): PtrArrayBuffer<N>
-    // 带 buf = 写入调用方既有 PtrArrayBuffer（复用/预分配形态，返回其本身供链式读回）。
-    // 刻意没有 offset —— 与 decode 同理（bind.ts CodecMap 注释）：PAB 的 .ptr 恒指向起点，
-    // 顶层再收 offset 只会掩盖"写错位置"且返回值 .ptr 对不上写入点；嵌套偏移由布局字段
-    // （doEncode 的 base）承担。
-    encode(v: EncodeIn<T>, buf: PtrArrayBuffer<any>): PtrArrayBuffer<any>
-    /** '<N*>ptr' 数组位的物化：n（≥1）个元素按布局 size 步长紧密排列（stride = size，
-     *  已含尾部对齐 padding），返回带品牌 .ptr 的 PAB。类型层收非空元组（[] 字面量直接
-     *  编译错），运行时另对 [] / 非数组 throw —— 双保险同 '<N>ptr!' 先例（类型 Ptr<N> +
-     *  运行时 0 throw）：类型拦字面量，运行时拦动态绕过（as 或动态数组）。bind 引擎把
-     *  空数组在分派前确定性编为 NULL(0)，不进本方法；任何路径都不产出 PAB(0)（其 .ptr
-     *  是"非 0 的 1 字节堆指针"，会骗过 C 的 NULL 防御）。 */
-    encodeArray(els: readonly [EncodeIn<T>, ...EncodeIn<T>[]]): PtrArrayBuffer<N>
-    /**读回数组位：n = byteLength / size —— C 的 T* 不带长度，buffer 自带，单参数自证
-     *  （没有外部 count，也就没有写错 count → 越界读的入口）。只收 PAB：品牌
-     *  PtrArrayBuffer<N> 类型层拦错布局解码（stride 推进下 RECT 缓冲 × POINT 步长是
-     *  静默乱读）、与 encodeArray 出口闭环（"裸 ArrayBuffer 出不了 codec"）；decode 的
-     *  number 双态是返回位分派专用，decodeArray 无引擎分派点、不需要。byteLength % size
-     *  ≠ 0 → throw（非整除 = 缓冲不是按本布局的元素序列摆的）；0 字节 → [] —— 读不产出
-     *  任何东西，读 0 个元素真空安全（与 encodeArray 禁空的 PAB(0) 理由刻意不对称）。
-     *  '!' 字段未填走 doDecode 既有 0 断言（同 decode(alloc()) 的"C 没填"语义）。 */
-    decodeArray(p: PtrArrayBuffer<N>): ShapeOfC<T>[]
+    // 带 buf = 写入调用方既有 PtrArrayBuffer（复用/预分配形态）；带 offset = 写入点
+    // 相对 buf 起点的字节偏移（数组物化/自定义内存管理的底层写入原语，内部即 doEncode
+    // 的 base）。返回值仍是 buf 本身 —— offset 形态下其 .ptr 对不上写入点，写入点地址
+    // = buf.ptr + offset（自算术，品牌随算术丢失同 CreatePipe 先例）；越界写由 DataView
+    // RangeError 兜底，无需额外校验。
+    encode(v: EncodeIn<T>, buf: PtrArrayBuffer<any>, offset?: number): PtrArrayBuffer<any>
     offsetOf(name: string): number
 }
 
@@ -619,41 +608,25 @@ function createStruct(t: C_Struct | C_Union): any {
             }
             return doDecode(new DataView(p), 0, fields)
         },
-        alloc: (() => new PtrArrayBuffer(size)) as StructDef<any, any>['alloc'],
-        encode: ((v: any, buf?: PtrArrayBuffer<any>) => {
+        alloc: ((n?: number) => {
+            // fail-loud：n < 1 / 非整数绝不静默产出 PAB(0)（其 .ptr 是"非 0 的 1 字节
+            // 堆指针"，会骗过 C 的 NULL 防御）—— 空位语义由调用方显式传 NULL。
+            if (n !== undefined && (!Number.isInteger(n) || n < 1))
+                throw new Error(`ffi-struct: alloc(n) requires an integer n >= 1 ` +
+                    `(PAB(0) never escapes — pass NULL for an empty pointer position)`)
+            return new PtrArrayBuffer(size * (n ?? 1))
+        }) as StructDef<any, any>['alloc'],
+        encode: ((v: any, buf?: PtrArrayBuffer<any>, offset?: number) => {
             // fail-loud：无参 = 分配语义，走 alloc()；这里绝不静默零填充 —— 类型层由
-            // EncodeIn 拦 '!' 字段省略，动态/JS 调用方由本 throw 兜住。顶层不收 offset
-            // （与 decode 对齐，见 StructDef 注释），恒从 buffer 起点写。
+            // EncodeIn 拦 '!' 字段省略，动态/JS 调用方由本 throw 兜住。顶层默认从起点写，
+            // offset 显式给写入点（数组物化原语，见接口注释）。
             if (v === undefined || v === null)
                 throw new Error(`ffi-struct: encode(v) requires an argument; ` +
                     `use alloc() for a zeroed out-param slot`)
             const out = buf ?? new PtrArrayBuffer(size)
-            doEncode(new DataView(out), 0, fields, v)
+            doEncode(new DataView(out), offset ?? 0, fields, v)
             return out
         }) as StructDef<any, any>['encode'],
-        encodeArray: ((els: any) => {
-            // 合约：只收 n ≥ 1 的数组（bind 引擎已在分派前把空数组编为 NULL）——此处
-            // 兜底动态直调路径，fail-loud 而非静默造 PAB(0)。stride = size（布局已含
-            // 尾部对齐 padding），元素间无缝紧密排列，与 C 的 T apt[] 完全同构。
-            if (!Array.isArray(els) || els.length === 0)
-                throw new Error(`ffi-struct: encodeArray(els) requires a non-empty array ` +
-                    `(bind's <N*>ptr position encodes an empty array as NULL before reaching here)`)
-            const out = new PtrArrayBuffer(size * els.length)
-            const dv = new DataView(out)
-            for (let i = 0; i < els.length; i++) doEncode(dv, i * size, fields, els[i])
-            return out
-        }) as StructDef<any, any>['encodeArray'],
-        decodeArray: ((p: ArrayBuffer) => {
-            // 非整除 = 缓冲不是按本布局元素序列摆的（错尺寸/错布局）—— 静默截断读是
-            // 乱数据的温床，fail-loud；size=0 的退化布局同样落此 throw（0 % 0 = NaN）。
-            const n = p.byteLength
-            if (n % size !== 0)
-                throw new Error(`ffi-struct: decodeArray: byteLength ${n} is not a multiple of size ${size}`)
-            const dv = new DataView(p)
-            const out: unknown[] = []
-            for (let i = 0; i < n / size; i++) out.push(doDecode(dv, i * size, fields))
-            return out
-        }) as StructDef<any, any>['decodeArray'],
         offsetOf: (name: string) => {
             for (const f of fields) if (f.name === name) return f.offset
             throw new Error(`ffi-struct: no field "${name}"`)
@@ -677,6 +650,90 @@ function buildDecl(kind: 'struct' | 'union', member: Record<string, unknown>, pa
     for (const [k, v] of Object.entries(member))
         if (!k.startsWith('#')) decl[k] = v
     return decl as unknown as C_Struct | C_Union
+}
+
+/** decode 双态重载：有 byteLength 的 buffer 形 count 可缺省（自算）；裸地址无长度
+ *  信息，count 必填（类型层拦，缺省调用编译红）。 */
+type StructArrayDecode<T extends { '#': 'struct' | 'union' }, N extends string> = {
+    (p: ArrayBuffer, count?: number): ShapeOfC<T>[]
+    (p: Ptr<N>, count: number): ShapeOfC<T>[]
+}
+
+/** 结构/联合体的数组编解码对工厂：返回 `{ encode, decode }`。
+ *  encode —— 单值 encoder 的数组版：收元素数组 → 按本布局 size 步长紧密排列
+ *  （stride = size，已含尾部对齐 padding），返回带品牌 .ptr 的 PAB —— 与 C 的
+ *  `const T apt[]` 同构。值域刻意收普通数组（调用方持有的 `const pts = [...]` 变量
+ *  直传，非空元组会拒之）；[] / 非数组 / 单对象运行时 throw —— 任何路径都不产出
+ *  PAB(0)（其 .ptr 是"非 0 的 1 字节堆指针"，会骗过 C 的 NULL 防御；空位语义由
+ *  调用方显式传 NULL）。注册进 bind 的 encoders 表（`{ POINT: structArray(POINT) }`）
+ *  后，普通 `<POINT>ptr` 位的值域即元素数组（值域由 encoder 推导，token/引擎/类型层
+ *  零数组概念）；直接调用 `.encode(els).ptr` 亦可。
+ *  decode —— 出参数组读回（与 def.decode 的 ArrayBuffer/地址双态对称）：
+ *  - buffer 形（含 PAB）：count? 缺省自算 byteLength/size —— 要求整数倍，% ≠ 0
+ *    throw（混合缓冲如 EnumPrinters 的"结构 + 尾部字符串"必须显式 count）；显式
+ *    count 校验 count*size ≤ byteLength（写错 count → 越界读的防线，buf 形可校才
+ *    校；不验品牌，与 def.decode 的 buffer 形同款）。
+ *  - 裸地址形：count 必填（地址无长度信息），逐字节拷读（def.decode 的 number 形
+ *    同机制）；长度不可校 → 信任 C 的 count。
+ *  - count = 0 → []（读 0 个真空安全，与 encode 禁空的 PAB(0) 理由刻意不对称）。
+ *  实现：encode 走纯公开 API（alloc + encode offset 循环）；decode 在本文件内复用
+ *  computeStructLayout/doDecode。 */
+export function structArray<T extends { '#': 'struct' | 'union' }, N extends string = ''>(
+    def: StructDef<T, N>,
+) {
+    const { fields, size } = computeStructLayout(def.__struct)
+    const readN = (dv: DataView, n: number): unknown[] => {
+        const out: unknown[] = []
+        for (let i = 0; i < n; i++) out.push(doDecode(dv, i * size, fields))
+        return out
+    }
+    return {
+        encode: (els: readonly EncodeIn<T>[]): PtrArrayBuffer<N> => {
+            if (!Array.isArray(els) || els.length === 0)
+                throw new Error(`ffi-struct: structArray(def).encode(els) requires a ` +
+                    `non-empty element array (pass NULL for an empty pointer position)`)
+            const out = def.alloc(els.length)
+            for (let i = 0; i < els.length; i++) def.encode(els[i], out, i * def.size)
+            return out
+        },
+        decode: ((p: ArrayBuffer | number, count?: number): unknown[] => {
+            // fail-loud 校验矩阵（见 JSDoc）：显式 count 信调用方但拦越界；缺省只对
+            // 有 byteLength 的 buffer 形自算；裸地址必带 count。
+            if (count !== undefined && (!Number.isInteger(count) || count < 0))
+                throw new Error(`ffi-struct: structArray.decode(p, count) requires a ` +
+                    `non-negative integer count, got ${count}`)
+            if (typeof p === 'number') {
+                if (count === undefined)
+                    throw new Error(`ffi-struct: structArray.decode(address, count) ` +
+                        `requires an explicit count (a bare address carries no length)`)
+                if (count === 0) return []
+                // 逐字节拷进临时 buffer 再解码（def.decode 的 number 形同机制）。
+                const total = count * size
+                const buf = new ArrayBuffer(total)
+                const u8 = new Uint8Array(buf)
+                for (let i = 0; i < total; i++) u8[i] = ffi.readByte(p + i)
+                return readN(new DataView(buf), count)
+            }
+            let n: number
+            if (count !== undefined) {
+                n = count
+                // 越界防线：写错 count 是越界读的唯一入口，buf 形有 byteLength 就校死。
+                if (n * size > p.byteLength)
+                    throw new Error(`ffi-struct: structArray.decode: count ${n} × ` +
+                        `size ${size} = ${n * size} exceeds buffer byteLength ${p.byteLength}`)
+            } else {
+                // 自算形态：byteLength 必须是纯元素序列（size = 0 的退化布局同样落此
+                // throw —— 0 % 0 = NaN），混合缓冲显式传 count。
+                if (p.byteLength % size !== 0)
+                    throw new Error(`ffi-struct: structArray.decode: byteLength ` +
+                        `${p.byteLength} is not a multiple of size ${size} ` +
+                        `(mixed buffer? pass count explicitly)`)
+                n = p.byteLength / size
+            }
+            if (n === 0) return []
+            return readN(new DataView(p), n)
+        }) as StructArrayDecode<T, N>,
+    }
 }
 
 /** 平铺字段表定义结构体（token/`X[n]`/`unit:width`/`'#'` 声明均可，见 ctype.ts §4）。

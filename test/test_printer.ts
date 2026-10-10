@@ -2,6 +2,7 @@ import * as ffi from 'ffi'
 import * as gui from 'gui'
 import * as os from 'os'
 import { WCHAR } from '../lib/ffi/bind.js'
+import { structArray } from '../lib/ffi/struct.js'
 import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import { CloseHandle, CreateFile, DeleteFile, GetLastError, GetTempPath, GetFileSize, ReadFile } from '../lib/windows/kernel32.js'
 import {
@@ -54,23 +55,20 @@ export const suite = {
         const count = returnedU[0]!
         t.checkTrue(`found printers (${count})`, count > 0)
 
-        // PRINTER_INFO_2W 数组遍历（x64 136B / ia32 84B）：名字/端口跟进指针读字符串
-        const ia32 = os.arch === 'ia32'
-        const stride = ia32 ? 84 : 136
-        const offName = ia32 ? 4 : 8
-        const offPort = ia32 ? 12 : 24
-        const dv = new DataView(buf)
+        // 出参数组读回：结构数组区 = 前 count*size 字节，尾部是字符串数据
+        // （byteLength 非 size 整数倍）→ 必须显式 count；指针字段跟进读字符串
+        const infos = structArray(PRINTER_INFO_2W).decode(buf, count)
+        t.check('decode count == pcReturned', count, infos.length)
+        // 单值 decode 与数组 decode 首元素一致（布局单一来源互证，无硬编码 offset）
+        t.checkTrue('array/single decode agree',
+            PRINTER_INFO_2W.decode(buf).pPrinterName === infos[0]!.pPrinterName)
         const names: string[] = []
         const ports: Record<string, string> = {}
-        for (let i = 0; i < count; i++) {
-            const base = i * stride
-            const name = decodeWideAtPtr(readPtr(dv, base + offName))
+        for (const inf of infos) {
+            const name = decodeWideAtPtr(inf.pPrinterName)
             names.push(name)
-            ports[name] = decodeWideAtPtr(readPtr(dv, base + offPort))
+            ports[name] = decodeWideAtPtr(inf.pPortName)
         }
-        // struct 定义 decode 与手工遍历布局一致（首个元素指针对照）
-        t.checkTrue('PRINTER_INFO_2W.decode layout consistent',
-            PRINTER_INFO_2W.decode(buf).pPrinterName === readPtr(dv, offName))
 
         t.section('GetDefaultPrinter')
         const defW = WCHAR.alloc(260)
