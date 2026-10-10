@@ -286,6 +286,58 @@ export const suite = {
         const rectV = RECT.decode(rectOut)
         t.checkTrue('RECT.decode(encode()) decodes out-param', rectV.right > rectV.left && rectV.bottom > rectV.top)
 
+        t.section('by-value struct <N>: lexicon / type layer / bind-time fail-loud')
+        // '<N>' 裸品牌 = 按值传参位（<N>ptr 传地址）。无修饰可剥：带 ! / 尾缀 / 空名 /
+        // 数字开头的形正则不匹配，落绑定期通用 Unknown token（与 '<X+>ptr' 同策略）。
+        t.checkTrue("normToken('<POINT>') 原样归一", normToken('<POINT>') === '<POINT>')
+        for (const bad of ['<POINT>!', '<POINT>x', '<>', '<1abc>']) {
+            try { normToken(bad); t.checkTrue(`normToken 拒 '${bad}'`, false) }
+            catch (e) { t.checkTrue(`normToken 拒 '${bad}'`, String(e).includes('Unknown token')) }
+        }
+
+        // 类型层：未注册布局的按值位塌 never（LE={} → L['POINT'] = never，同拼错 token 策略）
+        expectType<Equal<ParamsOf<'<POINT> -> i32'>[0], never>>()
+        // 注册布局：值域 = encode 入参形（对象），无 number 地址直通；ptr 位对照有
+        const typeOnly: unknown = () => {
+            const byVal = bind('user32.dll', 'PtInRect', '<RECT>ptr <POINT> -> i32', { RECT, POINT })
+            expectType<Equal<Extract<Parameters<typeof byVal>[1], number>, never>>()
+            const byPtr = bind('user32.dll', 'PtInRect', '<RECT>ptr <POINT>ptr -> i32', { RECT, POINT })
+            expectType<Extract<Parameters<typeof byPtr>[1], number> extends never ? false : true>()
+            // @ts-expect-error 按值位不收 number（地址词汇属 <N>ptr 位）
+            byVal(NULL, 42)
+            // @ts-expect-error 按值位收对象、不收数组
+            byVal(NULL, [1, 2])
+            return 0
+        }
+        t.checkTrue('type-only block wired', typeof typeOnly === 'function')
+
+        // 绑定期 fail-loud：模块加载即炸，不留到首个调用
+        try {
+            bind('gdi32.dll', 'DeleteObject', '<PTMISS> -> i32')
+            t.checkTrue('by-value 未注册布局 fail-loud', false)
+        } catch (e) {
+            t.checkTrue('by-value 未注册布局 fail-loud', String(e).includes('<PTMISS>'))
+        }
+        try {
+            bind('gdi32.dll', 'DeleteObject', '<WCHAR> -> i32', { WCHAR })
+            t.checkTrue('by-value 非结构 codec (无 size) fail-loud', false)
+        } catch (e) {
+            t.checkTrue('by-value 非结构 codec (无 size) fail-loud', String(e).includes('size'))
+        }
+        try {
+            bind('gdi32.dll', 'DeleteObject', 'i32 -> <POINT>', { POINT })
+            t.checkTrue('by-value 返回位 fail-loud', false)
+        } catch (e) {
+            t.checkTrue('by-value 返回位 fail-loud', String(e).includes('return position'))
+        }
+        try {
+            closure('<POINT> -> i32', () => 0)
+            t.checkTrue('by-value 位 closure fail-loud', false)
+        } catch (e) {
+            t.checkTrue('by-value 位 closure fail-loud', String(e).includes('closure'))
+        }
+
+
         // 成员 '<RECT>ptr'：decode 得到 Ptr<'RECT'>，可直接喂 <RECT>ptr 形参（品牌在类型层流动）。
         const RECTPTR = struct('RECTPTR', {r: '<RECT>ptr'})
         const box = RECTPTR.decode(RECTPTR.encode({ r: rectOut.ptr }))

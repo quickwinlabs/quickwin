@@ -32,7 +32,7 @@ export type C_BasicType_No_Void = Exclude<C_BasicType, 'void'>
 // '!' / '*' 形随 token 走（normToken 只剥运行时不理解的 '@'，运行时要执法的 '!'（0 检查）
 // 与 '*'（数组分派）保留在 token 上——token 即契约，callPacked 按尾缀执法，无独立 flag
 // 可丢）。'<N*>ptr' 数组位无需新词形：品牌段含 '*'，整 token 仍在 <${string}>ptr 模板内。
-export type C_BasicType_Token = Exclude<C_BasicType, 'ptr'> | `<${string}>ptr` | `<${string}>ptr!`
+export type C_BasicType_Token = Exclude<C_BasicType, 'ptr'> | `<${string}>ptr` | `<${string}>ptr!` | `<${string}>`
 export type C_BasicType_Token_No_Void = Exclude<C_BasicType_Token, 'void'>
 
 // 尾缀修饰：'!' = 非空担保（见 Arg/RetJsTypeOfToken 的 ! 分支与 callPacked 的运行时 0 检查），
@@ -47,16 +47,35 @@ export type C_BasicType_Token_No_Void = Exclude<C_BasicType_Token, 'void'>
 const PTR_TOKEN_RE = /^<([A-Za-z_]\w*|)>ptr(!|@[A-Za-z_]\w*)?$/
 
 export function isCPtrToken(t: string): t is `<${string}>ptr` | `${string}ptr!` | `${string}ptr@${string}` { return PTR_TOKEN_RE.test(t) }
+
+// '<N>' 裸品牌形 = 按值传参位（<N>ptr 传地址 / <N> 传值）。名字形同指针形（标识符，
+// 空名 <> 仅 ptr 档有），不带任何修饰 —— 按值位无 '!'（值不为 NULL）、无 '@'（值域由
+// codec 推导、不标枚举）、无 '*'（数组走 structArray encoder 的值域）：含修饰的形
+// 正则不匹配，落绑定时通用 Unknown token（与 '<X+>ptr' 同策略，运行时兜底）。
+const VAL_TOKEN_RE = /^<([A-Za-z_]\w*)>$/
+
+export function isCValToken(t: string): t is `<${string}>` { return VAL_TOKEN_RE.test(t) }
+export function valName<const N extends string>(t: `<${N}>`): N {
+    const m = VAL_TOKEN_RE.exec(t)
+    return (m?.[1] || "") as N
+}
 export function ptrName<const N extends string>(t: `<${N}>ptr` | `<${N}>ptr!`): N {
     const m = PTR_TOKEN_RE.exec(t)
     return (m?.[1] || "") as N
 }
 /**
- * @description `<${string}>ptr` / `<${string}>ptr!` -> 'ptr'
+ * @description `<${string}>ptr` / `<${string}>ptr!` -> 'ptr'。按值形 `<${string}>` 无
+ * 标量槽等价物 —— 运行时 throw（返回位由 parseSig 拒、closure 入参位由 closure() 拒，
+ * 正常路径不可达），返回类型同时 Exclude 掉按值形：消费方（readRet / dispatchClosure
+ * 的 IA32_ARG_SIZE 索引）拿不到会误导编译期的标量误判。
  */
-export const cTokenToType = <const T extends string>(t: T): Exclude<T, `<${string}>ptr` | `<${string}>ptr!`> | 'ptr' => {
+export const cTokenToType = <const T extends string>(
+    t: T,
+): Exclude<T, `<${string}>ptr` | `<${string}>ptr!` | `<${string}>`> | 'ptr' => {
     if (isCPtrToken(t)) return 'ptr'
-    else return t as Exclude<T, `<${string}>ptr` | `<${string}>ptr!`>
+    if (isCValToken(t))
+        throw new Error(`ffi: cTokenToType: by-value token "${t}" has no scalar slot type`)
+    return t as Exclude<T, `<${string}>ptr` | `<${string}>ptr!` | `<${string}>`>
 }
 
 // C 的数字类型档：可作结构体字段 / bind 签名 token。排除项理由见 §1。
@@ -214,6 +233,10 @@ export type ArgJsTypeOfToken<K extends string, L> =
     K extends `<${infer N}>ptr!` ? Ptr<N> | L[N & keyof L] :
     K extends `<${string}>ptr@${infer E extends keyof EnumMap}` ? EnumMap[E] :
     K extends `<${infer N}>ptr` ? MaybePtr<N> | L[N & keyof L] :
+    // '<N>' 按值位：值域 = 注册布局的 encode 入参形（对象直传），无 MaybePtr —— 按值
+    // 位不收 NULL / 地址（引擎按值语义编码，地址进位是必然错位）。未注册布局 →
+    // L[never] → 整位塌 never（与拼错 token 同策略）。
+    K extends `<${infer N}>` ? L[N & keyof L] :
     K extends `${C_Number}@${infer E extends keyof EnumMap}` ? EnumMap[E] :
     TokenArgJsTypeMap[K & keyof TokenArgJsTypeMap] extends never ? never
     : TokenArgJsTypeMap[K & keyof TokenArgJsTypeMap]
@@ -252,6 +275,8 @@ export function normToken(t: string): C_BasicType_Token {
         // 不匹配正则，落末尾 Unknown token —— 与 '<X+>ptr' 同待遇。）
         return (mod?.startsWith('@') ? `<${name}>ptr` : t) as C_BasicType_Token
     }
+    // 按值形 '<N>' 无修饰可剥（见 VAL_TOKEN_RE 注释），原样归一。
+    if (isCValToken(t)) return t
     // 整数档尾缀 '@Name'（枚举值域标注，与 ptr 位的 '@' 同源）：剥掉归一到原 token，
     // 槽宽/ABI 只看归一形式。@ 后缀须为纯枚举名形 —— 'u32@WmMsg:3' 这类混进位域/数组
     // 串的直接 throw，不静默吞成纯标量（布局会错）；名 ∈ EnumMap 的语义校验留给类型层

@@ -3,7 +3,7 @@ import * as os from 'os'
 import * as std from 'std'
 import * as win from 'win'
 import '../text-codec.js'
-import { type C_BasicType, C_BasicType_No_Void, C_BasicType_Token, C_BasicType_Token_No_Void, cTokenToType, isCPtrToken, ArgJsTypeOfToken, RetJsTypeOfToken, normToken, PTR_SIZE, ptrName, type Ptr, readScalar, writeSlot, PtrArrayBuffer } from './ctype.js'
+import { type C_BasicType, C_BasicType_No_Void, C_BasicType_Token, C_BasicType_Token_No_Void, cTokenToType, isCPtrToken, isCValToken, valName, ArgJsTypeOfToken, RetJsTypeOfToken, normToken, PTR_SIZE, ptrName, type Ptr, readScalar, writeSlot, PtrArrayBuffer } from './ctype.js'
 
 // 形状刻意是「方法」而非裸函数：ffi-struct 的 struct()/union() 结果（StructDef）
 // 结构上即满足 encode 重载（无 buf 新建带品牌 .ptr 的 PtrArrayBuffer / 带 buf 写入既有
@@ -32,6 +32,20 @@ export type CodecMap = Record<string, {
     decode?(p: any): any
     alloc?(a: any): PtrArrayBuffer<any>
 }>
+
+// 按值位（'<N>'）消费的布局形态：size（决定槽宽与「传值 / 按引用」分派）+
+// encode(v, buf, offset)（写入任意 buffer 的既有偏移——argFrame 槽内写入、
+// 16 对齐临时副本两条路径共用）。StructDef 结构上即满足，内建 WCHAR/BYTE 无 size。
+type StructValCodec = {
+    size: number
+    encode(v: unknown, buf: ArrayBuffer, offset: number): unknown
+}
+
+// CodecMap 的值是结构形（size 只在 StructDef 上、不属 Codec 契约），统一走 unknown
+// 二跳提取；存在性与 size 由 makeFn 绑定期校验。
+function valCodec(name: string, encoders: CodecMap): StructValCodec | undefined {
+    return encoders[name] as unknown as StructValCodec | undefined
+}
 
 const _dllCache: Map<string, win.HMODULE> = new Map()
 
@@ -77,6 +91,13 @@ function parseSig(sig: string): ParsedSig {
     // 裸 'ptr'/非法 token 由类型层拦截（C_BasicType_Token 已 Exclude 'ptr'、拼错 token 塌成 never）；
     // 运行时再比较只会得到 TS2367「两类型无重叠」——类型已表达的约束不重复校验。
     const retToken = normToken(parts[1]!)
+    // 按值形 '<N>' 仅支持入参位：大结构返回需要隐藏指针/sret 级 ABI（本运行时的
+    // retBuf 恒 8 字节，只支持标量/浮点/指针返回），绑定期 throw 而非静默降级。
+    // 类型层对返回位的 '<N>' 不设专门分支（fallthrough），本 throw 是唯一防线。
+    if (isCValToken(retToken))
+        throw new Error(`ffi-bind: "${sig}": by-value struct at the return position ` +
+            `(<${valName(retToken)}>) is not supported — argument positions only; ` +
+            `pass a struct out through an out-param slot instead (<N>ptr + caller buffer)`)
     return {
         argTokens,
         retToken,
@@ -86,6 +107,19 @@ function parseSig(sig: string): ParsedSig {
 
 function makeFn(proc: number, sig: string, encoders: CodecMap, decoders: CodecMap): (...a: unknown[]) => unknown {
     const ps = parseSig(sig)
+    // 按值位的能力校验前移到绑定期（模块加载即炸，不留到首个调用）：布局缺位 / 非结构
+    // 布局（无 size）/ 退化 size 都是签名层面的错误，报错指向具体位与可用布局清单。
+    for (const t of ps.argTokens) {
+        if (!isCValToken(t)) continue
+        const name = valName(t)
+        const codec = valCodec(name, encoders)
+        if (!codec || typeof codec.encode !== 'function')
+            throw new Error(`ffi-bind: ${sig}: by-value position <${name}> has no registered layout ` +
+                `(available: ${Object.keys(encoders).join(', ') || 'none'})`)
+        if (typeof codec.size !== 'number' || codec.size < 1)
+            throw new Error(`ffi-bind: ${sig}: by-value position <${name}> requires a struct ` +
+                `layout with size >= 1 (got ${codec.size}; non-struct codecs expose no size)`)
+    }
     return (...a: unknown[]) => callPacked(proc, ps, a, encoders, decoders)
 }
 
@@ -104,13 +138,34 @@ function callPacked(proc: number, { argTokens, retToken, sig }: ParsedSig, args:
     const is64 = os.arch === 'x64'
 
     const getWidth = (t: C_BasicType_Token_No_Void, is64: boolean): number => {
+        // 按值形由 widthOf 分派（槽宽依赖布局 size），此处只认标量/指针档；守卫同时
+        // 收窄类型（IA32_ARG_SIZE 索引不认 val 形）。
+        if (isCValToken(t))
+            throw new Error(`ffi-bind: getWidth: by-value token "${t}" (dispatched by widthOf)`)
         if (is64) return 8
         if (isCPtrToken(t)) return PTR_SIZE
         return IA32_ARG_SIZE[t]
     }
 
+    // 按值位的槽宽：x64 恒 8 字节（尺寸 ∈{1,2,4,8} 按「同尺寸整数」进槽，其余尺寸进
+    // 槽的是指向临时副本的指针）；ia32 = ALIGN(size, 4) —— 结构字节原样压栈，无按
+    // 引用一说（libffi ffi.c 的 ia32 分支同规则，桩只做一次 rep movsb 搬运）。
+    const widthOf = (t: C_BasicType_Token_No_Void): number => {
+        if (isCValToken(t)) {
+            if (is64) return 8
+            const layout = valCodec(valName(t), encoders)
+            // 绑定期 makeFn 已校验（存在 + size >= 1）；此处兜动态/无类型路径。
+            if (!layout)
+                throw new Error(`ffi-bind: <${valName(t)}> by-value position has no registered layout`)
+            const size = layout.size
+            return size % 4 === 0 ? size : size + 4 - (size % 4)
+        }
+        // val 形已在上分支 return，此处恒为标量/指针形（类型层收窄，见 C_BasicType_Token）。
+        return getWidth(t, is64)
+    }
+
     let total = 0
-    for (const t of argTokens) total += getWidth(t, is64)
+    for (const t of argTokens) total += widthOf(t)
     if (is64 && argTokens.length < X64_MIN_SLOTS) total = X64_MIN_SLOTS * 8
 
     const argFrame = new ArrayBuffer(total)
@@ -162,10 +217,39 @@ function callPacked(proc: number, { argTokens, retToken, sig }: ParsedSig, args:
                 writeSlot(dv, off, { k: 'ptr', v: p })
             }
         }
+        else if (isCValToken(argToken)) {
+            // 按值位：对象直传（值域由注册布局推导），无地址词汇 —— NULL / number
+            // 进这里是必然错位（引擎按值语义，指针位请写 <N>ptr），fail-loud。
+            const name = valName(argToken)
+            const codec = valCodec(name, encoders)
+            if (!codec)
+                throw new Error(`ffi-bind: ${sig}: arg#${i + 1} <${name}> by-value position ` +
+                    `has no registered layout`)
+            if (arg === null || arg === undefined)
+                throw new Error(`ffi-bind: <${name}> value position got ${String(arg)}; ` +
+                    `pass a struct object (use <${name}>ptr to pass a pointer)`)
+            const size = codec.size
+            if (!is64 || (size <= 8 && (size & (size - 1)) === 0)) {
+                // 字节直接落槽：ia32 结构按值压栈（任意尺寸）；x64 尺寸 ∈{1,2,4,8}
+                // 按「同尺寸整数」传值——字节在 8 字节槽低位，callee 右对齐读。
+                // argFrame 构造时即零填充，槽高位为 0（callee 忽略高位，无歧义）。
+                codec.encode(arg, argFrame, off)
+            } else {
+                // x64 其余尺寸（>8 或非 2 的幂）按引用：槽放指针，指向 caller 分配的
+                // 16 字节对齐临时副本（MS x64 官方规则：单参数永不跨多个寄存器；对齐
+                // 偏移自算，不依赖分配器的对齐保证）。held 保持引用直到调用返回。
+                const buf = new ArrayBuffer(size + 15)
+                const base = ffi.bufferPtr(buf)
+                const pad = (16 - (base % 16)) % 16
+                codec.encode(arg, buf, pad)
+                held.push(buf)
+                writeSlot(dv, off, { k: 'ptr', v: base + pad })
+            }
+        }
         else {
             writeSlot(dv, off, { k: argToken, v: arg })
         }
-        off += getWidth(argToken, is64)
+        off += widthOf(argToken)
     }
 
     const retBuf = new ArrayBuffer(8)
@@ -410,7 +494,17 @@ function dispatchClosure(
 export function closure<S extends string>(sig: S, fn: BindFn<S, {}, {}>,
     opts?: { stdcall?: boolean }): { ptr: number; dispose(): void } {
     const { argTokens, retToken } = parseSig(sig)
-    const argSpecs = argTokens.map(t => ({ tok: cTokenToType(t), nonnull: t.endsWith('!') }))
+    // 按值位仅支持 bind 的入参方向：closure 的 C→JS 方向由 quickjs-ffi-closure-*.S
+    // 按固定槽宽读参数（x64 固定 8 字节槽、ia32 IA32_ARG_SIZE 表），不区分「槽内是
+    // 结构字节还是指向临时副本的指针」——该分派未实现，创建期 fail-fast。
+    for (const t of argTokens)
+        if (isCValToken(t))
+            throw new Error(`ffi-bind: closure signature cannot take a by-value struct ` +
+                `(<${valName(t)}>); by-value is bind-only — the C→JS direction has no ` +
+                `struct slot decoding (pass a pointer and decode on the JS side)`)
+    // 上方已拒 '<N>' 按值形：此处 tok 恒为标量/指针档（cTokenToType 对 val 形原样返回，
+    // 但那条路径不可达——IA32_ARG_SIZE 索引与 dispatchClosure 只认标量档）。
+    const argSpecs = argTokens.map(t => ({ tok: cTokenToType(t) as C_BasicType_No_Void, nonnull: t.endsWith('!') }))
     const retSpec = { tok: cTokenToType(retToken), nonnull: retToken.endsWith('!') }
     const is64 = os.arch === 'x64'
     const stackCapture = argSpecs.reduce((s, x) => s + IA32_ARG_SIZE[x.tok], 0)

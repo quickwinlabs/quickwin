@@ -27,6 +27,18 @@ export const SIZE = /* @__PURE__ */ struct('SIZE', {
     cy: 'i32',
 })
 
+/** 混合函数（4B，双架构同布局）：AlphaBlend 末参**按值**传（bind 的按值位
+ *  `<BLENDFUNCTION>`，非 `<BLENDFUNCTION>ptr`）——4B POD 聚合体在 x64 走位置寄存器、
+ *  ia32 压 4 字节，字段序须与 windows.h 逐字节一致。BlendOp 仅 AC_SRC_OVER(0)、
+ *  BlendFlags 恒 0（MSDN）；AC_SRC_ALPHA(1) 是 AlphaFormat 的值（源带 premultiplied
+ *  alpha 通道时置位）。纯入参位注册 encoder（对象直传，缺省字段跳过的零值合法）。 */
+export const BLENDFUNCTION = /* @__PURE__ */ struct('BLENDFUNCTION', {
+    BlendOp: 'u8',
+    BlendFlags: 'u8',
+    SourceConstantAlpha: 'u8',
+    AlphaFormat: 'u8',
+})
+
 /** 滚动参数（28B）：cbSize 必须 = SCROLLINFO.size（结构自描述是 Win32 要求，缺省跳过帮不了）；
  *  fMask = SIF_* 决定 Set 写哪些项 / Get 读哪些项 */
 export const SCROLLINFO = /* @__PURE__ */ struct('SCROLLINFO', {

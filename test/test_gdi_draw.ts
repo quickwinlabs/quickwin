@@ -12,7 +12,7 @@ import {
     SetPolyFillMode, SetROP2,
     SetStretchBltMode, SetTextAlign, SetTextColor, TextOut, StretchBlt, StretchDIBits,
 } from '../lib/windows/gdi32.js'
-import { TransparentBlt } from '../lib/windows/msimg32.js'
+import { AlphaBlend, TransparentBlt } from '../lib/windows/msimg32.js'
 import { BITMAPINFOHEADER, POINT, SIZE, TEXTMETRICW } from '../lib/windows/structs.js'
 
 // 像素比较统一用 COLORREF 形（0x00BBGGRR）—— 与画图入参同形，读回直接对比。
@@ -559,6 +559,47 @@ export const suite = {
         DeleteObject(trBlue)
         DeleteObject(trBmp)
         DeleteDC(trTmp)
+
+        t.section('AlphaBlend: constant alpha (by-value BLENDFUNCTION)')
+        // BLENDFUNCTION 按值传（<BLENDFUNCTION> 位，4B 聚合体）——错绑成 <N>ptr 会把
+        // 地址当 4 字节位图参数，GDI 读到垃圾，本段必然失败（真实消费者回归网）。
+        clearWhite()
+        const abTmp = CreateCompatibleDC(mem)
+        if (!abTmp) { t.checkTrue('CreateCompatibleDC (ab src)', false); return }
+        const abBmp = CreateCompatibleBitmap(mem, 40, 16)
+        const abOldB = SelectObject(abTmp, abBmp)
+        const abGreen = CreateSolidBrush(GREEN)
+        SelectObject(abTmp, abGreen)
+        PatBlt(abTmp, 0, 0, 40, 16, gui.RasterOp.PATCOPY)          // 源 = 纯绿（不透明）
+        // 完全覆盖：SourceConstantAlpha=255、无调制（BlendFlags=0）、BlendOp=AC_SRC_OVER(0)
+        t.checkTrue('AlphaBlend full alpha ok',
+            AlphaBlend(mem, 20, 20, 40, 16, abTmp, 0, 0, 40, 16,
+                { BlendOp: 0, BlendFlags: 0, SourceConstantAlpha: 255, AlphaFormat: 0 }) !== 0)
+        readPx()
+        t.check('dest = src green (alpha 255 exact)', GREEN, px(25, 25))
+        // 半透明 ca=128：GDI 实测（AlphaFormat=0）按 premultiplied 公式
+        // out = src + dst*(255-ca)/255 —— 源值保留、目标衰减（MS Answers 已知行为，
+        // 与文档的非预乘公式不同）：R/B = 255*127/255 ≈ 127、G = 255，±3 盖取整差异
+        t.checkTrue('AlphaBlend half alpha ok',
+            AlphaBlend(mem, 80, 20, 40, 16, abTmp, 0, 0, 40, 16,
+                { BlendOp: 0, BlendFlags: 0, SourceConstantAlpha: 128, AlphaFormat: 0 }) !== 0)
+        readPx()
+        const abHalf = px(85, 25)
+        const abR = abHalf & 0xff, abG = (abHalf >> 8) & 0xff, abB = (abHalf >> 16) & 0xff
+        t.checkTrue(`half-alpha R ≈127 (${abR})`, Math.abs(abR - 127) <= 3)
+        t.checkTrue(`half-alpha G ≈255 (src kept) (${abG})`, Math.abs(abG - 255) <= 3)
+        t.checkTrue(`half-alpha B ≈127 (${abB})`, Math.abs(abB - 127) <= 3)
+        // ca=0：文档「image is transparent」→ 目标不变；premultiplied 公式下
+        // saturate(src+dst) 也落在白 —— 两种解读殊途同归，锚点确定
+        t.checkTrue('AlphaBlend zero alpha ok',
+            AlphaBlend(mem, 140, 20, 40, 16, abTmp, 0, 0, 40, 16,
+                { BlendOp: 0, BlendFlags: 0, SourceConstantAlpha: 0, AlphaFormat: 0 }) !== 0)
+        readPx()
+        t.check('dest unchanged (alpha 0)', WHITE, px(145, 25))
+        SelectObject(abTmp, abOldB)
+        DeleteObject(abGreen)
+        DeleteObject(abBmp)
+        DeleteDC(abTmp)
 
         t.section('TextOut: transparent background + text color')
         clearWhite()

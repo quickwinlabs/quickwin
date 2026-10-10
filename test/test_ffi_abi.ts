@@ -1,7 +1,10 @@
 import * as std from 'std'
 import * as win from 'win'
+import * as os from 'os'
 import { bind } from '../lib/ffi/bind.js'
+import { struct } from '../lib/ffi/struct.js'
 import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { POINT, RECT } from '../lib/windows/structs.js'
 import { Tester } from './test_helper.js'
 
 // ABI 边界回归：覆盖 REMOVE_LIBFFI_PLAN.md §4.2 的维度，全部用真实 Win32/CRT
@@ -214,5 +217,58 @@ export const suite = {
             t.checkTrue('GetDC(undefined) rejected', errUndef.includes('undefined'))
             t.check('IsWindow(NULL) = FALSE', 0, isWindow(NULL))
         } else t.skipCase('GetDC/IsWindow missing')
+
+        t.section('by-value struct arg: <POINT> (slot value, not a pointer)')
+        if (has(usr, 'PtInRect') && has(usr, 'WindowFromPoint') && has(usr, 'ChildWindowFromPointEx')) {
+            // PtInRect(rect, pt)：RECT 按指针、POINT 按值（x64 位置寄存器 / ia32 压 8 字节上栈）。
+            // 非对称矩形 {0,0,10,100} —— 若 x/y 在打包中交换，(99,5) 与 (5,99) 的判定会互换，
+            // 本段即可抓出「槽内是地址而非值」「字段顺序/位置错」两类 ABI 错误。
+            const ptInRect = bind('user32.dll', 'PtInRect', '<RECT>ptr <POINT> -> i32', { RECT, POINT })
+            const rectOut = RECT.alloc()
+            const rdv = new DataView(rectOut)
+            rdv.setInt32(8, 10, true)     // right（left/top = 0，零填充）
+            rdv.setInt32(12, 100, true)   // bottom
+            t.check('PtInRect inside (5,5)', 1, ptInRect(rectOut.ptr, { x: 5, y: 5 }))
+            t.check('PtInRect inside (5,99)', 1, ptInRect(rectOut.ptr, { x: 5, y: 99 }))
+            t.check('PtInRect outside (99,5) — swap-sensitive', 0, ptInRect(rectOut.ptr, { x: 99, y: 5 }))
+            t.check('PtInRect outside x=10 (right edge exclusive)', 0, ptInRect(rectOut.ptr, { x: 10, y: 5 }))
+
+            // 位置 1（首参即结构）：WindowFromPoint(POINT) → 屏内必非 NULL
+            const getSystemMetrics = bind('user32.dll', 'GetSystemMetrics', 'i32 -> i32')
+            const cx = getSystemMetrics(0)      // SM_CXSCREEN
+            const cy = getSystemMetrics(1)      // SM_CYSCREEN
+            const windowFromPoint = bind('user32.dll', 'WindowFromPoint', '<POINT> -> <>ptr', { POINT })
+            t.checkTrue('WindowFromPoint(screen center) non-null', !!windowFromPoint({ x: cx >> 1, y: cy >> 1 }))
+
+            // 位置 2 + 其后参数推移（POINT 之后还有 UINT flags —— 槽宽算错会把 flags 读错位）
+            const childFromPointEx = bind('user32.dll', 'ChildWindowFromPointEx', '<>ptr <POINT> u32 -> <>ptr', { POINT })
+            const getDesktopWindow = bind('user32.dll', 'GetDesktopWindow', ' -> <>ptr')
+            const desk = getDesktopWindow()
+            t.checkTrue('ChildWindowFromPointEx inside → non-null', !!childFromPointEx(desk, { x: 1, y: 1 }, 0 /* CWP_ALL */))
+            t.check('ChildWindowFromPointEx outside → NULL', 0, childFromPointEx(desk, { x: cx + 100, y: cy + 100 }, 0 /* CWP_ALL */))
+        } else t.skipCase('PtInRect/WindowFromPoint/ChildWindowFromPointEx missing')
+
+        t.section('by-value struct >8B / odd size: x64 by-reference (caller temp)')
+        if (os.arch === 'x64' && has(crt, 'memcpy')) {
+            // MS x64：size ∉ {1,2,4,8} 的聚合体按引用传 —— 槽内是指向 caller 分配的
+            // 16 字节对齐临时副本的指针（单参数永不跨寄存器）。memcpy 第 2 参语义即
+            // 「源地址」，借它白盒验证整条 by-ref 路径：若槽内不是合法副本地址、或
+            // 字节未写进副本，拷回内容必错。ia32 按值恒把字节压栈（callee 读地址会
+            // 拿到垃圾值），故本段 x64 限定；ia32 侧由上面真实 API 段覆盖栈上传值。
+            const BYVAL12 = struct('BYVAL12', { a: 'u32', b: 'u32', c: 'u32' })
+            const BYVAL3 = struct('BYVAL3', { p: 'u8', q: 'u8', r: 'u8' })
+            const cp12 = bind('msvcrt.dll', 'memcpy', '<BYTE>ptr <BYVAL12> u32 -> <>ptr', { BYVAL12 })
+            const cp3 = bind('msvcrt.dll', 'memcpy', '<BYTE>ptr <BYVAL3> u32 -> <>ptr', { BYVAL3 })
+            const d12 = new PtrArrayBuffer(12)
+            cp12(d12, { a: 1, b: 0x11223344, c: 0x7fffffff }, 12)
+            const dv12 = new DataView(d12)
+            t.check('12B (>8B) by-ref word 0', 1, dv12.getUint32(0, true))
+            t.check('12B (>8B) by-ref word 1', 0x11223344, dv12.getUint32(4, true))
+            t.check('12B (>8B) by-ref word 2', 0x7fffffff, dv12.getUint32(8, true))
+            const d3 = new PtrArrayBuffer(3)
+            cp3(d3, { p: 0xaa, q: 0xbb, r: 0xcc }, 3)
+            t.check('3B (odd size) by-ref bytes', 'AA,BB,CC',
+                Array.from(new Uint8Array(d3)).map(x => x.toString(16).toUpperCase()).join(','))
+        } else t.skipCase('by-ref path: x64-only whitebox (ia32 pushes value bytes verbatim)')
     },
 }
