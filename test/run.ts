@@ -31,6 +31,7 @@ const suiteDefs = [
     { name: 'ffi-bind',          file: './test_ffi_bind.js',         tags: [] },
     { name: 'ffi-struct',        file: './test_ffi_struct.js',       tags: [] },
     { name: 'ffi-struct-layout', file: './test_ffi_struct_layout.js', tags: [] },
+    { name: 'ffi-array',         file: './test_ffi_array.js',         tags: [] },
     { name: 'ffi-abi',           file: './test_ffi_abi.js',          tags: [] },
     { name: 'ffi-user32',        file: './test_ffi_user32.js',       tags: [] },
     { name: 'ffi-windows',       file: './test_ffi_windows.js',      tags: [] },

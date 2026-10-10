@@ -221,6 +221,22 @@ export type StructDef<T extends { '#': 'struct' | 'union' }, N extends string = 
     // 顶层再收 offset 只会掩盖"写错位置"且返回值 .ptr 对不上写入点；嵌套偏移由布局字段
     // （doEncode 的 base）承担。
     encode(v: EncodeIn<T>, buf: PtrArrayBuffer<any>): PtrArrayBuffer<any>
+    /** '<N*>ptr' 数组位的物化：n（≥1）个元素按布局 size 步长紧密排列（stride = size，
+     *  已含尾部对齐 padding），返回带品牌 .ptr 的 PAB。类型层收非空元组（[] 字面量直接
+     *  编译错），运行时另对 [] / 非数组 throw —— 双保险同 '<N>ptr!' 先例（类型 Ptr<N> +
+     *  运行时 0 throw）：类型拦字面量，运行时拦动态绕过（as 或动态数组）。bind 引擎把
+     *  空数组在分派前确定性编为 NULL(0)，不进本方法；任何路径都不产出 PAB(0)（其 .ptr
+     *  是"非 0 的 1 字节堆指针"，会骗过 C 的 NULL 防御）。 */
+    encodeArray(els: readonly [EncodeIn<T>, ...EncodeIn<T>[]]): PtrArrayBuffer<N>
+    /**读回数组位：n = byteLength / size —— C 的 T* 不带长度，buffer 自带，单参数自证
+     *  （没有外部 count，也就没有写错 count → 越界读的入口）。只收 PAB：品牌
+     *  PtrArrayBuffer<N> 类型层拦错布局解码（stride 推进下 RECT 缓冲 × POINT 步长是
+     *  静默乱读）、与 encodeArray 出口闭环（"裸 ArrayBuffer 出不了 codec"）；decode 的
+     *  number 双态是返回位分派专用，decodeArray 无引擎分派点、不需要。byteLength % size
+     *  ≠ 0 → throw（非整除 = 缓冲不是按本布局的元素序列摆的）；0 字节 → [] —— 读不产出
+     *  任何东西，读 0 个元素真空安全（与 encodeArray 禁空的 PAB(0) 理由刻意不对称）。
+     *  '!' 字段未填走 doDecode 既有 0 断言（同 decode(alloc()) 的"C 没填"语义）。 */
+    decodeArray(p: PtrArrayBuffer<N>): ShapeOfC<T>[]
     offsetOf(name: string): number
 }
 
@@ -615,6 +631,29 @@ function createStruct(t: C_Struct | C_Union): any {
             doEncode(new DataView(out), 0, fields, v)
             return out
         }) as StructDef<any, any>['encode'],
+        encodeArray: ((els: any) => {
+            // 合约：只收 n ≥ 1 的数组（bind 引擎已在分派前把空数组编为 NULL）——此处
+            // 兜底动态直调路径，fail-loud 而非静默造 PAB(0)。stride = size（布局已含
+            // 尾部对齐 padding），元素间无缝紧密排列，与 C 的 T apt[] 完全同构。
+            if (!Array.isArray(els) || els.length === 0)
+                throw new Error(`ffi-struct: encodeArray(els) requires a non-empty array ` +
+                    `(bind's <N*>ptr position encodes an empty array as NULL before reaching here)`)
+            const out = new PtrArrayBuffer(size * els.length)
+            const dv = new DataView(out)
+            for (let i = 0; i < els.length; i++) doEncode(dv, i * size, fields, els[i])
+            return out
+        }) as StructDef<any, any>['encodeArray'],
+        decodeArray: ((p: ArrayBuffer) => {
+            // 非整除 = 缓冲不是按本布局元素序列摆的（错尺寸/错布局）—— 静默截断读是
+            // 乱数据的温床，fail-loud；size=0 的退化布局同样落此 throw（0 % 0 = NaN）。
+            const n = p.byteLength
+            if (n % size !== 0)
+                throw new Error(`ffi-struct: decodeArray: byteLength ${n} is not a multiple of size ${size}`)
+            const dv = new DataView(p)
+            const out: unknown[] = []
+            for (let i = 0; i < n / size; i++) out.push(doDecode(dv, i * size, fields))
+            return out
+        }) as StructDef<any, any>['decodeArray'],
         offsetOf: (name: string) => {
             for (const f of fields) if (f.name === name) return f.offset
             throw new Error(`ffi-struct: no field "${name}"`)

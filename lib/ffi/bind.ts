@@ -20,14 +20,22 @@ type Codec<N extends string = string, V = unknown, T = unknown> = {
     // encode 顶层不收 offset（与 decode 对齐）：PAB 的 .ptr 恒指向起点，写入位置由
     // buf 自身表达；嵌套偏移由布局字段承担。
     encode?(v: V, buf?: PtrArrayBuffer<any>): PtrArrayBuffer<any>
+    // '<N*>ptr' 数组位的物化能力（元素形 = encode 的 V）：n 个元素连续排列，返回 PAB，
+    // .ptr 即首元素地址。合约 n ≥ 1 —— 类型层收非空元组（[] 字面量编译错）；空数组由
+    // callPacked 在分派前确定性编为 NULL(0)（0 元素 = 缓冲不存在 = C 的 NULL 信号；
+    // PAB(0).ptr 是"非 0 的 1 字节堆指针"，会骗过 C 的 NULL 防御检查），不进本方法。
+    // 绑定时按 '<N*>ptr' 位校验本能力存在。
+    encodeArray?(els: readonly [V, ...V[]]): PtrArrayBuffer<any>
     decode?(p: Ptr<N>| ArrayBuffer): V
     alloc?(a: T): PtrArrayBuffer<N>
 }
 // 约束层三件与 StructDef 形状一致，def 可整体透传；提取层按键存在性走（见下）。
-// 类型层硬约束：encode/alloc 只返回 PtrArrayBuffer——裸 ArrayBuffer 出不了 codec
-// （callPacked 参数位统一取 .ptr，调用方拿到的也是 .ptr，.buf 词汇从 codec 出口消失）。
+// 类型层硬约束：encode/alloc/encodeArray 只返回 PtrArrayBuffer —— 裸 ArrayBuffer 出不了
+// codec（callPacked 参数位统一取 .ptr，调用方拿到的也是 .ptr，.buf 词汇从 codec 出口消失）；
+// NULL（0）是引擎层词汇（number 直通世界），不作为 codec 出口形态。
 export type CodecMap = Record<string, {
     encode?(v: any, buf?: PtrArrayBuffer<any>): PtrArrayBuffer<any>
+    encodeArray?(els: readonly [any, ...any[]]): PtrArrayBuffer<any>
     decode?(p: any): any
     alloc?(a: any): PtrArrayBuffer<any>
 }>
@@ -75,15 +83,35 @@ function parseSig(sig: string): ParsedSig {
 
     // 裸 'ptr'/非法 token 由类型层拦截（C_BasicType_Token 已 Exclude 'ptr'、拼错 token 塌成 never）；
     // 运行时再比较只会得到 TS2367「两类型无重叠」——类型已表达的约束不重复校验。
+    const retToken = normToken(parts[1]!)
+    // 数组字形只在入参位（'<N*>ptr' 收 JS 数组、编码成连续缓冲喂给 C）；返回位 decode
+    // 恒从起点读，出数组的长度语义是另一个设计 —— fail-loud，类型层同塌 unknown。
+    if (retToken.includes('*'))
+        throw new Error(`ffi-bind: array token only allowed on argument positions (out-arrays unsupported): "${sig}"`)
     return {
         argTokens,
-        retToken: normToken(parts[1]!),
+        retToken,
         sig,
     }
 }
 
 function makeFn(proc: number, sig: string, encoders: CodecMap, decoders: CodecMap): (...a: unknown[]) => unknown {
     const ps = parseSig(sig)
+    // '<N*>ptr' 位的能力校验前移到绑定时（模块加载即炸，不留到首个调用）：布局缺位 /
+    // 布局缺 encodeArray 都是签名层面的错误，报错指向具体位与可用布局清单。
+    for (const t of ps.argTokens) {
+        // endsWith 尾判建立 '<N*>ptr' 形（TS 无法把 string 尾判收窄成模板类型，断言补上）；
+        // '!''@' 组合已被 normToken 拒，存活的 '*' 形只有裸 '<N*>ptr'。
+        if (!t.endsWith('*>ptr')) continue
+        const name = ptrName(t as `<${string}>ptr`)
+        const codec = encoders[name]
+        if (!codec)
+            throw new Error(`ffi-bind: ${sig}: array position <${name}*>ptr has no registered layout ` +
+                `(available: ${Object.keys(encoders).join(', ') || 'none'})`)
+        if (!codec.encodeArray)
+            throw new Error(`ffi-bind: ${sig}: layout "${name}" lacks encodeArray ` +
+                `(StructDef provides it; custom codecs must implement encodeArray to sit at <${name}*>ptr)`)
+    }
     return (...a: unknown[]) => callPacked(proc, ps, a, encoders, decoders)
 }
 
@@ -143,21 +171,49 @@ function callPacked(proc: number, { argTokens, retToken, sig }: ParsedSig, args:
                         ? `ffi-bind: <>ptr expects number (NULL | Ptr), got ${typeof arg}; use <BYTE>ptr with a PtrArrayBuffer (new PtrArrayBuffer(n)), or ffi.bufferPtr(buf) for an address`
                         : `ffi-bind: unknown layout "<${name}>ptr" (available: ${Object.keys(encoders).join(', ') || 'none'})`)
                 }
-                if (!codec.encode) {
-                    // codec 存在但只声明了 decode/alloc（只读出），入参位无序列化可用。
-                    throw new Error(`ffi-bind: <${name}>ptr has no encoder (out-only codec)`)
+                if (argToken.endsWith('*>ptr')) {
+                    // '<N*>ptr' 数组位（token 即契约：'*' 留在尾缀上随 token 执法）。合法
+                    // 输入 = 元素数组（encodeArray 物化连续缓冲）；裸对象/字符串等其余
+                    // 形态 fail-loud（单对象在 C 侧等价于按 count 越界读，绝不静默放行）。
+                    if (!Array.isArray(arg))
+                        throw new Error(`ffi-bind: ${sig}: arg#${i + 1} <${name}*>ptr expects an array of "${name}", got ${typeof arg}`)
+                    if (arg.length === 0) {
+                        // 空数组 = 0 元素 = 缓冲不存在 = NULL（C 的标准空位信号）——引擎
+                        // 在此单点确定性编 0，不实例化 PAB(0)（其 .ptr 是"非 0 的 1 字节
+                        // 堆指针"，会骗过 C 的 NULL 防御检查）。'*'+!' 组合已被 normToken
+                        // 禁，此处无 0 检查可言。
+                        writeSlot(dv, off, { k: 'ptr', v: 0 })
+                    } else {
+                        if (!codec.encodeArray)
+                            // 绑定时已校验（makeFn），此处兜底动态/无类型 codec 路径。
+                            throw new Error(`ffi-bind: ${sig}: <${name}*>ptr but layout "${name}" lacks encodeArray`)
+                        // 窄断言（经 unknown 二跳：数组→非空元组 TS2352 不让直转）：上方
+                        // length === 0 分支已运行时证明非空（元组收窄 TS 无法从 any[] 推出
+                        // —— microsoft/TypeScript#38000）。
+                        const arrBuf = codec.encodeArray(arg as unknown as readonly [any, ...any[]])
+                        held.push(arrBuf)
+                        const ap = (arrBuf as PtrArrayBuffer<any>).ptr
+                        if (typeof ap !== 'number')
+                            throw new Error('ffi-bind: codec.encodeArray must return a PtrArrayBuffer, got plain ArrayBuffer')
+                        writeSlot(dv, off, { k: 'ptr', v: ap })
+                    }
+                } else {
+                    if (!codec.encode) {
+                        // codec 存在但只声明了 decode/alloc（只读出），入参位无序列化可用。
+                        throw new Error(`ffi-bind: <${name}>ptr has no encoder (out-only codec)`)
+                    }
+                    const buf = codec.encode(arg)
+                    held.push(buf)
+                    // 类型层已保证 encode 返回 PtrArrayBuffer；这里再 fail-loud 兜一层
+                    // （动态传入的无类型 codec 仍可能违反），然后直接取 .ptr——不再重算。
+                    const p = (buf as PtrArrayBuffer<any>).ptr
+                    if (typeof p !== 'number')
+                        throw new Error('ffi-bind: codec.encode must return a PtrArrayBuffer, got plain ArrayBuffer')
+                    if (nonnull && p === 0)
+                        throw new Error(`ffi-bind: ${sig}: arg#${i + 1} <${name}>ptr! encode produced 0 ` +
+                            `(null pointer forbidden here)`)
+                    writeSlot(dv, off, { k: 'ptr', v: p })
                 }
-                const buf = codec.encode(arg)
-                held.push(buf)
-                // 类型层已保证 encode 返回 PtrArrayBuffer；这里再 fail-loud 兜一层
-                // （动态传入的无类型 codec 仍可能违反），然后直接取 .ptr——不再重算。
-                const p = (buf as PtrArrayBuffer<any>).ptr
-                if (typeof p !== 'number')
-                    throw new Error('ffi-bind: codec.encode must return a PtrArrayBuffer, got plain ArrayBuffer')
-                if (nonnull && p === 0)
-                    throw new Error(`ffi-bind: ${sig}: arg#${i + 1} <${name}>ptr! encode produced 0 ` +
-                        `(null pointer forbidden here)`)
-                writeSlot(dv, off, { k: 'ptr', v: p })
             }
         }
         else {
@@ -231,8 +287,9 @@ type BindFn<S extends string, E, D> =
  *  品牌指针逐字节读到 NUL（野指针无终止 4MiB 上限 fail-fast）、ArrayBuffer 直读到
  *  NUL 或末尾（out 参数未写 NUL 时按读满处理）；alloc 预分配返回带 .ptr 的
  *  PtrArrayBuffer（a = 字符数，缺省 256）。类型取必需形态——
- *  内建三件齐备，调用无需空断言。 */
-export const WCHAR: Required<Codec<'WCHAR', string, number>> = {
+ *  内建三件齐备，调用无需空断言。刻意 Pick 而非 Required<Codec>：新增可选能力位
+ *  （encodeArray——字符串数组无消费者）不被 Required 拉成必填。 */
+export const WCHAR: Required<Pick<Codec<'WCHAR', string, number>, 'encode' | 'decode' | 'alloc'>> = {
     encode: (v: string) => {
         // TextEncoder 没有 encodeInto：先编码再拷入带 .ptr 的 buffer（单次 memcpy，
         // 编码逻辑仍全局唯一——这行是全部 UTF-16 字符串编码的唯一实现）。
