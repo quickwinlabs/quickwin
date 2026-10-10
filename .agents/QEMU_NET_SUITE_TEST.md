@@ -47,7 +47,7 @@
   其余 net-websocket/net-event/http-server/http-import/fetch-cache/worker-http/worker-fetch 全 PASS。
   仅 ipv6 卡死。**注意** nohup + `&` 在 podman exec 下会随 shell 退出被回收，须用 `podman exec -d` 跑 run.sh。
 - 09:28 —— win7 run.bat 补 v6tov4 后 ipv6 suite 13/13 PASS；全量 run.js（含 ipv6）427/428，
-  唯一失败 ffi OOM（EnumPrintersW 后 GC=777MB）。根因：test_ffi.ts `decodeWideAtPtr` 读到
+  唯一失败 ffi OOM（EnumPrinters 后 GC=777MB）。根因：test_ffi.ts `decodeWideAtPtr` 读到
   PRINTER_INFO 结构的垃圾 WCHAR 指针时无限循环（`js_ffi_read_byte` 越界返回垃圾字节，遇不到 `\0`），
   chars 数组无限增长 → OOM。win7 有 2 台真实打印机触发（XP 无打印机走 skip），属 test 代码 bug 非运行时问题。
 
@@ -78,7 +78,7 @@
 | mupdf-wasm | PASS 7/7 | |
 | mupdf-twice | PASS 0/0 | 无 example.pdf |
 | mupdf-render | PASS 0/0 | 无 example.pdf |
-| ffi | **2/3 FAIL** | EnumPrintersW pcbNeeded=0（XP 无打印机），环境差异 |
+| ffi | **2/3 FAIL** | EnumPrinters pcbNeeded=0（XP 无打印机），环境差异 |
 | polyfill | PASS 58/58 | |
 | brotli | PASS 5/5 | |
 | worker | PASS 2/2 | 完整跑时不挂（单独跑 worker 时曾有退出挂起） |
@@ -168,4 +168,4 @@
   - ipv6 属 net 标签，CI 走 `-net` 时本身不跑，不影响 CI 全绿。
   - run.bat 的 portproxy 需涵盖 18923+18924（net-fetch https 依赖 18924），已改。可重启 VM 验证 run.bat 自动建全。
   - 若让 CI 全量跑（无 -net），需先解决 ipv6 卡死。**已解决**：run.bat 配 v6tov4（win7+XP 均已固化）。
-- **新失败项**：win7 全量时 ffi OOM（EnumPrintersW 打印循环读坏指针）。待修 test_ffi.ts（加读到长度上限保护）。
+- **新失败项**：win7 全量时 ffi OOM（EnumPrinters 打印循环读坏指针）。待修 test_ffi.ts（加读到长度上限保护）。

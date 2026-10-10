@@ -105,7 +105,7 @@ function openPdfFileDialog(): string | null {
         Flags: 0x1000 | 0x0800 | 0x0004,
     })
     ofn.__keep = [fileBuf, filterWide]
-    const ret = GetOpenFileName(ofn)
+    const ret = GetOpenFileName(ofn.ptr)
     return ret ? WCHAR.decode(fileBuf) : null
 }
 

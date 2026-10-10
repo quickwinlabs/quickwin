@@ -83,7 +83,7 @@ cmd 收到命令行 ──► UTF-16 内存（无损，CreateProcessW 直通）
        │                                │
    echo（输出方向）                  md/cd/rd（文件系统方向）
    │                                │
- 把内部文本按代码页编码写 stdout    直接调 CreateDirectoryW /
+ 把内部文本按代码页编码写 stdout    直接调 CreateDirectory /
  （阶段6，ACP=1252→中文变 ??）     SetCurrentDirectoryW（UTF-16，无损）
 ```
 

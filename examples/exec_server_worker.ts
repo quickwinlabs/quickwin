@@ -60,7 +60,7 @@ try {
 let IS_WIN11 = false
 try {
     const vi = OSVERSIONINFO_148.encode({ dwOSVersionInfoSize: OSVERSIONINFO_148.size })
-    if (RtlGetVersion(vi) === 0) {
+    if (RtlGetVersion(vi.ptr) === 0) {
         IS_WIN11 = OSVERSIONINFO_148.decode(vi).dwMajorVersion >= 10
     }
 } catch (ex) {
@@ -165,7 +165,7 @@ function bmpHeader(size: number, w: number, h: number): Uint8Array {
 }
 
 // 取 hdc 当前选中位图的全部像素，按 BMP 分块发出。返回 GetDIBits 是否全量成功。
-function emitDib(id: number, hdc: Ptr<'HDC'>, hbm: number, w: number, h: number): boolean {
+function emitDib(id: number, hdc: Ptr<'HDC'>, hbm: Ptr<'HGDIOBJ'>, w: number, h: number): boolean {
     const pxB = new PtrArrayBuffer(w * h * 4)
     const px = new Uint8Array(pxB)
     const bmi = BITMAPINFOHEADER.encode({

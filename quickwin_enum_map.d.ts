@@ -80,10 +80,22 @@ interface EnumMap {
     CreatePos: import('gui').CreatePos
     TtToolFlag: import('gui').TtToolFlag
     RasterOp: import('gui').RasterOp
+    PenStyle: import('gui').PenStyle
+    BackgroundMode: import('gui').BackgroundMode
+    StockObject: import('gui').StockObject
+    HatchStyle: import('gui').HatchStyle
+    PolyFillMode: import('gui').PolyFillMode
+    RasterMode: import('gui').RasterMode
+    TextAlign: import('gui').TextAlign
+    TextOutOptions: import('gui').TextOutOptions
+    ArcDirection: import('gui').ArcDirection
+    StretchBltMode: import('gui').StretchBltMode
     OpenFileNameFlag: import('gui').OpenFileNameFlag
     HKey: import('gui').HKey
     RegAccess: import('gui').RegAccess
     RegType: import('gui').RegType
+    FileCreation: import('gui').FileCreation
+    FileSeekFrom: import('gui').FileSeekFrom
     PrinterEnum: import('gui').PrinterEnum
     DeviceCap: import('gui').DeviceCap
     StaticMsg: import('gui').StaticMsg

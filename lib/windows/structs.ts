@@ -58,6 +58,86 @@ export const LOGFONTW = /* @__PURE__ */ struct('LOGFONTW', {
     lfFaceName: 'u16[32]@utf-16le',
 })
 
+/** TEXTMETRICW（60B = 11 LONG + 4 WCHAR + 5 BYTE 尾部补齐，双架构同布局）：
+ *  GetTextMetrics 纯出参位（不注册 encoder：TEXTMETRICW.alloc().ptr 进、decode 读回） */
+export const TEXTMETRICW = /* @__PURE__ */ struct('TEXTMETRICW', {
+    tmHeight: 'i32',
+    tmAscent: 'i32',
+    tmDescent: 'i32',
+    tmInternalLeading: 'i32',
+    tmExternalLeading: 'i32',
+    tmAveCharWidth: 'i32',
+    tmMaxCharWidth: 'i32',
+    tmWeight: 'i32',
+    tmOverhang: 'i32',
+    tmDigitizedAspectX: 'i32',
+    tmDigitizedAspectY: 'i32',
+    tmFirstChar: 'u16',
+    tmLastChar: 'u16',
+    tmDefaultChar: 'u16',
+    tmBreakChar: 'u16',
+    tmItalic: 'u8',
+    tmUnderlined: 'u8',
+    tmStruckOut: 'u8',
+    tmPitchAndFamily: 'u8',
+    tmCharSet: 'u8',
+})
+
+/** WIN32_FIND_DATAW（592B 双架构同布局 = 8 头字段 44B + WCHAR[260] + WCHAR[14]，
+ *  mingw wingdi.h 的 cAlternateFileName 为 WCHAR[14] 非 MSDN 的 CHAR[14]）：
+ *  FindFirstFile/FindNextFile 纯出参位（不注册 encoder：WIN32_FIND_DATAW.alloc().ptr
+ *  进、decode 读回）。FILETIME 是 align 4 的 8B 时间，以 u64 + pack 4 忠实布局
+ *  （u64 自然 align 8 须 pack 压到 4）；时间值为 1601 起的 100ns 单元（bigint） */
+export const WIN32_FIND_DATAW = /* @__PURE__ */ struct('WIN32_FIND_DATAW', {
+    dwFileAttributes: 'u32',
+    ftCreationTime: 'u64',
+    ftLastAccessTime: 'u64',
+    ftLastWriteTime: 'u64',
+    nFileSizeHigh: 'u32',
+    nFileSizeLow: 'u32',
+    dwReserved0: 'u32',
+    dwReserved1: 'u32',
+    cFileName: 'u16[260]@utf-16le',
+    cAlternateFileName: 'u16[14]@utf-16le',
+}, { pack: 4 })
+
+/** DOC_INFO_1W（3 指针随位宽：x64 24B / ia32 12B）：StartDocPrinter 纯入参位
+ *  （注册 encoder：{ pDocName: WCHAR.encode(s).ptr, ... } 对象直传——指针字段收裸
+ *  地址 number，字符串缓冲自行 WCHAR.encode 分配并保持引用） */
+export const DOC_INFO_1W = /* @__PURE__ */ struct('DOC_INFO_1W', {
+    pDocName: '<>ptr',
+    pOutputFile: '<>ptr',
+    pDatatype: '<>ptr',
+})
+
+/** PRINTER_INFO_2W（13 指针 + 8 DWORD：x64 136B / ia32 84B，双架构已由 test_ffi raw 实测）：
+ *  EnumPrinters(Level=2) 出参数组元素。指针字段 decode 出地址 number，字符串须
+ *  readPtr + 逐字宽读跟进；数组 = 单缓冲按元素遍历（stride = .size，元素间无空洞）。
+ *  纯出参不注册 encoder */
+export const PRINTER_INFO_2W = /* @__PURE__ */ struct('PRINTER_INFO_2W', {
+    pServerName: '<>ptr',
+    pPrinterName: '<>ptr',
+    pShareName: '<>ptr',
+    pPortName: '<>ptr',
+    pDriverName: '<>ptr',
+    pComment: '<>ptr',
+    pLocation: '<>ptr',
+    pDevMode: '<>ptr',
+    pSepFile: '<>ptr',
+    pPrintProcessor: '<>ptr',
+    pDatatype: '<>ptr',
+    pParameters: '<>ptr',
+    pSecurityDescriptor: '<>ptr',
+    Attributes: 'u32',
+    Priority: 'u32',
+    DefaultPriority: 'u32',
+    StartTime: 'u32',
+    UntilTime: 'u32',
+    Status: 'u32',
+    cJobs: 'u32',
+    AveragePPM: 'u32',
+})
+
 /** 进程启动信息（CreateProcessW 纯入参位）：指针字段随进程位宽（x86 68B / x64 104B，struct 按 os.arch 推，
  *  os.arch 是编译期进程指针宽度，WOW64 下 32 位进程得 ia32 布局）。cb 必须 = STARTUPINFOW.size
  *  （结构自描述是 Win32 要求）；dwFlags 含 STARTF_USESTDHANDLES(0x100) 时才读 hStd* */
@@ -419,4 +499,56 @@ export const OSVERSIONINFO_148 = /* @__PURE__ */ struct('OSVERSIONINFO_148', {
     dwBuildNumber: 'u32',
     dwPlatformId: 'u32',
     szCSDVersion: 'u8[128]',
+})
+
+// ── 进程快照 / 内存统计（toolhelp + psapi，布局来源官方 tlhelp32.h / psapi.h）────────
+
+/** PROCESSENTRY32W（Process32First/Next 就地迭代位；x86 556B / x64 564B——ULONG_PTR
+ *  th32DefaultHeapID 随位宽，struct 按 os.arch 推）：调用前须把 offset 0 的 dwSize 预写
+ *  成 size（MSDN：不初始化 dwSize 则 Process32First 失败）——alloc() 后
+ *  new Uint32Array(buf)[0] = PROCESSENTRY32W.size 一次；First/Next 迭代间复用同一 buf
+ *  （API 只改内容不改 dwSize），每轮 N.decode(buf) 读回 */
+export const PROCESSENTRY32W = /* @__PURE__ */ struct('PROCESSENTRY32W', {
+    dwSize: 'u32',
+    cntUsage: 'u32',
+    th32ProcessID: 'u32',
+    th32DefaultHeapID: '<>ptr',
+    th32ModuleID: 'u32',
+    cntThreads: 'u32',
+    th32ParentProcessID: 'u32',
+    pcPriClassBase: 'i32',
+    dwFlags: 'u32',
+    szExeFile: 'u16[260]@utf-16le',
+})
+
+/** MODULEENTRY32W（Module32First/Next 就地迭代位；x86 1072B / x64 1088B——BYTE* +
+ *  HMODULE 随位宽）。dwSize 预写同 PROCESSENTRY32W；modBaseAddr/hModule 仅在
+ *  th32ProcessID 的进程上下文有效；szModule 定长 256 = MAX_MODULE_NAME32+1 */
+export const MODULEENTRY32W = /* @__PURE__ */ struct('MODULEENTRY32W', {
+    dwSize: 'u32',
+    th32ModuleID: 'u32',
+    th32ProcessID: 'u32',
+    GlblcntUsage: 'u32',
+    ProccntUsage: 'u32',
+    modBaseAddr: '<>ptr',
+    modBaseSize: 'u32',
+    hModule: '<HMODULE>ptr',
+    szModule: 'u16[256]@utf-16le',
+    szExePath: 'u16[260]@utf-16le',
+})
+
+/** PROCESS_MEMORY_COUNTERS（GetProcessMemoryInfo 出参位；x86 40B / x64 72B）：官方 psapi.h
+ *  为 cb + PageFaultCount 后接 8×SIZE_T——SIZE_T 随位宽（非全 DWORD），struct 按 os.arch 推。
+ *  调用前 offset 0 的 cb 预写成 size（new Uint32Array(buf)[0] = N.size），实参 u32 cb 同传 size */
+export const PROCESS_MEMORY_COUNTERS = /* @__PURE__ */ struct('PROCESS_MEMORY_COUNTERS', {
+    cb: 'u32',
+    PageFaultCount: 'u32',
+    PeakWorkingSetSize: '<>ptr',
+    WorkingSetSize: '<>ptr',
+    QuotaPeakPagedPoolUsage: '<>ptr',
+    QuotaPagedPoolUsage: '<>ptr',
+    QuotaPeakNonPagedPoolUsage: '<>ptr',
+    QuotaNonPagedPoolUsage: '<>ptr',
+    PagefileUsage: '<>ptr',
+    PeakPagefileUsage: '<>ptr',
 })

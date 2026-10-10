@@ -32,7 +32,7 @@ function openFileDialog(
     Flags: flags,
   })
 
-  const ret = GetOpenFileName(ofn)
+  const ret = GetOpenFileName(ofn.ptr)
   if (!ret) return null
 
   if (!multiple) {
@@ -55,7 +55,7 @@ function openFolderDialog(owner: gui.HWND, title: string | undefined): string | 
     ulFlags: 0x00000041,
   })
 
-  const pidl = SHBrowseForFolder(bi)
+  const pidl = SHBrowseForFolder(bi.ptr)
   if (!pidl) return null
 
   const pathBuf = WCHAR.alloc(260)

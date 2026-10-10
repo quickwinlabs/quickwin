@@ -1,4 +1,4 @@
-import type { Ptr } from './ffi/ctype.js'
+import { NULL, type Ptr } from './ffi/ctype.js'
 import * as gui from 'gui'
 import { DrawText, GetDC, ReleaseDC } from './windows/user32.js'
 import { SelectObject } from './windows/gdi32.js'
@@ -24,8 +24,9 @@ export function getButtonIdealSize(hwnd: gui.HWND): { width: number; height: num
 export function measureTextForHwnd(hwnd: gui.HWND, text: string): { width: number; height: number } {
     const hdc = GetDC(hwnd)
     if (!hdc) return { width: 0, height: 0 }
-    const hFont = gui.SendMessage(hwnd, gui.WmMsg.GETFONT, 0, 0)
-    const oldFont = hFont ? SelectObject(hdc, hFont) : 0
+    // SendMessage 返回 LRESULT 裸数；GETFONT 语义为 HFONT——断言进 GDI 对象品牌链
+    const hFont = gui.SendMessage(hwnd, gui.WmMsg.GETFONT, 0, 0) as Ptr<'HGDIOBJ'>
+    const oldFont = hFont ? SelectObject(hdc, hFont) : NULL
     const result = measureText(hdc, text, 0)
     if (hFont) SelectObject(hdc, oldFont)
     ReleaseDC(hwnd, hdc)

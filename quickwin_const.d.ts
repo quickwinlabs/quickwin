@@ -676,6 +676,125 @@ declare module "gui" {
         SRCCOPY = 13369376, // 0xCC0020
         WHITENESS = 16711778, // 0xFF0062
         BLACKNESS = 66, // 0x42
+        NOTSRCCOPY = 3342344, // 0x330008
+        NOTSRCERASE = 1114278, // 0x1100A6
+        SRCERASE = 4457256, // 0x440328
+        SRCAND = 8913094, // 0x8800C6
+        SRCINVERT = 6684742, // 0x660046
+        SRCPAINT = 15597702, // 0xEE0086
+        MERGECOPY = 12583114, // 0xC000CA
+        MERGEPAINT = 12255782, // 0xBB0226
+        PATCOPY = 15728673, // 0xF00021
+        PATINVERT = 5898313, // 0x5A0049
+        PATPAINT = 16452105, // 0xFB0A09
+        DSTINVERT = 5570569, // 0x550009
+        NOP = 255, // 0xFF
+    }
+
+    // GDI pen styles (CreatePen iStyle)
+    export const enum PenStyle {
+        SOLID = 0, // 0x0
+        DASH = 1, // 0x1
+        DOT = 2, // 0x2
+        DASHDOT = 3, // 0x3
+        DASHDOTDOT = 4, // 0x4
+        NULL = 5, // 0x5
+        INSIDEFRAME = 6, // 0x6
+    }
+
+    // SetBkMode: text/bkgrnd fill mode
+    export const enum BackgroundMode {
+        OPAQUE = 2, // 0x2
+        TRANSPARENT = 1, // 0x1
+    }
+
+    // GetStockObject: shared system objects (HBRUSH/HPEN/HFONT/HPAL) — never delete
+    export const enum StockObject {
+        WHITE_BRUSH = 0, // 0x0
+        LTGRAY_BRUSH = 1, // 0x1
+        GRAY_BRUSH = 2, // 0x2
+        DKGRAY_BRUSH = 3, // 0x3
+        BLACK_BRUSH = 4, // 0x4
+        NULL_BRUSH = 5, // 0x5
+        WHITE_PEN = 6, // 0x6
+        BLACK_PEN = 7, // 0x7
+        NULL_PEN = 8, // 0x8
+        OEM_FIXED_FONT = 10, // 0xA
+        ANSI_FIXED_FONT = 11, // 0xB
+        ANSI_VAR_FONT = 12, // 0xC
+        SYSTEM_FONT = 13, // 0xD
+        DEVICE_DEFAULT_FONT = 14, // 0xE
+        DEFAULT_PALETTE = 15, // 0xF
+        SYSTEM_FIXED_FONT = 16, // 0x10
+        DEFAULT_GUI_FONT = 17, // 0x11
+    }
+
+    // CreateHatchBrush: hatch pattern styles
+    export const enum HatchStyle {
+        HORIZONTAL = 0, // 0x0
+        VERTICAL = 1, // 0x1
+        FDIAGONAL = 2, // 0x2
+        BDIAGONAL = 3, // 0x3
+        CROSS = 4, // 0x4
+        DIAGCROSS = 5, // 0x5
+    }
+
+    // SetPolyFillMode: polygon fill rule (nonzero winding vs even-odd)
+    export const enum PolyFillMode {
+        ALTERNATE = 1, // 0x1
+        WINDING = 2, // 0x2
+    }
+
+    // SetROP2: binary raster mode (foreground pen vs dest mix)
+    export const enum RasterMode {
+        R2_BLACK = 1, // 0x1
+        R2_NOTMERGEPEN = 2, // 0x2
+        R2_MASKNOTPEN = 3, // 0x3
+        R2_NOTCOPYPEN = 4, // 0x4
+        R2_MASKPENNOT = 5, // 0x5
+        R2_NOT = 6, // 0x6
+        R2_XORPEN = 7, // 0x7
+        R2_MASKPEN = 9, // 0x9
+        R2_NOTXORPEN = 10, // 0xA
+        R2_MERGENOTPEN = 12, // 0xC
+        R2_NOP = 11, // 0xB
+        R2_MERGEPENNOT = 14, // 0xE
+        R2_COPYPEN = 13, // 0xD
+        R2_MERGEPEN = 15, // 0xF
+        R2_WHITE = 16, // 0x10
+    }
+
+    // SetTextAlign: text alignment flags (combinable, pass as u32)
+    export const enum TextAlign {
+        TA_LEFT = 0, // 0x0
+        TA_CENTER = 6, // 0x6
+        TA_RIGHT = 2, // 0x2
+        TA_TOP = 0, // 0x0
+        TA_BOTTOM = 8, // 0x8
+        TA_BASELINE = 24, // 0x18
+        TA_NOUPDATECP = 0, // 0x0
+        TA_UPDATECP = 1, // 0x1
+    }
+
+    // ExtTextOut: ETO_* options (combinable, pass as u32)
+    export const enum TextOutOptions {
+        ETO_CLIPPED = 4, // 0x4
+        ETO_OPAQUE = 2, // 0x2
+        ETO_GLYPH_INDEX = 16, // 0x10
+    }
+
+    // SetArcDirection: arc/chord/pie sweep direction (default counterclockwise)
+    export const enum ArcDirection {
+        COUNTERCLOCKWISE = 1, // 0x1
+        CLOCKWISE = 2, // 0x2
+    }
+
+    // SetStretchBltMode: color filtering when StretchBlt scales a bitmap
+    export const enum StretchBltMode {
+        ANDSCANS = 1, // 0x1
+        ORSCANS = 2, // 0x2
+        DELETESCANS = 3, // 0x3
+        HALFTONE = 4, // 0x4
     }
 
     export const enum OpenFileNameFlag {
@@ -698,10 +817,26 @@ declare module "gui" {
     export const enum RegAccess {
         SET_VALUE = 2, // 0x2
         READ = 131097, // 0x20019
+        ALL_ACCESS = 983103, // 0xF003F
     }
 
     export const enum RegType {
         SZ = 1, // 0x1
+    }
+
+    // File
+    export const enum FileCreation {
+        CREATE_NEW = 1, // 0x1
+        CREATE_ALWAYS = 2, // 0x2
+        OPEN_EXISTING = 3, // 0x3
+        OPEN_ALWAYS = 4, // 0x4
+        TRUNCATE_EXISTING = 5, // 0x5
+    }
+
+    export const enum FileSeekFrom {
+        BEGIN = 0, // 0x0
+        CURRENT = 1, // 0x1
+        END = 2, // 0x2
     }
 
     // Printer

@@ -552,7 +552,7 @@ $(OBJ_DIR)/%.o: %.S | $(WOLFSSL_LIB_STATIC)
 
 | 套件 | 文件 | 与新实现的关系 |
 |---|---|---|
-| `ffi` | `test/test_ffi.ts` | 经 `bind()` DSL 调 `EnumPrintersW`（7 参）+ `GetDC`（ptr 直通/NULL）→ **参数搬运的主要回归网**；早期版本直呼 `ffi.ffiCall`，已随旧 API 删除而迁移 |
+| `ffi` | `test/test_ffi.ts` | 经 `bind()` DSL 调 `EnumPrinters`（7 参）+ `GetDC`（ptr 直通/NULL）→ **参数搬运的主要回归网**；早期版本直呼 `ffi.ffiCall`，已随旧 API 删除而迁移 |
 | `ffi-bind` | `test/test_ffi_bind.ts` | 11 项，经 `bind()` DSL；含 f32/f64 锚点（`msvcrt!sqrt/atan2`、`gdi32!AngleArc`） |
 | `ffi-struct` | `test/test_ffi_struct.ts` | 纯 TS 布局 + `readByte/writeByte`，**不经过 asm**，但 API 表面不能破 |
 
@@ -692,7 +692,7 @@ $(OBJ_DIR)/%.o: %.S | $(WOLFSSL_LIB_STATIC)
 - **验证**（真实 Win32 API 探针 + 全量回归）：
   - Win11 x64：`ffi` 88/88、全量 **557/557**（已走内建桩，libffi 仅链接未调用）
   - XP ia32：全量 **557/557**（共享 C 路径改动未回归）
-  - 探针覆盖 `length<4` 路径：0/1/2/3 参、f64 返回（`sqrt`/`atan2`）、5 参混合、7 参 `EnumPrintersW` 全过
+  - 探针覆盖 `length<4` 路径：0/1/2/3 参、f64 返回（`sqrt`/`atan2`）、5 参混合、7 参 `EnumPrinters` 全过
 - **遗留**：`libffi.a` 仍被链接（`_build/deps/*/libffi.a`），S6 清理。
 
 ### S6 — 把 libffi 移出构建流程（**不删 submodule/源码**，见 §3.7）
@@ -942,7 +942,7 @@ x64 ≤8B 同理（单槽整块 INTEGER 或 SSE，桩本来就双读 GPR+XMM）�
   - `quickjs-ffi-type.h` 不再被 include，仅保留为 ABI 文档参照（JS `ARG_SIZE[]` 的对照源）。
   - `lib/ffi/bind.ts` 的 `KIND_TO_FFI` 表换成 `KIND_SET`（仅做 kind 合法性校验）。
 - **调用方全部迁移到 `bind()`/`bindLib()`**：
-  - `test/test_ffi.ts`（`EnumPrintersW`、`GetDC`）
+  - `test/test_ffi.ts`（`EnumPrinters`、`GetDC`）
   - `examples/setres.ts`、`examples/pdf_preview2.ts`、`examples/PdfCanvas.tsx`、`examples/pdf_viewer.tsx`
   - `lib/react-qw/components/ListView.tsx`、`lib/react-qw/components/PathPicker.tsx`
 

@@ -26,7 +26,7 @@ function openPdfFileDialog(owner: MaybePtr<'HWND'>): string | null {
   })
   ofn.__keep = [fileBuf, filterWide]
 
-  const ret = GetOpenFileName(ofn)
+  const ret = GetOpenFileName(ofn.ptr)
   if (!ret) return null
 
   const path = WCHAR.decode(fileBuf)

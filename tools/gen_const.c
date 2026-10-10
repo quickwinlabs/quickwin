@@ -698,6 +698,125 @@ static void print_enums(void) {
     DEC(SRCCOPY, SRCCOPY);
     DEC(WHITENESS, WHITENESS);
     DEC(BLACKNESS, BLACKNESS);
+    DEC(NOTSRCCOPY, NOTSRCCOPY);
+    DEC(NOTSRCERASE, NOTSRCERASE);
+    DEC(SRCERASE, SRCERASE);
+    DEC(SRCAND, SRCAND);
+    DEC(SRCINVERT, SRCINVERT);
+    DEC(SRCPAINT, SRCPAINT);
+    DEC(MERGECOPY, MERGECOPY);
+    DEC(MERGEPAINT, MERGEPAINT);
+    DEC(PATCOPY, PATCOPY);
+    DEC(PATINVERT, PATINVERT);
+    DEC(PATPAINT, PATPAINT);
+    DEC(DSTINVERT, DSTINVERT);
+    DEC(NOP, 0x000000FF);   // NOOP：wingdi.h 无此宏，rop 值 0x000000FF
+    printf("    }\n\n");
+
+    printf("    // GDI pen styles (CreatePen iStyle)\n");
+    printf("    export const enum PenStyle {\n");
+    DEC(SOLID, PS_SOLID);
+    DEC(DASH, PS_DASH);
+    DEC(DOT, PS_DOT);
+    DEC(DASHDOT, PS_DASHDOT);
+    DEC(DASHDOTDOT, PS_DASHDOTDOT);
+    DEC(NULL, PS_NULL);
+    DEC(INSIDEFRAME, PS_INSIDEFRAME);
+    printf("    }\n\n");
+
+    printf("    // SetBkMode: text/bkgrnd fill mode\n");
+    printf("    export const enum BackgroundMode {\n");
+    DEC(OPAQUE, OPAQUE);
+    DEC(TRANSPARENT, TRANSPARENT);
+    printf("    }\n\n");
+
+    printf("    // GetStockObject: shared system objects (HBRUSH/HPEN/HFONT/HPAL) — never delete\n");
+    printf("    export const enum StockObject {\n");
+    DEC(WHITE_BRUSH, WHITE_BRUSH);
+    DEC(LTGRAY_BRUSH, LTGRAY_BRUSH);
+    DEC(GRAY_BRUSH, GRAY_BRUSH);
+    DEC(DKGRAY_BRUSH, DKGRAY_BRUSH);
+    DEC(BLACK_BRUSH, BLACK_BRUSH);
+    DEC(NULL_BRUSH, NULL_BRUSH);
+    DEC(WHITE_PEN, WHITE_PEN);
+    DEC(BLACK_PEN, BLACK_PEN);
+    DEC(NULL_PEN, NULL_PEN);
+    DEC(OEM_FIXED_FONT, OEM_FIXED_FONT);
+    DEC(ANSI_FIXED_FONT, ANSI_FIXED_FONT);
+    DEC(ANSI_VAR_FONT, ANSI_VAR_FONT);
+    DEC(SYSTEM_FONT, SYSTEM_FONT);
+    DEC(DEVICE_DEFAULT_FONT, DEVICE_DEFAULT_FONT);
+    DEC(DEFAULT_PALETTE, DEFAULT_PALETTE);
+    DEC(SYSTEM_FIXED_FONT, SYSTEM_FIXED_FONT);
+    DEC(DEFAULT_GUI_FONT, DEFAULT_GUI_FONT);
+    printf("    }\n\n");
+
+    printf("    // CreateHatchBrush: hatch pattern styles\n");
+    printf("    export const enum HatchStyle {\n");
+    DEC(HORIZONTAL, HS_HORIZONTAL);
+    DEC(VERTICAL, HS_VERTICAL);
+    DEC(FDIAGONAL, HS_FDIAGONAL);
+    DEC(BDIAGONAL, HS_BDIAGONAL);
+    DEC(CROSS, HS_CROSS);
+    DEC(DIAGCROSS, HS_DIAGCROSS);
+    printf("    }\n\n");
+
+    printf("    // SetPolyFillMode: polygon fill rule (nonzero winding vs even-odd)\n");
+    printf("    export const enum PolyFillMode {\n");
+    DEC(ALTERNATE, ALTERNATE);
+    DEC(WINDING, WINDING);
+    printf("    }\n\n");
+
+    printf("    // SetROP2: binary raster mode (foreground pen vs dest mix)\n");
+    printf("    export const enum RasterMode {\n");
+    DEC(R2_BLACK, R2_BLACK);
+    DEC(R2_NOTMERGEPEN, R2_NOTMERGEPEN);
+    DEC(R2_MASKNOTPEN, R2_MASKNOTPEN);
+    DEC(R2_NOTCOPYPEN, R2_NOTCOPYPEN);
+    DEC(R2_MASKPENNOT, R2_MASKPENNOT);
+    DEC(R2_NOT, R2_NOT);
+    DEC(R2_XORPEN, R2_XORPEN);
+    DEC(R2_MASKPEN, R2_MASKPEN);
+    DEC(R2_NOTXORPEN, R2_NOTXORPEN);
+    DEC(R2_MERGENOTPEN, R2_MERGENOTPEN);
+    DEC(R2_NOP, R2_NOP);
+    DEC(R2_MERGEPENNOT, R2_MERGEPENNOT);
+    DEC(R2_COPYPEN, R2_COPYPEN);
+    DEC(R2_MERGEPEN, R2_MERGEPEN);
+    DEC(R2_WHITE, R2_WHITE);
+    printf("    }\n\n");
+
+    printf("    // SetTextAlign: text alignment flags (combinable, pass as u32)\n");
+    printf("    export const enum TextAlign {\n");
+    DEC(TA_LEFT, TA_LEFT);
+    DEC(TA_CENTER, TA_CENTER);
+    DEC(TA_RIGHT, TA_RIGHT);
+    DEC(TA_TOP, TA_TOP);
+    DEC(TA_BOTTOM, TA_BOTTOM);
+    DEC(TA_BASELINE, TA_BASELINE);
+    DEC(TA_NOUPDATECP, TA_NOUPDATECP);
+    DEC(TA_UPDATECP, TA_UPDATECP);
+    printf("    }\n\n");
+
+    printf("    // ExtTextOut: ETO_* options (combinable, pass as u32)\n");
+    printf("    export const enum TextOutOptions {\n");
+    DEC(ETO_CLIPPED, ETO_CLIPPED);
+    DEC(ETO_OPAQUE, ETO_OPAQUE);
+    DEC(ETO_GLYPH_INDEX, ETO_GLYPH_INDEX);
+    printf("    }\n\n");
+
+    printf("    // SetArcDirection: arc/chord/pie sweep direction (default counterclockwise)\n");
+    printf("    export const enum ArcDirection {\n");
+    DEC(COUNTERCLOCKWISE, AD_COUNTERCLOCKWISE);
+    DEC(CLOCKWISE, AD_CLOCKWISE);
+    printf("    }\n\n");
+
+    printf("    // SetStretchBltMode: color filtering when StretchBlt scales a bitmap\n");
+    printf("    export const enum StretchBltMode {\n");
+    DEC(ANDSCANS, STRETCH_ANDSCANS);
+    DEC(ORSCANS, STRETCH_ORSCANS);
+    DEC(DELETESCANS, STRETCH_DELETESCANS);
+    DEC(HALFTONE, STRETCH_HALFTONE);
     printf("    }\n\n");
 
     printf("    export const enum OpenFileNameFlag {\n");
@@ -720,10 +839,26 @@ static void print_enums(void) {
     printf("    export const enum RegAccess {\n");
     DEC(SET_VALUE, KEY_SET_VALUE);
     DEC(READ, KEY_READ);
+    DEC(ALL_ACCESS, KEY_ALL_ACCESS);
     printf("    }\n\n");
 
     printf("    export const enum RegType {\n");
     DEC(SZ, REG_SZ);
+    printf("    }\n\n");
+
+    printf("    // File\n");
+    printf("    export const enum FileCreation {\n");
+    DEC(CREATE_NEW, CREATE_NEW);
+    DEC(CREATE_ALWAYS, CREATE_ALWAYS);
+    DEC(OPEN_EXISTING, OPEN_EXISTING);
+    DEC(OPEN_ALWAYS, OPEN_ALWAYS);
+    DEC(TRUNCATE_EXISTING, TRUNCATE_EXISTING);
+    printf("    }\n\n");
+
+    printf("    export const enum FileSeekFrom {\n");
+    DEC(BEGIN, FILE_BEGIN);
+    DEC(CURRENT, FILE_CURRENT);
+    DEC(END, FILE_END);
     printf("    }\n\n");
 
     printf("    // Printer\n");

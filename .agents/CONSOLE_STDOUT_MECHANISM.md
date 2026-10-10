@@ -122,7 +122,7 @@ for (;;) {
 }
 ```
 
-管道方案下**这一行都不用改**，只把句柄来源从 `CreateFileW(conout)` 换成 `CreatePipe()` 的读端。`ReadFile` 阻塞在独立 worker 线程里自转，主线程事件循环不受影响；换句话说不做 overlapped IO 就不需要把句柄挂进 qwin 的 `js_event`，那才是真正需要动事件循环的路。
+管道方案下**这一行都不用改**，只把句柄来源从 `CreateFile(conout)` 换成 `CreatePipe()` 的读端。`ReadFile` 阻塞在独立 worker 线程里自转，主线程事件循环不受影响；换句话说不做 overlapped IO 就不需要把句柄挂进 qwin 的 `js_event`，那才是真正需要动事件循环的路。
 
 ### 7.2 与 winpty 的差异（代价）
 

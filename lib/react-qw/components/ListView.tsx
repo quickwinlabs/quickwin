@@ -42,9 +42,9 @@ const LV_WS = gui.WindowStyle.VISIBLE | gui.WindowStyle.BORDER | gui.WindowStyle
 const CD_CLRTEXT = NMLVCUSTOMDRAW.offsetOf('clrText')
 const CD_CLRTEXTBK = NMLVCUSTOMDRAW.offsetOf('clrTextBk')
 
-const fontCache = new Map<string, number>()
+const fontCache = new Map<string, Ptr<'HGDIOBJ'> | 0>()
 
-function getCellFont(hwnd: gui.HWND, style: CellStyle): number | null {
+function getCellFont(hwnd: gui.HWND, style: CellStyle): Ptr<'HGDIOBJ'> | null {
   const key = (style.bold ? 'b' : '') + (style.italic ? 'i' : '') + (style.underline ? 'u' : '')
   if (key === '') return null
   const cached = fontCache.get(key)
@@ -56,7 +56,8 @@ function getCellFont(hwnd: gui.HWND, style: CellStyle): number | null {
   const cur = gui.SendMessage(hwnd, gui.WmMsg.GETFONT, 0, 0)
   if (cur) {
     const lf = LOGFONTW.alloc()
-    if (!GetObject(cur, LOGFONTW.size, lf)) return null
+    // GETFONT 的 LRESULT 断言为 HFONT（gdi32 <HGDIOBJ>ptr 位）
+    if (!GetObject(cur as Ptr<'HGDIOBJ'>, LOGFONTW.size, lf)) return null
     base = LOGFONTW.decode(lf)
   }
   const h = CreateFontIndirect({
@@ -190,7 +191,7 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
     const img = gui.ImageListCreate(size, size, gui.ImageListFlag.COLOR32, icons.length, 1)
     if (!img) return
     for (const p of icons) {
-      const hbm = gui.CreateBitmapFromPixels(size, size, p)
+      const hbm = gui.CreateBitmapFromPixels(size, size, p) as Ptr<'HGDIOBJ'> | 0
       if (hbm) {
         gui.ImageListAdd(img, hbm)
         DeleteObject(hbm)

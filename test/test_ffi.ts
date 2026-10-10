@@ -74,7 +74,7 @@ function formatStatus(status: number): string {
 export const suite = {
     name: 'ffi',
     run: (t: Tester) => {
-        t.section('EnumPrintersW')
+        t.section('EnumPrinters')
         const hWinspool = win.LoadLibrary('winspool.drv')
         t.checkTrue('LoadLibrary("winspool.drv") succeeds', hWinspool !== null)
         if (!hWinspool) return
@@ -83,7 +83,7 @@ export const suite = {
         t.checkTrue('GetProcAddress("EnumPrintersW") succeeds', enumPrinters !== null)
         if (!enumPrinters) return
 
-        const { EnumPrintersW } = bindLib('winspool.drv', {
+        const { EnumPrintersW: EnumPrinters } = bindLib('winspool.drv', {
             EnumPrintersW: 'u32 <>ptr u32 <BYTE>ptr u32 <BYTE>ptr <BYTE>ptr -> i32',
         })
 
@@ -94,19 +94,19 @@ export const suite = {
         const returnedB = new PtrArrayBuffer(4)
         const returnedBuf = new Uint32Array(returnedB)
 
-        const ret1 = EnumPrintersW(flags, NULL, level, NULL, 0, neededB, returnedB)
+        const ret1 = EnumPrinters(flags, NULL, level, NULL, 0, neededB, returnedB)
         std.printf('  first call: ret=%d needed=%d returned=%d\n', ret1, neededBuf[0], returnedBuf[0])
         if (neededBuf[0]! > 0) {
             t.checkTrue('pcbNeeded > 0', neededBuf[0]! > 0)
         } else {
-            // 无打印机环境（CI VM）EnumPrintersW 的 pcbNeeded 为 0，属环境差异非缺陷，
+            // 无打印机环境（CI VM）EnumPrinters 的 pcbNeeded 为 0，属环境差异非缺陷，
             // 记 SKIP 而非 FAIL，CI 无需再对 ffi 用例做失败容忍。
             t.skipCase('pcbNeeded > 0 (no printers on this VM)')
             return
         }
 
         const printerBuf = new PtrArrayBuffer(neededBuf[0]!)
-        const ret2 = EnumPrintersW(
+        const ret2 = EnumPrinters(
             flags,
             NULL,
             level,
@@ -115,7 +115,7 @@ export const suite = {
             neededB,
             returnedB
         )
-        t.checkTrue('EnumPrintersW succeeds', ret2 !== 0)
+        t.checkTrue('EnumPrinters succeeds', ret2 !== 0)
         if (ret2 === 0) return
 
         std.printf('  printers found: %d\n', returnedBuf[0])
