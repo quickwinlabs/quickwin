@@ -41,7 +41,7 @@ quickwin script.js                  # 运行脚本
 quickwin -o CON script.js           # 带控制台运行（AllocConsole）
 quickwin -o LOG script.js           # 自动生成日志文件运行
 quickwin -e "console.log('hi')"     # 执行表达式
-quickwin -- script.js --flag        # -- 停止选项解析
+quickwin script.js --flag           # 槽位之后的参数全部传给脚本
 ```
 
 ### 选项
@@ -53,9 +53,8 @@ quickwin -- script.js --flag        # -- 停止选项解析
 | `-o LOG` | 将 stdout+stderr 重定向到 `log_YYYY_MM_DD_HH_MM_SS.txt`（exe 所在目录） |
 | `-o <file>` | 将 stdout+stderr 重定向到指定文件 |
 | `-d` | 开启 HTTP 调试日志 |
-| `--` | 停止选项解析，其余参数传给脚本 |
 
-所有未知参数都会透明转发给 `scriptArgs` —— 不报错、不消费。选项解析后的第一个非参数即脚本文件。
+命令行按固定槽位解析：`exe [-d] [-o 目标] [-e code | 脚本文件]`；槽位之后的所有参数原样进入 `scriptArgs`，不报错、不消费。文件槽不接受 `-` 开头的文件名（用 `./-name.js` 运行这类脚本）。
 
 ## 内嵌脚本
 

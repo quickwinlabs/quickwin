@@ -175,25 +175,22 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     char *output_target = NULL;
 
     char auto_log[MAX_PATH] = {0};
-    for (int i = 1; i < cmd_argc; i++) {
-        if (strcmp(cmd_argv[i], "-o") == 0 && i + 1 < cmd_argc) {
-            output_target = cmd_argv[i + 1];
-            if (strcmp(output_target, "LOG") == 0) {
-                wchar_t wdir[MAX_PATH];
-                GetModuleFileNameW(NULL, wdir, MAX_PATH);
-                wchar_t *slash = wcsrchr(wdir, L'\\');
-                if (slash) *(slash + 1) = L'\0';
-                SYSTEMTIME st;
-                GetLocalTime(&st);
-                snprintf(auto_log, sizeof(auto_log),
-                    "%lslog_%04d_%02d_%02d_%02d_%02d_%02d.txt",
-                    wdir,
-                    st.wYear, st.wMonth, st.wDay,
-                    st.wHour, st.wMinute, st.wSecond);
-                output_target = auto_log;
-
-            }
-            break;
+    int slot = (cmd_argc > 1 && strcmp(cmd_argv[1], "-d") == 0) ? 2 : 1;
+    if (slot + 1 < cmd_argc && strcmp(cmd_argv[slot], "-o") == 0) {
+        output_target = cmd_argv[slot + 1];
+        if (strcmp(output_target, "LOG") == 0) {
+            wchar_t wdir[MAX_PATH];
+            GetModuleFileNameW(NULL, wdir, MAX_PATH);
+            wchar_t *slash = wcsrchr(wdir, L'\\');
+            if (slash) *(slash + 1) = L'\0';
+            SYSTEMTIME st;
+            GetLocalTime(&st);
+            snprintf(auto_log, sizeof(auto_log),
+                "%lslog_%04d_%02d_%02d_%02d_%02d_%02d.txt",
+                wdir,
+                st.wYear, st.wMonth, st.wDay,
+                st.wHour, st.wMinute, st.wSecond);
+            output_target = auto_log;
         }
     }
     if (output_target) {
@@ -209,44 +206,42 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         }
     }
 
-    int optind = 1;
+    /* Slot grammar, fixed order: exe [-d] [-o target] [-e code | file].
+     * Everything past the slots reaches the script via scriptArgs
+     * untouched; the file slot rejects '-'-leading tokens (run such
+     * files as ./-name.js). No --, no clustering, no -eEXPR, no long
+     * options. The -o pre-scan above already redirected stdout/stderr
+     * (it must happen before any output), so here -o only skips its
+     * argument. Priority: -e code > file > embedded > main.js. */
     char *expr = NULL;
-    while (optind < cmd_argc && cmd_argv[optind][0] == '-') {
-        char *arg = cmd_argv[optind];
-        if (strcmp(arg, "--") == 0) { optind++; break; }
-        if (strcmp(arg, "-e") == 0) {
-            optind++;
-            if (optind >= cmd_argc) {
-                fprintf(stderr, "Missing expression for -e\n");
-                return 2;
-            }
-            expr = cmd_argv[optind++];
-            continue;
-        }
-        if (strcmp(arg, "-d") == 0) {
-            http_debug = 1;
-            loop_debug = 1;
-            optind++;
-            continue;
-        }
-        if (strcmp(arg, "-o") == 0) {
-            optind += 2;  /* skip -o <target> */
-            continue;
-        }
-        break;
-    }
     const char *js_file = "main.js";
     int has_script_file = 0;
-    if (optind < cmd_argc) {
-        int file_idx = optind;
-        while (file_idx < cmd_argc && cmd_argv[file_idx][0] == '-')
-            file_idx++;
-        if (file_idx < cmd_argc) {
-            js_file = cmd_argv[file_idx];
-            has_script_file = 1;
-            for (char *p = cmd_argv[file_idx]; *p; p++)
-                if (*p == '\\') *p = '/';
+    int i = 1;
+    if (i < cmd_argc && strcmp(cmd_argv[i], "-d") == 0) {
+        http_debug = 1;
+        loop_debug = 1;
+        i++;
+    }
+    if (i < cmd_argc && strcmp(cmd_argv[i], "-o") == 0) {
+        if (i + 1 >= cmd_argc) {
+            fprintf(stderr, "option requires an argument -- 'o'\n");
+            return 2;
         }
+        i += 2;   /* target applied by the pre-scan above */
+    }
+    if (i < cmd_argc && strcmp(cmd_argv[i], "-e") == 0) {
+        if (i + 1 >= cmd_argc) {
+            fprintf(stderr, "option requires an argument -- 'e'\n");
+            return 2;
+        }
+        expr = cmd_argv[i + 1];
+        i += 2;
+    } else if (i < cmd_argc && cmd_argv[i][0] != '-') {
+        js_file = cmd_argv[i];
+        has_script_file = 1;
+        for (char *p = cmd_argv[i]; *p; p++)
+            if (*p == '\\') *p = '/';
+        i++;
     }
 
     JSRuntime *rt = JS_NewRuntime();
@@ -262,7 +257,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     js_init_module_gui(ctx);
 
-    js_std_add_helpers(ctx, cmd_argc - optind, cmd_argv + optind);
+    js_std_add_helpers(ctx, cmd_argc - i, cmd_argv + i);
 
     size_t fsize;
     uint8_t *js_code = NULL;

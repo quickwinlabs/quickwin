@@ -298,10 +298,12 @@ worker 回调里直接 `setState` 会与 http-server 的状态机**重入，把�
 | `--gui=0` | 同上 |
 | `--token=x` | 开启 Bearer 鉴权；**空串归一为未配置**（放行） |
 
-> ⚠️ **不支持空格分隔值形式**：`--gui 0` / `--token x` 会被 `main.c` 的 `js_file` 探测
-> （`main.c:214-250`）把裸值 `"0"` / `"x"` 当成脚本文件名，进程启动即
-> `Failed to load` 退出。只能用 `--nogui` 这种无值开关或 `--gui=0` 这种等号形式。
-> 已记在 `.agents/TODO.md`。
+> 参数经 scriptArgs 透传、由 `exec_server.tsx` parseArgs 自行解析：
+> `--nogui` 无值开关、`--gui=0`/`--token=x` 等号形式、`--gui 0`/`--token x`
+> 空格分隔形式均可。C 层（`main.c`）按固定槽位 `[-d] [-o 目标] [-e code | 文件]`
+> 消费，槽位之外的一切原样进 scriptArgs；文件槽不收 `-` 开头 token，故
+> `--gui` 等服务自有选项放在槽位后天然透传（早期"裸值被 js_file 探测误当
+> 脚本名"的问题已随槽位制解析修复）。
 
 **`run.bat` 用 `start /min` 启动**，`initGui` 里显式 `ShowWindow(RESTORE)` 还原，
 否则窗口只剩一条标题栏。

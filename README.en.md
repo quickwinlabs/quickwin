@@ -41,7 +41,7 @@ quickwin script.js                  # run a script
 quickwin -o CON script.js           # run with console (AllocConsole)
 quickwin -o LOG script.js           # run with auto-generated log file
 quickwin -e "console.log('hi')"     # execute expression
-quickwin -- script.js --flag        # -- stops option parsing
+quickwin script.js --flag           # everything after the script goes to it
 ```
 
 ### Options
@@ -53,10 +53,10 @@ quickwin -- script.js --flag        # -- stops option parsing
 | `-o LOG` | Redirect stdout+stderr to `log_YYYY_MM_DD_HH_MM_SS.txt` (exe directory) |
 | `-o <file>` | Redirect stdout+stderr to specified file |
 | `-d` | Enable HTTP debug logging |
-| `--` | Stop option parsing, remaining args passed to script |
 
-All unknown flags are transparently forwarded to `scriptArgs` — no error,
-no consumption. Script file is the first non-flag argument after option parsing.
+The command line parses in fixed slots: `exe [-d] [-o target] [-e code | file]`;
+everything past the slots reaches `scriptArgs` untouched — no error, no
+consumption. The file slot rejects `-`-leading names (run those as `./-name.js`).
 
 ## Embedded Script
 
