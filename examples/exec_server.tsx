@@ -25,22 +25,21 @@ interface Cfg {
     token: string | null
 }
 
-// 只支持无值开关(--nogui)与等号形式(--gui=0/--token=x)。
-// 不支持空格分隔值形式 "--gui 0"/"--token x"：main.c 的 js_file 探测(main.c:214-250)
-// 会把裸值("0"/"x")当成脚本文件名,进程启动即 Failed to load 退出(见 .agents/TODO.md)。
+// 参数经 scriptArgs 透传：C 层只消费 -e/-o/-d，遇到未知选项即停止
+// 解析并把剩余全部交给脚本（见 main.c 参数解析段）。因此空格分隔
+// ("--gui 0") 与等号 ("--gui=0") 两种形式都由本函数自行解析。
 function parseArgs(): Cfg {
     let gui = true
     let token: string | null = null
     const args = typeof scriptArgs === 'undefined' ? [] : scriptArgs
+    const normToken = (v: string) => (v === '' ? null : v)  // 空串=未配置(放行)
     for (let i = 0; i < args.length; i++) {
         const a = args[i] ?? ''
         if (a === '--nogui') { gui = false }
+        else if (a === '--gui') { gui = (args[++i] ?? '') !== '0' }
         else if (a.startsWith('--gui=')) { gui = a.slice(6) !== '0' }
-        else if (a.startsWith('--token=')) {
-            // 空串归一为 null(未配置放行)：要求 Bearer 空串的"鉴权"无意义
-            const v = a.slice(8)
-            token = v === '' ? null : v
-        }
+        else if (a === '--token') { token = normToken(args[++i] ?? '') }
+        else if (a.startsWith('--token=')) { token = normToken(a.slice(8)) }
     }
     return { gui, token }
 }

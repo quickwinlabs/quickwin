@@ -204,9 +204,8 @@ qwin.exe [options]                # 无参数时加载 main.js 或内嵌 JS
 | `-o CON` | 输出重定向到控制台（AllocConsole） |
 | `-o LOG` | 输出重定向到自动生成的日志文件 `log_YYYY_MM_DD_HH_MM_SS.txt`（exe 同目录） |
 | `-o <file>` | 输出重定向到指定文件（stdout + stderr） |
-| `--` | 结束选项解析，后续参数作为脚本文件 |
 
-注意：`-o LOG` 日志在 exe 所在目录（非当前工作目录）；`--` 可防止 `-e 'code'` 被当作选项捕获。完整说明见 README「CLI」与「内嵌脚本」。
+注意：`-o LOG` 日志在 exe 所在目录（非当前工作目录）；选项按固定槽位 `[-d] [-o 目标] [-e code | 脚本]` 解析，槽位之后的参数全部原样传给脚本。完整说明见 README「CLI」与「内嵌脚本」。
 
 ## 提交规范
 
