@@ -388,6 +388,12 @@ export const suite = {
         // （返回若含 Ptr<'TM'> 分支——无 decode 的旧行为——此访问编译不过）
         if (tmObj !== 0) expectType<Equal<typeof tmObj.tm_sec, number>>(true)
 
+        // gmtime 同构第二例：UTC 锚点确定（time_t=0 → 1970-01-01，不依赖 TZ 环境）
+        const gmtimeDec = bind('msvcrt.dll', 'gmtime', '<BYTE>ptr -> <TM>ptr', undefined, { TM })
+        const gmObj = gmtimeDec(tbuf)
+        t.checkTrue('gmtime + decoders auto-decodes (UTC anchor tm_year=70, tm_mday=1)',
+            gmObj !== 0 && gmObj.tm_year === 70 && gmObj.tm_mday === 1)
+
         // Codec：返回位类型断言（decoders 显式 / 缺省回退 encoders）
         // 断言「替换语义」两半：解码结果 = 结构对象 | 0（Ptr 品牌被替换掉）；
         // 无 decode 保留 0 | Ptr 品牌形态。
@@ -428,6 +434,19 @@ export const suite = {
             outOnlyErr = String(e)
         }
         t.checkTrue('out-only codec rejected at encode time', outOnlyErr.includes('no encoder'))
+
+        // native readBytes：批量 memcpy 往返 + fail-loud 守卫（decode 指针分支的新底层）
+        const rbB = new PtrArrayBuffer(8)
+        new Uint8Array(rbB).set([1, 2, 3, 4, 250, 251, 252, 253])
+        const rbCopy = ffi.readBytes(rbB.ptr, 8)
+        t.check('readBytes(ptr, 8) memcpy roundtrip',
+            '1,2,3,4,250,251,252,253', new Uint8Array(rbCopy).join(','))
+        let rbNullErr = ''
+        try { ffi.readBytes(0, 4) } catch (e) { rbNullErr = String(e) }
+        t.checkTrue('readBytes(0, n) fails loud (null pointer)', rbNullErr.includes('null pointer'))
+        let rbNegErr = ''
+        try { ffi.readBytes(rbB.ptr, -1) } catch (e) { rbNegErr = String(e) }
+        t.checkTrue('readBytes(p, -1) fails loud (RangeError)', rbNegErr.includes('RangeError'))
 
         t.section('closures: direct ABI drive via ffiCall')
         const addClos = closure('i32 i32 -> i32', (a, b) => a + b)

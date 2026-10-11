@@ -261,6 +261,10 @@ export const GetComputerName = /*@__PURE__*/ b('GetComputerNameW', '<BYTE>ptr <B
  *  @param args_1 lpFilename 接收缓冲，传 WCHAR.alloc(n)
  *  @param args_2 nSize 缓冲容量（WCHAR 个数） */
 export const GetModuleFileName = /*@__PURE__*/ b('GetModuleFileNameW', '<HMODULE>ptr <BYTE>ptr u32 -> u32')
+/** 进程命令行（含程序名；进程启动即有值，永不返回 NULL）
+ *  @returns 命令行整串（返回位 `<WCHAR>ptr!`：内建 WCHAR codec 自动解码为 string，
+ *    `!` 担保非 NULL 由返回位 0 检查兜底，无需接收缓冲） */
+export const GetCommandLineW = /*@__PURE__*/ b('GetCommandLineW', ' -> <WCHAR>ptr!')
 
 // ============ 全局内存（剪贴板数据载体）============
 

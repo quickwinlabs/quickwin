@@ -3,10 +3,10 @@ import * as os from 'os'
 import { WCHAR } from '../lib/ffi/bind.js'
 import { NULL, PtrArrayBuffer, type Ptr } from '../lib/ffi/ctype.js'
 import {
-    FormatMessage, GetComputerName, GetEnvironmentVariable, GetLocalTime,
-    GetModuleFileName, GetSystemDirectory, GetSystemTimeAsFileTime, GlobalAlloc,
-    GlobalLock, GlobalUnlock, QueryPerformanceCounter, QueryPerformanceFrequency,
-    RtlMoveMemory, Sleep,
+    FormatMessage, GetCommandLineW, GetComputerName, GetEnvironmentVariable,
+    GetLocalTime, GetModuleFileName, GetSystemDirectory, GetSystemTimeAsFileTime,
+    GlobalAlloc, GlobalLock, GlobalUnlock, QueryPerformanceCounter,
+    QueryPerformanceFrequency, RtlMoveMemory, Sleep,
 } from '../lib/windows/kernel32.js'
 import {
     CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard,
@@ -78,6 +78,10 @@ export const suite = {
         const modLen = GetModuleFileName(NULL, modW, 520)
         const modPath = WCHAR.decode(modW)
         t.checkTrue(`exe path has qwin (${modLen > 0})`, /qwin/i.test(modPath))
+        // 生产绑定的返回位 `<WCHAR>ptr!`：内建 WCHAR 自动解码 + `!` 非空担保（直接 string）
+        const cmdLine = GetCommandLineW()
+        t.checkTrue(`GetCommandLineW decodes to non-empty string (${cmdLine.length} chars)`,
+            typeof cmdLine === 'string' && cmdLine.length > 0)
 
         t.section('FormatMessage: error 2 -> readable text')
         const msgW = WCHAR.alloc(512)

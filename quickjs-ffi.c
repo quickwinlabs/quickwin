@@ -85,10 +85,31 @@ static JSValue js_ffi_write_byte(JSContext *ctx, JSValueConst this_val,
     return JS_UNDEFINED;
 }
 
+/* readBytes(ptr, len) -> ArrayBuffer：native 批量拷出，供结构 decode 的裸地址分支
+   一次取整段——替代 JS 侧逐字节 readByte 循环（N 次 JS→C 往返降为 1 次 memcpy）。
+   ptr=0 fail-loud throw（地址 0 必然访问违例，显式报错优于进程崩溃）；负 len 由
+   JS_ToIndex 拒（自带 RangeError；小数/NaN 按 ToInteger 语义截断——非整型入参由
+   调用方自己保证，现有两处 decode 传的都是布局计算出的整数）。野指针与 readByte
+   同一信任边界，由调用方担保（decode 收到的地址来自 alloc()/C 返回值）。 */
+static JSValue js_ffi_read_bytes(JSContext *ctx, JSValueConst this_val,
+                                 int argc, JSValueConst *argv)
+{
+    int64_t ptr;
+    uint64_t len;
+    JS_ToInt64(ctx, &ptr, argv[0]);
+    if (JS_ToIndex(ctx, &len, argv[1]))
+        return JS_EXCEPTION; /* JS_ToIndex 已抛 RangeError */
+    if (ptr == 0)
+        return JS_ThrowRangeError(ctx, "readBytes: null pointer");
+    /* 内部 malloc+memcpy；len > INT32_MAX 由其 RangeError 拒 */
+    return JS_NewArrayBufferCopy(ctx, (const uint8_t *)(intptr_t)ptr, (size_t)len);
+}
+
 static const JSCFunctionListEntry ffi_funcs[] = {
     JS_CFUNC_DEF("ffiCall", 4, js_ffi_call),
     JS_CFUNC_DEF("bufferPtr", 1, js_ffi_buffer_ptr),
     JS_CFUNC_DEF("readByte", 1, js_ffi_read_byte),
+    JS_CFUNC_DEF("readBytes", 2, js_ffi_read_bytes),
     JS_CFUNC_DEF("writeByte", 2, js_ffi_write_byte),
 };
 

@@ -597,15 +597,12 @@ function createStruct(t: C_Struct | C_Union): any {
         size,
         structAlign: maxEffectiveAlign,
         decode: (p: ArrayBuffer | number) => {
-            // number = native 拥有的品牌指针（Codec 的 decode(p) 形态）：按布局 size
-            // 逐字节拷进临时 buffer 再解码；ArrayBuffer = 调用方持有的 out buffer 直读。
+            // number = native 拥有的品牌指针（Codec 的 decode(p) 形态）：readBytes 一次
+            // native memcpy 拷出 size 字节再解码（替代逐字节 readByte 循环，N 次跨语言
+            // 调用降为 1 次）；ArrayBuffer = 调用方持有的 out buffer 直读。
             // 顶层不收 offset——out 参数恒从起点读，嵌套偏移由字段布局（doDecode 的 base）承担。
-            if (typeof p === 'number') {
-                const buf = new ArrayBuffer(size)
-                const u8 = new Uint8Array(buf)
-                for (let i = 0; i < size; i++) u8[i] = ffi.readByte(p + i)
-                return doDecode(new DataView(buf), 0, fields)
-            }
+            if (typeof p === 'number')
+                return doDecode(new DataView(ffi.readBytes(p, size)), 0, fields)
             return doDecode(new DataView(p), 0, fields)
         },
         alloc: ((n?: number) => {
@@ -707,12 +704,8 @@ export function structArray<T extends { '#': 'struct' | 'union' }, N extends str
                     throw new Error(`ffi-struct: structArray.decode(address, count) ` +
                         `requires an explicit count (a bare address carries no length)`)
                 if (count === 0) return []
-                // 逐字节拷进临时 buffer 再解码（def.decode 的 number 形同机制）。
-                const total = count * size
-                const buf = new ArrayBuffer(total)
-                const u8 = new Uint8Array(buf)
-                for (let i = 0; i < total; i++) u8[i] = ffi.readByte(p + i)
-                return readN(new DataView(buf), count)
+                // readBytes 一次 native memcpy 拷出整段再解码（def.decode 的 number 形同机制）。
+                return readN(new DataView(ffi.readBytes(p, count * size)), count)
             }
             let n: number
             if (count !== undefined) {

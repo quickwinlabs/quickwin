@@ -566,6 +566,7 @@ declare module "ffi" {
     function ffiCall(func: number, argFrame: ArrayBuffer, retBuf: ArrayBuffer, retIsFp: 0 | 1): void;
     function bufferPtr(buf: ArrayBuffer): number;
     function readByte(ptr: number): number;
+    function readBytes(ptr: number, len: number): ArrayBuffer;
     function writeByte(ptr: number, value: number): void;
     function closureNew(argBytes: number, retKind: number, wrapper: (frame: ArrayBuffer, retBuf: ArrayBuffer) => void): number;
     function closureFree(ptr: number): void;
