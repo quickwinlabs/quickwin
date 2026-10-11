@@ -11,7 +11,15 @@ echo "  XP:   6005 -> 127.0.0.1:5901"
 echo "  Win7: 6007 -> 127.0.0.1:5902"
 echo "  Win11: 6011 -> 127.0.0.1:5903"
 
-pkill -x websockify 2>/dev/null && sleep 1
+# 清理旧 bridge：精简镜像无 pkill/ps（procps 未装，历史 pkill 方案从未生效），
+# 用 bash 直扫 /proc。匹配绝对路径形态 "/usr/sbin/websockify "（主进程 cmdline 与
+# forkserver -c 内嵌 argv 均含此形态）——比裸词 websockify 收紧，避免误杀
+# cmdline 恰好带 websockify 字样的无关进程（含调用方 shell）
+for p in /proc/[0-9]*; do
+    c=$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null) || continue
+    case "$c" in */usr/sbin/websockify\ *) kill "${p##*/}" 2>/dev/null;; esac
+done
+sleep 1
 
 # 目标地址用 127.0.0.1 而非 localhost：QEMU -vnc 0.0.0.0:N 只监听 IPv4，
 # 而 localhost 会先解析到 ::1 导致连接失败。

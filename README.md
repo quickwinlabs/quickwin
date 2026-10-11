@@ -170,8 +170,6 @@ parent.onmessage = (e) => {
 - **podman**（开发容器；构建/测试/QEMU 验证都在容器内完成，与 CI 一致）
 - Git（用于子模块）
 
-> 也支持 MSYS2 原生直接 `make`，详见 `.agents/DEVELOPMENT_WORKFLOW.md`。
-
 ### 构建
 
 ```bash
@@ -195,7 +193,7 @@ podman exec quickwin-dev bash -lc 'cd /workspace && make js && make cc64 && make
 | `make cc64-nowasm` / `cc32-nowasm` | 无 WASM/WAMR 版 |
 | `BUILD=fast\|small\|debug` | 构建 flavor：`make cc64 BUILD=small` = `-Os`+LTO（约 1.5MB，CI 用） |
 | `make js` | 通过 tsc 编译 TypeScript |
-| `make wasm` / `make wat` | 编译 WAT → WASM fixtures |
+| `make wasm` | 编译 `test/*.wat` → WASM fixtures |
 | `make test` | 运行全部测试 |
 | `make test TEST=-net` | 跳过网络测试（快速） |
 | `make test TEST=wasm` | 仅运行 WASM 测试 |

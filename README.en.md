@@ -168,8 +168,7 @@ Both sides must set `onmessage = null` when communication is complete. This rele
 
 ### Prerequisites
 
-- MSYS2 UCRT64 or MINGW64
-- Node.js (for TypeScript compilation via tsc)
+- **podman** (dev container; build/test/QEMU verification all run inside the container, consistent with CI)
 - Git (for submodules)
 
 ### Build
@@ -178,38 +177,34 @@ Both sides must set `onmessage = null` when communication is complete. This rele
 git clone --recursive https://github.com/xna00/quickwin.git
 cd quickwin
 
-.\run.ps1 "make wamr"       # build WAMR library (first time only)
-.\run.ps1 "make small"      # build qwin.exe (-Os + LTO, ~1.5MB)
-.\run.ps1 "make js"         # compile TypeScript
-.\run.ps1 "make test"       # run all tests
+./docker/dev-podman.sh up      # start dev container (reuses ghcr.io/xna00/quickwin-dev)
+podman exec quickwin-dev bash -lc 'cd /workspace && make js && make cc64 && make test TEST=-net'
 ```
 
-`make nowasm` produces a smaller `_build/qwin-nowasm.exe` without WASM/WAMR
-(no `WebAssembly` global); run `make test TEST=-wasm` to skip WASM tests on it.
+`make cc64` produces `_build/qwin.exe`. `cc64-nowasm` produces a smaller
+`_build/qwin-nowasm.exe` without WASM/WAMR (no `WebAssembly` global); for
+that build run `make test TEST=-wasm` to skip WASM tests.
 
 ### Build Targets
 
 | Target | Description |
 |--------|-------------|
-| `make` / `make nodebug` | fast build |
-| `make small` | `-Os` + LTO + strip, ~1.5MB (recommended) |
-| `make minimal` | `small` + UPX compression |
-| `make release` | `-O2` + LTO + strip (not `-Os` optimized) |
-| `make debug` | debug build with bridge logs |
-| `make nowasm` | no WASM/WAMR build → `_build/qwin-nowasm.exe` (~1.2MB, no `WebAssembly` global) |
-| `make cc64-small` | cross-compile x86_64 `_build/qwin.exe` (`-Os`, used by CI) |
-| `make cc32-small` | cross-compile i686 `_build/qwin-x86.exe` (`-Os`, XP-compatible, used by CI) |
+| `make cc64` | cross-compile x86_64 → `_build/qwin.exe` (default target, `BUILD=fast`) |
+| `make cc32` | cross-compile i686/XP → `_build/qwin-x86.exe` |
+| `make cc64-nowasm` / `cc32-nowasm` | no WASM/WAMR builds |
+| `BUILD=fast\|small\|debug` | build flavor: `make cc64 BUILD=small` = `-Os`+LTO (~1.5MB, used by CI) |
 | `make js` | compile TypeScript via tsc |
-| `make wasm` | compile WAT → WASM fixtures |
+| `make wasm` | compile `test/*.wat` → WASM fixtures |
 | `make test` | run all tests |
 | `make test TEST=-net` | skip network tests (fast) |
 | `make test TEST=wasm` | run WASM tests only |
-| `make wamr` | rebuild WAMR library |
-| `make embed-js` | embed `embed.js` into exe (use `JS_EMBED=file.js`) |
-| `make embed-js-br` | embed brotli-compressed JS into exe |
-| `make exec_server` | Bundle `examples/exec_server.ts` and brotli-embed into `_build/exec_server.exe` |
+| `make exec_server` | bundle `examples/exec_server.ts` and brotli-embed into `_build/exec_server.exe` |
+| `make embed-js` / `embed-js-br` | embed JS (brotli-compressed) into exe |
 | `make npm-pkg` | package into `dist/quickwin/` |
-| `make clean` | clean build artifacts |
+| `make gen-const` | regenerate `quickwin_const.d.ts` |
+| `make clean` / `distclean` | clean (wipes all of `_build/`; afterwards run `make js wasm`) |
+
+Build and troubleshooting details: `.agents/DEVELOPMENT_WORKFLOW.md`.
 
 ## License
 

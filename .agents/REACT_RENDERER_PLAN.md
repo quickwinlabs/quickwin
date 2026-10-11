@@ -8,7 +8,7 @@
 - ✅ 步骤 3：JSX 类型声明
 - ✅ 步骤 4：Reconciler Host Config（基础实现）
 - ✅ 步骤 5：公开 API（render, createRoot）
-- ⚠️ 步骤 6：组件移植（进行中）
+- ✅ 步骤 6：组件移植（已完成——2026-10-11 核对：preact 时代 5 控件全量覆盖并扩展至 16 个（Button/Input/ListView/Tab/TreeView/PathPicker 等，见 `lib/react-qw/components/index.ts`），`examples/test_gallery.tsx` 等在用）
 
 **已解决的问题：**
 1. **TypeScript 增量编译问题** - 关闭增量编译解决

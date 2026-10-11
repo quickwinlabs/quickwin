@@ -114,6 +114,7 @@ base64 字符会产生 wolfSSL 解析不了的证书。
 之后 `make cc32` 会直接报 `libwolfssl.a is up to date`，什么都不重编：
 
 ```sh
+# 容器内：podman exec quickwin-dev bash -lc 'cd /workspace && <cmd>'
 rm -f _build/deps/ia32-cross/libwolfssl.a
 make js && make cc32
 ```

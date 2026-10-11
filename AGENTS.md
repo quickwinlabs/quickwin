@@ -2,44 +2,28 @@
 
 ## 重要规则
 
-> **遇到问题，先在网上查一下**
->
-> 在尝试自行解决问题之前，应该首先通过搜索引擎查找相关的技术文档、官方示例或社区讨论。这包括但不限于：
-> - 官方文档和 API 参考
-> - GitHub issues 和 pull requests
-> - Stack Overflow 等技术社区的讨论
-> - 相关开源项目的源代码
->
-> **为什么要这样做：**
-> - 可以避免重复造轮子，直接使用社区验证过的解决方案
-> - 能够学习到最佳实践和正确的实现方式
-> - 节省大量调试时间
-> - 确保使用正确的 API 和方法签名
+> **优先检索**：实施前检索官方文档 / API 参考、GitHub issues、Stack Overflow 及开源项目源码。
 
-> **禁止自动 commit：提交前必须先让用户确认 diff 和 commit message**
->
-> 每次 commit 前，先把 `git diff`（变更内容）和拟用的 commit message 展示给用户，用户明确同意后才执行 `git commit` 和 `git push`。用户说 "continue"、"commit"、"push" 或直接给出 commit message 时视为同意。
->
-> **流程：**
-> 1. 运行 `git diff` 展示变更
-> 2. 写出拟用的 commit message
-> 3. 等待用户确认
-> 4. 确认后执行 `git add` + `git commit` + `git push`
+> **构建、测试与 VM 服务访问须在容器 `quickwin-dev` 内执行**（宿主无交叉工具链；hostfwd 端口仅容器网络可达）：
+> `podman exec quickwin-dev bash -lc 'cd /workspace && <命令>'`
+> - 宿主仅负责 git、文件编辑与文档；容器执行 `make js/cc64/cc32/exec_server/test`、`docker/*.sh` 及 VM 端口 curl
+> - 遗漏 `cd /workspace` 将找不到 Makefile；宿主运行 `make` 报错或 curl 端口被拒即属违反本规则
 
-> **commit message 必须基于 `git diff --cached 或 git diff` 内容生成**
->
-> 1. 先运行 `git diff --cached 或 git diff` 查看具体变更内容
-> 2. 根据 diff 内容（改了什么、为什么改）生成 commit message
-> 3. 不得仅凭文件名列表猜测 commit message
-> 4. commit message 风格与 `git log` 历史风格一致。
+> **禁止自动提交**：须先展示 `git diff` 与拟用 commit message，经用户同意方可执行 `git add` / `commit` / `push`；回复 "continue"、"commit"、"push" 或直接给出 message 视为同意。
 
-> **commit message 用英文概述**
+> **commit message**：依据 diff 实际内容生成（不得依据文件名推断），以英文表述，风格对齐 `git log`。
 
 > **使用中文思考和回答**
 
-## 构建与运行
+## 开发流程（必读）
 
-见 `.agents/DEVELOPMENT_WORKFLOW.md`（容器环境、make 目标、CLI 参数、gen_const、提交规范、排错）。
+双机验证流程（容器内执行；C/exec_server 变更后加 `--restart`）：
+
+```bash
+podman exec quickwin-dev bash -lc 'cd /workspace && make js && cd docker && ./run.sh win7 && ./http_test.sh win7 && ./run.sh xp && ./http_test.sh xp'
+```
+
+完整 make 目标、CLI、gen_const 及故障排查，见 `.agents/DEVELOPMENT_WORKFLOW.md`。
 
 ## 进行中计划
 

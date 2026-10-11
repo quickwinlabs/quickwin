@@ -19,10 +19,10 @@
 podman exec quickwin-dev bash
 ```
 
-一次性命令：
+**黄金模板**（宿主发起的任何构建 / 测试 / curl 命令都套这一行。两个易错点：必须 `podman exec`、必须 `cd /workspace`——漏任一个都会失败）：
 
 ```bash
-podman exec quickwin-dev bash -lc 'cd /workspace && make cc64'
+podman exec quickwin-dev bash -lc 'cd /workspace && <命令>'
 ```
 
 > CI（`.github/workflows/ci-qemu.yml`）用同一镜像 `ghcr.io/xna00/quickwin-dev`，本地与 CI 行为一致。项目已不使用 MSYS2 原生编译路径。
@@ -55,7 +55,8 @@ git submodule update --init --recursive
 
 ## 日常开发循环
 
-以下命令**全部在容器内**执行。
+> 以下命令**全部在容器内**执行——宿主直接跑会 `command not found` / 找不到 Makefile；
+> 从宿主发起请套上面**黄金模板**（`podman exec ... cd /workspace && ...`）。
 
 ### 编译
 
@@ -166,6 +167,8 @@ Win7 用 `qwin.exe`（64 位），XP 用 `qwin-x86.exe`（32 位），`http_test
 
 | 症状 | 原因 / 处理 |
 |------|-------------|
+| 宿主跑 `make` 报 command not found / 找不到 Makefile | 命令须在容器内：套黄金模板 `podman exec quickwin-dev bash -lc 'cd /workspace && ...'`（漏 `cd /workspace` 同样找不到 Makefile） |
+| 宿主 `curl :8007/:8005/:18923` 连接被拒 | hostfwd / serve_test 端口只在容器网络，进容器再 curl |
 | XP 卡在产品密钥页 | `floppy-xp/WINNT.SIF` 的 `ProductKey` 与 ISO 不匹配（中文 VL 盘用 `MRX3F-...`） |
 | VM 内挂不上 Z: | XP 仅 SMB1：须走 `smb_wrapper.sh`（guestfwd + `server min protocol = NT1`），不能用 QEMU `-smb` |
 | `net use` 成功但不跑 run.bat | `.bat` 必须 CRLF：仓库根 `.gitattributes` 已 `eol=crlf`（checkout 即 CRLF），`run.sh` 每次再 `unix2dos` 作双保险 |

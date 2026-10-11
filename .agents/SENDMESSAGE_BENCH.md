@@ -141,7 +141,8 @@ GC 主导，该场景臂间比较无意义。
 ### 可复现
 
 ```sh
-# 前置：win7 已起（docker/ ./run.sh win7 --restart）
+# 以下均在容器内：podman exec quickwin-dev bash -lc 'cd /workspace && <cmd>'
+# 前置：win7 已起（容器内 docker/ ./run.sh win7 --restart）
 make js    # tsc 产出 _build/test/bench_sendmessage_nonnull.js（不入 esbuild entries）
 curl -sS -m 600 -X POST http://127.0.0.1:8007/exec \
   -H 'Content-Type: application/json' \
@@ -224,6 +225,7 @@ Win64 fast path 上限总参 ≤3：nop/pid 走 fast trampoline，`SendMessageW`
 #   https://nodejs.org/dist/v26.10.0/node-v26.10.0-win-x64.zip && unzip 进 _build/）
 podman exec quickwin-dev bash -lc \
   'cd /workspace && x86_64-w64-mingw32-gcc -shared -O2 -o _build/test/nop.dll test/nop.c'
+# 以下仍在容器内（同上模板）：
 make js && cp test/bench_nodeffi.mjs _build/test/
 cd docker && ./run.sh win11 --restart
 # JSON body 落文件再 --data @file（cmd 含反斜杠，多层引号嵌套必翻车）：
@@ -297,6 +299,7 @@ S1/S2/S3 各臂消费返回值到 `sink`（同口径防 DCE 疑虑，收尾打�
 ### 可复现
 
 ```sh
+# 容器内：podman exec quickwin-dev bash -lc 'cd /workspace && <cmd>'
 make js    # tsc 产出 _build/test/bench_ffi_callraw.js
 # win11 已起，JSON body 落文件（同上节方式）：
 #   {"cmd":"qwin.exe test\\bench_ffi_callraw.js","timeout":600000}
