@@ -357,7 +357,7 @@ async function writeStreamingBody(c: Conn, body: ReadableStream<Uint8Array> | nu
         }
         if (c.closed) {
             // 客户端断开（FD_CLOSE / send 失败）：取消响应体，让 producer 感知
-            //（exec_server 借此 kill 子进程），而不是干等它自然结束。
+            //（execd 借此 kill 子进程），而不是干等它自然结束。
             try { await reader.cancel() } catch (e) {
                 console.error('[http-server] body cancel error:', e)
             }

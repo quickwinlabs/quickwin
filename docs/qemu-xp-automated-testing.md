@@ -127,11 +127,11 @@ QEMU 以 `-daemonize` 后台运行、`-display none` 隐藏窗口，测试全程
 # 容器内起两路 websockify；宿主 compose 已映射 6005/6007
 ```
 
-### exec_server
+### execd
 
 主要目的是**持续测试**：VM 内常驻一个 HTTP 服务，宿主机随时可以提交命令执行，不用每次测试都重启虚拟机，节约时间。
 
-实现：在 VM 内启动 `exec_server`（VM 内 HTTP 8080），宿主机经 hostfwd 远程执行命令。宿主侧端口按系统区分，一眼可读：
+实现：在 VM 内启动 `execd`（VM 内 HTTP 8080），宿主机经 hostfwd 远程执行命令。宿主侧端口按系统区分，一眼可读：
 
 | VM | 容器内 hostfwd | 助记 |
 |----|----------------|------|

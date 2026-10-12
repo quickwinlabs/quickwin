@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 # ============================================================
 #  Bare QEMU — 常驻模式（win7 / xp / win11 共用）
 #  从 snapshot 启动，bootstrap.bat 挂 SMB 并跑 run.bat；
-#  run.bat 只做防火墙/portproxy + 启动 exec_server，不跑测试。
+#  run.bat 只做防火墙/portproxy + 启动 execd，不跑测试。
 #  测试经 hostfwd HTTP 下发（win7:8007 / xp:8005 / win11:8011 → guest:8080）。
 #  端口助记：HTTP = 8000+版本号，noVNC = 6000+版本号（8009/6009 留空，Win9 未发布）。
 #
@@ -114,7 +114,7 @@ if [ -f qemu-$VM.pid ] && ! $RESTART; then
     echo "VM 已在运行 (PID=$(cat qemu-$VM.pid))，检查健康..."
     for i in $(seq 1 12); do
         if health; then
-            echo "exec_server 健康 (http://127.0.0.1:${FWD}/)  耗时 $(( $(date +%s) - START_TIME ))s"
+            echo "execd 健康 (http://127.0.0.1:${FWD}/)  耗时 $(( $(date +%s) - START_TIME ))s"
             echo "跑测试: ./http_test.sh $VM [filter]"
             echo "停止:   ./run.sh $VM --stop"
             exit 0
@@ -190,7 +190,7 @@ qemu-system-x86_64 \
     -monitor unix:"$MONITOR",server,nowait \
     -daemonize
 
-echo "QEMU 已启动 (PID=$(cat qemu-$VM.pid))，等待 exec_server..."
+echo "QEMU 已启动 (PID=$(cat qemu-$VM.pid))，等待 execd..."
 
 # ── 等待 run.log（run.bat 首行 echo 即创建）──
 for i in $(seq 1 24); do
@@ -207,11 +207,11 @@ if [ ! -e "$LOGFILE" ]; then
 fi
 echo "run.bat 已启动（耗时 $(( $(date +%s) - START_TIME ))s）"
 
-# ── 等 Ready（run.bat 写）+ 健康检查（exec_server usage 页，非 API 路径 200）──
-echo "等待 exec_server 健康..."
+# ── 等 Ready（run.bat 写）+ 健康检查（execd usage 页，非 API 路径 200）──
+echo "等待 execd 健康..."
 for i in $(seq 1 36); do
     if health; then
-        echo "exec_server 健康 (http://127.0.0.1:${FWD}/)  总耗时 $(( $(date +%s) - START_TIME ))s"
+        echo "execd 健康 (http://127.0.0.1:${FWD}/)  总耗时 $(( $(date +%s) - START_TIME ))s"
         echo "--- run.log ---"
         cat "$LOGFILE"
         echo

@@ -4,8 +4,8 @@
 
 ## 目的
 
-定位完整 `run.js`（不带 `-net`）在 `ipv6` suite 后 exec_server 失联的问题——逐个 net suite 跑，
-找出哪个 suite 会导致 exec_server / VM 无响应。
+定位完整 `run.js`（不带 `-net`）在 `ipv6` suite 后 execd 失联的问题——逐个 net suite 跑，
+找出哪个 suite 会导致 execd / VM 无响应。
 
 ## 环境前置（每次 VM 启动后需就绪）
 
@@ -22,7 +22,7 @@
 |-------|-----|------|------|
 | basic-fetch | - | PASS 4/4 | 依赖 serve_test+portproxy，原 273/274 失败项 |
 | -net 全量 | 非 net | PASS 277/277 | 方案 B 后验收基线 |
-| ipv6 | net | **HANG(exec_server)** | 完整 run 首个断点，跑两次均卡死 exec_server |
+| ipv6 | net | **HANG(execd)** | 完整 run 首个断点，跑两次均卡死 execd |
 | **ipv6(win7, v6tov4后)** | net | ✅ **13/13 PASS** | 2026-09-20 补 v6tov4 转发后验证通过，不再挂 |
 | net-fetch | net | PASS 50/50 | 需同时转发 18923+18924；最初 48/49 因未转 18924 的 https 失败 |
 | net-websocket | net | PASS 15/15 | |
@@ -32,16 +32,16 @@
 | fetch-cache | net | PASS 39/39 | |
 | worker-http | net | PASS 6/6 | |
 | worker-fetch | net | PASS 2/2 | |
-| **全量 `-skip-ipv6`** | 全部 | **PASS 415/415** | 排除 ipv6 后完整跑，所有独立+集成都过，exec_server 不挂 |
+| **全量 `-skip-ipv6`** | 全部 | **PASS 415/415** | 排除 ipv6 后完整跑，所有独立+集成都过，execd 不挂 |
 | **全量 `run.js`(含ipv6)** | 全部 | **427/428** | v6tov4 修复后全量不挂；唯一失败 ffi OOM（win7 有真实打印机） |
 
 ## 时间线 / 日志
 
 - 2026-09-20 07:4x —— VM 多次启动。非 `--fresh` 后台启动偶发 QEMU 静默退死（overlay 残留锁）。
-  `run.sh --fresh` 干净：重建 overlay + 起 QEMU + 等 run.bat 触发，exec_server 约 10s 就绪。
+  `run.sh --fresh` 干净：重建 overlay + 起 QEMU + 等 run.bat 触发，execd 约 10s 就绪。
 - `-net` 全量 277/277 PASS（basic-fetch 4/4）。
-- ipv6 suite 单独跑：exec_server 失联（`curl :8080/exec` 无响应），QEMU 仍存活。复现两次。
-  推断：ipv6 suite 中某个 socket/连接路径使 guest 端 exec_server 挂起，或令 SLIRP 转发打糊。
+- ipv6 suite 单独跑：execd 失联（`curl :8080/exec` 无响应），QEMU 仍存活。复现两次。
+  推断：ipv6 suite 中某个 socket/连接路径使 guest 端 execd 挂起，或令 SLIRP 转发打糊。
 - 2026-09-20 08:06 —— `--fresh` 干净启动，run.bat 的 portproxy 自动生效（18923）。
 - 08:0x —— 逐 suite 测试：net-fetch 需 18924 转发（https），补后 50/50；
   其余 net-websocket/net-event/http-server/http-import/fetch-cache/worker-http/worker-fetch 全 PASS。
@@ -57,8 +57,8 @@
 - 宿主端口 **8005** → 客机 8080（win7 用 8007；800x+5=XP / +7=Win7 助记，docker/run.sh hostfwd。原为 8081，已改）
 - XP **有 `netsh interface portproxy`**（需先 `netsh interface ipv6 install`，XP 由 IPV6MON.DLL 实现）。
   listenaddress 用 `0.0.0.0`（127.0.0.1 在 XP 上不生效）。
-- ~~run.bat 直接跑测试（不依赖 exec_server，XP 上 exec_server 处理带反斜杠命令后会挂起）~~
-  **2026-09-23 实测证伪**：常驻 exec_server + JSON `{"cmd":...}` 对带反斜杠命令
+- ~~run.bat 直接跑测试（不依赖 execd，XP 上 execd 处理带反斜杠命令后会挂起）~~
+  **2026-09-23 实测证伪**：常驻 execd + JSON `{"cmd":...}` 对带反斜杠命令
   （`dir Z:\quickwin` 等）全部正常返回 `{out,code}`，无挂起。见下方「反斜杠传闻复核」。
 - XP 快照：`xp_ready.qcow2`，1G 内存 1CPU。
 
@@ -97,7 +97,7 @@
 
 ### 反斜杠传闻复核（2026-09-23，XP 实测）
 
-原记录（L60/L86）称「exec_server 处理带反斜杠命令后会挂起」，仅有一句话无复现步骤。
+原记录（L60/L86）称「execd 处理带反斜杠命令后会挂起」，仅有一句话无复现步骤。
 在常驻模式 XP 上（hostfwd :8005，容器内 curl）四条对照实测：
 
 | 用例 | body | 结果 |
@@ -112,11 +112,11 @@
 **结论：反斜杠挂起传闻不成立。** 疑为早期裸文本协议 + 同步 popen 阻塞事件循环
 导致健康检查超时被误诊为「挂死」。新 JSON 协议 + `http_test.sh` 超时 300s 覆盖同步阻塞。
 
-另：`dir Z:/quickwin` 失败是 cmd.exe 行为（`/` 被当开关），不是 exec_server 问题；
+另：`dir Z:/quickwin` 失败是 cmd.exe 行为（`/` 被当开关），不是 execd 问题；
 调用方应使用反斜杠路径。
 
 ### 关键发现（XP 全量经 HTTP，2026-09-23）
-- 常驻 exec_server 下 `./http_test.sh xp` 全量：**Summary 425/426**（failed=1 = ffi 打印机环境差，容忍）。
+- 常驻 execd 下 `./http_test.sh xp` 全量：**Summary 425/426**（failed=1 = ffi 打印机环境差，容忍）。
 - 与 run.bat 直跑基线 425/426 一致。
 
 ### XP net suites（portproxy 就绪后，2026-09-20）
@@ -159,9 +159,9 @@
 
 - 9 个 net suite 中 **8 个独立跑全部通过**（net-fetch 50/50, net-websocket 15/15, net-event 2/2,
   http-server 18/18, http-import 6/6, fetch-cache 39/39, worker-http 6/6, worker-fetch 2/2），
-  仅 `ipv6` 单独跑即卡死 exec_server。
+  仅 `ipv6` 单独跑即卡死 execd。
 - **完整 `run.js -skip-ipv6` = 415/415 PASS**：排除 ipv6 后全量（含所有 net 套件）一次通过，
-  exec_server 不挂。确认整套的唯一断点就是 ipv6 suite。
+  execd 不挂。确认整套的唯一断点就是 ipv6 suite。
 - test/run.ts 已给 ipv6 临时加 `skip-ipv6` tag 用于排查（待用户决定去留）。
 - 待办：
   - 排查 ipv6 卡死根因（sock IPv6 后端问题或 serve_test 对 ::1/WS 的处理）。

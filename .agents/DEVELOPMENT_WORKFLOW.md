@@ -83,7 +83,7 @@ make test              # 全量（含外网，慢）
 | `make cc64` / `cc32` | 交叉编译 64/32 位 exe |
 | `make cc64-nowasm` / `cc32-nowasm` | 不含 WASM/WAMR |
 | `make js` | 编译 TS |
-| `make exec_server` | 打包 `examples/exec_server.ts` 并 Brotli 内嵌进 `_build/exec_server.exe` |
+| `make execd` | 打包 `examples/execd.ts` 并 Brotli 内嵌进 `_build/execd.exe` |
 | `make wat` / `make wasm` | WAT → WASM fixtures |
 | `make test` | 运行测试 |
 | `BUILD=fast\|small\|debug` | 构建 flavor，默认 fast |
@@ -135,7 +135,7 @@ cd docker
 
 ### 每次测试（常驻模式）
 
-VM 开机只起 `exec_server`（不跑测试）；测试经 `http_test.sh` HTTP 下发，可反复执行：
+VM 开机只起 `execd`（不跑测试）；测试经 `http_test.sh` HTTP 下发，可反复执行：
 
 ```bash
 # 容器内
@@ -153,11 +153,11 @@ cd docker
 ```
 
 流程：`run.sh` 杀旧 QEMU（`--fresh` 时重建 overlay）→ `ln -s` `_build` 到 `ci_share/quickwin` → `unix2dos` run.bat → 启动 → 等 `/`（usage 页 200）。  
-`run.bat` 只做防火墙/portproxy + `start exec_server`；`http_test.sh` 内部确保容器 `serve_test :18923`。
+`run.bat` 只做防火墙/portproxy + `start execd`；`http_test.sh` 内部确保容器 `serve_test :18923`。
 
-> **改了 `examples/exec_server*.ts` 或其 lib 依赖后，只跑 `make js` 不生效**——guest 里跑的
-> `exec_server.exe` 内嵌的是 brotli 打包的旧 JS。改动后构建顺序：`make js` → `make exec_server`
-> （重新 brotli 内嵌）→ `./run.sh <vm> --restart` 加载新 exe（原文见 `.agents/EXEC_SERVER.md`）。
+> **改了 `examples/execd*.ts` 或其 lib 依赖后，只跑 `make js` 不生效**——guest 里跑的
+> `execd.exe` 内嵌的是 brotli 打包的旧 JS。改动后构建顺序：`make js` → `make execd`
+> （重新 brotli 内嵌）→ `./run.sh <vm> --restart` 加载新 exe（原文见 `.agents/EXEC_D.md`）。
 
 Win7 用 `qwin.exe`（64 位），XP 用 `qwin-x86.exe`（32 位），`http_test.sh` 按 VM 参数选 exe；`run.bat` 按 `ver` 选日志文件名。
 
@@ -184,7 +184,7 @@ Win7 用 `qwin.exe`（64 位），XP 用 `qwin-x86.exe`（32 位），`http_test
 - **镜像**：仅 `Dockerfile.dev` 变更或 GHCR 无镜像时重建，否则复用 `ghcr.io/xna00/quickwin-dev:latest`
 - **matrix**：`win7`（`cc64` + qwin.exe）/ `xp`（`cc32` + qwin-x86.exe），`fail-fast: false`
 - **缓存**：ready 快照（cache miss 才现场 `setup-*.sh`，约 40min）；交叉编译依赖 `.a`（key 含 Makefile/patches/deps hash）
-- **编译**：`make <deps> BUILD=small` → nowasm → `make js wasm` → `make exec_server` → 上传 artifact
+- **编译**：`make <deps> BUILD=small` → nowasm → `make js wasm` → `make execd` → 上传 artifact
 - **测试**：`run.sh <vm>` 等健康 → `http_test.sh <vm>`（内含 serve_test + POST /exec + Summary 断言，**失败 ≤1 视为通过**）→ `--stop if: always()`
 - **发布**：`v*` tag 且测试过 → `make npm-pkg` 发 npm
 

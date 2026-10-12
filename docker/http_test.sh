@@ -3,7 +3,7 @@ set -e
 cd "$(dirname "$0")"
 
 # ============================================================
-#  经常驻 exec_server 的 HTTP 下发测试（win7 / xp / win11 共用）
+#  经常驻 execd 的 HTTP 下发测试（win7 / xp / win11 共用）
 #  前置：run.sh <vm> 已起且健康；host 上 serve_test 在 18923。
 #  用法: ./http_test.sh <win7|xp|win11> [filter]
 #    filter 透传给 test/run.js，如: -net / basic / wasm
@@ -23,7 +23,7 @@ case "$VM" in
   *) echo "未知 VM: $VM（可选 win7|xp|win11）"; exit 1 ;;
 esac
 
-# 命令用相对路径（exec_server 启动时 cwd=Z:\quickwin，popen 继承）。
+# 命令用相对路径（execd 启动时 cwd=Z:\quickwin，popen 继承）。
 # 按架构选 exe：xp 用 qwin-x86.exe，win7/win11 用 qwin.exe
 if [ "$VM" = "xp" ]; then
   EXE="qwin-x86.exe"
@@ -38,7 +38,7 @@ fi
 
 # ── 健康检查 ──
 if ! curl -sf -m 3 "http://127.0.0.1:${FWD}/" >/dev/null; then
-  echo "exec_server 不健康: http://127.0.0.1:${FWD}/"
+  echo "execd 不健康: http://127.0.0.1:${FWD}/"
   echo "先跑: ./run.sh $VM"
   exit 1
 fi
@@ -83,7 +83,7 @@ fi
 
 # ── 成功：原始字节 + X-Exit-Code ──
 CODE=$(tr -d '\r' < "$HDR" | awk 'tolower($1)=="x-exit-code:"{print $2}')
-echo "--- exit code from exec_server: ${CODE:-n/a} ---"
+echo "--- exit code from execd: ${CODE:-n/a} ---"
 
 # Summary 在原始字节上 grep（测试输出为 UTF-8/ASCII，不受 GBK 影响）
 SUMMARY=$(grep -oE "Summary: [0-9]+/[0-9]+" "$BODY_FILE" | tail -1 || true)
@@ -111,6 +111,6 @@ if [ "$FAILED" -gt 0 ]; then
 fi
 # popen/pclose 的 code 非 0 也提示（Summary 已主判）
 if [ -n "$CODE" ] && [ "$CODE" != "0" ]; then
-  echo "warning: exec_server code=$CODE (grep Summary already checked)"
+  echo "warning: execd code=$CODE (grep Summary already checked)"
 fi
 echo "PASS"

@@ -24,7 +24,7 @@ const STARTF_USESTDHANDLES = 0x100
 const WAIT_INFINITE = 0xffffffff
 // STARTUPINFOW / PROCESS_INFORMATION 的布局随进程位宽（x86 68B / x64 104B），由 struct 按 os.arch 推。
 // os.arch 是编译期的进程指针宽度（quickjs-libc.c OS_ARCH），WOW64 下的 32 位进程得 ia32 布局——
-// 本地 win7 VM 上的 exec_server 就是 32 位进程跑在 64 位系统上。
+// 本地 win7 VM 上的 execd 就是 32 位进程跑在 64 位系统上。
 
 const parent = os.Worker.parent
 
