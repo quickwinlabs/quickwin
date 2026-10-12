@@ -13,7 +13,7 @@ qwin 编译时是 GUI 子系统二进制。Windows 不会给这样的进程自�
 - 控制台程序的 `printf` 天然接自己的控制台（CONOUT$）；
 - GUI 进程的 `printf` 只有继承到了父进程传入的句柄才有意义，否则就是"丢进黑箱"。
 
-xp 上观察到的"控制台能看到输出，但 exec_server / /exec 拿不到"、“反过来 exec_server 能拿到但控制台看不到”——根子都在这一层。
+xp 上观察到的"控制台能看到输出，但 execd / /exec 拿不到"、“反过来 execd 能拿到但控制台看不到”——根子都在这一层。
 
 ## 2. 三种启动场景与 GetFileType 判定
 
@@ -21,7 +21,7 @@ xp 上观察到的"控制台能看到输出，但 exec_server / /exec 拿不到"
 
 | 场景 | `GetFileType` | 含义 | 处理 |
 |---|---|---|---|
-| XP 经 exec_server / winpty agent 派生 | `3`（pipe） | 句柄可用，CRT 已把它装到 fd 1 | **什么都不做** |
+| XP 经 execd / winpty agent 派生 | `3`（pipe） | 句柄可用，CRT 已把它装到 fd 1 | **什么都不做** |
 | 从 cmd 重定向到文件 | `1`（disk） | 句柄可用 | **什么都不做** |
 | Win7 GUI 未附着父控制台 | `0` | 句柄存在但无效 | `AttachConsole` + `freopen("CONOUT$")` |
 | 从 explorer 双击 / 无句柄 | `0xffffffff`（`INVALID_HANDLE_VALUE`） | 压根没有句柄 | `AttachConsole`，失败则保持原样 |
@@ -104,13 +104,13 @@ XP 上继承来的是 pipe 句柄，`AttachConsole(ATTACH_PARENT_PROCESS)` 一�
 
 ## 7. CreateProcess + CreatePipe（已替代 winpty，2026-09 双系统验证）
 
-worker 一开始用 winpty 是因为它给子进程"真控制台语义"，但当前 `/exec` 从不交互、只捕获输出，winpty 的看家本领（`WriteConsole`/屏幕缓冲/键盘回灌）其实没用到。**已在 `exec_server_worker.ts` 落地替换：直接 `CreateProcess + CreatePipe`，完全不用动事件循环，XP 流式还优于 winpty（§7.5）。**
+worker 一开始用 winpty 是因为它给子进程"真控制台语义"，但当前 `/exec` 从不交互、只捕获输出，winpty 的看家本领（`WriteConsole`/屏幕缓冲/键盘回灌）其实没用到。**已在 `execd_worker.ts` 落地替换：直接 `CreateProcess + CreatePipe`，完全不用动事件循环，XP 流式还优于 winpty（§7.5）。**
 
-验证方式：`make exec_server` → 容器 `docker/run.sh <vm> --restart`（VM 读 `_build/exec_server.exe`）→ `docker/http_test.sh`：XP 547/548（failed=1 打印机容忍）、Win7 553/553 全过；冒烟 `print('你好')` 输出 `e4 bd a0 e5 a5 bd`（UTF-8）判定新 worker（旧 winpty 会是 GBK `c4 e3 ba c3`）。
+验证方式：`make execd` → 容器 `docker/run.sh <vm> --restart`（VM 读 `_build/execd.exe`）→ `docker/http_test.sh`：XP 547/548（failed=1 打印机容忍）、Win7 553/553 全过；冒烟 `print('你好')` 输出 `e4 bd a0 e5 a5 bd`（UTF-8）判定新 worker（旧 winpty 会是 GBK `c4 e3 ba c3`）。
 
 ### 7.1 为什么不需要碰事件循环
 
-worker 的读循环**本来就是同步阻塞的**（`exec_server_worker.ts` L128-138）：
+worker 的读循环**本来就是同步阻塞的**（`execd_worker.ts` L128-138）：
 
 ```ts
 for (;;) {

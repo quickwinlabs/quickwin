@@ -1,6 +1,6 @@
 # /exec 中文命令 lossy 的根因：cmd 的 ACP + NLS 依赖
 
-相关文档：`examples/exec_server_worker.ts`（CreateProcessW 链路）、`examples/exec_server.tsx`（POST /exec）、`.agents/TODO.md` L11（旧结论待更正）。
+相关文档：`examples/execd_worker.ts`（CreateProcessW 链路）、`examples/execd.tsx`（POST /exec）、`.agents/TODO.md` L11（旧结论待更正）。
 
 ---
 
@@ -48,12 +48,12 @@ Tiny11 同时犯两错（ACP=1252 且删光 nls），表象上"缺表"似为主�
 | 阶段 | 载体 | 字节串 / 说明 |
 |---|---|---|
 | 1. Host curl 请求体 | HTTP body（UTF-8 JSON） | `7b 22 63 6d 64 22 3a 22 ... e4 bd a0 e5 a5 bd ... 22 7d`（「你好」UTF-8 = `e4 bd a0 e5 a5 bd`） |
-| 2. exec_server 解析 | JS string（内部 UTF-16） | `exec_server.tsx:434` `req.json()`，无损 |
-| 3. worker 拼命令行 | JS string | `exec_server_worker.ts:147` `sysDir + "\cmd.exe /c " + cmd` |
-| 4. CreateProcessW 传参 | UTF-16LE 内存 | `exec_server_worker.ts:148`（绑定 `<WCHAR>ptr`）「你好」=`60 4f 7d 59`，**无损** |
+| 2. execd 解析 | JS string（内部 UTF-16） | `execd.tsx:434` `req.json()`，无损 |
+| 3. worker 拼命令行 | JS string | `execd_worker.ts:147` `sysDir + "\cmd.exe /c " + cmd` |
+| 4. CreateProcessW 传参 | UTF-16LE 内存 | `execd_worker.ts:148`（绑定 `<WCHAR>ptr`）「你好」=`60 4f 7d 59`，**无损** |
 | 5. cmd 接收 | cmd 内部 UTF-16 | 同上无损（未修复环境下 `cmd /u /c echo 你好` 探针 → 输出 `60 4f 7d 59 0d 00 0a 00`，即**内部保有 UTF-16**） |
 | 6. cmd 输出编码 | 按目标码页编码成字节 | 写 stdout 时才编码：936 → `c4 e3 ba c3`（GBK）；1252+缺表 → `3f 3f` |
-| 7. readFile 原样回传 | 字节流直通 | `exec_server_worker.ts:165`，零转换，连流式都不做 |
+| 7. readFile 原样回传 | 字节流直通 | `execd_worker.ts:165`，零转换，连流式都不做 |
 | 8. Host 收到 body | 原始字节 | 与阶段 6 相同 |
 
 链路上游（1–5）和下游（7–8）都是**字节直通**；丢字只发生在阶段 6 的**输出编码**。注意：`cmd /u` 探针在**未修复**环境（ACP=1252+缺表）也输出 `60 4f 7d 59`，证明 cmd 从未在入参侧投影——`/u` 只是把"输出写成 UTF-16LE"绕开阶段 6，所以 `/u` 能让 echo 无损，而默认输出（按 ACP）中文就变 `??`。
@@ -66,7 +66,7 @@ cmd.exe 是控制台程序，stdout 默认是一个**字节流**（继承父进�
 
 - console I/O 默认按控制台输出代码页写字节（`WriteFile`/`WriteConsoleA` 写 ACP/OEM 字节；`WriteConsoleW` 仅直接打屏路径可用）
 - 下游工具（`findstr`/`more`/第三方 exe）大多为 ANSI 程序，只认 OEM/ANSI 字节
-- exec_server 用管道接管进程 stdout，管道里只能按字节编码
+- execd 用管道接管进程 stdout，管道里只能按字节编码
 
 所以 cmd 的处理管线是：**宽命令行入参（UTF-16 无损）→ 命令执行（内部命令拿到的参数仍是 UTF-16）→ 输出文本按代码页编码成字节写 stdout**。`/u` 只改最后"写出"一步的编码（强制 UTF-16LE），把阶段 6 绕过——因此 `/u` 让 `echo` 无损（未修复环境也实测无损）。但它不改磁盘/文件系统行为，因为那里本来就走宽字符 API（阶段 6 根本不参与）。
 
@@ -99,7 +99,7 @@ cmd 收到命令行 ──► UTF-16 内存（无损，CreateProcessW 直通）
 1. **md 从未建出问号目录**。之前"建出 `qw????`、rd 报 syntax error"是**误读**：当时只看了默认 `dir /b`（回显层按 1252 编码 → `?`），没看磁盘真名。用 `cmd /u /c dir /b` 读出 `71 00 77 00 2d 4e 87 65 4b 6d d5 8b`（UTF-16LE `qw中文测试`），`cd /d C:\qwt\qw中文测试` 与 `rmdir`（真名）都 RC=0 成功。SMB 共享盘宿主侧 `ls` 也显示 UTF-8 中文名。
 2. **`/u` 在任何环境都无损**：未修复（ACP=1252+缺表）`cmd /u /c echo 你好` → `60 4f 7d 59`。因为 cmd 内存里本来就是 UTF-16，`/u` 只是让输出不再按代码页编码而是直接写 UTF-16LE——它绕过的是**阶段 6 输出编码**，不是"保全 cmd 内部"。同理 md 根本不需要 `/u`，它从不经过阶段 6。
 
-结论落点：对 echo 而言 lossy 在"输出编码"（exec_server 拿到的字节不可还原，除非 `/u`）；对 md 而言**文件系统操作全程无损**，`?` 只在把所有名字重新按 ACP 回显时出现——**文件系统操作根本不是问题所在**。
+结论落点：对 echo 而言 lossy 在"输出编码"（execd 拿到的字节不可还原，除非 `/u`）；对 md 而言**文件系统操作全程无损**，`?` 只在把所有名字重新按 ACP 回显时出现——**文件系统操作根本不是问题所在**。
 
 ---
 
@@ -125,15 +125,15 @@ cmd 收到命令行 ──► UTF-16 内存（无损，CreateProcessW 直通）
 
 ## 7. 与右键菜单传参的关联（辨析）
 
-用户右键菜单传中文路径"感觉是 GBK"，与 exec_server 是**同根异处**：
+用户右键菜单传中文路径"感觉是 GBK"，与 execd 是**同根异处**：
 
-| | 右键菜单 `%1` | exec_server `/exec` |
+| | 右键菜单 `%1` | execd `/exec` |
 |---|---|---|
 | 转换发生地 | **目标进程的 ANSI 入口**（`WinMain(LPSTR)`/`main(char**)`/`GetCommandLineA`，由系统/CRT 按 ACP 转，参数本身被转换） | **cmd 输出回显**（参数无损，写 stdout 时按 ACP 编码成字节） |
 | 中文系统（ACP=936） | 收到 GBK（特性，非 bug） | 输出 GBK，正常 |
 | Tiny11（ACP=1252+缺 NLS） | 收到 `?`（参数侧坏了） | 输出 `??`（回显坏了，参数/文件系统仍无损） |
 
-**统一认识**：命令行的"原生"形态是 UTF-16（`RTL_USER_PROCESS_PARAMETERS.CommandLine`）。**A 面路径**（`GetCommandLineA`/`CreateProcessA`/目标进程 ANSI 入口/右键 `%1`）在**入参方向**按 ACP 转换并受 NLS 控制，会真正毁掉参数；**W 面路径**（`GetCommandLineW`/`wWinMain`/`wmain`/`CreateProcessW` 传 `<WCHAR>ptr`/`cmd /u`）入参无损，但 **cmd 的默认输出**仍按代码页编码成字节（exec_server 场景读到的是编码后的字节）。两条路都受 ACP+NLS 控制，只是作用点不同。
+**统一认识**：命令行的"原生"形态是 UTF-16（`RTL_USER_PROCESS_PARAMETERS.CommandLine`）。**A 面路径**（`GetCommandLineA`/`CreateProcessA`/目标进程 ANSI 入口/右键 `%1`）在**入参方向**按 ACP 转换并受 NLS 控制，会真正毁掉参数；**W 面路径**（`GetCommandLineW`/`wWinMain`/`wmain`/`CreateProcessW` 传 `<WCHAR>ptr`/`cmd /u`）入参无损，但 **cmd 的默认输出**仍按代码页编码成字节（execd 场景读到的是编码后的字节）。两条路都受 ACP+NLS 控制，只是作用点不同。
 
 qwin 自身免疫：`main.c:164` 弃用 `WinMain` 的 `LPSTR lpCmdLine`，改走 `CommandLineToArgvW(GetCommandLineW())` + `WideCharToMultiByte(CP_UTF8)` → argv 永远 UTF-8 无损（仅 W 面入口，不涉及任何代码页）。
 
@@ -141,7 +141,7 @@ qwin 自身免疫：`main.c:164` 弃用 `WinMain` 的 `LPSTR lpCmdLine`，改走
 
 ## 8. 结论已定：worker 加 `/u` 规避，不固化 NLS
 
-**采纳方案**：`examples/exec_server_worker.ts` 用 RtlGetVersion 判 NT major≥10（win11），
+**采纳方案**：`examples/execd_worker.ts` 用 RtlGetVersion 判 NT major≥10（win11），
 拼命令行 `cmd /u /c ...`，让 cmd 内置输出直接写 UTF-16LE，**绕开 ACP 转换**（不存在
 "转换 → 退化"一步，天然无损）。win7/XP（ACP=936 本就无损）保持原样，避免改变输出协议。
 

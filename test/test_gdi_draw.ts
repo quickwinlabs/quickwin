@@ -27,7 +27,7 @@ const H = 240
 export const suite = {
     name: 'gdi-draw',
     run: (t: Tester) => {
-        // —— 基座：屏幕 DC → 内存 DC + 32bpp 位图（与 exec_server_worker 截屏同型）——
+        // —— 基座：屏幕 DC → 内存 DC + 32bpp 位图（与 execd_worker 截屏同型）——
         t.section('setup: memory DC + 32bpp bitmap')
         const screen = GetDC(NULL)
         const mem = CreateCompatibleDC(screen)

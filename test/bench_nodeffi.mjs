@@ -1,5 +1,5 @@
 // 一次性性能 bench：node:ffi(Node v26.10) 侧，对照我方 test/bench_ffi_overhead.ts
-// 不入 CI。用法（win11 VM，exec_server cwd=Z:\quickwin）：
+// 不入 CI。用法（win11 VM，execd cwd=Z:\quickwin）：
 //   POST /exec {"cmd":"node-v26.10.0-win-x64\\node.exe test\\bench_nodeffi.mjs","timeout":600000}
 // 场景与批量方法学对齐我方侧：每臂自校准 ~400ms/样本、预热 1、15 轮、median 主指标。
 // node:ffi Win64 fast path 上限（总参 ≤3、整型参 ≤3）：nop0/nop1/GetCurrentProcessId

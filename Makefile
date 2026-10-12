@@ -172,7 +172,7 @@ OBJS = $(SRCS:%.c=$(OBJ_DIR)/%.o) $(ASM_SRCS:%.S=$(OBJ_DIR)/%.o) $(OBJ_DIR)/app.
 DEPS = $(SRCS:%.c=$(OBJ_DIR)/%.d)
 
 .PHONY: cc64 cc32 cc64-nowasm cc32-nowasm apply-submodule-patches \
-        gen-const enum-map wamr wasm js test npm-pkg exec_server exec_server-full embed-js embed-js-br info help clean distclean
+        gen-const enum-map wamr wasm js test npm-pkg execd execd-full embed-js embed-js-br info help clean distclean
 
 .DEFAULT_GOAL := cc64
 
@@ -445,36 +445,36 @@ npm-pkg: js wasm
 	cp $(BUILD_DIR)/main.js $(NPM_PKG_DIR)/main.js
 	@echo "npm package created at $(NPM_PKG_DIR)"
 
-# 底座用 nowasm：exec_server.js import os/sock/std + gui/react-qw（GUI 日志窗），
+# 底座用 nowasm：execd.js import os/sock/std + gui/react-qw（GUI 日志窗），
 # worker 只 import os/std/ffi，完全不依赖 WAMR —— 去掉 wasm 运行时可省 297KB(x86) / 262KB(x64)，BUILD=small 实测。
 # 优先 32-bit nowasm（XP 可跑）；否则用已有的 64-bit nowasm（CI win7 只编 cc64-nowasm）。
-# 两者都没有才递归 make cc32-nowasm（保持本地 clean 后 make exec_server 可用）。
-exec_server: js
+# 两者都没有才递归 make cc32-nowasm（保持本地 clean 后 make execd 可用）。
+execd: js
 	@if [ ! -f $(BUILD_DIR)/$(TARGET_NOWASM_32) ] && [ ! -f $(BUILD_DIR)/$(TARGET_NOWASM) ]; then \
 		$(MAKE) cc32-nowasm; \
 	fi
 	@if [ -f $(BUILD_DIR)/$(TARGET_NOWASM_32) ]; then \
-		cp $(BUILD_DIR)/$(TARGET_NOWASM_32) $(BUILD_DIR)/exec_server.exe; \
+		cp $(BUILD_DIR)/$(TARGET_NOWASM_32) $(BUILD_DIR)/execd.exe; \
 	elif [ -f $(BUILD_DIR)/$(TARGET_NOWASM) ]; then \
-		cp $(BUILD_DIR)/$(TARGET_NOWASM) $(BUILD_DIR)/exec_server.exe; \
+		cp $(BUILD_DIR)/$(TARGET_NOWASM) $(BUILD_DIR)/execd.exe; \
 	else \
 		@echo "error: no nowasm base found, run: make cc32-nowasm or make cc64-nowasm"; exit 1; \
 	fi
-	node scripts/embed-js.mjs --exe $(BUILD_DIR)/exec_server.exe \
-	  --js $(BUILD_DIR)/examples/exec_server.js --compress
+	node scripts/embed-js.mjs --exe $(BUILD_DIR)/execd.exe \
+	  --js $(BUILD_DIR)/examples/execd.js --compress
 
-# 含 WAMR 的完整底座版本（保留：exec_server 若将来要跑 wasm 用这个）
-exec_server-full: js
+# 含 WAMR 的完整底座版本（保留：execd 若将来要跑 wasm 用这个）
+execd-full: js
 	@if [ ! -f $(BUILD_DIR)/$(TARGET_NAME_32) ] && [ ! -f $(BUILD_DIR)/$(TARGET_NAME) ]; then \
 		$(MAKE) cc32; \
 	fi
 	@if [ -f $(BUILD_DIR)/$(TARGET_NAME_32) ]; then \
-		cp $(BUILD_DIR)/$(TARGET_NAME_32) $(BUILD_DIR)/exec_server.exe; \
+		cp $(BUILD_DIR)/$(TARGET_NAME_32) $(BUILD_DIR)/execd.exe; \
 	else \
-		cp $(BUILD_DIR)/$(TARGET_NAME) $(BUILD_DIR)/exec_server.exe; \
+		cp $(BUILD_DIR)/$(TARGET_NAME) $(BUILD_DIR)/execd.exe; \
 	fi
-	node scripts/embed-js.mjs --exe $(BUILD_DIR)/exec_server.exe \
-	  --js $(BUILD_DIR)/examples/exec_server.js --compress
+	node scripts/embed-js.mjs --exe $(BUILD_DIR)/execd.exe \
+	  --js $(BUILD_DIR)/examples/execd.js --compress
 
 embed-js: cc64
 	node scripts/embed-js.mjs --exe $(TARGET) --js $(JS_EMBED)
@@ -501,8 +501,8 @@ help:
 	@echo "  gen-const - Cross-compile tools/gen_const.exe -> $(BUILD_DIR)/gen_const.exe"
 	@echo "  enum-map  - Regenerate quickwin_enum_map.d.ts (EnumMap preset) from quickwin_const.d.ts"
 	@echo "  wamr      - Build WAMR static library (auto-built on demand)"
-	@echo "  exec_server      - examples/exec_server.ts -> exec_server.exe（nowasm 底座，无 WAMR，省 297KB x86 / 262KB x64）"
-	@echo "  exec_server-full - 同上，但用含 WAMR 的完整底座"
+	@echo "  execd      - examples/execd.ts -> execd.exe（nowasm 底座，无 WAMR，省 297KB x86 / 262KB x64）"
+	@echo "  execd-full - 同上，但用含 WAMR 的完整底座"
 	@echo "  embed-js  - Embed JS_EMBED into exe: make embed-js JS_EMBED=script.js"
 	@echo "  embed-js-br - Embed brotli-compressed JS into exe"
 	@echo "  clean     - Remove $(BUILD_DIR)/ (all intermediates)"

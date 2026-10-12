@@ -123,7 +123,7 @@ function initGui(): void {
     if (!cfg.gui) return
     try {
         const root = createRoot({
-            text: 'exec_server · :' + (boundPort || 8080),
+            text: 'execd · :' + (boundPort || 8080),
             x: 200, y: 200, width: 560, height: 420,
         })
         root.render(<LogPanel />)
@@ -131,7 +131,7 @@ function initGui(): void {
         gui.ShowWindow(root.hwnd, gui.ShowWindowCmd.RESTORE)
     } catch (ex) {
         // 无桌面/建窗失败时回退 headless，绝不影响服务
-        console.error('[exec_server] gui init failed (fallback headless):', ex)
+        console.error('[execd] gui init failed (fallback headless):', ex)
     }
 }
 
@@ -210,9 +210,9 @@ function runInWorker(cmd: string, signal: AbortSignal | null, timeoutMs: number 
         try {
             const p = std.popen('taskkill /F /T /PID ' + innerPid, 'r')
             if (p) p.close()
-            else console.error('[exec_server] taskkill spawn failed')
+            else console.error('[execd] taskkill spawn failed')
         } catch (ex) {
-            console.error('[exec_server] kill error:', ex)
+            console.error('[execd] kill error:', ex)
         }
     }
 
@@ -658,7 +658,7 @@ function applyDisplayMode(w: number, h: number, persist: boolean): DisplayModeCh
 // 非 API 路径的统一应答（/、/health、拼错路径/方法一律 200 免 token）。run.sh/
 // http_test.sh 的 curl -sf 健康探针打到的就是这（判据只看状态码不看 body）。
 // 不记日志：探针 3s 一打，会刷爆 GUI 环形日志窗。
-const USAGE = `quickwin exec_server —— 本页即用法（API 之外任意路径均返回，HTTP 200）
+const USAGE = `quickwin execd —— 本页即用法（API 之外任意路径均返回，HTTP 200）
 
 API（配置 token 后需 Authorization: Bearer <token>，未配置则放行）：
   POST /exec         JSON {"cmd":"命令","timeout":毫秒?} → 流式输出，Trailer X-Exit-Code

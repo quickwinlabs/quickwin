@@ -6,7 +6,7 @@
 
 ## 简介
 
-这个服务是 `exec_server`，它监听 8080 端口，收到 HTTP 请求，解析出要运行的命令，在本机运行，把输出通过 HTTP 返回。它是一个 exe，体积约 1.5MB，用 [QuickWin](https://github.com/xna00/quickwin) 开发，Windows XP 到 Windows 11 都能跑。
+这个服务是 `execd`，它监听 8080 端口，收到 HTTP 请求，解析出要运行的命令，在本机运行，把输出通过 HTTP 返回。它是一个 exe，体积约 1.5MB，用 [QuickWin](https://github.com/xna00/quickwin) 开发，Windows XP 到 Windows 11 都能跑。
 
 链路很短：
 
@@ -14,7 +14,7 @@
 外部程序
       │  POST /exec {cmd: "dir"}
       ▼
-exec_server.exe  (VM 内 8080)
+execd.exe  (VM 内 8080)
       │  os.Worker（每请求一个）
       ▼
 CreateProcessW + CreatePipe
@@ -48,7 +48,7 @@ GUI 日志窗默认开着，顶栏显示 `token: on|off · port: N · workers: N
 
 这是 Windows 上绕不开的坑。sshd 是 Windows 服务，跑在 session 0，而 **session 0 没有交互式桌面**——没有窗口站、没有可见 GUI。sshd 装上了、能登录、能执行命令，但没法看到或操作那个 session 里的窗口。
 
-`exec_server` 不起独立 session，运行在桌面的 session 里，所以没有这层隔阂——`/window_list` 列出顶层窗口、`/screenshot` 抓指定窗口像素，这条链在 SSH 路径下走不通，在 exec_server 下是通的。
+`execd` 不起独立 session，运行在桌面的 session 里，所以没有这层隔阂——`/window_list` 列出顶层窗口、`/screenshot` 抓指定窗口像素，这条链在 SSH 路径下走不通，在 execd 下是通的。
 
 ## 原理与使用
 
@@ -99,7 +99,7 @@ curl http://127.0.0.1:8005/window_list \
 ```
 
 ```json
-[{ "hwnd": 32768, "title": "exec_server", "className": "QWindow",
+[{ "hwnd": 32768, "title": "execd", "className": "QWindow",
    "rect": { "left": 0, "top": 0, "right": 560, "bottom": 420 },
    "visible": true, "minimized": false }]
 ```
@@ -148,5 +148,5 @@ curl -X POST http://127.0.0.1:8005/exec \
 
 **timeout 默认无限。** 不传 `timeout` 就不设定时器，连接活着命令就一直跑。要卡就传正数毫秒值，到点强杀、trailer 记 `X-Exit-Code: -1`。
 
-完整实现见 [examples/exec_server.tsx](https://github.com/xna00/quickwin/blob/main/examples/exec_server.tsx)
+完整实现见 [examples/execd.tsx](https://github.com/xna00/quickwin/blob/main/examples/execd.tsx)
 

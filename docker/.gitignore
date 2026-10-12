@@ -14,7 +14,6 @@ _iso_extract/
 
 # 日志（按 VM 区分：run-win7.log / run-xp.log）
 ci_share/run-*.log
-ci_share/exec_server.log
 
 # QEMU SMB symlink (created by run.sh)
 ci_share/quickwin

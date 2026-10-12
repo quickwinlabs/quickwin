@@ -78,11 +78,11 @@ make embed-js JS_EMBED=script.js
 # 内嵌 Brotli 压缩的脚本（exe 更小，运行时解压）
 make embed-js-br JS_EMBED=script.js
 
-# 打包 examples/exec_server.ts 并 brotli 内嵌进 exec_server.exe
-make exec_server
+# 打包 examples/execd.ts 并 brotli 内嵌进 execd.exe
+make execd
 
 # 运行它（不需要文件参数）
-_build/exec_server.exe
+_build/execd.exe
 ```
 
 不带脚本文件参数运行时，`qwin.exe` 会检查自身末尾是否有内嵌 JS：找到则执行内嵌代码，否则回退到 `main.js`。同时支持原始（`QWJS`）与 Brotli 压缩（`QWBR`）两种内嵌格式；压缩格式在启动时解压。
@@ -196,7 +196,7 @@ podman exec quickwin-dev bash -lc 'cd /workspace && make js && make cc64 && make
 | `make test` | 运行全部测试 |
 | `make test TEST=-net` | 跳过网络测试（快速） |
 | `make test TEST=wasm` | 仅运行 WASM 测试 |
-| `make exec_server` | 打包 `examples/exec_server.ts` 并 Brotli 内嵌进 `_build/exec_server.exe` |
+| `make execd` | 打包 `examples/execd.ts` 并 Brotli 内嵌进 `_build/execd.exe` |
 | `make embed-js` / `embed-js-br` | 把 JS（Brotli 压缩）内嵌进 exe |
 | `make npm-pkg` | 打包到 `dist/quickwin/` |
 | `make gen-const` | 重新生成 `quickwin_const.d.ts` |

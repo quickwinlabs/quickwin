@@ -1,6 +1,6 @@
-# exec_server：老系统上的命令执行端
+# execd：老系统上的命令执行端
 
-场景：QEMU VM（Windows XP / Win7）里起 `examples/exec_server.exe`，测试脚本经 HTTP 下发命令并拿回输出。
+场景：QEMU VM（Windows XP / Win7）里起 `examples/execd.exe`，测试脚本经 HTTP 下发命令并拿回输出。
 它是 CI 与本地回归的"执行面"——VM 只负责跑程序，宿主机负责下命令。
 
 相关文档：`docs/qemu-xp-automated-testing.md`（VM 怎么起、测试怎么下发）。
@@ -10,7 +10,7 @@
 ## 1. 定位
 
 ```
-宿主机/容器  ── POST /exec ──►  exec_server(.tsx)（VM 内 8080）
+宿主机/容器  ── POST /exec ──►  execd(.tsx)（VM 内 8080）
    http_test.sh                     └─► os.Worker（每请求一个）
    curl                                └─► CreateProcessW + CreatePipe
                                          "system32\cmd.exe /c <cmd>"
@@ -26,7 +26,7 @@
 
 ### 底座与体积
 
-用 **nowasm 底座**（`qwin-nowasm[-x86].exe`，不含 WAMR）打包：`exec_server.js` 只 import
+用 **nowasm 底座**（`qwin-nowasm[-x86].exe`，不含 WAMR）打包：`execd.js` 只 import
 `os` / `sock` / `std`，worker 只 import `os` / `std` / `ffi`，完全不碰 WAMR。`BUILD=small` 实测：
 
 | 架构 | wasm 底座 | nowasm 底座 | 节省 |
@@ -34,19 +34,19 @@
 | x64  | 1,543,168 | 1,281,536 | 261,632（-16.9%） |
 | x86  | 1,562,126 | 1,265,166 | 296,960（-19.0%） |
 
-内嵌 JS 与最终 `exec_server.exe`（与上表同一份构建）：
+内嵌 JS 与最终 `execd.exe`（与上表同一份构建）：
 
 | 项 | x86 | x64 |
 |----|-----|-----|
 | 内嵌 JS（brotli，quality 11） | 143,638 | 待测 |
-| 最终 `exec_server.exe` | **1,408,812** | 待测 |
+| 最终 `execd.exe` | **1,408,812** | 待测 |
 
 > x64 在 `a4eba0b` 加 GUI 后未重新构建，勿沿用旧值（此前记的是 1,311,886 / 1,295,516，JS 30,342）。
 > 增长主要来自 GUI 日志窗引入的 react-qw。
 >
 > ⚠️ flavor 存疑：Makefile 里 `BUILD ?= fast`（默认 fast），而本节沿用旧记的 `BUILD=small` 标签。
 > `_build/obj/` 只有 `ia32-cross` / `x64-cross[-nowasm]` 这类交叉变体名，**不含 flavor 标记**，
-> 无法从产物反推。下次测体积请显式 `BUILD=small make exec_server` 并记录，避免"flavor 汤"。
+> 无法从产物反推。下次测体积请显式 `BUILD=small make execd` 并记录，避免"flavor 汤"。
 
 > 对比必须在**同一 BUILD flavor** 下做。make 只按源码时间戳判断 `.o` 是否过期，**换 BUILD 不会重编**，
 > 本地 `_build/obj/*` 很容易混着不同 flavor 的对象（"flavor 汤"），拿它比体积会得出**相反**结论。
@@ -105,7 +105,7 @@ API 之外的任意路径（含 `/`、`/health`、拼错路径/方法）统一�
 列出顶层窗口，`Content-Type: application/json`。主进程同步直跑——枚举毫秒级，bug 当场 `500`，无超时层。
 
 ```json
-[{ "hwnd": 32768, "title": "exec_server", "className": "QWindow",
+[{ "hwnd": 32768, "title": "execd", "className": "QWindow",
    "rect": { "left": 0, "top": 0, "right": 560, "bottom": 420 },
    "visible": true, "minimized": false }]
 ```
@@ -189,8 +189,8 @@ WinRM 的命令跑在已登录用户 session 里，但**不支持 XP**。
 | `PrintWindow` + `GetWindowDC` | 不要求窗口可见；但 D3D / OpenGL / 部分 UWP 窗体会拿到黑屏 |
 | `magicafterburning.ScreenShotter` COM | 现成实现，`AttachToWindow` + `Capture` |
 
-exec_server 在这里是通的：worker 在**用户桌面 session 内**起 `cmd.exe`
-（`exec_server_worker.ts` 绑定 `kernel32.dll` 的 `createPipe` / `createProcessW`；
+execd 在这里是通的：worker 在**用户桌面 session 内**起 `cmd.exe`
+（`execd_worker.ts` 绑定 `kernel32.dll` 的 `createPipe` / `createProcessW`；
 纯 kernel32，无 `winpty.dll` / `winpty-agent.exe` 依赖，不经 agent 中转，因此不产生独立 session），
 截图脚本与目标窗口同 session，直接可访问。
 
@@ -215,8 +215,8 @@ QuickWin 侧也不用从零开始：`lib/text-measure.ts` 已经用同一套模�
 | **Docker** `/containers/{id}/exec` | 容器 exec API | 语义标杆：JSON body、流式输出、exit code、**断连即终止**。容器运行时语义，非本机进程 |
 | **superserve** `exec` (SSE) | HTTP/SSE | 最接近：流式 stdout/stderr 带 timestamp，收尾事件带 `exit_code`。现代 Linux 生态 |
 | **`mdklatt/httpexec`** | Python ASGI REST | **非流式**：等命令跑完一次性 base64 返回。★0 |
-| **`hollen9/wpf-remote-exec-server`** | .NET 4.0.3 | **唯一标称支持 Windows XP**，但只跑"预定义"命令、★0，基本无人用 |
-| **`foxhackerzdevs/remote-exec-server`** | Python | 现代运行时，XP 装不了 |
+| **`hollen9/wpf-remote-execd`** | .NET 4.0.3 | **唯一标称支持 Windows XP**，但只跑"预定义"命令、★0，基本无人用 |
+| **`foxhackerzdevs/remote-execd`** | Python | 现代运行时，XP 装不了 |
 | **`remote-exec/remote-exec`** | Go | "Invoke commands on remote hosts"，现代 |
 | **`harish-ravichandra/RemoteExec`** | web SSH executor | 现代 |
 | **`FalconOpsLLC/goexec`** | Go | Windows 远程执行，现代 Windows + SSH/SMB |
@@ -244,11 +244,11 @@ trailer 是唯一"既能流式、又能带完成态"的 HTTP 机制——不需�
   - **迟到监听忽略**：已 aborted 后再 `addEventListener` 是 no-op
   - 因此消费侧的正确模式是**先查 `signal.aborted` 再注册**，而不是靠事件回调兜底
 - **http-server**：每请求新建 `AbortController` 注入 `req.signal`；`FD_CLOSE` 或 `send()<0`（RST，FD_CLOSE 可能不及时）→ `abortConn` + `closeConn`；流式写响应时发现断连 → `reader.cancel()` 主动取消响应体
-- **exec_server**：`req.signal` abort → `taskkill /F /T /PID <innerPid>`
+- **execd**：`req.signal` abort → `taskkill /F /T /PID <innerPid>`
   - 三道保险：正常 abort 事件；注册时 `signal.aborted` 预检（断连早于请求到达的情况）；worker 回报 `innerPid` 时若已 aborted 再补刀
   - `stream.cancel()` 兜底（断连发生在数据静默期、`reader.read()` 还挂着的场景）
 
-> commit：`f92a6f6`（http 层：AbortSignal + 断连感知）、`b8213ae`（exec_server：断连 kill + timeout 可选）
+> commit：`f92a6f6`（http 层：AbortSignal + 断连感知）、`b8213ae`（execd：断连 kill + timeout 可选）
 
 ### 5.3 timeout 可选，默认无限
 
@@ -273,7 +273,7 @@ trailer 是唯一"既能流式、又能带完成态"的 HTTP 机制——不需�
   `unauthorized`
 - `scrollToBottom` 自动跟底
 
-![XP 上的 GUI 日志窗，560x420](../docs/images/exec-server-xp-gui.png)
+![XP 上的 GUI 日志窗，560x420](../docs/images/execd-xp-gui.png)
 
 > 图上覆盖了 §5.4 列出的全部结果取值：`ok` / `exit 0` / `exit 7`（非零退出码）/
 > `timeout`（`ping -t 127.0.0.1 >nul` 带 `timeout:2000`，无输出 → 504）/ `404`（历史版本；
@@ -284,7 +284,7 @@ trailer 是唯一"既能流式、又能带完成态"的 HTTP 机制——不需�
 > 不受屏幕裁剪影响，能拿全 560x420。
 
 **建窗失败自动回退 headless**，不中断服务（`initGui` 包了 try/catch，失败只打
-`[exec_server] gui init failed` 到 stderr）。XP/Win7 上必须这么兜——CI 无人值守时
+`[execd] gui init failed` 到 stderr）。XP/Win7 上必须这么兜——CI 无人值守时
 建窗失败不该让 8080 挂掉。
 
 **重渲必须离开回调栈**（踩坑点）：react-qw 的 reconciler 是同步 flush，在 HTTP /
@@ -300,7 +300,7 @@ worker 回调里直接 `setState` 会与 http-server 的状态机**重入，把�
 | `--gui=0` | 同上 |
 | `--token=x` | 开启 Bearer 鉴权；**空串归一为未配置**（放行） |
 
-> 参数经 scriptArgs 透传、由 `exec_server.tsx` parseArgs 自行解析：
+> 参数经 scriptArgs 透传、由 `execd.tsx` parseArgs 自行解析：
 > `--nogui` 无值开关、`--gui=0`/`--token=x` 等号形式、`--gui 0`/`--token x`
 > 空格分隔形式均可。C 层（`main.c`）按固定槽位 `[-d] [-o 目标] [-e code | 文件]`
 > 消费，槽位之外的一切原样进 scriptArgs；文件槽不收 `-` 开头 token，故
@@ -316,7 +316,7 @@ worker 回调里直接 `setState` 会与 http-server 的状态机**重入，把�
 
 > commit `d166400`
 
-**现象**：64 位 exec_server 下，子进程 stdout 全丢——`exit 0` 但 body 空。32 位一切正常。
+**现象**：64 位 execd 下，子进程 stdout 全丢——`exit 0` 但 body 空。32 位一切正常。
 
 **根因**：JS 位运算的移位量取 **mod 32**。
 
@@ -334,7 +334,7 @@ worker 回调里直接 `setState` 会与 http-server 的状态机**重入，把�
 教训：JS 里凡是涉及 64 位值（句柄、指针、文件偏移）的拼接/拆分，都要绕开 `>>> 32` 这类写法。
 
 **同一处的连带坑**：`STARTUPINFO` 的布局长度取决于**调用进程位数**，不能看 `os.arch`——
-64 位 Win7 上跑 32 位 exec_server 时 `os.arch` 仍报 `x64`，会误选 64 位布局，
+64 位 Win7 上跑 32 位 execd 时 `os.arch` 仍报 `x64`，会误选 64 位布局，
 `hStdOutput`/`hStdError` 落在错误偏移，症状同样是 exit 0 但 body 全空。
 必须用 `GetSystemInfo`（WOW64 下返回 `INTEL=0`）判定进程视角架构。
 
@@ -342,7 +342,7 @@ worker 回调里直接 `setState` 会与 http-server 的状态机**重入，把�
 
 ## 7. 验证方式与结果
 
-> VM 内起 exec_server（不跑测试），宿主机用 curl / http_test.sh 下发。命令输出是 GBK，宿主机用 `iconv -f GBK` 转。
+> VM 内起 execd（不跑测试），宿主机用 curl / http_test.sh 下发。命令输出是 GBK，宿主机用 `iconv -f GBK` 转。
 
 **断连即 kill**
 
@@ -364,7 +364,7 @@ worker 回调里直接 `setState` 会与 http-server 的状态机**重入，把�
 | win7 | **553/553 PASS** |
 | xp | **547/548 PASS** |
 
-改动后构建顺序：`make js` → `make exec_server`（重新 brotli 内嵌），然后 `./run.sh <vm> --restart` 加载新 exe。
+改动后构建顺序：`make js` → `make execd`（重新 brotli 内嵌），然后 `./run.sh <vm> --restart` 加载新 exe。
 
 ---
 
@@ -400,7 +400,7 @@ worker 回调里直接 `setState` 会与 http-server 的状态机**重入，把�
 
 ## 附：能力对照（我们 vs Docker）
 
-| 语义 | Docker exec | exec_server |
+| 语义 | Docker exec | execd |
 |------|-------------|-------------|
 | 传命令 | JSON body + tty 标记 | JSON body `{cmd, timeout}` |
 | 输出 | 流式 | 流式 |

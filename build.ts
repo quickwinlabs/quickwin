@@ -4,7 +4,7 @@ const nativeModules = ['gui', 'os', 'std', 'sock', 'brotli', 'ffi', 'wamr', 'win
 
 async function buildExecWorkerDataUrl(): Promise<string> {
   const result = await build({
-    entryPoints: ['_build/examples/exec_server_worker.js'],
+    entryPoints: ['_build/examples/execd_worker.js'],
     bundle: true,
     external: nativeModules,
     format: 'esm',
@@ -37,7 +37,7 @@ async function main() {
       '_build/examples/pdf_viewer.js',
       '_build/examples/test_root_window.js',
       '_build/examples/test_react_lazy.js',
-      '_build/examples/exec_server.js',
+      '_build/examples/execd.js',
     ],
     allowOverwrite: true,
     bundle: true,

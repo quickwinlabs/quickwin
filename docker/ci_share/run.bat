@@ -2,7 +2,7 @@
 rem ============================================================
 rem  QEMU 常驻服务启动器（win7 / xp / win11 共用）
 rem  由 bootstrap.bat 在 VM 内调用：关防火墙、配 portproxy、
-rem  启动 exec_server（HTTP 8080），不自动跑测试。
+rem  启动 execd（HTTP 8080），不自动跑测试。
 rem  结果写 Z:\run-win7.log / Z:\run-xp.log / Z:\run-win11.log
 rem  （run.sh 据此 / 或 host curl 健康检查）。
 rem ============================================================
@@ -55,19 +55,19 @@ for %%P in (18923 18924) do (
 netsh interface portproxy show all >> %LOG% 2>&1
 
 :run
-rem ---- cwd 到共享目录，启动常驻 exec_server ----
+rem ---- cwd 到共享目录，启动常驻 execd ----
 rem 注：部署新 exe 必须"先删再写同一文件名"（新 inode），
 rem 直接覆盖同名会命中 SMB 缓存读到旧版（改名也可绕过，见 .agents/CONSOLE_STDOUT_MECHANISM.md §7.5）。
 cd /d Z:\quickwin
 echo [%date% %time%] exe=[%EXE%] cwd=[%cd%] >> %LOG%
-if exist exec_server.exe goto startsvc
-echo ERROR: exec_server.exe 不在 [%cd%] >> %LOG%
+if exist execd.exe goto startsvc
+echo ERROR: execd.exe 不在 [%cd%] >> %LOG%
 goto fail
 
 :startsvc
 rem start 独立进程，run.bat 退出后服务仍在；cwd 继承 Z:\quickwin
-start "exec_server" /min exec_server.exe >> %LOG% 2>&1
-echo [%date% %time%] exec_server start requested rc=%errorlevel% >> %LOG%
+start "execd" /min execd.exe >> %LOG% 2>&1
+echo [%date% %time%] execd start requested rc=%errorlevel% >> %LOG%
 rem 给服务一点起听时间，再写 Ready（run.sh / host 健康检查另会 curl）
 ping 127.0.0.1 -n 3 >nul 2>&1
 echo [%date% %time%] Ready >> %LOG%

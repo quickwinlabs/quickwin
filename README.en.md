@@ -80,11 +80,11 @@ make embed-js JS_EMBED=script.js
 # Embed a script brotli-compressed (smaller exe, decompressed at runtime)
 make embed-js-br JS_EMBED=script.js
 
-# Bundle examples/exec_server.ts and brotli-embed into exec_server.exe
-make exec_server
+# Bundle examples/execd.ts and brotli-embed into execd.exe
+make execd
 
 # Run it (no file argument needed)
-_build/exec_server.exe
+_build/execd.exe
 ```
 
 When run without a script file argument, `qwin.exe` checks for embedded JS at the end of itself. If found, it executes the embedded code. If not, it falls back to `main.js`. Both raw (`QWJS`) and brotli-compressed (`QWBR`) embedded payloads are supported; the compressed form is decompressed at startup.
@@ -198,7 +198,7 @@ that build run `make test TEST=-wasm` to skip WASM tests.
 | `make test` | run all tests |
 | `make test TEST=-net` | skip network tests (fast) |
 | `make test TEST=wasm` | run WASM tests only |
-| `make exec_server` | bundle `examples/exec_server.ts` and brotli-embed into `_build/exec_server.exe` |
+| `make execd` | bundle `examples/execd.ts` and brotli-embed into `_build/execd.exe` |
 | `make embed-js` / `embed-js-br` | embed JS (brotli-compressed) into exe |
 | `make npm-pkg` | package into `dist/quickwin/` |
 | `make gen-const` | regenerate `quickwin_const.d.ts` |
