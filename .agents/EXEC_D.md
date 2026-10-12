@@ -120,9 +120,9 @@ API 之外的任意路径（含 `/`、`/health`、拼错路径/方法）统一�
 |------|------|------|
 | `hwnd` | 缺省=全屏 | 正整数 |
 | `area` | `window` | `window` \| `client` |
-| `mode` | `screen` | `screen` \| `print` |
+| `mode` | 缺省随 `hwnd` 变：带 hwnd=`print`，全屏=`screen` | `screen` \| `print` |
 
-- `hwnd` 缺省时**不传** `area`/`mode`（整屏抓取无需区域与绘制方式）
+- `hwnd` 缺省时 `area`/`mode` 不影响行为（整屏 BitBlt，没有"让窗口自绘"一说）
 - 参数非法 → `400`（`area must be ...` / `hwnd must be a positive integer`）
 - 抓取失败（含 0 字节）→ `500`——主进程同步直跑（端到端实测 win7 ~70ms / XP ~300ms），bug 当场暴露，无超时层
 
@@ -278,8 +278,8 @@ trailer 是唯一"既能流式、又能带完成态"的 HTTP 机制——不需�
 > 图上覆盖了 §5.4 列出的全部结果取值：`ok` / `exit 0` / `exit 7`（非零退出码）/
 > `timeout`（`ping -t 127.0.0.1 >nul` 带 `timeout:2000`，无输出 → 504）/ `404`（历史版本；
 > 现非 API 路径统一返 usage 且不记日志，不再产生 404 行）。
-> 截图命令：`GET /screenshot?hwnd=852200&area=window&mode=print`。
-> **必须用 `mode=print`**——XP 桌面是 640x480，而窗口 rect 是 (200,200)-(760,620)
+> 截图命令：`GET /screenshot?hwnd=852200&area=window&mode=print`（`mode=print` 已是带 hwnd 时的默认值，这里显式写出）。
+> **print 值得知道**：XP 桌面是 640x480，而窗口 rect 是 (200,200)-(760,620)
 > 超出屏幕，`mode=screen` 会被裁成 440x280；`PrintWindow` 让窗口自己渲染到 DC，
 > 不受屏幕裁剪影响，能拿全 560x420。
 
