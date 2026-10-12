@@ -8,7 +8,7 @@ cd "$(dirname "$0")"
 #  用法: ./http_test.sh <win7|xp|win11> [filter]
 #    filter 透传给 test/run.js，如: -net / basic / wasm
 #  协议:
-#    200 → body = popen 原始字节（可为 GBK），退出码在 X-Exit-Code
+#    200 → body = popen 原始字节（cmd 内置=UTF-16LE、外部程序原生如 GBK），退出码在 X-Exit-Code
 #    非 200 → body = JSON {"error":"..."}
 #  判定: Summary failed<=1（XP 打印机 ffi 容忍 1）
 # ============================================================

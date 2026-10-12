@@ -139,23 +139,22 @@ qwin 自身免疫：`main.c:164` 弃用 `WinMain` 的 `LPSTR lpCmdLine`，改走
 
 ---
 
-## 8. 结论已定：worker 加 `/u` 规避，不固化 NLS
+## 8. 结论已定：worker 全平台加 `/u`，不固化 NLS
 
-**采纳方案**：`examples/execd_worker.ts` 用 RtlGetVersion 判 NT major≥10（win11），
-拼命令行 `cmd /u /c ...`，让 cmd 内置输出直接写 UTF-16LE，**绕开 ACP 转换**（不存在
-"转换 → 退化"一步，天然无损）。win7/XP（ACP=936 本就无损）保持原样，避免改变输出协议。
+**采纳方案（已统一）**：`examples/execd_worker.ts` 恒拼 `cmd /u /c ...`（不分版本），让 cmd 内置输出直接写 UTF-16LE，**绕开 ACP 转换**（不存在"按代码页编码"这一步，天然无损）。
 
-**验证（win11_ready 未修复快照 + 新 worker）**：
-- `echo 你好` → `60 4f 7d 59 0d 00 0a 00`（UTF-16LE 无损，改造前 `3f 3f`）
-- `qwin.exe test/run.js` 全量 → `Summary: 466/471`，qwin 是子进程输出 UTF-8 裸字节，
-  CI `grep Summary` 不受 `/u` 影响（对照：A/B 切换 worker 复测一致，wasm 5 失败为 win11 快照固有）
-- `/u` 只作用于 cmd 内置命令（echo/dir/type）；子进程自身输出编码不变
+早期用 RtlGetVersion 判 NT major>=10，只对 win11 加 `/u`、win7/XP 走 ACP——那个保守边界换来的是版本探测 + 平台间不一致：win7/XP 的"GBK 无损"只是 ACP=936 的 locale 巧合（英文 locale 的 win7 并不成立），而 `/u` 在 XP/win7 实测行为一致。统一后删掉探测块与 `VER-FAIL` 诊断路径；`ntdll.RtlGetVersion` / `OSVERSIONINFO_148` 仍在 lib（发布面绑定，execd 只是不再用）。
 
-**未走 NLS 固化路线**（补 `c_936.nls` + 注册表 936 + 首启自重启约 +60s CI，曾验证有效但
-成本高、改系统），相关探针脚本与 win7 提取的 `c_936.nls` 资产已随收尾删除。
+**验证**：
+- **win11（未修复快照，ACP=1252+缺 NLS）**：`echo 你好` → `60 4f 7d 59 0d 00 0a 00`（UTF-16LE 无损，改造前 `3f 3f`）
+- **win7 / XP**：`echo 中文A` 不带 `/u` → GBK `d6 d0 ce c4`；带 `/u` → UTF-16LE `2d 4e 87 65 41 00 0d 00 0a 00`（无损，无 BOM）
+- **外部程序不受影响**：`cmd /u /c ping -n 1 127.0.0.1`（win7）→ 仍 GBK 裸字节 + `X-Exit-Code: 0`
+- **子进程输出不受影响**：`qwin.exe test/run.js` 全量输出 UTF-8 裸字节，CI `grep Summary` 字节无关
+- **双机全量**：win7 1335/1335、XP 1304/1304 PASS；win11 行为零变化（本来就是 `/u`）
 
-**注意**：win11 下 `/exec` 的 cmd 内置输出现在是 UTF-16LE（ASCII 后带 `00`），调用方
-如需还原文本需按 UTF-16LE 解码；外部程序（qwin 等）输出仍为其原生编码。
+**未走 NLS 固化路线**（补 `c_936.nls` + 注册表 936 + 首启自重启约 +60s CI，曾验证有效但成本高、改系统），相关探针脚本与 win7 提取的 `c_936.nls` 资产已随收尾删除——统一 `/u` 后更没必要：ACP/NLS 只影响"按代码页编码"这一步，`/u` 直接绕过它。
+
+**注意**：`/exec` 的 cmd 内置输出**所有平台**都是 UTF-16LE（ASCII 后带 `00`），调用方如需还原文本需按 UTF-16LE 解码；外部程序（qwin 等）输出仍为其原生编码。
 
 - TODO.md L11 已随之更正（原"影响 mkdir 中文目录"为误判：文件系统操作本就无损；
   真正坏点仅 cmd 内置回显，由 `/u` 规避）

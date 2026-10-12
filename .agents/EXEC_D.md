@@ -342,7 +342,9 @@ worker 回调里直接 `setState` 会与 http-server 的状态机**重入，把�
 
 ## 7. 验证方式与结果
 
-> VM 内起 execd（不跑测试），宿主机用 curl / http_test.sh 下发。命令输出是 GBK，宿主机用 `iconv -f GBK` 转。
+> VM 内起 execd（不跑测试），宿主机用 curl / http_test.sh 下发。输出是混合编码：cmd 内置命令
+> （echo/dir）= UTF-16LE，外部程序各自原生（qwin= UTF-8、中文系统工具= GBK），宿主按来源转
+> （`iconv -f UTF-16LE` / `-f GBK`）。
 
 **断连即 kill**
 

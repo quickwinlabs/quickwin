@@ -7,8 +7,7 @@ import {
     CloseHandle, CreatePipe, CreateProcess, GetExitCodeProcess, GetLastError, GetSystemDirectory,
     ReadFile, SetHandleInformation, WaitForSingleObject,
 } from '../lib/windows/kernel32.js'
-import { RtlGetVersion } from '../lib/windows/ntdll.js'
-import { PROCESS_INFORMATION, STARTUPINFOW, OSVERSIONINFO_148 } from '../lib/windows/structs.js'
+import { PROCESS_INFORMATION, STARTUPINFOW } from '../lib/windows/structs.js'
 
 // worker 没有可观测的输出通道：绑定失败会静默中断 worker 脚本，主线程永远等不到消息。
 // 失败原因落盘 diag.log 以便定位（典型：DLL 位数与进程不匹配 -> ERROR_BAD_EXE_FORMAT 193）。
@@ -42,26 +41,12 @@ try {
     diagFile('SYS-DIR-FAIL: ' + String(ex))
 }
 
-// win11（NT 10.x）上用 `/u` 让 cmd 内置输出直接写 UTF-16LE，绕开 ACP（Tiny11 缺
-// c_*.nls 且 ACP=1252，中文会退化成 `?`）。win7/XP 的 ACP=936 本来就无损，保持原样。
-// 版本缓冲用 OSVERSIONINFO_148（148B 特制布局，标准 OSVERSIONINFOW 会越界写坏 worker 堆，
-// 定义与缘由见 lib/windows/structs.ts）。RtlGetVersion 绑定随 ntdll 模块加载（与
-// kernel32 同款 fail-loud）；下方 try/catch 只兜运行期失败落 VER-FAIL 诊断。
-let IS_WIN11 = false
-try {
-    const vi = OSVERSIONINFO_148.encode({ dwOSVersionInfoSize: OSVERSIONINFO_148.size })
-    if (RtlGetVersion(vi.ptr) === 0) {
-        IS_WIN11 = OSVERSIONINFO_148.decode(vi).dwMajorVersion >= 10
-    }
-} catch (ex) {
-    diagFile('VER-FAIL: ' + String(ex))
-}
-
 // 用 CreateProcessW + CreatePipe 直接捕获子进程 stdout（替代 winpty）。
 // 纯捕获场景（/exec 从不交互），管道方案比 winpty 少一层 agent 中转：
 //   - 流式粒度更好：探针实测 XP 上逐行实时到达（winpty 攒批 ~4s）
 //   - 无 winpty.dll / winpty-agent.exe 依赖，纯 kernel32
-// 编码：无统一代码页转换，各程序输出原生字节（qwin= UTF-8、系统命令= GBK）。
+// 编码：无统一代码页转换——cmd 内置经 /u 恒为 UTF-16LE，外部程序各自原生
+// （qwin= UTF-8、中文系统工具= GBK），客户端按来源分别解码。
 // 同步阻塞读循环（worker 线程自转），主线程事件循环不受影响。
 // CreatePipe 的两个 HANDLE 出参槽：一个结构两个指针字段，读回走 decode
 // CreatePipe 成功后两端句柄必非零（失败已在下方 throw）——字段标 '!'，decode 直出 Ptr
@@ -79,8 +64,11 @@ function runCmd(id: number, cmd: string): number {
 
     // —— STARTUPINFO（写端作为子进程 stdout/stderr）——
     const pi = PROCESS_INFORMATION.alloc()
-    const u = IS_WIN11 ? '/u ' : ''
-    const cmdline = `${sysDir}\\cmd.exe ${u}/c ${cmd}`
+    // 恒加 /u：cmd 内置输出（echo/dir/type 与 cmd 自身报错）直接写 UTF-16LE，绕开「按代码页
+    // 编码成字节」这一步（Tiny11 缺 NLS 时中文变 ?；win7/XP 的 GBK 无损只是 ACP=936 的 locale 巧合）。
+    // /u 在所有 Win 版本行为一致，故不分版本——早期用 RtlGetVersion 判 NT>=10 只对 win11 加 /u，已删。
+    // 外部程序（qwin/ping 等）输出仍为各自原生编码，/u 不参与（实测 ping 仍透传 GBK）。见 .agents/CMD_ENCODING_ACP_NLS.md §8。
+    const cmdline = `${sysDir}\\cmd.exe /u /c ${cmd}`
     if (!CreateProcess(NULL, cmdline, NULL, NULL, 1, 0, NULL, NULL,
         { cb: STARTUPINFOW.size, dwFlags: STARTF_USESTDHANDLES, hStdOutput: hWrite, hStdError: hWrite }, pi.ptr)) {
         CloseHandle(hRead)

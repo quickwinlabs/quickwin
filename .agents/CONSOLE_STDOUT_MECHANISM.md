@@ -132,7 +132,7 @@ for (;;) {
 | `printf`/cmd 内部命令 | ✓ | ✓ |
 | `WriteConsole`/`CONOUT$` | ✓ | ✗（`color`/`cls`/`title`、REPL 会退化） |
 | 交互输入 | ✓ | ✗（当前不用） |
-| 编码 | console 代码页字节 | 各程序原生编码（qwin= UTF-8、cmd= GBK，见 §7.5） |
+| 编码 | console 代码页字节 | 各程序原生编码（cmd 内置= UTF-16LE（`/u`）、qwin= UTF-8、中文系统工具= GBK，见 §7.5） |
 | 流式 | Win7 逐行 / XP 攒批 | **XP 也逐行实时**（实测 §7.5，优于 agent 中转） |
 | FFI 面 | config/spawn/error 全套 | `CreatePipe`+`CreateProcessW`+`STARTUPINFO` 更省 |
 
@@ -158,6 +158,8 @@ EOF 语义变化是入坑点：**管道 EOF = 所有写端句柄都关闭**（�
 ### 7.5 实测结果（2026-09，ia32 探针 `probe3.js`，XP + Win7 结果一致）
 
 全部用例 `CreateProcessW + CreatePipe` 捕获成功：EOF= `ERROR_BROKEN_PIPE`(109) 正常收尾、退出码正确（无 hang、无需超时兜底时即拿到 exit）。
+
+> **注（现状）**：worker 现统一加 `/u`，cmd 内置输出恒为 UTF-16LE（不再按 ACP/GBK）；下方是加 `/u` 前的探针原始结果。
 
 - [x] **qwin 继承管道**：`cmd /c qwin-x86.exe -e "print(123)"` → 输出全量捕获，exit=0
 - [x] **cmd 中文**：`echo 你好` → **GBK** `C4 E3 BA C3`（系统代码页）
