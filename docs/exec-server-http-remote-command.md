@@ -25,7 +25,7 @@ system32\cmd.exe /c <cmd>
 
 ### 设计要点
 
-**一请求 = 一个 worker = 一棵进程树。** 每请求起一个独立 worker，用 `CreateProcessW` + `CreatePipe` 拉起子进程。互不影响，上一条崩了不拖累下一条。
+**`/exec` 一请求 = 一个 worker = 一棵进程树。** 每请求起一个独立 worker，用 `CreateProcessW` + `CreatePipe` 拉起子进程。互不影响，上一条崩了不拖累下一条。`/screenshot`、`/window_list`、`/set_resolution` 是内置端点，主进程同步直跑，不起 worker。
 
 **用 cmd.exe 而不是 `CreateProcessW` 直接跑目标程序**，是为了保留 cmd 语义——内部命令（`dir`、`ver`）、管道重定向、`for` 循环都能原样用。
 
@@ -56,15 +56,15 @@ GUI 日志窗默认开着，顶栏显示 `token: on|off · port: N · workers: N
 
 | 端点 | 鉴权 | 说明 |
 |------|------|------|
-| `GET /` | 免 | `200 ok` |
-| `GET /health` | 免 | `200 ok`，VM 就绪探测用 |
+| （任意非 API 路径） | 免 | usage 文本（`HTTP 200`），VM 就绪探测用（`/health` 已非专用端点） |
 | `POST /exec` | 需 | 跑命令，流式输出 + trailer 退出码 |
+| `POST /set_resolution` | 需 | 改分辨率 `?w=&h=&persist=0\|1`，恒带 `modes32` 可用列表 |
 | `GET /window_list` | 需 | 列出顶层窗口 |
 | `GET /screenshot` | 需 | 截屏 / 抓指定窗口 |
 
 鉴权用 `--token=x` 开启，命令是标准 Bearer：`Authorization: Bearer x`，不带或不对就 `401` + `{"error":"unauthorized"}`。
 
-`/` 和 `/health` 始终免鉴权——VM 刚起来的时候就要探活，这时候还没法保证 token 配好了。`--token=`（空串）会被归一成「未配置」即全部放行，方便兼容 CI 里已有的调用方式。
+API 之外的任意路径（含 `/` 和 `/health`）始终返回 usage 并免鉴权——VM 刚起来的时候就要探活，这时候还没法保证 token 配好了。`--token=`（空串）会被归一成「未配置」即全部放行，方便兼容 CI 里已有的调用方式。
 
 ### 跑命令
 

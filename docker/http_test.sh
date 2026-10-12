@@ -37,8 +37,8 @@ else
 fi
 
 # ── 健康检查 ──
-if ! curl -sf -m 3 "http://127.0.0.1:${FWD}/health" >/dev/null; then
-  echo "exec_server 不健康: http://127.0.0.1:${FWD}/health"
+if ! curl -sf -m 3 "http://127.0.0.1:${FWD}/" >/dev/null; then
+  echo "exec_server 不健康: http://127.0.0.1:${FWD}/"
   echo "先跑: ./run.sh $VM"
   exit 1
 fi

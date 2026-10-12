@@ -107,7 +107,7 @@
 | 正斜杠路径 | `dir Z:/quickwin` | `out:"" code:1`（cmd `dir` 本身不认 `/`，预期） |
 | exit code | `cmd /c exit 7` | `code:7`（pclose 取到 exit code） |
 | 非法 JSON 转义 | `dir Z:\quickwin`（未转义） | HTTP 500，**不是挂起** |
-| 健康检查 | 跑完后 GET /health | 始终 `ok` |
+| 健康检查 | 跑完后 GET `/` | 始终 usage（200） |
 
 **结论：反斜杠挂起传闻不成立。** 疑为早期裸文本协议 + 同步 popen 阻塞事件循环
 导致健康检查超时被误诊为「挂死」。新 JSON 协议 + `http_test.sh` 超时 300s 覆盖同步阻塞。

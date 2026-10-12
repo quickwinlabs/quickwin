@@ -86,7 +86,7 @@ jobs:
   # win7/xp 差异：win7 用 MINGW64(cc64) 出 qwin.exe 64 位；
   #               xp 用 MINGW32(cc32) 出 qwin-x86.exe 32 位。
   # ── 测试段：常驻 exec_server + http_test.sh HTTP 下发 ──
-  # run.sh 开机等 /health；http_test.sh 起 serve_test、POST /exec、判 Summary
+  # run.sh 开机等 /（usage 页 200，exec_server 无专用 /health）；http_test.sh 起 serve_test、POST /exec、判 Summary
   # （failed≤1 容忍 XP 打印机 ffi 环境差），exit code 即断言。
   # ──────────────────────────────────────────────────────────
   qemu-test:
@@ -191,7 +191,7 @@ jobs:
           if-no-files-found: error
 
       # ── 测试段（常驻 exec_server + HTTP 下发）──
-      # run.sh 只开机等 /health；http_test.sh POST /exec 跑 test/run.js 并解析 Summary。
+      # run.sh 只开机等 /（usage 页 200）；http_test.sh POST /exec 跑 test/run.js 并解析 Summary。
       - name: Build exec_server
         run: |
           make exec_server

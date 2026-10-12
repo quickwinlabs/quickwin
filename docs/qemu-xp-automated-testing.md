@@ -152,9 +152,9 @@ curl -X POST http://localhost:8005/exec \
 
 响应：
 - **200** → body = 命令原始字节（Windows 中文输出多为 GBK），退出码在 `X-Exit-Code`
-- **非 200** → body = JSON `{"error":"..."}`（500=worker/错误，504=超时）
+- **非 200** → body = JSON `{"error":"..."}`（500=内部错误，504=exec 超时）
 
-`popen` 在 Worker 线程执行，`/health` 在长命令期间仍可响应。
+`popen` 在 Worker 线程执行，非 API 路径（usage 页）在长命令期间仍可响应。
 
 ---
 

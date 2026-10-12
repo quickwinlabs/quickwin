@@ -17,7 +17,7 @@
 ```
 
 - VM 端口 8080 由 QEMU hostfwd 映射到容器：win7 → `8007`，xp → `8005`
-- **一个请求 = 一个 worker = 一棵进程树**，天然隔离，互不影响
+- **一个 `/exec` 请求 = 一个 worker = 一棵进程树**，天然隔离，互不影响（`/screenshot`、`/window_list`、`/set_resolution` 是内置端点，主进程同步直跑，不起 worker）
 - 命令以 `system32\cmd.exe /c <cmd>` 起，保留 cmd 语义（内部命令、管道、`for`）
 - cmd.exe 路径由 worker 内 `GetSystemDirectoryW` 拼接——`CreateProcessW` 直接靠 PATH 解析在本环境失败
 - 子进程树由 `CreateProcessW` 返回的 pid 定位，超时/断连时 `taskkill /T` 递归杀掉
@@ -60,17 +60,18 @@
 
 | 端点 | 鉴权 | 说明 |
 |------|------|------|
-| `GET /` | 免 | `200 ok` |
-| `GET /health` | 免 | `200 ok`，容器等 VM 就绪（`run.sh` 轮询） |
+| （任意非 API 路径） | 免 | usage 文本（`HTTP 200`）——兼就绪探测（`run.sh` 轮询 `/`）；`/health` 已非专用端点 |
 | `POST /exec` | 需 | 跑命令，流式输出 + trailer 退出码 |
+| `POST /set_resolution` | 需 | 改分辨率 `?w=&h=&persist=0\|1`（默认持久），成功/失败恒带 `modes32` 可用列表 |
 | `GET /window_list` | 需 | 列出顶层窗口（`a4eba0b` 由 `/windows` 改名） |
 | `GET /screenshot` | 需 | 截屏 / 抓指定窗口 |
 
 ### 鉴权
 
-`--token=x` 开启后，`/exec` / `/window_list` / `/screenshot` 需带
+`--token=x` 开启后，`/exec` / `/set_resolution` / `/window_list` / `/screenshot` 需带
 `Authorization: Bearer x`，否则 `401` + `{"error":"unauthorized"}`。
-`/` 与 `/health` 始终放行（供就绪探测）。
+API 之外的任意路径（含 `/`、`/health`、拼错路径/方法）统一返回 usage（`HTTP 200`、
+免鉴权、不记日志）——就绪探测即打到这。
 
 - `--token=`（空串）归一为"未配置"，即全部放行——兼容现有 CI 调用
 - token 走明文 HTTP（仅 VM 内网），无过期与轮换机制
@@ -95,13 +96,13 @@
 | 超时且已有输出 | 同上，`X-Exit-Code: -1` |
 | 超时但无任何输出 | `504`（Response 尚未发出，报"exec timeout"） |
 | body 非 JSON / 解析失败 | `500`，`{"error":"setup: ..."}` |
-| 其他路径 / 方法 | `404` |
+| 其他路径 / 方法 | usage（`200`，免 token） |
 
 `Content-Type: application/octet-stream` + `Trailer: X-Exit-Code` 由 http-server 识别为 chunked 帧并补尾。
 
 ### `GET /window_list`
 
-列出顶层窗口，`Content-Type: application/json`。超时 5s（`504`），worker 报错 `500`。
+列出顶层窗口，`Content-Type: application/json`。主进程同步直跑——枚举毫秒级，bug 当场 `500`，无超时层。
 
 ```json
 [{ "hwnd": 32768, "title": "exec_server", "className": "QWindow",
@@ -123,11 +124,11 @@
 
 - `hwnd` 缺省时**不传** `area`/`mode`（整屏抓取无需区域与绘制方式）
 - 参数非法 → `400`（`area must be ...` / `hwnd must be a positive integer`）
-- 超时 30s → `504`；worker 报错或抓到 0 字节 → `500`
+- 抓取失败（含 0 字节）→ `500`——主进程同步直跑（端到端实测 win7 ~70ms / XP ~300ms），bug 当场暴露，无超时层
 
-这两个端点与 `/exec` **复用同一份 worker**（`WORKER_DATA_URL`），但消息类型是
-`'windows'` / `'screenshot'` 而非 `'run'`：它们不起子进程，也就没有 `innerPid`，
-`/exec` 那套 kill / 超时树杀逻辑天然不适用。
+这两个端点是**内置端点，主进程同步直跑，不进 worker**：bug 当场 throw → 500（有栈有
+原因），而非 worker 静默挂掉等 timer 兜底成 504。worker 只留给 `/exec`——外部命令不可
+控，popen 读循环阻塞无上界；内置端点耗时有界且低频，主循环阻塞无感。
 
 ---
 
@@ -189,7 +190,7 @@ WinRM 的命令跑在已登录用户 session 里，但**不支持 XP**。
 | `magicafterburning.ScreenShotter` COM | 现成实现，`AttachToWindow` + `Capture` |
 
 exec_server 在这里是通的：worker 在**用户桌面 session 内**起 `cmd.exe`
-（`exec_server_worker.ts:21-23` 绑定 `kernel32.dll` 的 `createPipe` / `createProcessW`；
+（`exec_server_worker.ts` 绑定 `kernel32.dll` 的 `createPipe` / `createProcessW`；
 纯 kernel32，无 `winpty.dll` / `winpty-agent.exe` 依赖，不经 agent 中转，因此不产生独立 session），
 截图脚本与目标窗口同 session，直接可访问。
 
@@ -266,16 +267,17 @@ trailer 是唯一"既能流式、又能带完成态"的 HTTP 机制——不需�
 
 **日志窗默认开**，用 `react-qw` 的 `ListBox` 渲染：
 
-- 顶部 info 行：`token: on|off · port: N · workers: N`（`workers` 是当前活跃 worker 数）
+- 顶部 info 行：`token: on|off · port: N · workers: N`（`workers` 是当前活跃 `/exec` worker 数）
 - 下方列表：`RequestLog(100)` 保留最近 100 条，格式
   `HH:MM:SS · <cmd> · <结果> (<耗时>ms)`，结果取值 `ok` / `exit N` / `timeout` /
-  `unauthorized` / `404`
+  `unauthorized`
 - `scrollToBottom` 自动跟底
 
 ![XP 上的 GUI 日志窗，560x420](../docs/images/exec-server-xp-gui.png)
 
 > 图上覆盖了 §5.4 列出的全部结果取值：`ok` / `exit 0` / `exit 7`（非零退出码）/
-> `timeout`（`ping -t 127.0.0.1 >nul` 带 `timeout:2000`，无输出 → 504）/ `404`。
+> `timeout`（`ping -t 127.0.0.1 >nul` 带 `timeout:2000`，无输出 → 504）/ `404`（历史版本；
+> 现非 API 路径统一返 usage 且不记日志，不再产生 404 行）。
 > 截图命令：`GET /screenshot?hwnd=852200&area=window&mode=print`。
 > **必须用 `mode=print`**——XP 桌面是 640x480，而窗口 rect 是 (200,200)-(760,620)
 > 超出屏幕，`mode=screen` 会被裁成 440x280；`PrintWindow` 让窗口自己渲染到 DC，
@@ -378,7 +380,7 @@ worker 回调里直接 `setState` 会与 http-server 的状态机**重入，把�
 | 缺口 | 说明 | 风险 |
 |------|------|------|
 | **无输入校验** | body 非 JSON / `cmd` 非字符串 → 500；**无 body 大小上限** | 超大 payload 会一路读进内存 |
-| **无并发上限** | 每请求起一个 worker（`/exec` 还带一对管道） | 并发刷进来会一直起进程；GUI 顶栏 `workers` 只是观测，无上限保护 |
+| **无并发上限** | `/exec` 每请求起一个 worker（还带一对管道） | 并发刷进来会一直起进程；GUI 顶栏 `workers` 只是观测，无上限保护 |
 | **无自动用例** | 断连 kill 与 timeout 只在 VM 手工验证过 | 改 http-server 可能悄悄回退而无人发现 |
 | **`innerPid` 迟到窗口** | 靠 worker `info` 到达后补刀 | worker 完全没起来时仍无兜底 |
 | **worker 无显式 close** | 靠消息收尾 | 未验证过回收行为 |

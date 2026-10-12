@@ -876,6 +876,32 @@ static void print_enums(void) {
     DEC(BITSPIXEL, BITSPIXEL);
     printf("    }\n\n");
 
+    printf("    // Display mode (ChangeDisplaySettings)\n");
+    printf("    export const enum DevModeField {\n");
+    DEC(PELSWIDTH, DM_PELSWIDTH);
+    DEC(PELSHEIGHT, DM_PELSHEIGHT);
+    printf("    }\n\n");
+
+    printf("    export const enum ChangeDisplayFlag {\n");
+    DEC(UPDATEREGISTRY, CDS_UPDATEREGISTRY);
+    DEC(TEST, CDS_TEST);
+    printf("    }\n\n");
+
+    printf("    export const enum EnumDisplaySetting {\n");
+    DEC(CURRENT_SETTINGS, ENUM_CURRENT_SETTINGS);
+    printf("    }\n\n");
+
+    printf("    export const enum DisplayChangeResult {\n");
+    DEC(SUCCESSFUL, DISP_CHANGE_SUCCESSFUL);
+    DEC(RESTART, DISP_CHANGE_RESTART);
+    DEC(FAILED, DISP_CHANGE_FAILED);
+    DEC(BADMODE, DISP_CHANGE_BADMODE);
+    DEC(NOTUPDATED, DISP_CHANGE_NOTUPDATED);
+    DEC(BADFLAGS, DISP_CHANGE_BADFLAGS);
+    DEC(BADPARAM, DISP_CHANGE_BADPARAM);
+    DEC(BADDUALVIEW, DISP_CHANGE_BADDUALVIEW);
+    printf("    }\n\n");
+
     printf("    // Static controls\n");
     printf("    export const enum StaticMsg {\n");
     DEC(SETICON, STM_SETICON);
