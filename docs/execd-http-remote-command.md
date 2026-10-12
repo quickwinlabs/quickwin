@@ -114,9 +114,9 @@ curl -o screen.bmp http://127.0.0.1:8005/screenshot
 curl -o win.bmp "http://127.0.0.1:8005/screenshot?hwnd=852200&area=window&mode=print"
 ```
 
-返回 `image/bmp`，头部带 `X-Dimensions: <宽>x<高>`。三个参数：`hwnd`（缺省=全屏，正整数）、`area`（`window` 默认 / `client`）、`mode`（`screen` 默认 / `print`）。参数非法返回 `400`。
+返回 `image/bmp`，头部带 `X-Dimensions: <宽>x<高>`。三个参数：`hwnd`（缺省=全屏，正整数）、`area`（`window` 默认 / `client`）、`mode`（缺省时带 hwnd 取 `print`、全屏取 `screen`）。参数非法返回 `400`。
 
-`mode=print` 值得单独说一句：它让窗口**自己渲染到一块内存 DC**，不受屏幕分辨率裁剪。XP 桌面只有 640x480，而窗口 rect 是 (200,200)-(760,620) 超出了屏幕，用 `mode=screen` 会被裁成 440x280，拿不到完整的 560x420。
+`mode=print` 值得单独说一句：它让窗口**自己渲染到一块内存 DC**，不受屏幕分辨率裁剪。XP 桌面只有 640x480，而窗口 rect 是 (200,200)-(760,620) 超出了屏幕，用 `mode=screen` 会被裁成 440x280，拿不到完整的 560x420。所以带 `hwnd` 时默认就是 print——遮挡、最小化、超出屏幕的窗口都能拿完整像素；代价是 print 依赖目标窗口的消息循环响应（窗口卡死时约挂 5 秒），而 `screen` 是纯 `BitBlt` 读屏、对窗口零依赖，要那种零依赖语义就显式传 `mode=screen`。
 
 ### 三个语义要点
 

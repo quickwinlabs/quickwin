@@ -307,14 +307,21 @@ interface ShotOpts {
 
 function parseShotOpts(params: URLSearchParams): ShotOpts {
     const area = params.get('area') ?? 'window'
-    const mode = params.get('mode') ?? 'screen'
     if (area !== 'window' && area !== 'client') throw new Error('area must be "window" or "client"')
-    if (mode !== 'screen' && mode !== 'print') throw new Error('mode must be "screen" or "print"')
+    const rawMode = params.get('mode')
+    if (rawMode !== null && rawMode !== 'screen' && rawMode !== 'print') {
+        throw new Error('mode must be "screen" or "print"')
+    }
 
     const raw = params.get('hwnd')
-    if (raw === null || raw === '') return { hwnd: null, area, mode }
-    const hwnd = Number(raw)
-    if (!Number.isInteger(hwnd) || hwnd <= 0) throw new Error('hwnd must be a positive integer')
+    const hwnd = raw === null || raw === '' ? null : Number(raw)
+    if (hwnd !== null && (!Number.isInteger(hwnd) || hwnd <= 0)) {
+        throw new Error('hwnd must be a positive integer')
+    }
+    // 缺省 mode 随 hwnd 变：带 hwnd 默认 print——PrintWindow 让窗口自绘到内存 DC，
+    // 遮挡 / 最小化 / 超出屏幕都拿完整像素；screen 只会截可见部分并静默裁剪。
+    // 代价：print 依赖目标窗口消息循环响应（卡死窗口约挂 5s），screen 纯 BitBlt 零依赖。
+    const mode = rawMode ?? (hwnd === null ? 'screen' : 'print')
     return { hwnd, area, mode }
 }
 
@@ -466,7 +473,7 @@ function captureScreen(): { bmp: Uint8Array; width: number; height: number } {
 function captureWindow(hwnd: Ptr<'HWND'>, area: 'window' | 'client', mode: 'screen' | 'print'):
     { bmp: Uint8Array; width: number; height: number } {
     if (mode === 'screen' && IsIconic(hwnd) !== 0) {
-        throw new Error('window minimized：mode=screen 只会截到它下方的桌面，改用 mode=print')
+        throw new Error('window minimized：mode=screen 只会截到它下方的桌面，去掉 mode=screen 让默认 print 生效')
     }
 
     const wRect = RECT.alloc()
@@ -663,7 +670,8 @@ const USAGE = `quickwin execd —— 本页即用法（API 之外任意路径均
 API（配置 token 后需 Authorization: Bearer <token>，未配置则放行）：
   POST /exec         JSON {"cmd":"命令","timeout":毫秒?} → 流式输出，Trailer X-Exit-Code
   GET  /screenshot   ?hwnd=<十进制>&area=window|client&mode=screen|print → image/bmp
-                     （X-Dimensions；不带 hwnd = 整屏捕获）
+                     （X-Dimensions；不带 hwnd = 整屏 BitBlt；带 hwnd 默认 mode=print
+                     让窗口自绘——遮挡/最小化/超屏也拿完整像素，screen 只截可见部分）
   GET  /window_list  → JSON 窗口列表 [{hwnd,title,className,...}]
   POST /set_resolution       ?w=<px>&h=<px>&persist=0|1（默认 1 = 写注册表跨重启）→ JSON
                      {before,after,testRet,ret,retName,modes32}；modes32 恒带 32bpp
