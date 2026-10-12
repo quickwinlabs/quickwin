@@ -151,7 +151,7 @@ curl -X POST http://localhost:8005/exec \
 ```
 
 响应：
-- **200** → body = 命令原始字节（Windows 中文输出多为 GBK），退出码在 `X-Exit-Code`
+- **200** → body = 命令原始字节（cmd 内置=UTF-16LE、外部程序原生如 GBK），退出码在 `X-Exit-Code`
 - **非 200** → body = JSON `{"error":"..."}`（500=内部错误，504=exec 超时）
 
 `popen` 在 Worker 线程执行，非 API 路径（usage 页）在长命令期间仍可响应。
