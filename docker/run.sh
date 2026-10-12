@@ -84,7 +84,7 @@ done
 [ -e /dev/kvm ] && KVM="-accel kvm"
 
 health() {
-    curl -sf -m 3 "http://127.0.0.1:${FWD}/health" >/dev/null 2>&1
+    curl -sf -m 3 "http://127.0.0.1:${FWD}/" >/dev/null 2>&1
 }
 
 # ── --stop: ACPI 关机 ──
@@ -114,7 +114,7 @@ if [ -f qemu-$VM.pid ] && ! $RESTART; then
     echo "VM 已在运行 (PID=$(cat qemu-$VM.pid))，检查健康..."
     for i in $(seq 1 12); do
         if health; then
-            echo "exec_server 健康 (http://127.0.0.1:${FWD}/health)  耗时 $(( $(date +%s) - START_TIME ))s"
+            echo "exec_server 健康 (http://127.0.0.1:${FWD}/)  耗时 $(( $(date +%s) - START_TIME ))s"
             echo "跑测试: ./http_test.sh $VM [filter]"
             echo "停止:   ./run.sh $VM --stop"
             exit 0
@@ -207,11 +207,11 @@ if [ ! -e "$LOGFILE" ]; then
 fi
 echo "run.bat 已启动（耗时 $(( $(date +%s) - START_TIME ))s）"
 
-# ── 等 Ready（run.bat 写）+ 健康检查（exec_server /health）──
+# ── 等 Ready（run.bat 写）+ 健康检查（exec_server usage 页，非 API 路径 200）──
 echo "等待 exec_server 健康..."
 for i in $(seq 1 36); do
     if health; then
-        echo "exec_server 健康 (http://127.0.0.1:${FWD}/health)  总耗时 $(( $(date +%s) - START_TIME ))s"
+        echo "exec_server 健康 (http://127.0.0.1:${FWD}/)  总耗时 $(( $(date +%s) - START_TIME ))s"
         echo "--- run.log ---"
         cat "$LOGFILE"
         echo

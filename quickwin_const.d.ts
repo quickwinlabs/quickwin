@@ -854,6 +854,32 @@ declare module "gui" {
         BITSPIXEL = 12, // 0xC
     }
 
+    // Display mode (ChangeDisplaySettings)
+    export const enum DevModeField {
+        PELSWIDTH = 524288, // 0x80000
+        PELSHEIGHT = 1048576, // 0x100000
+    }
+
+    export const enum ChangeDisplayFlag {
+        UPDATEREGISTRY = 1, // 0x1
+        TEST = 2, // 0x2
+    }
+
+    export const enum EnumDisplaySetting {
+        CURRENT_SETTINGS = -1, // 0xFFFFFFFF
+    }
+
+    export const enum DisplayChangeResult {
+        SUCCESSFUL = 0, // 0x0
+        RESTART = 1, // 0x1
+        FAILED = -1, // 0xFFFFFFFF
+        BADMODE = -2, // 0xFFFFFFFE
+        NOTUPDATED = -3, // 0xFFFFFFFD
+        BADFLAGS = -4, // 0xFFFFFFFC
+        BADPARAM = -5, // 0xFFFFFFFB
+        BADDUALVIEW = -6, // 0xFFFFFFFA
+    }
+
     // Static controls
     export const enum StaticMsg {
         SETICON = 368, // 0x170

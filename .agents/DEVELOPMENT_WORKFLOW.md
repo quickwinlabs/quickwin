@@ -140,7 +140,7 @@ VM 开机只起 `exec_server`（不跑测试）；测试经 `http_test.sh` HTTP 
 ```bash
 # 容器内
 cd docker
-./run.sh win7              # 已在跑则只做健康检查；首启等 /health（~30–60s）
+./run.sh win7              # 已在跑则只做健康检查；首启等就绪（`/` 返回 usage 200，~30–60s）
 # 或 ./run.sh xp
 # 需要干净 overlay 时: ./run.sh win7 --fresh
 
@@ -152,7 +152,7 @@ cd docker
 ./run.sh win7 --restart    # 停再起
 ```
 
-流程：`run.sh` 杀旧 QEMU（`--fresh` 时重建 overlay）→ `ln -s` `_build` 到 `ci_share/quickwin` → `unix2dos` run.bat → 启动 → 等 `/health`。  
+流程：`run.sh` 杀旧 QEMU（`--fresh` 时重建 overlay）→ `ln -s` `_build` 到 `ci_share/quickwin` → `unix2dos` run.bat → 启动 → 等 `/`（usage 页 200）。  
 `run.bat` 只做防火墙/portproxy + `start exec_server`；`http_test.sh` 内部确保容器 `serve_test :18923`。
 
 > **改了 `examples/exec_server*.ts` 或其 lib 依赖后，只跑 `make js` 不生效**——guest 里跑的
