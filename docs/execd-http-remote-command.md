@@ -6,7 +6,7 @@
 
 ## 简介
 
-这个服务是 `execd`，它监听 8080 端口，收到 HTTP 请求，解析出要运行的命令，在本机运行，把输出通过 HTTP 返回。它是一个 exe，体积约 1.5MB，用 [QuickWin](https://github.com/xna00/quickwin) 开发，Windows XP 到 Windows 11 都能跑。
+这个服务是 `execd`，它监听 8080 端口，收到 HTTP 请求，解析出要运行的命令，在本机运行，把输出通过 HTTP 返回。它是一个 exe，体积约 1.5MB，用 [QuickWin](https://github.com/quickwinlabs/quickwin) 开发，Windows XP 到 Windows 11 都能跑。
 
 链路很短：
 
@@ -148,5 +148,5 @@ curl -X POST http://127.0.0.1:8005/exec \
 
 **timeout 默认无限。** 不传 `timeout` 就不设定时器，连接活着命令就一直跑。要卡就传正数毫秒值，到点强杀、trailer 记 `X-Exit-Code: -1`。
 
-完整实现见 [examples/execd.tsx](https://github.com/xna00/quickwin/blob/main/examples/execd.tsx)
+完整实现见 [examples/execd.tsx](https://github.com/quickwinlabs/quickwin/blob/main/examples/execd.tsx)
 

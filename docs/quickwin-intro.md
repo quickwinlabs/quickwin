@@ -4,7 +4,7 @@ QuickWin 是一个 Windows 平台的 QuickJS 运行时，用 JavaScript 写 Wind
 
 > 项目处于早期，功能待完善，包含已知 bug。
 
-[GitHub](https://github.com/xna00/quickwin)
+[GitHub](https://github.com/quickwinlabs/quickwin)
 
 ## 快速体验
 
@@ -16,8 +16,8 @@ npx quickwin node_modules/quickwin/main.js
 也可以直接从 GitHub Release 下载：
 
 ```powershell
-iwr https://github.com/xna00/quickwin/releases/latest/download/qwin.exe -OutFile qwin.exe
-iwr https://github.com/xna00/quickwin/releases/latest/download/main.js -OutFile main.js
+iwr https://github.com/quickwinlabs/quickwin/releases/latest/download/qwin.exe -OutFile qwin.exe
+iwr https://github.com/quickwinlabs/quickwin/releases/latest/download/main.js -OutFile main.js
 .\qwin.exe main.js
 ```
 

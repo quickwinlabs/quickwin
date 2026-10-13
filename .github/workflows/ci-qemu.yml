@@ -23,7 +23,7 @@ jobs:
         run: |
           code=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://ghcr.io/v2/xna00/quickwin-dev/manifests/latest")
+            "https://ghcr.io/v2/quickwinlabs/quickwin-dev/manifests/latest")
           echo "exists=$([ "$code" = "200" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "ghcr_manifest_status=$code"
 
@@ -71,8 +71,8 @@ jobs:
           file: docker/Dockerfile.dev
           push: true
           tags: |
-            ghcr.io/xna00/quickwin-dev:latest
-            ghcr.io/xna00/quickwin-dev:${{ github.sha }}
+            ghcr.io/quickwinlabs/quickwin-dev:latest
+            ghcr.io/quickwinlabs/quickwin-dev:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -94,7 +94,7 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/xna00/quickwin-dev:latest
+      image: ghcr.io/quickwinlabs/quickwin-dev:latest
       options: --device /dev/kvm
     timeout-minutes: 60
     strategy:

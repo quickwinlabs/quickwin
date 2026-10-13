@@ -25,7 +25,7 @@ podman exec quickwin-dev bash
 podman exec quickwin-dev bash -lc 'cd /workspace && <命令>'
 ```
 
-> CI（`.github/workflows/ci-qemu.yml`）用同一镜像 `ghcr.io/xna00/quickwin-dev`，本地与 CI 行为一致。项目已不使用 MSYS2 原生编译路径。
+> CI（`.github/workflows/ci-qemu.yml`）用同一镜像 `ghcr.io/quickwinlabs/quickwin-dev`，本地与 CI 行为一致。项目已不使用 MSYS2 原生编译路径。
 
 ## GitHub 操作（宿主）
 
@@ -181,7 +181,7 @@ Win7 用 `qwin.exe`（64 位），XP 用 `qwin-x86.exe`（32 位），`http_test
 
 ## CI（ci-qemu.yml）
 
-- **镜像**：仅 `Dockerfile.dev` 变更或 GHCR 无镜像时重建，否则复用 `ghcr.io/xna00/quickwin-dev:latest`
+- **镜像**：仅 `Dockerfile.dev` 变更或 GHCR 无镜像时重建，否则复用 `ghcr.io/quickwinlabs/quickwin-dev:latest`
 - **matrix**：`win7`（`cc64` + qwin.exe）/ `xp`（`cc32` + qwin-x86.exe），`fail-fast: false`
 - **缓存**：ready 快照（cache miss 才现场 `setup-*.sh`，约 40min）；交叉编译依赖 `.a`（key 含 Makefile/patches/deps hash）
 - **编译**：`make <deps> BUILD=small` → nowasm → `make js wasm` → `make execd` → 上传 artifact

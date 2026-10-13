@@ -5,7 +5,7 @@
 | **Electron** | Win10+（旧版可到Win7） | 极大(100MB+) | 低 | 低 | 是 |
 | **Tauri** | Win10+（旧版可到Win7，需装WebView2） | 小 | 中 | 高 | 是 |
 | **C/C++ + Win32** | Win95+ | 极小 | 高 | 最高 | 否 |
-| [**QuickWin**](https://github.com/xna00/quickwin) | Windows XP | ~1.5MB | 低 | 高 | 否 |
+| [**QuickWin**](https://github.com/quickwinlabs/quickwin) | Windows XP | ~1.5MB | 低 | 高 | 否 |
 | **Python + PyQt5** | XP+\*（旧版本） | 很大 | 低 | 中 | 是 |
 | **C# (WinForms / WPF)** | Win7+（需 .NET 运行时\*） | 较大 | 中 | 高 | 否 |
 
@@ -21,7 +21,7 @@
 
 ## 关于 QuickWin
 
-**[QuickWin](https://github.com/xna00/quickwin)** 是一个 Windows 平台上的 QuickJS 运行时，用 JS 就能写 Windows 原生程序，**JS 脚本可直接嵌入 exe 实现单文件分发**。
+**[QuickWin](https://github.com/quickwinlabs/quickwin)** 是一个 Windows 平台上的 QuickJS 运行时，用 JS 就能写 Windows 原生程序，**JS 脚本可直接嵌入 exe 实现单文件分发**。
 
 - 单文件约 **1.5MB**，无运行时依赖，下载即用
 - 原生 Win32 GUI（窗口/按钮/托盘），也可用 **React/JSX** 声明式界面
@@ -30,7 +30,7 @@
 - 支持 Windows XP+
 
 ```powershell
-iwr https://github.com/xna00/quickwin/releases/latest/download/qwin.exe -OutFile qwin.exe
-iwr https://github.com/xna00/quickwin/releases/latest/download/main.js -OutFile main.js
+iwr https://github.com/quickwinlabs/quickwin/releases/latest/download/qwin.exe -OutFile qwin.exe
+iwr https://github.com/quickwinlabs/quickwin/releases/latest/download/main.js -OutFile main.js
 .\qwin.exe main.js
 ```

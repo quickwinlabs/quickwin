@@ -16,8 +16,8 @@ npm install quickwin
 npx quickwin node_modules/quickwin/main.js   # bundled main.js demo; use npx quickwin script.js for your own scripts
 
 # Option 2: download directly from GitHub Release
-iwr https://github.com/xna00/quickwin/releases/latest/download/qwin.exe -OutFile qwin.exe
-iwr https://github.com/xna00/quickwin/releases/latest/download/main.js -OutFile main.js
+iwr https://github.com/quickwinlabs/quickwin/releases/latest/download/qwin.exe -OutFile qwin.exe
+iwr https://github.com/quickwinlabs/quickwin/releases/latest/download/main.js -OutFile main.js
 .\qwin.exe main.js
 ```
 
@@ -174,10 +174,10 @@ Both sides must set `onmessage = null` when communication is complete. This rele
 ### Build
 
 ```bash
-git clone --recursive https://github.com/xna00/quickwin.git
+git clone --recursive https://github.com/quickwinlabs/quickwin.git
 cd quickwin
 
-./docker/dev-podman.sh up      # start dev container (reuses ghcr.io/xna00/quickwin-dev)
+./docker/dev-podman.sh up      # start dev container (reuses ghcr.io/quickwinlabs/quickwin-dev)
 podman exec quickwin-dev bash -lc 'cd /workspace && make js && make cc64 && make test TEST=-net'
 ```
 

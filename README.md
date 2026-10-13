@@ -16,8 +16,8 @@ npm install quickwin
 npx quickwin node_modules/quickwin/main.js   # 包自带 main.js 示例；用 npx quickwin script.js 运行你自己的脚本
 
 # 方式二：直接从 GitHub Release 下载
-iwr https://github.com/xna00/quickwin/releases/latest/download/qwin.exe -OutFile qwin.exe
-iwr https://github.com/xna00/quickwin/releases/latest/download/main.js -OutFile main.js
+iwr https://github.com/quickwinlabs/quickwin/releases/latest/download/qwin.exe -OutFile qwin.exe
+iwr https://github.com/quickwinlabs/quickwin/releases/latest/download/main.js -OutFile main.js
 .\qwin.exe main.js
 ```
 
@@ -172,10 +172,10 @@ parent.onmessage = (e) => {
 ### 构建
 
 ```bash
-git clone --recursive https://github.com/xna00/quickwin.git
+git clone --recursive https://github.com/quickwinlabs/quickwin.git
 cd quickwin
 
-./docker/dev-podman.sh up      # 启动开发容器（复用 ghcr.io/xna00/quickwin-dev）
+./docker/dev-podman.sh up      # 启动开发容器（复用 ghcr.io/quickwinlabs/quickwin-dev）
 podman exec quickwin-dev bash -lc 'cd /workspace && make js && make cc64 && make test TEST=-net'
 ```
 
