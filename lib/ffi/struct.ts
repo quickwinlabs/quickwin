@@ -204,7 +204,10 @@ export type Fields = Field[]
 // N = 布局品牌（struct(name, …) 传入）：decode 入参与 alloc().ptr 同品牌。默认 '' ——
 // `Ptr<''>` 归一裸 number（与旧 never 守卫结果相同），品牌化 def 未来收窄时签名不用再动。
 export type StructDef<T extends { '#': 'struct' | 'union' }, N extends string = ''> = {
-    readonly __struct: T
+    // 布局 IR 直接暴露（原 __struct 成员读已删：成员读是可观察副作用，esbuild 无法把
+    // 「PURE 调用 + X.__struct 实参」与 X 的定义一起摇掉 —— DECL 常量（对象字面量）走
+    // 标识符引用则整链可摇。T 只活在 decode/encode 的类型签名里，运行时不挂成员）。
+    readonly fields: Fields
     readonly size: number
     readonly structAlign: number
     decode(buf: ArrayBuffer | Ptr<N>): ShapeOfC<T>
@@ -593,7 +596,7 @@ function doEncode(dv: DataView, base: number, fields: Fields, v: Record<string, 
 function createStruct(t: C_Struct | C_Union): any {
     const { fields, size, maxEffectiveAlign } = computeStructLayout(t)
     return {
-        __struct: t,
+        fields,
         size,
         structAlign: maxEffectiveAlign,
         decode: (p: ArrayBuffer | number) => {
@@ -638,10 +641,25 @@ function createStruct(t: C_Struct | C_Union): any {
 /** 聚合对齐上限（pack 压 maxAlign，语义同 MSVC #pragma pack）。 */
 export type AggOpts = { pack?: number }
 
-/** 平铺字段表 → '#' 声明：'#'/`#pack` 由构造器写入（顶层 kind 由函数名表明，字段表本身
- *  不收指令键）。member 里混进的 '#' 前缀键在此剔除 —— 类型层已禁（fresh literal excess
- *  check），这里运行时兜底，避免用户键覆盖构造器写入的 '#'/`#pack`。 */
+/** 平铺字段表 → '#' 声明：'#'/`#pack` 由构造器写入（顶层 kind 由函数名表明）。
+ *  member 里混进的其他 '#' 前缀键在此剔除 —— fresh literal 由 excess check 拒，这里
+ *  运行时兜底，避免用户键覆盖构造器写入的 '#'/`#pack`。
+ *  两处守卫（DECL 常量直传形态，`struct('X', X_DECL)`）：
+ *  - member 自带 '#' 时须与函数名 kind 一致，否则 throw。TS 侧 overload 参数收
+ *    `M & { '#'?: 'struct' }`（union 镜像），'#' 与函数名 kind 不符在编译期就交叉成
+ *    never 报错；此 throw 是 JS / `as any` / 动态构造 DECL 调用方的运行时兜底 ——
+ *    union DECL 误传 struct() 会静默翻转成 struct 布局，是最难查的一类错；
+ *  - '#pack' 透传（剥键即丢，pack 布局静默变自然对齐）：opts.pack 未给时取 member 的，
+ *    两者都给且不等则 throw —— 跨参数的相等约束类型层表达不了，只能运行时校。 */
 function buildDecl(kind: 'struct' | 'union', member: Record<string, unknown>, pack?: number): C_Struct | C_Union {
+    const declKind = member['#']
+    if (declKind !== undefined && declKind !== kind)
+        throw new Error(`ffi-struct: ${kind}() received a '${String(declKind)}' declaration ` +
+            `(kind mismatch — use ${declKind}() for it)`)
+    const declPack = member['#pack']
+    if (pack === undefined && declPack !== undefined) pack = declPack as number
+    else if (pack !== undefined && declPack !== undefined && pack !== declPack)
+        throw new Error(`ffi-struct: #pack conflict: opts.pack=${pack} vs declaration ${String(declPack)}`)
     const decl: Record<string, unknown> = { '#': kind }
     if (pack !== undefined) decl['#pack'] = pack
     for (const [k, v] of Object.entries(member))
@@ -649,11 +667,19 @@ function buildDecl(kind: 'struct' | 'union', member: Record<string, unknown>, pa
     return decl as unknown as C_Struct | C_Union
 }
 
+/** def 的类型经方法签名索引提取（StructDef 不再挂 __struct 成员 —— T 只活在签名里）：
+ *  encode 重载末条首参 = EncodeIn<T>、decode 返回 = ShapeOfC<T>、alloc 返回 = PAB<N>、
+ *  decode 首参剥 ArrayBuffer = Ptr<N>（裸地址形）。 */
+type EncInOf<D extends StructDef<any, any>> = Parameters<D['encode']>[0]
+type DecOf<D extends StructDef<any, any>> = ReturnType<D['decode']>
+type PABOf<D extends StructDef<any, any>> = ReturnType<D['alloc']>
+type AddrOf<D extends StructDef<any, any>> = Exclude<Parameters<D['decode']>[0], ArrayBuffer>
+
 /** decode 双态重载：有 byteLength 的 buffer 形 count 可缺省（自算）；裸地址无长度
  *  信息，count 必填（类型层拦，缺省调用编译红）。 */
-type StructArrayDecode<T extends { '#': 'struct' | 'union' }, N extends string> = {
-    (p: ArrayBuffer, count?: number): ShapeOfC<T>[]
-    (p: Ptr<N>, count: number): ShapeOfC<T>[]
+type StructArrayDecode<D extends StructDef<any, any>> = {
+    (p: ArrayBuffer, count?: number): DecOf<D>[]
+    (p: AddrOf<D>, count: number): DecOf<D>[]
 }
 
 /** 结构/联合体的数组编解码对工厂：返回 `{ encode, decode }`。
@@ -673,25 +699,23 @@ type StructArrayDecode<T extends { '#': 'struct' | 'union' }, N extends string> 
  *  - 裸地址形：count 必填（地址无长度信息），逐字节拷读（def.decode 的 number 形
  *    同机制）；长度不可校 → 信任 C 的 count。
  *  - count = 0 → []（读 0 个真空安全，与 encode 禁空的 PAB(0) 理由刻意不对称）。
- *  实现：encode 走纯公开 API（alloc + encode offset 循环）；decode 在本文件内复用
- *  computeStructLayout/doDecode。 */
-export function structArray<T extends { '#': 'struct' | 'union' }, N extends string = ''>(
-    def: StructDef<T, N>,
-) {
-    const { fields, size } = computeStructLayout(def.__struct)
+ *  实现：encode 走纯公开 API（alloc + encode offset 循环）；decode 直接读 def.fields
+ *  （createStruct 暴露的布局 IR，与 def.decode 同一份，无需重算）。 */
+export function structArray<D extends StructDef<any, any>>(def: D) {
+    const { fields, size } = def
     const readN = (dv: DataView, n: number): unknown[] => {
         const out: unknown[] = []
         for (let i = 0; i < n; i++) out.push(doDecode(dv, i * size, fields))
         return out
     }
     return {
-        encode: (els: readonly EncodeIn<T>[]): PtrArrayBuffer<N> => {
+        encode: (els: readonly EncInOf<D>[]): PABOf<D> => {
             if (!Array.isArray(els) || els.length === 0)
                 throw new Error(`ffi-struct: structArray(def).encode(els) requires a ` +
                     `non-empty element array (pass NULL for an empty pointer position)`)
             const out = def.alloc(els.length)
             for (let i = 0; i < els.length; i++) def.encode(els[i], out, i * def.size)
-            return out
+            return out as PABOf<D>
         },
         decode: ((p: ArrayBuffer | number, count?: number): unknown[] => {
             // fail-loud 校验矩阵（见 JSDoc）：显式 count 信调用方但拦越界；缺省只对
@@ -725,16 +749,18 @@ export function structArray<T extends { '#': 'struct' | 'union' }, N extends str
             }
             if (n === 0) return []
             return readN(new DataView(p), n)
-        }) as StructArrayDecode<T, N>,
+        }) as StructArrayDecode<D>,
     }
 }
 
 /** 平铺字段表定义结构体（token/`X[n]`/`unit:width`/`'#'` 声明均可，见 ctype.ts §4）。
- *  给 name 则 alloc().ptr 与 decode 入参带 Ptr<name> 品牌。 */
+ *  给 name 则 alloc().ptr 与 decode 入参带 Ptr<name> 品牌。DECL 常量可直传（
+ *  `struct('X', X_DECL)`）—— 参数交叉 `{ '#'?: 'struct' }` 锁 kind：传 union/array
+ *  DECL 时 '#' 字面类型交叉成 never，编译期即报错。 */
 type StructOf<M, N extends string = ''> = StructDef<{ '#': 'struct', '#pack'?: number } & M, N>
 type UnionOf<M, N extends string = ''> = StructDef<{ '#': 'union', '#pack'?: number } & M, N>
-export function struct<const M extends SimpleMember>(member: M, opts?: AggOpts): StructOf<M>
-export function struct<const N extends string, const M extends SimpleMember>(name: N, member: M, opts?: AggOpts): StructOf<M, N>
+export function struct<const M extends SimpleMember>(member: M & { '#'?: 'struct' }, opts?: AggOpts): StructOf<M>
+export function struct<const N extends string, const M extends SimpleMember>(name: N, member: M & { '#'?: 'struct' }, opts?: AggOpts): StructOf<M, N>
 export function struct(a: string | SimpleMember, b?: SimpleMember | AggOpts, c?: AggOpts): any {
     const isNamed = typeof a === 'string'
     const raw = (isNamed ? b : a) as Record<string, unknown>
@@ -742,9 +768,10 @@ export function struct(a: string | SimpleMember, b?: SimpleMember | AggOpts, c?:
     return createStruct(buildDecl('struct', raw, opts?.pack))
 }
 
-/** 平铺字段表定义联合体；布局/读写与 struct 相同，仅成员偏移重叠。 */
-export function union<const M extends SimpleMember>(member: M, opts?: AggOpts): UnionOf<M>
-export function union<const N extends string, const M extends SimpleMember>(name: N, member: M, opts?: AggOpts): UnionOf<M, N>
+/** 平铺字段表定义联合体；布局/读写与 struct 相同，仅成员偏移重叠。DECL 常量可直传，
+ *  参数交叉 `{ '#'?: 'union' }` 锁 kind（struct 侧镜像，理由见上）。 */
+export function union<const M extends SimpleMember>(member: M & { '#'?: 'union' }, opts?: AggOpts): UnionOf<M>
+export function union<const N extends string, const M extends SimpleMember>(name: N, member: M & { '#'?: 'union' }, opts?: AggOpts): UnionOf<M, N>
 export function union(a: string | SimpleMember, b?: SimpleMember | AggOpts, c?: AggOpts): any {
     const isNamed = typeof a === 'string'
     const raw = (isNamed ? b : a) as Record<string, unknown>
