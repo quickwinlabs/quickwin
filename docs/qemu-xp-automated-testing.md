@@ -2,7 +2,7 @@
 
 > 本文内容参考了 [dockur/windows](https://github.com/dockur/windows)。
 
-[QuickWin](https://github.com/xna00/quickwin) 的目标是支持 Windows XP+，因此必须验证它能否在真实的 XP 系统上运行。同时为了配合 AI 开发，需要让整个验证过程自动化——所以选用 QEMU 来运行 Windows XP 虚拟机。
+[QuickWin](https://github.com/quickwinlabs/quickwin) 的目标是支持 Windows XP+，因此必须验证它能否在真实的 XP 系统上运行。同时为了配合 AI 开发，需要让整个验证过程自动化——所以选用 QEMU 来运行 Windows XP 虚拟机。
 
 总体流程：
 
@@ -158,4 +158,4 @@ curl -X POST http://localhost:8005/exec \
 
 ---
 
-完整实现代码见 [quickwin/docker](https://github.com/xna00/quickwin/tree/main/docker)。
+完整实现代码见 [quickwin/docker](https://github.com/quickwinlabs/quickwin/tree/main/docker)。

@@ -32,7 +32,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/xna00/quickwin.git"
+    "url": "git+https://github.com/quickwinlabs/quickwin.git"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
