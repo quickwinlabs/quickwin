@@ -4,7 +4,7 @@ import { Tester } from './test_helper.js'
 import { struct, union } from '../lib/ffi/struct.js'
 import { bind, } from '../lib/ffi/bind.js'
 import { type MaybePtr, Ptr, PtrArrayBuffer } from '../lib/ffi/ctype.js'
-import type { C_Union } from '../lib/ffi/ctype.js'
+import type { C_Struct, C_Union } from '../lib/ffi/ctype.js'
 
 // 编译期断言工具（仅类型层，运行时无开销）
 type Equal<A, B> = (<G>() => G extends A ? 1 : 2) extends (<G>() => G extends B ? 1 : 2) ? true : false
@@ -22,7 +22,8 @@ const RECT = /* @__PURE__ */ struct('RECT', {
     bottom: 'i32',
 })
 
-const TVITEM = /* @__PURE__ */ struct('TVITEM', {
+const TVITEM_DECL = {
+    '#': 'struct',
     mask: 'u32',
     hItem: '<>ptr',
     state: 'u32',
@@ -33,11 +34,12 @@ const TVITEM = /* @__PURE__ */ struct('TVITEM', {
     iSelectedImage: 'i32',
     cChildren: 'i32',
     lParam: '<>ptr',
-})
+} satisfies C_Struct
+const TVITEM = /* @__PURE__ */ struct('TVITEM', TVITEM_DECL)
 const TVINSERTSTRUCT = /* @__PURE__ */ struct('TVINSERTSTRUCT', {
     hParent: '<>ptr',
     hInsertAfter: '<>ptr',
-    item: TVITEM.__struct,
+    item: TVITEM_DECL,
 })
 
 export const suite = {
@@ -260,13 +262,15 @@ export const suite = {
         t.check('[0]', 42, one.v[0])
 
         t.section('array of struct roundtrip (stride = child size)')
-        const PT = struct('PT', {
+        const PT_DECL = {
+            '#': 'struct',
             x: 'i32',
             y: 'i32',
-        })
+        } satisfies C_Struct
+        const PT = /* @__PURE__ */ struct('PT', PT_DECL)
         const POLY = struct('POLY', {
             count: 'u32',
-            pts: { '#': 'array', element: PT.__struct, length: 3 },
+            pts: { '#': 'array', element: PT_DECL, length: 3 },
         })
         t.check('POLY.size == 28', 28, POLY.size)
         t.check('POLY.offsetOf pts', 4, POLY.offsetOf('pts'))
@@ -296,9 +300,24 @@ export const suite = {
         try { (struct as any)({ outer: { inner: 'u32' } }) } catch { rejectedMap = true }
         t.check('bare nested map rejected（漏写 #）', true, rejectedMap)
 
-        // 顶层 '#' 由构造器写入：字段表混入的 '#' 指令键被剔除（运行时兜底，类型层已禁）
-        const H = (struct as any)({ '#': 'union', a: 'u8', b: 'u32' })
-        t.check('top-level # stripped（仍按函数名 struct 布局）', 8, H.size)
+        // 顶层 '#' 与函数名 kind 不符 → throw（union DECL 误传 struct() 防线）；
+        // 一致（'#': 'struct' 的 DECL 直传形态）→ 按 kind 正常布局
+        let rejectedKind = false
+        try { (struct as any)({ '#': 'union', a: 'u8', b: 'u32' }) } catch { rejectedKind = true }
+        t.check('top-level # kind mismatch rejected', true, rejectedKind)
+        const H = (struct as any)('H', { '#': 'struct', a: 'u8', b: 'u32' })
+        t.check('top-level # matching kind accepted（DECL 直传）', 8, H.size)
+
+        // 类型层 kind 锁（参数交叉 `{ '#'?: 'struct' }` / `{ '#'?: 'union' }`）：DECL 的
+        // '#' 字面与函数名 kind 不符 → 交叉 never，编译期报错。@ts-expect-error 断言该
+        // 报错存在（锁失效则指令未使用、tsc 报错）；仅类型期检查，函数不调用
+        const _kindLock = () => {
+            // @ts-expect-error —— union DECL 传 struct()
+            struct('BAD_U', { '#': 'union', a: 'u8', b: 'u32' })
+            // @ts-expect-error —— struct DECL 传 union()
+            union('BAD_S', { '#': 'struct', a: 'u8', b: 'u32' })
+        }
+        void _kindLock
 
         t.section("pointer member '<>ptr' raw vs '<T>ptr' branded")
         const PTR = struct('PTR', {
@@ -405,17 +424,19 @@ export const suite = {
         t.check('BROWSEINFOW.offsetOf ulFlags', is64 ? 32 : 16, BROWSEINFOW.offsetOf('ulFlags'))
 
         t.section('NMHDR（嵌套时 MSVC 尾 padding 传染）')
-        const NMHDR = struct('NMHDR', {
+        const NMHDR_DECL = {
+            '#': 'struct',
             hwndFrom: '<>ptr',
             idFrom: '<>ptr',
             code: 'i32',
-        })
+        } satisfies C_Struct
+        const NMHDR = /* @__PURE__ */ struct('NMHDR', NMHDR_DECL)
         t.check('NMHDR.size', is64 ? 24 : 12, NMHDR.size)
         t.check('NMHDR.offsetOf code', is64 ? 16 : 8, NMHDR.offsetOf('code'))
 
         t.section('NMCUSTOMDRAW / NMLVCUSTOMDRAW (ListView custom draw)')
         const NMCUSTOMDRAW = struct('NMCUSTOMDRAW', {
-            hdr: NMHDR.__struct,
+            hdr: NMHDR_DECL,
             dwDrawStage: 'u32',
             hdc: '<>ptr',
             rc: 'i32[4]',
@@ -428,7 +449,7 @@ export const suite = {
         t.check('NMCUSTOMDRAW.offsetOf hdc', is64 ? 32 : 16, NMCUSTOMDRAW.offsetOf('hdc'))
         t.check('NMCUSTOMDRAW.offsetOf dwItemSpec', is64 ? 56 : 36, NMCUSTOMDRAW.offsetOf('dwItemSpec'))
         const NMLVCUSTOMDRAW = struct('NMLVCUSTOMDRAW', {
-            hdr: NMHDR.__struct,
+            hdr: NMHDR_DECL,
             dwDrawStage: 'u32',
             hdc: '<>ptr',
             rc: 'i32[4]',
@@ -447,7 +468,7 @@ export const suite = {
 
         t.section('NMLISTVIEW / NMITEMACTIVATE')
         const NMLISTVIEW = struct('NMLISTVIEW', {
-            hdr: NMHDR.__struct,
+            hdr: NMHDR_DECL,
             iItem: 'i32',
             iSubItem: 'i32',
             uNewState: 'u32',
@@ -504,7 +525,8 @@ export const suite = {
         t.check('LVCOLUMNW.offsetOf iOrder', is64 ? 36 : 28, LVCOLUMNW.offsetOf('iOrder'))
 
         t.section('NMDATETIMECHANGE')
-        const SYSTEMTIME = struct('SYSTEMTIME', {
+        const SYSTEMTIME_DECL = {
+            '#': 'struct',
             wYear: 'u16',
             wMonth: 'u16',
             wDayOfWeek: 'u16',
@@ -513,27 +535,29 @@ export const suite = {
             wMinute: 'u16',
             wSecond: 'u16',
             wMilliseconds: 'u16',
-        })
+        } satisfies C_Struct
         const NMDATETIMECHANGE = struct('NMDATETIMECHANGE', {
-            hdr: NMHDR.__struct,
+            hdr: NMHDR_DECL,
             dwFlags: 'u32',
-            st: SYSTEMTIME.__struct,
+            st: SYSTEMTIME_DECL,
         })
         t.check('NMDATETIMECHANGE.size', is64 ? 48 : 32, NMDATETIMECHANGE.size)
         t.check('NMDATETIMECHANGE.offsetOf dwFlags', is64 ? 24 : 12, NMDATETIMECHANGE.offsetOf('dwFlags'))
         t.check('NMDATETIMECHANGE.offsetOf st', is64 ? 28 : 16, NMDATETIMECHANGE.offsetOf('st'))
 
         t.section('NMLINK szUrl offset')
-        const LITEM = struct('LITEM', {
+        const LITEM_DECL = {
+            '#': 'struct',
             mask: 'u32',
             iLink: 'i32',
             state: 'u32',
             stateMask: 'u32',
             szID: 'u16[48]@utf-16le',
-        })
+        } satisfies C_Struct
+        const LITEM = /* @__PURE__ */ struct('LITEM', LITEM_DECL)
         const NMLINK = struct('NMLINK', {
-            hdr: NMHDR.__struct,
-            item: LITEM.__struct,
+            hdr: NMHDR_DECL,
+            item: LITEM_DECL,
             szUrl: 'u16[2084]@utf-16le',
         })
         t.check('LITEM.offsetOf szID', 16, LITEM.offsetOf('szID'))
@@ -766,8 +790,14 @@ export const suite = {
         t.section('EncodeIn DFS 后序：子树含必填 ⇒ 键必填；值后序合成（非必填兄弟可省）')
         {
             // 嵌套子结构含 '!'（内层强制）+ 标量/字符串糖（内层可省：''/0 是合法零值）
-            const NSUB = struct('NSUB', { hp: '<X>ptr!', rest: 'u32', s: 'u16[4]@utf-8' })
-            const NOUT = struct('NOUT', { top: 'u32', sub: NSUB.__struct })
+            const NSUB_DECL = {
+                '#': 'struct',
+                hp: '<X>ptr!',
+                rest: 'u32',
+                s: 'u16[4]@utf-8',
+            } satisfies C_Struct
+            const NSUB = /* @__PURE__ */ struct('NSUB', NSUB_DECL)
+            const NOUT = struct('NOUT', { top: 'u32', sub: NSUB_DECL })
             // decode 造全量对象（hp 槽预填非零，绕 '!' 的 decode 0 断言）
             const nbuf = new PtrArrayBuffer(NOUT.size)
             new DataView(nbuf).setUint32(NOUT.offsetOf('sub') + NSUB.offsetOf('hp'), 0x1234, true)

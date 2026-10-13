@@ -5,7 +5,7 @@ import * as os from 'os'
 import { Tester } from './test_helper.js'
 import { bind, bindLib, closure, WCHAR, BYTE, type CodecMap } from '../lib/ffi/bind.js'
 import { struct } from '../lib/ffi/struct.js'
-import { NULL, type MaybePtr, Ptr, PtrArrayBuffer, readScalar, writeScalar, PTR_SIZE, normToken } from '../lib/ffi/ctype.js'
+import { NULL, type C_Struct, type MaybePtr, Ptr, PtrArrayBuffer, readScalar, writeScalar, PTR_SIZE, normToken } from '../lib/ffi/ctype.js'
 
 // 编译期断言工具（仅类型层，运行时无开销）
 type Equal<A, B> = (<G>() => G extends A ? 1 : 2) extends (<G>() => G extends B ? 1 : 2) ? true : false
@@ -238,13 +238,15 @@ export const suite = {
         if (brushL) t.checkTrue('bindLib DeleteObject succeeds', gdi32Lib.DeleteObject(brushL) !== 0)
 
         // 嵌套 struct（LOGPEN 内含 POINT）验证 ShapeOf 递归 + 子结构写入
-        const POINT = struct('POINT', {
+        const POINT_DECL = {
+            '#': 'struct',
             x: 'i32',
             y: 'i32',
-        })
+        } satisfies C_Struct
+        const POINT = /* @__PURE__ */ struct('POINT', POINT_DECL)
         const LOGPEN = struct('LOGPEN', {
             lopnStyle: 'u32',
-            lopnWidth: POINT.__struct,
+            lopnWidth: POINT_DECL,
             lopnColor: 'u32',
         })
         const createPenIndirect = bind('gdi32.dll', 'CreatePenIndirect', '<LOGPEN>ptr -> <>ptr', { LOGPEN })

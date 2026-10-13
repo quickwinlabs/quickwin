@@ -15,7 +15,7 @@ const b = <const S extends string, const LE extends CodecMap = {}>(name: string,
 
 // 点数组编解码对（Polyline/Polygon/PlgBlt 共享）：注册后 <POINT>ptr 位收元素数组
 // （值域由 encoder 推导），C 侧 NULL 位传 NULL（number 直通），[]/单对象 fail-loud
-const POINTArr = structArray(POINT)
+const POINTArr = /*@__PURE__*/ structArray(POINT)
 
 /** 创建实心画刷；配对 DeleteObject
  *  @returns 失败 → 0
