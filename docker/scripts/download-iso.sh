@@ -5,13 +5,26 @@ set -e
 #  自动下载 Windows ISO
 #  用法: ./download-iso.sh <xp|7u|10|11|tiny11> [目标目录]
 #
-#  镜像源: download.testip.xyz (主), archive.org (备); 10/11 仍用 bobpony/files.dog
-#           tiny11 走 SourceForge (主), archive.org 备源
+#  优先级: 自有 release (quickwinlabs/assets, CI 发布的分卷+SHA 门禁)
+#           → 镜像源: archive.org (xp/7u);tiny11 = SF + archive.org(双构建,见下);
+#             10/11 用 bobpony/files.dog。testip 已 521 死源;win7 原 archive.org
+#             item 被 DMCA 撤,已换存活同文件 item。
+#  tiny11 双构建: 自有 release/archive.org = NTDEV Nov25 core(OWN_FILE/OWN_SIZE
+#                 单独门禁),SF = 2026-08-23 盘(FILE,无大小校验)—— 各自名实相符落盘。
 #  下载完成后校验 SHA256
 # ============================================================
 
 VERSION="${1:-}"
 DEST="${2:-.}"
+
+# 自有 release（quickwinlabs/assets）——CI 发布的分卷优先,失败回落下方镜像源。
+# 分卷命名 ${OWN_FILE:-FILE}.part00..NN,逐卷试拉至 404 即止;SHA/大小门禁同镜像源。
+# OWN_FILE/OWN_SIZE:tiny11 的自有盘(NTDEV Nov25 core)与镜像盘(SF 2026-08-23)是
+# 两个不同构建 —— 资产前缀与大小门禁分开设,各自名实相符落盘(消费方 glob 不受限)。
+OWN_BASE="https://github.com/quickwinlabs/assets/releases/download"
+OWN_TAG=""
+OWN_FILE=""
+OWN_SIZE=""
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 ts() { date '+%H:%M:%S'; }
@@ -45,6 +58,7 @@ get_iso_info() {
             FILE="zh-hans_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-74070.iso"
             SIZE="630237184"
             SHA="39430c2b8dd5c21bbd5af9116573f8c574ae896ce31d47280914ef268f01e33f"
+            OWN_TAG="win-isos-xp"
             # 镜像源：testip 直链（约 17MB/s），archive.org 备源
             URLS=(
                 "https://download.testip.xyz/windows/zh-hans_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-74070.iso"
@@ -55,6 +69,7 @@ get_iso_info() {
             FILE="cn_windows_7_ultimate_with_sp1_x64_dvd_u_677408.iso"
             SIZE="3420557312"
             SHA="70cdfb0cdcbeb2659163e9417d5c242b37ae564da810e7da21dac5c8492ab72f"
+            OWN_TAG="win-isos-win7"
             # 镜像源列表（按优先级排序）
             URLS=(
                 "https://download.testip.xyz/windows/cn_windows_7_ultimate_with_sp1_x64_dvd_u_677408.iso"
@@ -82,13 +97,17 @@ get_iso_info() {
             )
             ;;
         "tiny11" )
+            # 双构建并存,各自名实相符:
+            #  - FILE  = SF 盘 2026-08-23(3.0GB,本机可下)——镜像回落;SF 对数据中心 IP
+            #           被 Cloudflare 拦(runner 必败),SIZE 放开(两个构建大小不同)。
+            #  - OWN_* = 自有 release / archive.org 的 NTDEV 官方 Nov25 core(3.3GB),
+            #           单独大小门禁。
             FILE="Tiny11Core-25H2-26200.8037-English-Pro-2026-08-23.iso"
             SIZE=""
             SHA=""
-            # SourceForge 对所有镜像主机都先回一张 HTML 中转页，真实地址藏在
-            # <noscript> 的 meta refresh 里（带时效签名 ts=）。必须靠 resolve_url 解析。
-            # 注意: SF 对数据中心 IP（如 GitHub runner）会被 Cloudflare bot 防护拦，
-            # 故备源为 archive.org 上的 NTDEV 官方镜像（文件名/校验不同，跳过 SHA）。
+            OWN_TAG="win-isos-tiny11"
+            OWN_FILE="tiny11core_25H2_Nov25.iso"
+            OWN_SIZE="3304132608"
             URLS=(
                 "https://downloads.sourceforge.net/project/tiny-11-releases/Tiny11Core-Pro-25H2/${FILE}"
                 "https://archive.org/download/tiny11_25H2/tiny11core_25H2_Nov25.iso"
@@ -140,11 +159,56 @@ resolve_url() {
     echo "$url"
 }
 
+# ── 自有 release 优先 ──
+# quickwinlabs/assets 由 CI 发布的分卷(${OWN_FILE:-FILE}.part00..NN):逐卷试拉至
+# 404 即止,拼接后走与镜像源同款的大小/SHA 门禁(失败不退出 —— 软回落镜像源)。
+# 落盘名 = ${OWN_FILE:-FILE}(tiny11 与镜像盘不同构建,分开命名),已存在则校验幂等。
+try_own_release() {
+    [ -z "$OWN_TAG" ] && return 1
+    local name="${OWN_FILE:-$FILE}" out="$DEST/$name" gate="${OWN_SIZE:-$SIZE}"
+    local base="$OWN_BASE/$OWN_TAG" i part got=false
+    if [ -f "$out" ]; then
+        info "自有 release 文件已存在，校验完整性: $out"
+        verify_sha "$out" "$SHA"
+        return 0
+    fi
+    info "优先尝试自有 release: $OWN_TAG ($name)"
+    rm -f "$out"
+    for i in $(seq -w 0 99); do
+        part="$out.part$i"
+        if ! wget -q -U "$UA" --connect-timeout=20 --timeout=600 --tries=2 \
+             -O "$part" "$base/$name.part$i" 2>/dev/null; then
+            rm -f "$part"; break
+        fi
+        cat "$part" >> "$out"; rm -f "$part"; got=true
+    done
+    [ "$got" = true ] || { rm -f "$out"; return 1; }
+    local actual
+    actual=$(stat -c%s "$out" 2>/dev/null || echo 0)
+    if [ -n "$gate" ] && [ "$actual" != "$gate" ]; then
+        warn "自有 release 大小不符: 期望 $gate 实际 $actual —— 回落镜像源"
+        rm -f "$out"; return 1
+    fi
+    if [ -n "$SHA" ]; then
+        local sum
+        sum=$(sha256sum "$out" | awk '{print $1}')
+        if [ "$sum" != "$SHA" ]; then
+            warn "自有 release SHA256 不符: 期望 $SHA 实际 $sum —— 回落镜像源"
+            rm -f "$out"; return 1
+        fi
+    fi
+    info "自有 release 下载完成: $out ($(du -h "$out" | cut -f1))"
+    return 0
+}
+
 # ── 主逻辑 ──
 get_iso_info "$VERSION"
 
 mkdir -p "$DEST"
 OUTPUT="$DEST/$FILE"
+
+# bobpony/files.dog 等源不带浏览器 UA 会返回 403/拒连,自有 release/wget 同用
+UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 
 # 已存在则不重复下载，但仍校验完整性（否则跳过就成了完整性盲区）
 if [ -f "$OUTPUT" ]; then
@@ -153,9 +217,12 @@ if [ -f "$OUTPUT" ]; then
     exit 0
 fi
 
+# 自有 release 优先（quickwinlabs/assets 的 CI 分卷），失败回落镜像源
+if try_own_release; then
+    exit 0
+fi
+
 # 尝试所有镜像源
-# 注: bobpony/files.dog 等源不带浏览器 UA 会返回 403/拒连，必须带 UA
-UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 SUCCESS=false
 for URL in "${URLS[@]}"; do
     URL=$(resolve_url "$URL")
