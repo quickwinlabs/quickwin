@@ -4,7 +4,7 @@
 
 **ABI 只按字节数（宽度）分类参数/返回值；"符号"只是读回时如何解释同一组位。所有符号相关的差异只存在于返回值 read-back 方向。**
 
-对应代码：`lib/ffi/bind.ts`（`ARG_SIZE` 槽宽表、`writeSlot` 打包、`readRet` 读回、kind 与 `'ptr'` 归一、签名 DSL）、`quickjs-ffi.c`（`ffiCall` 只做「搬运 + call + 取原始返回」）、`test/test_ffi_bind.ts` + `test/test_ffi_abi.ts`（signedness/边界回归锚点）。
+对应代码：`lib/ffi/bind.ts`（`ARG_SIZE` 槽宽表、`writeSlot` 打包、`readRet` 读回、kind 与 `'ptr'` 归一、签名 DSL）、`src/quickjs-ffi.c`（`ffiCall` 只做「搬运 + call + 取原始返回」）、`test/test_ffi_bind.ts` + `test/test_ffi_abi.ts`（signedness/边界回归锚点）。
 
 ## 1. 传参方向：只关心宽度，符号无关
 

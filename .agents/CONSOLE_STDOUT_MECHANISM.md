@@ -4,7 +4,7 @@
 
 **qwin 是 GUI 子系统（`/SUBSYSTEM:WINDOWS`）进程，不会自动关联控制台；stdout 接什么完全取决于启动方式。判断标准是 `GetFileType`——拿到可用句柄就"绝不动"，拿不到才尝试 `AttachConsole` + `freopen("CONOUT$")`。**
 
-对应代码：`main.c`（`WinMain` 开头，当前约 L146-175）。这段代码不能"优化"掉，删掉就是重复历史上三个大坑（见 §4）。
+对应代码：`src/main.c`（`WinMain` 开头，当前约 L146-175）。这段代码不能"优化"掉，删掉就是重复历史上三个大坑（见 §4）。
 
 ## 1. 背景
 
@@ -53,7 +53,7 @@ GetFileType(STD_OUTPUT_HANDLE)
 最后无条件 setvbuf(_IONBF) 关缓冲
 ```
 
-`-o CON` / `-o 文件` 两个选项仍走它们自己的 `freopen`（`main.c` 后面 ~L230-241），这段开机代码只在"C 层 stdio 就绪之前"生效，二者不冲突。
+`-o CON` / `-o 文件` 两个选项仍走它们自己的 `freopen`（`src/main.c` 后面 ~L230-241），这段开机代码只在"C 层 stdio 就绪之前"生效，二者不冲突。
 
 ## 4. 为什么"可用句柄绝不能动"
 
@@ -93,14 +93,14 @@ XP 上继承来的是 pipe 句柄，`AttachConsole(ATTACH_PARENT_PROCESS)` 一�
 - **批处理文件记得 `unix2dos`（CRLF）、循环变量写 `%%F`**：LF 行尾的 `.bat` 会被 cmd 异常解析，`for %%F` 写成 `%F` 直接终止脚本。探针 `l.bat` 一律 `printf` 时保持 CRLF 或末尾用 `unix2dos`。
 - **`.agents` 目录下的探针产物不要留在 `_build/`**：`_build/` 是 gitignore 的，但 `docker/ci_share/*.bat` 曾误留过 `j l m` 等探针文件（已清理）。
 
-## 6. 遗留差异：XP 攒批 vs Win7 逐行（与 main.c 无关）
+## 6. 遗留差异：XP 攒批 vs Win7 逐行（与 src/main.c 无关）
 
 同样的 `/exec` 定时打印脚本（每 700ms 一行，共 6 行）：
 
 - **Win7**：逐行到达——客户端在 `0.31s / 0.93s / 1.54s / 2.46s / 3.08s / 3.69s` 各收到一行（每行 3 字节 CRLF），实时流式。
 - **XP**：约 4s 一次性吐出，6 行齐全（`x-exit-code: 0`，无 hang），但**不流式**。
 
-成因：攒批发生在 **winpty agent 的 CONOUT 转发** 这一层（XP 上 agent 给 cmd 的是 pipe，agent→worker 转发循环攒批；Win7 上 agent 用 console screen buffer，读粒度细）。**2026-09 探针实测：绕开 agent、直接用 `CreateProcess + CreatePipe` 时，XP 同样逐行实时到达**（见 §7.5）——证明攒批完全在 agent 中转，与 `main.c` 无关，管道方案反而能绕掉它。
+成因：攒批发生在 **winpty agent 的 CONOUT 转发** 这一层（XP 上 agent 给 cmd 的是 pipe，agent→worker 转发循环攒批；Win7 上 agent 用 console screen buffer，读粒度细）。**2026-09 探针实测：绕开 agent、直接用 `CreateProcess + CreatePipe` 时，XP 同样逐行实时到达**（见 §7.5）——证明攒批完全在 agent 中转，与 `src/main.c` 无关，管道方案反而能绕掉它。
 
 ## 7. CreateProcess + CreatePipe（已替代 winpty，2026-09 双系统验证）
 

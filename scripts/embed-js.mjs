@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Embed JS at the end of an exe. Format (see main.c load_embedded_js):
+// Embed JS at the end of an exe. Format (see src/main.c load_embedded_js):
 //   [exe][js bytes][uint32 LE len][magic "QWJS"|"QWBR"]
 // Strips a previous payload first so re-running does not grow the file.
 import { readFileSync, writeFileSync } from 'node:fs'

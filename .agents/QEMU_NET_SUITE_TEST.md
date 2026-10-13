@@ -143,7 +143,7 @@
 - **ipv6/无效URL的"挂起"不是进程死锁**：runner（run.ts:65-76）逐 suite `await mod.suite.run(t)`，
   **没有 per-suite 超时**，某用例 Promise 永不 resolve → suite 永远不结束 → 后续 suite 全被堵住。
   事件循环仍在跑，只是测试推进不了。
-- ipv6 挂起点是 `connect('::1:18923')` 异步模型（quickjs-sock.c:351, `WSAEventSelect`）：
+- ipv6 挂起点是 `connect('::1:18923')` 异步模型（src/quickjs-sock.c:351, `WSAEventSelect`）：
   非阻塞 connect 返回 WSAEWOULDBLOCK 后等 FD_CONNECT 事件回调；IPv6 loopback 无监听（黑洞），
   失败回调未正确触达 JS 层 → `reject()` 永不执行。且 raw socket 用例无超时保护（test_ipv6.ts:30-60），
   故 fail 变 hang。v6tov4 转发恢复 = connect 成功回调即走通。

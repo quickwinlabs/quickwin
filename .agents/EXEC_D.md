@@ -302,7 +302,7 @@ worker 回调里直接 `setState` 会与 http-server 的状态机**重入，把�
 
 > 参数经 scriptArgs 透传、由 `execd.tsx` parseArgs 自行解析：
 > `--nogui` 无值开关、`--gui=0`/`--token=x` 等号形式、`--gui 0`/`--token x`
-> 空格分隔形式均可。C 层（`main.c`）按固定槽位 `[-d] [-o 目标] [-e code | 文件]`
+> 空格分隔形式均可。C 层（`src/main.c`）按固定槽位 `[-d] [-o 目标] [-e code | 文件]`
 > 消费，槽位之外的一切原样进 scriptArgs；文件槽不收 `-` 开头 token，故
 > `--gui` 等服务自有选项放在槽位后天然透传（早期"裸值被 js_file 探测误当
 > 脚本名"的问题已随槽位制解析修复）。

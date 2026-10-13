@@ -13,7 +13,7 @@
 1. `ffi_prep_cif` —— 把"函数签名"算成 ABI 计划（`bytes` + `flags` 两个字段）
 2. `ffi_call` —— 按计划摆参数、跳转汇编、用 `flags` 索引进跳转表收回返回值
 
-对应代码：`deps/libffi/src/x86/`（本仓库 x86 目录合并了 ia32 与 x64 两套实现）、`quickjs-ffi.c`。
+对应代码：`deps/libffi/src/x86/`（本仓库 x86 目录合并了 ia32 与 x64 两套实现）、`src/quickjs-ffi.c`。
 
 ---
 
@@ -276,7 +276,7 @@ ret
 
 ### 调用点
 
-`quickjs-ffi.c:124-126` —— 每次 JS 调用都两阶段连跑：
+`src/quickjs-ffi.c:124-126` —— 每次 JS 调用都两阶段连跑：
 
 ```c
 status = ffi_prep_cif(&cif, FFI_DEFAULT_ABI, length, ffi_types[ret_type], arg_types);
@@ -318,7 +318,7 @@ ffi_call(&cif, func, &ret, ffi_args);
 ### 相关文档
 
 - `FFI_ARGS_RET_SEMANTICS.md` —— 参数/返回值位宽与符号语义（传参只看宽度、f32/f64 常数宽、变参 promotion）
-- `quickjs-ffi.c` 的 `ffi_types[]` 映射表
+- `src/quickjs-ffi.c` 的 `ffi_types[]` 映射表
 
 ---
 
@@ -340,7 +340,7 @@ ffi_call(&cif, func, &ret, ffi_args);
 **quickwin 的回调走自建实现**（不依赖 libffi `closure_alloc`）：
 - `quickjs-ffi-closure.{h,c}` 每闭包一个 VirtualAlloc 可执行块（trampoline 绝对跳转 + magic/ret_kind/
   arg_bytes + 捕获的 wrapper/ctx），C→JS 桥接只调块内 wrapper（闭包捕获签名 + 用户 fn），**无 registry、
-  无跨 context 全局**；`quickjs-ffi.c` 把 `closureNew`/`closureFree` 注册进 'ffi' 模块（在 `ffiCall`/
+  无跨 context 全局**；`src/quickjs-ffi.c` 把 `closureNew`/`closureFree` 注册进 'ffi' 模块（在 `ffiCall`/
   `bufferPtr`/`readByte`/`writeByte` 之外）。
 - `lib/ffi/bind.ts` 的 `closure(sig, fn, {stdcall?})` → `{ptr, dispose}`：签名创建时解析、wrapper 闭包捕获
   args/ret/fn，同步同线程回调；`closureNew(argBytes, retKind, wrapper)` 3 参（无 dispatch 参数）。
@@ -369,18 +369,18 @@ ffi_call(&cif, func, &ret, ffi_args);
 | 维度 | 问题 | 为什么无所谓 |
 |---|---|---|
 | 调用开销 | `ffi_call` 走 call_frame + 参数数组间接跳转 | FFI 调用是 GUI 节拍（每秒几千次），纳秒级无关 |
-| 类型安全 | 类型是运行时 int；`ffi_prep_cif` 坏类型已通过返回值检查拦截（`quickjs-ffi.c:125`） | 类型安全已上移到 `bind` 的 TS 泛型重载层 |
+| 类型安全 | 类型是运行时 int；`ffi_prep_cif` 坏类型已通过返回值检查拦截（`src/quickjs-ffi.c:125`） | 类型安全已上移到 `bind` 的 TS 泛型重载层 |
 | 依赖体积 | deps/ 多 1.7MB 源码 | 已是 submodule，Makefile 每架构自动交叉编译 |
 
 > 未检查 `FFI_OK` 的后果（已修复前的状态）：垃圾 `flags` 进跳转表会被 `ja 99f` 兜底 abort（x64）或落进未对齐的表项（ia32），不会静默出错；仍建议显式检查。
 
 **历史教训：`ffi_types[]` 查找表 float/double 错位**
 
-`quickjs-ffi.c` 的 `ffi_types[]` 指针表**下标 = FFI_TYPE_* 宏值**。曾把 FLOAT 槽写成 NULL、DOUBLE 槽写成 `&ffi_type_float`、LONGDOUBLE 槽写成 `&ffi_type_double`（各后移一位）——`f32` 调 `prep_cif` 得 `FFI_BAD_ARGTYPE`、`f64` 被按 4 字节 float 处理。因仓库无真实 f32/f64 调用从未暴露。
+`src/quickjs-ffi.c` 的 `ffi_types[]` 指针表**下标 = FFI_TYPE_* 宏值**。曾把 FLOAT 槽写成 NULL、DOUBLE 槽写成 `&ffi_type_float`、LONGDOUBLE 槽写成 `&ffi_type_double`（各后移一位）——`f32` 调 `prep_cif` 得 `FFI_BAD_ARGTYPE`、`f64` 被按 4 字节 float 处理。因仓库无真实 f32/f64 调用从未暴露。
 
 - 修复：`[2]=&ffi_type_float`、`[3]=&ffi_type_double`、`[4]=NULL`（注释已写清 NULL 槽语义）。
 - 回归锚点：`test/test_ffi_bind.ts` `f32/f64 floating args` section——`msvcrt!sqrt/atan2` 验 f64（三平台必有）、`gdi32!AngleArc` 的 REAL 参数验 f32。
-- 相关：`f32/f64` 是完整的已实现 API 面（`quickjs-ffi.c:92-105` 传参、`:129-140` 返回 read-back），不是影子的映射表。
+- 相关：`f32/f64` 是完整的已实现 API 面（`src/quickjs-ffi.c:92-105` 传参、`:129-140` 返回 read-back），不是影子的映射表。
 
 ---
 
@@ -416,8 +416,8 @@ S1–S6 后，运行时 FFI 由本地汇编桩实现，libffi 已移出构建。
 |---|---|
 | `quickjs-ffi-call-ia32.S` | ia32 cdecl/stdcall 调用桩：`qwin_ffi_call_ia32(func, argbuf, nstack, out_int, out_fp, ret_fp)`；从 `%ebx` 恢复栈（stdcall 平衡），`fstpl` 只在浮点返回时碰 x87 |
 | `quickjs-ffi-call-win64.S` | Win64 调用桩：前 4 槽 `movq`+`movsd` 双读进 RCX/RDX/R8/R9 与 XMM0-3，溢出参数置于 32 字节影子空间之后，返回恒写 RAX+XMM0 |
-| `quickjs-ffi-call.h` | `.S` 桩的声明 + `qwin_ffi_arg_size[]` 契约 |
-| `quickjs-ffi.c` | 唯一入口 `ffiCall(func, argFrame, retBuf, retIsFp)`：按架构把 JS 预打包的 `argFrame` 喂给桩，取原始返回写进 `retBuf`；另有 `bufferPtr/readByte/writeByte` |
+| `src/quickjs-ffi-call.h` | `.S` 桩的声明 + `qwin_ffi_arg_size[]` 契约 |
+| `src/quickjs-ffi.c` | 唯一入口 `ffiCall(func, argFrame, retBuf, retIsFp)`：按架构把 JS 预打包的 `argFrame` 喂给桩，取原始返回写进 `retBuf`；另有 `bufferPtr/readByte/writeByte` |
 | `lib/ffi/bind.ts` | `bind()`/`bindLib()` 声明式签名解析、`DataView` 打包 `argFrame`、`readRet()` 按声明宽度截断/符号扩展 |
 
 关键对应关系：

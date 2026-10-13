@@ -23,8 +23,8 @@
 
 ## 1. 结论
 
-- 构建链中 libffi 引用全部移除：Makefile 9 处（变量、include 路径、`LIBS`、整个 autotools 构建规则）、CI cache 路径与 key、`quickjs-ffi.c` 的 `#include <ffi.h>`、`ffi_types[]` / `ffi_args[]` / `arg_types[]` / `ffi_prep_cif` 分支。干净重建后链接行不含 `libffi.a`，`strings qwin.exe` 无 libffi 符号残留
-- `FFI_TYPE_*` 数值的唯一权威来源收窄为 `deps/libffi/include/ffi.h.in:60-82`（源码保留的决定性理由之一）；`quickjs-ffi-type.h` 仅存为 ABI 参照
+- 构建链中 libffi 引用全部移除：Makefile 9 处（变量、include 路径、`LIBS`、整个 autotools 构建规则）、CI cache 路径与 key、`src/quickjs-ffi.c` 的 `#include <ffi.h>`、`ffi_types[]` / `ffi_args[]` / `arg_types[]` / `ffi_prep_cif` 分支。干净重建后链接行不含 `libffi.a`，`strings qwin.exe` 无 libffi 符号残留
+- `FFI_TYPE_*` 数值的唯一权威来源收窄为 `deps/libffi/include/ffi.h.in:60-82`（源码保留的决定性理由之一）；`src/quickjs-ffi-type.h` 仅存为 ABI 参照
 - TS 表面 API 不依赖数值（branded nominal type），逐字节不变
 - 体积（strip 后）：`qwin.exe`(x64) 2108942 B / `qwin-x86.exe`(ia32) 2008078 B；asm 桩链接体积 < 1KB（libffi 原 ~11KB/8KB）
 
@@ -39,8 +39,8 @@
 ## 3. 实现落点
 
 ```
-quickjs-ffi-type.h        # FFI_TYPE_* 本地数值 + qwin_ffi_arg_size[]（现仅作 ABI 参照）
-quickjs-ffi-call.h        # qwin_ffi_call_ia32/win64 原型（含 ABI 约定完整注释）
+src/quickjs-ffi-type.h        # FFI_TYPE_* 本地数值 + qwin_ffi_arg_size[]（现仅作 ABI 参照）
+src/quickjs-ffi-call.h        # qwin_ffi_call_ia32/win64 原型（含 ABI 约定完整注释）
 quickjs-ffi-call-ia32.S   # ia32：C 打包 argbuf + rep movsb + call + 取回 EAX:EDX/ST0
 quickjs-ffi-call-win64.S  # x64：前 4 槽双读 + 溢出区在影子空间之后 + call + 取回 RAX/XMM0
 ```
@@ -126,7 +126,7 @@ C 侧 `js_ffi_call` 不做任何类型表/槽宽逻辑，只按架构把 argFram
 
 1. **`ret_is_fp` 不能省** —— x87 返回分类与参数搬到哪层无关（§2 陷阱，S3 期间实测踩过）
 2. **`retBuf` 恒 8 字节并显式校验** —— ia32 桩无条件写满 8 字节
-3. **`argFrame` 布局写死在 TS 并加注释**，与 `quickjs-ffi-type.h` 的宽度表保持一致（`lib/ffi/bind.ts` 的 `ARG_SIZE[]` 与 `qwin_ffi_arg_size[]` 逐项一致）
+3. **`argFrame` 布局写死在 TS 并加注释**，与 `src/quickjs-ffi-type.h` 的宽度表保持一致（`lib/ffi/bind.ts` 的 `ARG_SIZE[]` 与 `qwin_ffi_arg_size[]` 逐项一致）
 4. string / ArrayBuffer 参数编码职责不变（utf-16le + `'\0'`、`held[]` 保活，`bind.ts` 现有逻辑原样保留）
 
 ### 10.4 struct by-value（2026-10 复核：Win32 C API 场景不构成缺口）

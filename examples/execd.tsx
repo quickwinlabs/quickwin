@@ -37,7 +37,7 @@ interface Cfg {
 }
 
 // 参数经 scriptArgs 透传：C 层只消费 -e/-o/-d，遇到未知选项即停止
-// 解析并把剩余全部交给脚本（见 main.c 参数解析段）。因此空格分隔
+// 解析并把剩余全部交给脚本（见 src/main.c 参数解析段）。因此空格分隔
 // ("--gui 0") 与等号 ("--gui=0") 两种形式都由本函数自行解析。
 function parseArgs(): Cfg {
     let gui = true

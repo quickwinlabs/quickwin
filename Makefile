@@ -141,7 +141,8 @@ OBJ_DIR = $(BUILD_DIR)/obj/$(VARIANT)$(if $(filter 1,$(NO_WASM)),-nowasm)
 QUICKJS_LIB = $(OBJ_DIR)/libquickjs.a
 VERSION_H = $(BUILD_DIR)/version.h
 
-SRCS = main.c \
+SRCS = $(addprefix src/, \
+       main.c \
        quickjs-win.c \
        quickjs-gui.c \
        quickjs-ffi.c \
@@ -151,21 +152,21 @@ SRCS = main.c \
        quickjs-wolfssl.c \
        quickjs-http.c \
        quickjs-libc.c \
-       quickjs-async-task.c
+       quickjs-async-task.c)
 
 
 ifeq ($(NO_WASM), 0)
-SRCS += quickjs-wamr.c
+SRCS += src/quickjs-wamr.c
 endif
 
 # 内建 FFI 调用器 + 闭包派发器的汇编，按架构二选一。
 # 与 SRCS 分开是因为 DEPS 只对 .c 生成依赖文件（见下），.S 不参与。
 ASM_SRCS =
 ifeq ($(ARCH_TAG),ia32)
-ASM_SRCS += quickjs-ffi-call-ia32.S quickjs-ffi-closure-ia32.S
+ASM_SRCS += src/quickjs-ffi-call-ia32.S src/quickjs-ffi-closure-ia32.S
 endif
 ifeq ($(ARCH_TAG),x64)
-ASM_SRCS += quickjs-ffi-call-win64.S quickjs-ffi-closure-win64.S
+ASM_SRCS += src/quickjs-ffi-call-win64.S src/quickjs-ffi-closure-win64.S
 endif
 
 OBJS = $(SRCS:%.c=$(OBJ_DIR)/%.o) $(ASM_SRCS:%.S=$(OBJ_DIR)/%.o) $(OBJ_DIR)/app.o
@@ -231,33 +232,33 @@ endif
 
 $(OBJ_DIR)/%.o: %.c | $(WOLFSSL_LIB_STATIC) $(CROSS_BUILD_LIBS)
 	@echo "Compiling $<..."
-	mkdir -p $(OBJ_DIR)
+	mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # 汇编桩。走 gcc 驱动以便复用 $(CFLAGS) 的 include/defines；
 # 必须用大写 .S（.s 不做预处理）。
 $(OBJ_DIR)/%.o: %.S
 	@echo "Assembling $<..."
-	mkdir -p $(OBJ_DIR)
+	mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # version.h is generated from package.json so package.json is the single source of truth;
-# quickjs-libc.c includes it (via -I$(BUILD_DIR)), explicit dep ensures rebuild on change
+# src/quickjs-libc.c includes it (via -I$(BUILD_DIR)), explicit dep ensures rebuild on change
 $(VERSION_H): package.json
 	@echo "Generating version.h"
 	@mkdir -p $(BUILD_DIR)
 	@VER=$$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -1); \
 	printf '#pragma once\n\n#define QUICKWIN_VERSION "%s"\n#define QUICKWIN_USER_AGENT "QuickWin/" QUICKWIN_VERSION\n' "$$VER" > $@
 
-$(OBJ_DIR)/quickjs-libc.o: $(VERSION_H)
+$(OBJ_DIR)/src/quickjs-libc.o: $(VERSION_H)
 
 $(OBJ_DIR)/%.d: %.c
-	@mkdir -p $(OBJ_DIR)
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -MM -MT '$(OBJ_DIR)/$*.o' $< > $@
 
-$(OBJ_DIR)/app.o: app.rc
+$(OBJ_DIR)/app.o: src/app.rc
 	@echo "Compiling resource $<..."
-	mkdir -p $(OBJ_DIR)
+	mkdir -p $(dir $@)
 	$(WINDRES) $< -o $@
 
 # 依赖文件仅在交叉构建子 make（CROSS=1）时引入：
