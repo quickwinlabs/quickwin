@@ -24,7 +24,7 @@
    动"）。
 
    **可选方案：**
-   - **方案 A（已实施）**：在 `quickjs-gui.c:js_registerClass` 中添加
+   - **方案 A（已实施）**：在 `src/quickjs-gui.c:js_registerClass` 中添加
      `wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);`，全局默认使用系
      统背景色，所有已注册窗口类均获得自动擦除能力
    - **方案 B**：在 WNDPROC 中手动处理 `WM_ERASEBKGND`，用特定画刷填充

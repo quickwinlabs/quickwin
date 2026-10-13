@@ -638,10 +638,10 @@ JS_FreeValue(ctx, v2);
 
 | 文件 | 说明 |
 |------|------|
-| `quickjs-wamr.c` | WASM Module/Instance 实现 |
-| `quickjs-wamr.c:js_wasm_module_finalizer` | Module 释放函数 |
-| `quickjs-wamr.c:js_wasm_instance_finalizer` | Instance 释放函数 |
-| `quickjs-wamr.c:js_wasm_instance_mark` | Instance GC 标记函数 |
-| `quickjs-wamr.c:js_wasm_instance_ctor` | Instance 构造函数（创建导出函数） |
-| `quickjs-wamr.c:js_call_wasm_bridge` | 导出函数调用桥接 |
+| `src/quickjs-wamr.c` | WASM Module/Instance 实现 |
+| `src/quickjs-wamr.c:js_wasm_module_finalizer` | Module 释放函数 |
+| `src/quickjs-wamr.c:js_wasm_instance_finalizer` | Instance 释放函数 |
+| `src/quickjs-wamr.c:js_wasm_instance_mark` | Instance GC 标记函数 |
+| `src/quickjs-wamr.c:js_wasm_instance_ctor` | Instance 构造函数（创建导出函数） |
+| `src/quickjs-wamr.c:js_call_wasm_bridge` | 导出函数调用桥接 |
 | `quickjs.c:js_c_function_data_mark` | C Function Data GC 标记函数 |

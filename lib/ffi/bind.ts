@@ -123,7 +123,7 @@ function makeFn(proc: number, sig: string, encoders: CodecMap, decoders: CodecMa
     return (...a: unknown[]) => callPacked(proc, ps, a, encoders, decoders)
 }
 
-// 每个参数在 argFrame 里占的字节数。与 quickjs-ffi-type.h 的 qwin_ffi_arg_size[]
+// 每个参数在 argFrame 里占的字节数。与 src/quickjs-ffi-type.h 的 qwin_ffi_arg_size[]
 // 保持一致（ia32：≤4B 类型进 4 字节、更大的进 8 字节；x64：恒 8 字节槽）。
 // 注意这是「槽宽」，不是类型的 sizeof——同一定义也用于返回槽。指针布局恒指针宽。
 const IA32_ARG_SIZE: Record<C_BasicType_No_Void, number> = {
@@ -429,7 +429,7 @@ const leakRegistry: FinalizationRegistry<{ sig: string, ptr: number }> =
 // args/ret 为「底档 + '!' 绑定」的记录（与 ParsedSig 同形态——修饰随 token 走，
 // 消费者要么整体拿到、要么整体拿不到）。'!' 违约（C 传入 0 / fn 返回 0）打印诊断并
 // 中止本次分发（fn 不被调用 / 结果槽保持 0），与 fn-throw 同风格：此处不 throw，
-// 异常通道只留给用户回调（C 桩捕获 wrapper 异常并清零，quickjs-ffi-closure.c）。
+// 异常通道只留给用户回调（C 桩捕获 wrapper 异常并清零，src/quickjs-ffi-closure.c）。
 function dispatchClosure(
     args: { tok: C_BasicType_No_Void, nonnull: boolean }[],
     ret: { tok: C_BasicType, nonnull: boolean },
@@ -508,7 +508,7 @@ export function closure<S extends string>(sig: S, fn: BindFn<S, {}, {}>,
     const retSpec = { tok: cTokenToType(retToken), nonnull: retToken.endsWith('!') }
     const is64 = os.arch === 'x64'
     const stackCapture = argSpecs.reduce((s, x) => s + IA32_ARG_SIZE[x.tok], 0)
-    // C 桩捕获窗定长（quickjs-ffi-closure.c：x64 栈区 96B=12 槽，第 5 参起在栈上，
+    // C 桩捕获窗定长（src/quickjs-ffi-closure.c：x64 栈区 96B=12 槽，第 5 参起在栈上，
     // 即至多 16 参；ia32 16×4B）——超限 dispatch 会读到捕获缓冲之外的垃圾，或
     // RangeError 被吞成返回 0，故创建期 fail-fast。扩容改 C 侧 buf 尺寸并同步放宽。
     if (is64 ? argSpecs.length > 16 : stackCapture > 64) {

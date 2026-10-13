@@ -135,7 +135,7 @@ cmd 收到命令行 ──► UTF-16 内存（无损，CreateProcessW 直通）
 
 **统一认识**：命令行的"原生"形态是 UTF-16（`RTL_USER_PROCESS_PARAMETERS.CommandLine`）。**A 面路径**（`GetCommandLineA`/`CreateProcessA`/目标进程 ANSI 入口/右键 `%1`）在**入参方向**按 ACP 转换并受 NLS 控制，会真正毁掉参数；**W 面路径**（`GetCommandLineW`/`wWinMain`/`wmain`/`CreateProcessW` 传 `<WCHAR>ptr`/`cmd /u`）入参无损，但 **cmd 的默认输出**仍按代码页编码成字节（execd 场景读到的是编码后的字节）。两条路都受 ACP+NLS 控制，只是作用点不同。
 
-qwin 自身免疫：`main.c:164` 弃用 `WinMain` 的 `LPSTR lpCmdLine`，改走 `CommandLineToArgvW(GetCommandLineW())` + `WideCharToMultiByte(CP_UTF8)` → argv 永远 UTF-8 无损（仅 W 面入口，不涉及任何代码页）。
+qwin 自身免疫：`src/main.c:164` 弃用 `WinMain` 的 `LPSTR lpCmdLine`，改走 `CommandLineToArgvW(GetCommandLineW())` + `WideCharToMultiByte(CP_UTF8)` → argv 永远 UTF-8 无损（仅 W 面入口，不涉及任何代码页）。
 
 ---
 

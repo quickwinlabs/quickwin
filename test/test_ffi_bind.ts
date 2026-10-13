@@ -541,7 +541,7 @@ export const suite = {
             t.check('closure 返回 ! 非零：正常写槽', 0x3000, readScalar(new DataView(rr3), 0, 'ptr'))
             nnRet.dispose()
             // 返回位负例：fn 返回 0 → printf 诊断 + 不写槽；C 侧 retbuf 初值恒零
-            // （quickjs-ffi-closure.c zero8 拷贝），终值 0 与「写了 0」不可分——
+            // （src/quickjs-ffi-closure.c zero8 拷贝），终值 0 与「写了 0」不可分——
             // 值层面只验分发不炸、槽保持 0（诊断走 stdout，见上方 printf）。
             const nnRet0 = closure('i32 -> <>ptr!', (_n) => 0)
             const rr4 = new ArrayBuffer(8)

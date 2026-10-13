@@ -22,7 +22,7 @@ const HANDLE_FLAG_INHERIT = 0x1
 const STARTF_USESTDHANDLES = 0x100
 const WAIT_INFINITE = 0xffffffff
 // STARTUPINFOW / PROCESS_INFORMATION 的布局随进程位宽（x86 68B / x64 104B），由 struct 按 os.arch 推。
-// os.arch 是编译期的进程指针宽度（quickjs-libc.c OS_ARCH），WOW64 下的 32 位进程得 ia32 布局——
+// os.arch 是编译期的进程指针宽度（src/quickjs-libc.c OS_ARCH），WOW64 下的 32 位进程得 ia32 布局——
 // 本地 win7 VM 上的 execd 就是 32 位进程跑在 64 位系统上。
 
 const parent = os.Worker.parent
@@ -119,7 +119,7 @@ parent.onmessage = (e) => {
         parent.postMessage({ type: 'result', id: msg.id, code, error })
     }
     // 父侧每个请求起一个新 worker，一次只处理一个请求，处理完立刻释放自己的 port：
-    // port_list 清空后 js_os_poll 返回 -1（quickjs-libc.c:2506）→ 本线程退出，
+    // port_list 清空后 js_os_poll 返回 -1（src/quickjs-libc.c:2506）→ 本线程退出，
     // JSRuntime 随之释放。不设 null 的话线程常驻（实测 win7 30 次请求线程 4→35）。
     // 注意父侧 `worker.onmessage = null` 只释放父侧 port，对本线程无效——必须在这里设。
     // 消息已在 js_post_message_pipe 进队列，父侧读的是同一份 refcount 共享管道，线程退出不影响。
