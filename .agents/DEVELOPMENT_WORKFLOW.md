@@ -83,7 +83,7 @@ make test              # 全量（含外网，慢）
 | `make cc64` / `cc32` | 交叉编译 64/32 位 exe |
 | `make cc64-nowasm` / `cc32-nowasm` | 不含 WASM/WAMR |
 | `make js` | 编译 TS |
-| `make execd` | 打包 `examples/execd.ts` 并 Brotli 内嵌进 `_build/execd.exe` |
+| `make execd` | 打包 `examples/execd/main.tsx` 并 Brotli 内嵌进 `_build/execd.exe` |
 | `make wat` / `make wasm` | WAT → WASM fixtures |
 | `make test` | 运行测试 |
 | `BUILD=fast\|small\|debug` | 构建 flavor，默认 fast |
@@ -155,7 +155,7 @@ cd docker
 流程：`run.sh` 杀旧 QEMU（`--fresh` 时重建 overlay）→ `ln -s` `_build` 到 `ci_share/quickwin` → `unix2dos` run.bat → 启动 → 等 `/`（usage 页 200）。  
 `run.bat` 只做防火墙/portproxy + `start execd`；`http_test.sh` 内部确保容器 `serve_test :18923`。
 
-> **改了 `examples/execd*.ts` 或其 lib 依赖后，只跑 `make js` 不生效**——guest 里跑的
+> **改了 `examples/execd/` 下源文件或其 lib 依赖后，只跑 `make js` 不生效**——guest 里跑的
 > `execd.exe` 内嵌的是 brotli 打包的旧 JS。改动后构建顺序：`make js` → `make execd`
 > （重新 brotli 内嵌）→ `./run.sh <vm> --restart` 加载新 exe（原文见 `.agents/EXEC_D.md`）。
 

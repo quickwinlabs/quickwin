@@ -1,13 +1,13 @@
 import * as os from 'os'
 import * as std from 'std'
-import { WCHAR } from '../lib/ffi/bind.js'
-import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
-import { struct } from '../lib/ffi/struct.js'
+import { WCHAR } from '../../lib/ffi/bind.js'
+import { NULL, PtrArrayBuffer } from '../../lib/ffi/ctype.js'
+import { struct } from '../../lib/ffi/struct.js'
 import {
     CloseHandle, CreatePipe, CreateProcess, GetExitCodeProcess, GetLastError, GetSystemDirectory,
     ReadFile, SetHandleInformation, WaitForSingleObject,
-} from '../lib/windows/kernel32.js'
-import { PROCESS_INFORMATION, STARTUPINFOW } from '../lib/windows/structs.js'
+} from '../../lib/windows/kernel32.js'
+import { PROCESS_INFORMATION, STARTUPINFOW } from '../../lib/windows/structs.js'
 
 // worker 没有可观测的输出通道：绑定失败会静默中断 worker 脚本，主线程永远等不到消息。
 // 失败原因落盘 diag.log 以便定位（典型：DLL 位数与进程不匹配 -> ERROR_BAD_EXE_FORMAT 193）。

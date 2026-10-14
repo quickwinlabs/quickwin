@@ -1,5 +1,5 @@
 import { struct } from '../ffi/struct.js'
-import type { C_Struct } from '../ffi/ctype.js'
+import type { C_Struct, C_Union } from '../ffi/ctype.js'
 
 // 全仓库 Win32 结构的集中定义点（CType IR，按本机架构 MSVC 对齐；这批全为定长标量/字符串，
 // ia32/x64 同布局）。形参位方向约定见 lib/windows/user32.ts 头注释：
@@ -688,3 +688,65 @@ export const PROCESS_MEMORY_COUNTERS_DECL = {
 } satisfies C_Struct
 
 export const PROCESS_MEMORY_COUNTERS = /* @__PURE__ */ struct('PROCESS_MEMORY_COUNTERS', PROCESS_MEMORY_COUNTERS_DECL)
+
+/** MOUSEINPUT（SendInput 鼠标事件体；x86 24B / x64 32B——dwExtraInfo 是 ULONG_PTR，
+ *  随位宽）。dx/dy 相对位移，或 dwFlags 带 MOUSEEVENTF_ABSOLUTE 时为 0-65535 归一化
+ *  物理像素（本引擎 SetProcessDPIAware，见 src/main.c，全坐标 API 同空间）；
+ *  mouseData 滚轮增量（±120）或 X 系按钮编号（XBUTTON1/2） */
+export const MOUSEINPUT_DECL = {
+    '#': 'struct',
+    dx: 'i32',
+    dy: 'i32',
+    mouseData: 'u32',
+    dwFlags: 'u32',
+    time: 'u32',
+    dwExtraInfo: '<>ptr',
+} satisfies C_Struct
+
+export const MOUSEINPUT = /* @__PURE__ */ struct('MOUSEINPUT', MOUSEINPUT_DECL)
+
+/** KEYBDINPUT（SendInput 键盘事件体；x86 16B / x64 24B）：wVk 虚拟键码，
+ *  dwFlags 带 KEYEVENTF_UNICODE 时 wScan = 字符码 */
+export const KEYBDINPUT_DECL = {
+    '#': 'struct',
+    wVk: 'u16',
+    wScan: 'u16',
+    dwFlags: 'u32',
+    time: 'u32',
+    dwExtraInfo: '<>ptr',
+} satisfies C_Struct
+
+export const KEYBDINPUT = /* @__PURE__ */ struct('KEYBDINPUT', KEYBDINPUT_DECL)
+
+/** INPUT（SendInput 元素；x86 28B / x64 40B）：type（INPUT_MOUSE=0 / INPUT_KEYBOARD=1）
+ *  + 三选一 union——C 的 DUMMYUNIONNAME 匿名成员在此命名嵌套（encode 形
+ *  {type, data:{mi|ki:{...}}}）。union 随 MOUSEINPUT 的 ULONG_PTR 位宽，x64 下 type 后
+ *  自动补 4B padding 使 union 8 对齐（MSVC 布局）。HARDWAREINPUT 不注入，省略不改
+ *  尺寸（union 尺寸 = max 成员 = MOUSEINPUT）。dwExtraInfo 是 ULONG_PTR 信息位（非句柄）
+ *  → <>ptr 裸档（uintptr 双态先例：WPARAM/LPARAM/void*），恒传 0 */
+export const INPUT_DECL = {
+    '#': 'struct',
+    type: 'u32',
+    data: {
+        '#': 'union',
+        mi: MOUSEINPUT_DECL,
+        ki: KEYBDINPUT_DECL,
+    } satisfies C_Union,
+} satisfies C_Struct
+
+export const INPUT = /* @__PURE__ */ struct('INPUT', INPUT_DECL)
+
+/** NOTIFYICONIDENTIFIER（Shell_NotifyIconGetRect 定位托盘通知图标；x86 28B / x64 40B——
+ *  hWnd 是 HWND 随位宽，guidItem = GUID 固定 16B 不随）。定位二法取一：guidItem 非全 0
+ *  时忽略 hWnd/uID，否则走 hWnd+uID（deskmon 等自注册图标即此形，与 Shell_NotifyIcon
+ *  的 {hwnd,uID} 同源）；guidItem 缺省 = GUID_NULL 走 hWnd+uID。cbSize 调用前填
+ *  NOTIFYICONIDENTIFIER.size（cb 结构惯例，见 PROCESS_MEMORY_COUNTERS 同） */
+export const NOTIFYICONIDENTIFIER_DECL = {
+    '#': 'struct',
+    cbSize: 'u32',
+    hWnd: '<HWND>ptr',
+    uID: 'u32',
+    guidItem: 'u32[4]',
+} satisfies C_Struct
+
+export const NOTIFYICONIDENTIFIER = /* @__PURE__ */ struct('NOTIFYICONIDENTIFIER', NOTIFYICONIDENTIFIER_DECL)

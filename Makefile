@@ -462,7 +462,7 @@ execd: js
 		@echo "error: no nowasm base found, run: make cc32-nowasm or make cc64-nowasm"; exit 1; \
 	fi
 	node scripts/embed-js.mjs --exe $(BUILD_DIR)/execd.exe \
-	  --js $(BUILD_DIR)/examples/execd.js --compress
+	  --js $(BUILD_DIR)/examples/execd/main.js --compress
 
 # 含 WAMR 的完整底座版本（保留：execd 若将来要跑 wasm 用这个）
 execd-full: js
@@ -475,7 +475,7 @@ execd-full: js
 		cp $(BUILD_DIR)/$(TARGET_NAME) $(BUILD_DIR)/execd.exe; \
 	fi
 	node scripts/embed-js.mjs --exe $(BUILD_DIR)/execd.exe \
-	  --js $(BUILD_DIR)/examples/execd.js --compress
+	  --js $(BUILD_DIR)/examples/execd/main.js --compress
 
 embed-js: cc64
 	node scripts/embed-js.mjs --exe $(TARGET) --js $(JS_EMBED)
@@ -502,7 +502,7 @@ help:
 	@echo "  gen-const - Cross-compile tools/gen_const.exe -> $(BUILD_DIR)/gen_const.exe"
 	@echo "  enum-map  - Regenerate quickwin_enum_map.d.ts (EnumMap preset) from quickwin_const.d.ts"
 	@echo "  wamr      - Build WAMR static library (auto-built on demand)"
-	@echo "  execd      - examples/execd.ts -> execd.exe（nowasm 底座，无 WAMR，省 297KB x86 / 262KB x64）"
+	@echo "  execd      - examples/execd/main.tsx -> execd.exe（nowasm 底座，无 WAMR，省 297KB x86 / 262KB x64）"
 	@echo "  execd-full - 同上，但用含 WAMR 的完整底座"
 	@echo "  embed-js  - Embed JS_EMBED into exe: make embed-js JS_EMBED=script.js"
 	@echo "  embed-js-br - Embed brotli-compressed JS into exe"

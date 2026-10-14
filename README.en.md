@@ -80,7 +80,7 @@ make embed-js JS_EMBED=script.js
 # Embed a script brotli-compressed (smaller exe, decompressed at runtime)
 make embed-js-br JS_EMBED=script.js
 
-# Bundle examples/execd.ts and brotli-embed into execd.exe
+# Bundle examples/execd/main.tsx and brotli-embed into execd.exe
 make execd
 
 # Run it (no file argument needed)
@@ -198,7 +198,7 @@ that build run `make test TEST=-wasm` to skip WASM tests.
 | `make test` | run all tests |
 | `make test TEST=-net` | skip network tests (fast) |
 | `make test TEST=wasm` | run WASM tests only |
-| `make execd` | bundle `examples/execd.ts` and brotli-embed into `_build/execd.exe` |
+| `make execd` | bundle `examples/execd/main.tsx` and brotli-embed into `_build/execd.exe` |
 | `make embed-js` / `embed-js-br` | embed JS (brotli-compressed) into exe |
 | `make npm-pkg` | package into `dist/quickwin/` |
 | `make gen-const` | regenerate `quickwin_const.d.ts` |

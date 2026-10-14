@@ -148,5 +148,5 @@ curl -X POST http://127.0.0.1:8005/exec \
 
 **timeout 默认无限。** 不传 `timeout` 就不设定时器，连接活着命令就一直跑。要卡就传正数毫秒值，到点强杀、trailer 记 `X-Exit-Code: -1`。
 
-完整实现见 [examples/execd.tsx](https://github.com/quickwinlabs/quickwin/blob/main/examples/execd.tsx)
+完整实现见 [examples/execd/main.tsx](https://github.com/quickwinlabs/quickwin/blob/main/examples/execd/main.tsx)
 

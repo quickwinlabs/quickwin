@@ -117,6 +117,42 @@ export const TerminateProcess = /*@__PURE__*/ b('TerminateProcess', '<HPROCESS>p
 /** 取当前进程 PID（互证锚点）
  *  @returns 当前进程 PID */
 export const GetCurrentProcessId = /*@__PURE__*/ b('GetCurrentProcessId', ' -> u32')
+/** 当前进程伪句柄（-1，不需 CloseHandle——OpenProcess 真句柄的零成本替代，纯本进程
+ *  场景如 IsWow64Process 探位宽用） */
+export const GetCurrentProcess = /*@__PURE__*/ b('GetCurrentProcess', ' -> <HPROCESS>ptr')
+
+// ============ 远程内存（跨进程 SendMessage 的输出缓冲）============
+// 普通跨进程 SendMessage **不 marshal 指针**：出参 buffer 写在接收方线程执行，指针值
+// 原样透传——落在本进程地址空间会被 explorer 直接写穿。正解 = VirtualAllocEx 在目标
+// 进程分配 → 发消息 → ReadProcessMemory 读回（见 examples/execd/tray.ts /tray_list 用例）。
+
+/** 在目标进程地址空间分配内存；配对 VirtualFreeEx
+ *  @returns 成功 → 远程基址，失败 → 0（0 保真）
+ *  @param args_0 hProcess OpenProcess 句柄（本场景须 PROCESS_VM_OPERATION(0x8) |
+ *                PROCESS_VM_READ(0x10) | PROCESS_VM_WRITE(0x20) = 0x38）
+ *  @param args_1 lpAddress NULL = 系统选起点
+ *  @param args_2 dwSize 字节数（SIZE_T 随位宽 = <>ptr 的 ptr 宽，非指针语义）
+ *  @param args_3 flAllocationType MEM_COMMIT|MEM_RESERVE（0x1000|0x2000 = 0x3000）
+ *  @param args_4 flProtect PAGE_READWRITE（0x04） */
+export const VirtualAllocEx = /*@__PURE__*/ b('VirtualAllocEx',
+    '<HPROCESS>ptr <>ptr <>ptr u32 u32 -> <>ptr')
+/** 释放 VirtualAllocEx 内存（须同一进程句柄）
+ *  @returns 成功 → 非 0
+ *  @param args_0 hProcess 同 VirtualAllocEx
+ *  @param args_1 lpAddress VirtualAllocEx 返回的远程基址
+ *  @param args_2 dwSize 0（MEM_RELEASE 时必须 0）
+ *  @param args_3 dwFreeType MEM_RELEASE（0x8000） */
+export const VirtualFreeEx = /*@__PURE__*/ b('VirtualFreeEx', '<HPROCESS>ptr <>ptr <>ptr u32 -> i32')
+/** 读目标进程内存（远程 SendMessage 写完 → 本调用读回本地；远程指针字段如托盘
+ *  dwData 内容的二次解引用同样走这里）
+ *  @returns 成功 → 非 0（目标地址不可读/句柄无 PROCESS_VM_READ）
+ *  @param args_0 hProcess OpenProcess 句柄（须 PROCESS_VM_READ(0x10)）
+ *  @param args_1 lpBaseAddress 远程地址（VirtualAllocEx 返回值等）
+ *  @param args_2 lpBuffer 本地接收缓冲，传 BYTE.alloc(n)（DataView/TypedArray 原地读回）
+ *  @param args_3 nSize 字节数（SIZE_T → <>ptr ptr 宽）
+ *  @param args_4 lpNumberOfBytesRead 实读字节数出参槽 PtrArrayBuffer(8) 可选，或 NULL */
+export const ReadProcessMemory = /*@__PURE__*/ b('ReadProcessMemory',
+    '<HPROCESS>ptr <>ptr <BYTE>ptr <>ptr <>ptr -> i32')
 
 // ============ 文件 I/O ============
 
@@ -265,6 +301,13 @@ export const GetModuleFileName = /*@__PURE__*/ b('GetModuleFileNameW', '<HMODULE
  *  @returns 命令行整串（返回位 `<WCHAR>ptr!`：内建 WCHAR codec 自动解码为 string，
  *    `!` 担保非 NULL 由返回位 0 检查兜底，无需接收缓冲） */
 export const GetCommandLineW = /*@__PURE__*/ b('GetCommandLineW', ' -> <WCHAR>ptr!')
+/** 本进程是否跑在 WOW64（32 位进程 on 64 位 OS）——判**远程进程/系统位宽**的廉价
+ *  探针：x64 进程恒 0（本就是 64 位 OS）；x86 进程 1 = OS 64 位（远程序构按 64 位解析，
+ *  如 x86 qwin 读 explorer 的 TBBUTTON）。32 位 OS 上恒写 0
+ *  @returns 成功 → 非 0
+ *  @param args_0 hProcess GetCurrentProcess() 伪句柄或真句柄
+ *  @param args_1 lpWow64Process 出参 BOOL 槽，PtrArrayBuffer(4)，Uint32Array 读回 */
+export const IsWow64Process = /*@__PURE__*/ b('IsWow64Process', '<HPROCESS>ptr <BYTE>ptr -> i32')
 
 // ============ 全局内存（剪贴板数据载体）============
 

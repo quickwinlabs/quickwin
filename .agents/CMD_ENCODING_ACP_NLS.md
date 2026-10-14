@@ -1,6 +1,6 @@
 # /exec 中文命令 lossy 的根因：cmd 的 ACP + NLS 依赖
 
-相关文档：`examples/execd_worker.ts`（CreateProcessW 链路）、`examples/execd.tsx`（POST /exec）、`.agents/TODO.md` L11（旧结论待更正）。
+相关文档：`examples/execd/worker.ts`（CreateProcessW 链路）、`examples/execd/main.tsx`（POST /exec）、`.agents/TODO.md` L11（旧结论待更正）。
 
 ---
 
@@ -48,12 +48,12 @@ Tiny11 同时犯两错（ACP=1252 且删光 nls），表象上"缺表"似为主�
 | 阶段 | 载体 | 字节串 / 说明 |
 |---|---|---|
 | 1. Host curl 请求体 | HTTP body（UTF-8 JSON） | `7b 22 63 6d 64 22 3a 22 ... e4 bd a0 e5 a5 bd ... 22 7d`（「你好」UTF-8 = `e4 bd a0 e5 a5 bd`） |
-| 2. execd 解析 | JS string（内部 UTF-16） | `execd.tsx:434` `req.json()`，无损 |
-| 3. worker 拼命令行 | JS string | `execd_worker.ts:147` `sysDir + "\cmd.exe /c " + cmd` |
-| 4. CreateProcessW 传参 | UTF-16LE 内存 | `execd_worker.ts:148`（绑定 `<WCHAR>ptr`）「你好」=`60 4f 7d 59`，**无损** |
+| 2. execd 解析 | JS string（内部 UTF-16） | `main.tsx:918` `req.json()`，无损 |
+| 3. worker 拼命令行 | JS string | `worker.ts:147` `sysDir + "\cmd.exe /c " + cmd` |
+| 4. CreateProcessW 传参 | UTF-16LE 内存 | `worker.ts:148`（绑定 `<WCHAR>ptr`）「你好」=`60 4f 7d 59`，**无损** |
 | 5. cmd 接收 | cmd 内部 UTF-16 | 同上无损（未修复环境下 `cmd /u /c echo 你好` 探针 → 输出 `60 4f 7d 59 0d 00 0a 00`，即**内部保有 UTF-16**） |
 | 6. cmd 输出编码 | 按目标码页编码成字节 | 写 stdout 时才编码：936 → `c4 e3 ba c3`（GBK）；1252+缺表 → `3f 3f` |
-| 7. readFile 原样回传 | 字节流直通 | `execd_worker.ts:165`，零转换，连流式都不做 |
+| 7. readFile 原样回传 | 字节流直通 | `worker.ts:165`，零转换，连流式都不做 |
 | 8. Host 收到 body | 原始字节 | 与阶段 6 相同 |
 
 链路上游（1–5）和下游（7–8）都是**字节直通**；丢字只发生在阶段 6 的**输出编码**。注意：`cmd /u` 探针在**未修复**环境（ACP=1252+缺表）也输出 `60 4f 7d 59`，证明 cmd 从未在入参侧投影——`/u` 只是把"输出写成 UTF-16LE"绕开阶段 6，所以 `/u` 能让 echo 无损，而默认输出（按 ACP）中文就变 `??`。
@@ -141,7 +141,7 @@ qwin 自身免疫：`src/main.c:164` 弃用 `WinMain` 的 `LPSTR lpCmdLine`，�
 
 ## 8. 结论已定：worker 全平台加 `/u`，不固化 NLS
 
-**采纳方案（已统一）**：`examples/execd_worker.ts` 恒拼 `cmd /u /c ...`（不分版本），让 cmd 内置输出直接写 UTF-16LE，**绕开 ACP 转换**（不存在"按代码页编码"这一步，天然无损）。
+**采纳方案（已统一）**：`examples/execd/worker.ts` 恒拼 `cmd /u /c ...`（不分版本），让 cmd 内置输出直接写 UTF-16LE，**绕开 ACP 转换**（不存在"按代码页编码"这一步，天然无损）。
 
 早期用 RtlGetVersion 判 NT major>=10，只对 win11 加 `/u`、win7/XP 走 ACP——那个保守边界换来的是版本探测 + 平台间不一致：win7/XP 的"GBK 无损"只是 ACP=936 的 locale 巧合（英文 locale 的 win7 并不成立），而 `/u` 在 XP/win7 实测行为一致。统一后删掉探测块与 `VER-FAIL` 诊断路径；`ntdll.RtlGetVersion` / `OSVERSIONINFO_148` 仍在 lib（发布面绑定，execd 只是不再用）。
 

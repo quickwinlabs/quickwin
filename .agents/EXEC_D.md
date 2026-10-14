@@ -190,7 +190,7 @@ WinRM 的命令跑在已登录用户 session 里，但**不支持 XP**。
 | `magicafterburning.ScreenShotter` COM | 现成实现，`AttachToWindow` + `Capture` |
 
 execd 在这里是通的：worker 在**用户桌面 session 内**起 `cmd.exe`
-（`execd_worker.ts` 绑定 `kernel32.dll` 的 `createPipe` / `createProcessW`；
+（`worker.ts` 绑定 `kernel32.dll` 的 `createPipe` / `createProcessW`；
 纯 kernel32，无 `winpty.dll` / `winpty-agent.exe` 依赖，不经 agent 中转，因此不产生独立 session），
 截图脚本与目标窗口同 session，直接可访问。
 
@@ -300,7 +300,7 @@ worker 回调里直接 `setState` 会与 http-server 的状态机**重入，把�
 | `--gui=0` | 同上 |
 | `--token=x` | 开启 Bearer 鉴权；**空串归一为未配置**（放行） |
 
-> 参数经 scriptArgs 透传、由 `execd.tsx` parseArgs 自行解析：
+> 参数经 scriptArgs 透传、由 `main.tsx` parseArgs 自行解析：
 > `--nogui` 无值开关、`--gui=0`/`--token=x` 等号形式、`--gui 0`/`--token x`
 > 空格分隔形式均可。C 层（`src/main.c`）按固定槽位 `[-d] [-o 目标] [-e code | 文件]`
 > 消费，槽位之外的一切原样进 scriptArgs；文件槽不收 `-` 开头 token，故
