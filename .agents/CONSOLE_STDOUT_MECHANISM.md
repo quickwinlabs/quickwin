@@ -104,13 +104,13 @@ XP 上继承来的是 pipe 句柄，`AttachConsole(ATTACH_PARENT_PROCESS)` 一�
 
 ## 7. CreateProcess + CreatePipe（已替代 winpty，2026-09 双系统验证）
 
-worker 一开始用 winpty 是因为它给子进程"真控制台语义"，但当前 `/exec` 从不交互、只捕获输出，winpty 的看家本领（`WriteConsole`/屏幕缓冲/键盘回灌）其实没用到。**已在 `execd_worker.ts` 落地替换：直接 `CreateProcess + CreatePipe`，完全不用动事件循环，XP 流式还优于 winpty（§7.5）。**
+worker 一开始用 winpty 是因为它给子进程"真控制台语义"，但当前 `/exec` 从不交互、只捕获输出，winpty 的看家本领（`WriteConsole`/屏幕缓冲/键盘回灌）其实没用到。**已在 `worker.ts` 落地替换：直接 `CreateProcess + CreatePipe`，完全不用动事件循环，XP 流式还优于 winpty（§7.5）。**
 
 验证方式：`make execd` → 容器 `docker/run.sh <vm> --restart`（VM 读 `_build/execd.exe`）→ `docker/http_test.sh`：XP 547/548（failed=1 打印机容忍）、Win7 553/553 全过；冒烟 `print('你好')` 输出 `e4 bd a0 e5 a5 bd`（UTF-8）判定新 worker（旧 winpty 会是 GBK `c4 e3 ba c3`）。
 
 ### 7.1 为什么不需要碰事件循环
 
-worker 的读循环**本来就是同步阻塞的**（`execd_worker.ts` L128-138）：
+worker 的读循环**本来就是同步阻塞的**（`worker.ts` L128-138）：
 
 ```ts
 for (;;) {

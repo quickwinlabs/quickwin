@@ -1,21 +1,22 @@
-import { createServer } from '../lib/http-server.js'
+import { createServer } from '../../lib/http-server.js'
 import * as os from 'os'
 import * as std from 'std'
 import * as gui from 'gui'
-import { RequestLog, type LogEntry } from '../lib/exec-log.js'
-import { createRoot, ListBox } from '../lib/react-qw/index.js'
+import { RequestLog, type LogEntry } from '../../lib/exec-log.js'
+import { createRoot, ListBox } from '../../lib/react-qw/index.js'
 import { useEffect, useState } from 'react'
-import { closure, WCHAR } from '../lib/ffi/bind.js'
-import { NULL, type Ptr, PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { closure, WCHAR } from '../../lib/ffi/bind.js'
+import { NULL, type Ptr, PtrArrayBuffer } from '../../lib/ffi/ctype.js'
 import {
     ChangeDisplaySettings, ClientToScreen, EnumDisplaySettings, EnumWindows, GetClassName,
     GetClientRect, GetDC, GetSystemMetrics, GetWindowRect, GetWindowText, IsIconic,
-    IsWindowVisible, PrintWindow, ReleaseDC,
-} from '../lib/windows/user32.js'
+    IsWindowVisible, PrintWindow, ReleaseDC, SendInput,
+} from '../../lib/windows/user32.js'
 import {
     BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, SelectObject,
-} from '../lib/windows/gdi32.js'
-import { BITMAPFILEHEADER, BITMAPINFOHEADER, DEVMODEW, POINT, RECT } from '../lib/windows/structs.js'
+} from '../../lib/windows/gdi32.js'
+import { BITMAPFILEHEADER, BITMAPINFOHEADER, DEVMODEW, INPUT, POINT, RECT } from '../../lib/windows/structs.js'
+import { listTrayIcons, probeTrayIcon } from './tray.js'
 
 // WORKER_DATA_URL 由 esbuild --define 在 build.ts 中注入（base64 data: URL）
 declare const WORKER_DATA_URL: string
@@ -673,19 +674,64 @@ API（配置 token 后需 Authorization: Bearer <token>，未配置则放行）�
                      （X-Dimensions；不带 hwnd = 整屏 BitBlt；带 hwnd 默认 mode=print
                      让窗口自绘——遮挡/最小化/超屏也拿完整像素，screen 只截可见部分）
   GET  /window_list  → JSON 窗口列表 [{hwnd,title,className,...}]
+  GET  /tray_list    → JSON {icons:[{area,index,hWnd,uID,tooltip,rect}]}（跨进程枚举
+                      explorer toolbar：可见区 Shell_TrayWnd + 折叠区 NotifyIconOverflowWindow；
+                      rect 屏幕物理像素，全 0 → null；折叠面板未展开时 overflow 区 rect
+                      仅当展开后可靠）；?probe=<hwnd>&uid=<n> → 附 probe {hr,hrName,rect}
+                      （单图标 Shell_NotifyIconGetRect，Win7+：0=found 附容器 rect / 1=hidden
+                      / E_FAIL=不存在或 GUID 图标；XP 无此 API → unsupported）
   POST /set_resolution       ?w=<px>&h=<px>&persist=0|1（默认 1 = 写注册表跨重启）→ JSON
                      {before,after,testRet,ret,retName,modes32}；modes32 恒带 32bpp
-                     可用模式（非法宽高会以 BADMODE 拒绝并给本列表）`
+                     可用模式（非法宽高会以 BADMODE 拒绝并给本列表）
+  POST /input        body = JSON 数组（批量注入；x/y 物理像素）：
+                     {"t":"move","x":,"y":} | {"t":"down|up","btn":"left|right|middle|x1|x2","x":,"y":?} |
+                     {"t":"key","key":"a|enter|0x41","up":true?} | {"t":"sleep","ms":0..5000}
+                     → JSON {sent,expected}；按 sleep 切段，段内一次 SendInput 原子注入`
 
 function usageResponse(): Response {
     return new Response(USAGE, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
 }
 
+// ── /input 事件词汇（lib/windows/structs.ts 的 INPUT 布局；坐标物理像素，进程
+//    DPI-aware 见 src/main.c SetProcessDPIAware——GetSystemMetrics 归一化与 SendInput
+//    解释同空间）──
+const INPUT_MOUSE = 0, INPUT_KEYBOARD = 1
+const MOUSEEVENTF_MOVE = 0x0001, MOUSEEVENTF_ABSOLUTE = 0x8000, KEYEVENTF_KEYUP = 0x0002
+// btn → [down flag, up flag, mouseData]；X 系两键共用 XDOWN/XUP 标志，靠 mouseData
+// （XBUTTON1=1 / XBUTTON2=2）区分
+const MOUSE_BTNS: Record<string, [number, number, number]> = {
+    left: [0x0002, 0x0004, 0], right: [0x0008, 0x0010, 0], middle: [0x0020, 0x0040, 0],
+    x1: [0x0080, 0x0100, 1], x2: [0x0080, 0x0100, 2],
+}
+// 命名键 → VK；单字符 a-z/0-9 由 vkOf 直通（VK 同码），数字整数 0..0xFFFF 直传
+const VK_NAMES: Record<string, number> = {
+    backspace: 0x08, tab: 0x09, enter: 0x0d, shift: 0x10, ctrl: 0x11, alt: 0x12,
+    caps: 0x14, esc: 0x1b, space: 0x20, pageup: 0x21, pagedown: 0x22, end: 0x23, home: 0x24,
+    left: 0x25, up: 0x26, right: 0x27, down: 0x28, insert: 0x2d, delete: 0x2e,
+    win: 0x5b, f1: 0x70, f2: 0x71, f3: 0x72, f4: 0x73, f5: 0x74, f6: 0x75,
+    f7: 0x76, f8: 0x77, f9: 0x78, f10: 0x79, f11: 0x7a, f12: 0x7b,
+}
+function vkOf(key: unknown): number {
+    if (typeof key === 'number' && Number.isInteger(key) && key >= 0 && key <= 0xffff) return key
+    if (typeof key === 'string') {
+        if (key.length === 1) {
+            const c = key.toUpperCase().charCodeAt(0)
+            if ((c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x5a)) return c
+        }
+        const vk = VK_NAMES[key.toLowerCase()]
+        if (vk !== undefined) return vk
+    }
+    throw new Error('bad key: ' + JSON.stringify(key) + ' (a-z/0-9|name|0..0xFFFF)')
+}
+// INPUT 的 encode 入参元素形（外部等价 lib 的 EncInOf：Parameters<def.encode>[0]——
+// SendInput 的 <INPUT>ptr encoder 值域即本类型的普通数组，tsc 逐元素校验）
+type InputEl = Parameters<typeof INPUT.encode>[0]
+
 const server = createServer(async (req) => {
     const t0 = Date.now()
     const path = new URL(req.url).pathname
-    const isApi = (req.method === 'POST' && (path === '/exec' || path === '/set_resolution')) ||
-        (req.method === 'GET' && (path === '/window_list' || path === '/screenshot'))
+    const isApi = (req.method === 'POST' && (path === '/exec' || path === '/set_resolution' || path === '/input')) ||
+        (req.method === 'GET' && (path === '/window_list' || path === '/screenshot' || path === '/tray_list'))
     if (!isApi) return usageResponse()
     const denied = authCheck(req)
     if (denied !== null) {
@@ -700,6 +746,33 @@ const server = createServer(async (req) => {
             return resp
         } catch (ex) {
             logReq(t0, 'GET /window_list', 500, String(ex))
+            return jsonError(500, String(ex))
+        }
+    }
+    // /tray_list：通知区图标枚举（跨进程远程读，主进程直做——同步 FFI 毫秒级）。
+    // ?probe=<hwnd>&uid=<n> 附加单图标可见性探针（Shell_NotifyIconGetRect，Win7+）。
+    if (req.method === 'GET' && path === '/tray_list') {
+        const params = new URL(req.url).searchParams
+        let probe: { hWnd: Ptr<'HWND'>; uID: number } | null = null
+        const ph = params.get('probe')
+        if (ph !== null) {
+            const hh = Number(ph), uid = Number(params.get('uid') ?? '')
+            if (!Number.isInteger(hh) || hh <= 0 || !Number.isInteger(uid) || uid < 0) {
+                logReq(t0, 'GET /tray_list', 400, 'probe=<hwnd>&uid=<n>')
+                return jsonError(400, 'probe needs integer hwnd>0 and uid>=0')
+            }
+            probe = { hWnd: hh as Ptr<'HWND'>, uID: uid }
+        }
+        try {
+            // 双容器枚举 + 远程读全在 tray.ts（execd 配对模块）
+            const icons = listTrayIcons()
+            const body: Record<string, unknown> = { icons }
+            if (probe) body.probe = probeTrayIcon(probe.hWnd, probe.uID)
+            const nOv = icons.reduce((n, e) => n + (e.area === 'overflow' ? 1 : 0), 0)
+            logReq(t0, 'GET /tray_list', 200, icons.length + ' icons · overflow ' + nOv)
+            return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } })
+        } catch (ex) {
+            logReq(t0, 'GET /tray_list', 500, String(ex))
             return jsonError(500, String(ex))
         }
     }
@@ -750,6 +823,94 @@ const server = createServer(async (req) => {
         logReq(t0, 'POST /set_resolution ' + w + 'x' + h + (persist ? '' : ' persist=0'), 200,
             result.ret !== 0 ? result.retName : undefined)
         return resp
+    }
+    // /input：SendInput 批量注入（JSON 数组；主进程直做——同步 FFI、微秒级，与
+    // /set_resolution 同列，worker 只隔离长 popen）。数组按 'sleep' 切段：段内一次
+    // SendInput = 原子输入块（down/up 不会被外来输入夹入），段间 os.setTimeout 让出
+    // 事件循环（菜单弹出等时序，不堵其余请求）。先全量校验后注入：任何一条非法 → 400
+    // 且一条不发；注入返回数 < 预期（UIPI 拦截等）→ 200 + {sent,expected} 保真不装成功。
+    if (req.method === 'POST' && path === '/input') {
+        const bad = (msg: string): Response => {
+            logReq(t0, 'POST /input', 400, msg)
+            return jsonError(400, msg)
+        }
+        let raw: unknown
+        try { raw = await req.json() } catch (ex) { return bad('bad json: ' + String(ex)) }
+        if (!Array.isArray(raw) || raw.length === 0) return bad('body must be a non-empty JSON array')
+        if (raw.length > 1000) return bad('too many events: ' + raw.length + ' (max 1000)')
+        const sw = GetSystemMetrics(0), sh = GetSystemMetrics(1)   // SM_CXSCREEN/CYSCREEN 物理像素
+        const segs: { els: InputEl[]; sleep: number }[] = [{ els: [], sleep: 0 }]
+        const cur = () => segs[segs.length - 1]!
+        try {
+            for (const e of raw) {
+                if (typeof e !== 'object' || e === null || Array.isArray(e))
+                    throw new Error('event must be an object: ' + JSON.stringify(e))
+                const ev = e as Record<string, unknown>
+                // 物理像素 → 0..65535 归一化（主屏；x 缺省 = 不移动，纯按键事件）
+                const abs = (required: boolean): [number, number, number] => {
+                    if (ev.x === undefined && ev.y === undefined) {
+                        if (required) throw new Error('x/y required for move')
+                        return [0, 0, 0]
+                    }
+                    const x = ev.x, y = ev.y
+                    if (typeof x !== 'number' || typeof y !== 'number' || !Number.isInteger(x) || !Number.isInteger(y))
+                        throw new Error('x/y must be integers (physical px)')
+                    if (x < 0 || x >= sw || y < 0 || y >= sh)
+                        throw new Error('x/y out of screen: 0..' + (sw - 1) + ' / 0..' + (sh - 1))
+                    return [Math.round(x * 65535 / (sw - 1)), Math.round(y * 65535 / (sh - 1)),
+                        MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE]
+                }
+                switch (ev.t) {
+                    case 'move': {
+                        const [dx, dy, f] = abs(true)
+                        cur().els.push({ type: INPUT_MOUSE, data: { mi: { dx, dy, dwFlags: f } } })
+                        break
+                    }
+                    case 'down': case 'up': {
+                        const btn = typeof ev.btn === 'string' ? MOUSE_BTNS[ev.btn] : undefined
+                        if (!btn) throw new Error('bad btn: ' + JSON.stringify(ev.btn) + ' (left|right|middle|x1|x2)')
+                        const [downF, upF, mData] = btn
+                        const [dx, dy, f] = abs(false)
+                        const flag = ev.t === 'down' ? downF : upF
+                        cur().els.push({ type: INPUT_MOUSE, data: { mi: { dx, dy, mouseData: mData, dwFlags: f | flag } } })
+                        break
+                    }
+                    case 'key': {
+                        const up = ev.up === true
+                        cur().els.push({ type: INPUT_KEYBOARD, data: { ki: { wVk: vkOf(ev.key), dwFlags: up ? KEYEVENTF_KEYUP : 0 } } })
+                        break
+                    }
+                    case 'sleep': {
+                        const ms = ev.ms
+                        if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0 || ms > 5000)
+                            throw new Error('sleep ms must be a number in 0..5000')
+                        segs.push({ els: [], sleep: ms })
+                        break
+                    }
+                    default:
+                        throw new Error('bad t: ' + JSON.stringify(ev.t) + ' (move|down|up|key|sleep)')
+                }
+            }
+        } catch (ex) {
+            return bad(ex instanceof Error ? ex.message : String(ex))
+        }
+        let expected = 0, sent = 0
+        for (const s of segs) expected += s.els.length
+        try {
+            for (const seg of segs) {
+                if (seg.sleep > 0) await new Promise<void>((r) => { os.setTimeout(r, seg.sleep) })
+                if (seg.els.length === 0) continue
+                const n = SendInput(seg.els.length, seg.els, INPUT.size)
+                sent += n
+                if (n < seg.els.length) break   // 全败/半败（UIPI 等）后续同因，止损停发
+            }
+        } catch (ex) {
+            logReq(t0, 'POST /input', 500, String(ex))
+            return jsonError(500, String(ex))
+        }
+        logReq(t0, 'POST /input ' + raw.length + 'ev', 200,
+            sent < expected ? 'sent ' + sent + '/' + expected : undefined)
+        return new Response(JSON.stringify({ sent, expected }), { headers: { 'Content-Type': 'application/json' } })
     }
     if (req.method === 'POST' && path === '/exec') {
         let out: ExecHandle

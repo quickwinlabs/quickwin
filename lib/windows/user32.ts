@@ -1,4 +1,4 @@
-// user32.dll 精选高频 API（85 个），逐函数独立导出：
+// user32.dll 精选高频 API（99 个），逐函数独立导出：
 //   - 签名对照 mingw winuser.h 原型手写；未被 import 的绑定经 esbuild 摇树不进产物
 //   - WPARAM / LPARAM / LRESULT / UINT_PTR / LONG_PTR 及句柄混合值一律 <>ptr（指针宽度跨
 //     架构正确；返回值 0 保真（C→JS 不做 0→null）、有符号读对齐 C 版 JS_NewInt64——-1 哨兵等负值保真）
@@ -24,8 +24,9 @@
 //     <HGLOBAL>ptr 自产自收）
 import * as os from 'os'
 import { bind, type CodecMap } from '../ffi/bind.js'
+import { structArray } from '../ffi/struct.js'
 // 只 import 注册了 encoder 的结构（纯入参位）；POINT 等出/就地位不注册，运行时无需引用
-import { MSG, RECT, SCROLLINFO, WNDCLASSEXW } from './structs.js'
+import { INPUT, MSG, RECT, SCROLLINFO, WNDCLASSEXW } from './structs.js'
 
 // dll 名部分应用：85 个绑定共用，签名字符串不再重复 'user32.dll'。
 // 不能用 bind.bind(null, dll)——泛型在部分应用点坍缩（返回 never）；工厂转调让
@@ -413,6 +414,17 @@ export const GetKeyboardState = /*@__PURE__*/ b('GetKeyboardState', '<BYTE>ptr -
  *  @returns SHORT（低字节 VK、高位 shift/ctrl/alt 掩码），无 → -1
  *  @param args_0 ch 字符码（如 65 = 'A'） */
 export const VkKeyScan = /*@__PURE__*/ b('VkKeyScanW', 'u32 -> i32')
+// INPUT 数组 encoder（SendInput 的 <INPUT>ptr 位注册后值域即元素数组——与 gdi32
+// POINTArr 同机制，token/引擎层零数组概念）
+const INPUTArr = /*@__PURE__*/ structArray(INPUT)
+/** 批量注入输入事件（一次调用 = cInputs 个 INPUT 紧密数组 = 一个原子输入块）
+ *  @returns 成功注入的事件数；0 = 全部失败（UIPI：目标进程完整性更高），< cInputs = 部分成功
+ *  @param args_0 events INPUT 元素数组（structArray(INPUT) encoder 直传
+ *   [{type:0|1, data:{mi|ki:{...}}}]；绝对坐标 dx/dy 是 0-65535 归一化物理像素——本引擎
+ *   SetProcessDPIAware，GetSystemMetrics/GetWindowRect 同空间，换算 x*65535/(SM_CXSCREEN-1)）
+ *  @param args_1 cbSize 传 INPUT.size（MSDN 要求 = sizeof(INPUT)，x86 28 / x64 40，
+ *   传错整体静默失败） */
+export const SendInput = /*@__PURE__*/ b('SendInput', 'u32 <INPUT>ptr i32 -> u32', { INPUT: INPUTArr })
 
 // ============ 计时器 ============
 
