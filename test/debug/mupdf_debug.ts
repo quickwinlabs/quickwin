@@ -1,27 +1,8 @@
 import * as std from 'std'
+import { MUPDF_JS_URL, preloadMupdfWasm } from '../mupdf-cdn.js'
 
-function loadWasmBytes(path: string): ArrayBuffer {
-    const fp = std.open(path, 'rb')
-    if (!fp) throw new Error('Cannot open: ' + path)
-    fp.seek(0, 2)
-    const size = fp.tell()
-    fp.seek(0, 0)
-    const buffer = new ArrayBuffer(size)
-    fp.read(buffer, 0, size)
-    fp.close()
-    return buffer
-}
-
-function setupMupdfModule(wasmPath: string) {
-    const wasmBinary = loadWasmBytes(wasmPath)
-    ;(globalThis as any)["$libmupdf_wasm_Module"] = {
-        wasmBinary,
-        locateFile: (p: string) => p
-    }
-}
-
-setupMupdfModule('./vendor/mupdf-wasm/mupdf-wasm.wasm')
-await import('../../vendor/mupdf-wasm/mupdf.js')
+await preloadMupdfWasm()
+await import(MUPDF_JS_URL)
 
 // Debug the instance exports
 const inst = (globalThis as any)["$wasm_inst"]
@@ -42,7 +23,7 @@ console.log('instance exports Sf:', typeof inst.exports['Sf'])
 console.log('instance exports Tf:', typeof inst.exports['Tf'])
 
 // Load a simple WASM to verify bridge works
-const fp = std.open('./example.pdf', 'rb')
+const fp = std.open('./test/example.pdf', 'rb')
 if (!fp) { console.log('cannot open example.pdf'); std.exit(1) }
 fp.seek(0, 2)
 const size = fp.tell()

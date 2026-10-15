@@ -22,7 +22,6 @@
     "lib/",
     "test/",
     "examples/",
-    "vendor/",
     "quickwin.d.ts",
     "constants.ts",
     "enum_map.d.ts",
@@ -36,6 +35,7 @@
     "url": "git+https://github.com/quickwinlabs/quickwin.git"
   },
   "devDependencies": {
+    "@quickwinlabs/mupdf-wasm": "^1.28.0",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-reconciler": "^0.33.0",

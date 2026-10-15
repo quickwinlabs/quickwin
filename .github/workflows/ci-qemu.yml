@@ -131,6 +131,13 @@ jobs:
       - name: Install npm deps
         run: npm install
 
+      # ── mupdf CDN 缓存（qwin.exe 旁的 _build/_cache/；key 固定，未命中仅多一次冷拉）──
+      - name: Restore mupdf CDN cache
+        uses: actions/cache@v5
+        with:
+          path: _build/_cache
+          key: mupdf-cdn-v1
+
       # ── 快照缓存（key 固定 -v1：快照内容不会变，只随安装脚本/流程变化升级）──
       - name: Restore ${{ matrix.id }} snapshot cache
         id: cache-snap

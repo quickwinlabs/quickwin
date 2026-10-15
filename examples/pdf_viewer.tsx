@@ -2,7 +2,8 @@ import { MaybePtr, PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import '../lib/polyfill.js'
 import * as std from 'std'
 import * as gui from 'gui'
-import type { Document, Page, Pixmap } from '../vendor/mupdf-wasm/mupdf.js'
+import type { Document, Page, Pixmap } from '@quickwinlabs/mupdf-wasm'
+import { MUPDF_JS_URL, preloadMupdfWasm } from '../test/mupdf-cdn.js'
 import { useState } from 'react'
 import { render, Button, Input, ScrollView } from '../lib/react-qw/index.js'
 import { WCHAR } from '../lib/ffi/bind.js'
@@ -11,7 +12,7 @@ import { OPENFILENAMEW } from '../lib/windows/structs.js'
 import { GetOpenFileName } from '../lib/windows/comdlg32.js'
 import { WindowStyle } from '../constants'
 
-type MuPdf = typeof import('../vendor/mupdf-wasm/mupdf.js')
+type MuPdf = typeof import('@quickwinlabs/mupdf-wasm')
 
 function openPdfFileDialog(owner: MaybePtr<'HWND'>): string | null {
   const fileBuf = WCHAR.alloc(260)
@@ -35,22 +36,9 @@ function openPdfFileDialog(owner: MaybePtr<'HWND'>): string | null {
 }
 
 async function loadMupdf(): Promise<MuPdf | null> {
-  const wasmPath = './vendor/mupdf-wasm/mupdf-wasm.wasm'
-  const fp = std.open(wasmPath, 'rb')
-  if (!fp) { std.printf('Error: cannot open %s\n', wasmPath); return null }
-  fp.seek(0, 2)
-  const size = fp.tell()
-  fp.seek(0, 0)
-  const buf = new ArrayBuffer(size)
-  fp.read(buf, 0, size)
-  fp.close()
-
-  ;(globalThis).$libmupdf_wasm_Module = {
-    wasmBinary: buf,
-    locateFile: (p: string) => p
-  }
   try {
-    return await import('../vendor/mupdf-wasm/mupdf.js')
+    await preloadMupdfWasm()
+    return await import(MUPDF_JS_URL)
   } catch (e) {
     std.printf('Error: mupdf load failed: %s\n', String(e))
     return null
@@ -219,7 +207,7 @@ function App({ mupdf, mainHwnd: hwnd }: { mupdf: MuPdf; mainHwnd: gui.HWND }) {
 async function main() {
   const mupdf = await loadMupdf()
   if (!mupdf) {
-    gui.MessageBox('Loading mupdf WASM failed.\nEnsure vendor/mupdf-wasm/ is present.')
+    gui.MessageBox('Loading mupdf WASM failed.\nCheck network access to unpkg.com.')
     return
   }
 

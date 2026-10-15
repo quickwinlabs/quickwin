@@ -1,37 +1,21 @@
 import '../lib/polyfill.js'
 import * as std from 'std'
 import { Tester } from './test_helper.js'
-
-function loadWasmBytes(path: string): ArrayBuffer {
-    const fp = std.open(path, 'rb')
-    if (!fp) throw new Error('Cannot open: ' + path)
-    fp.seek(0, 2)
-    const size = fp.tell()
-    fp.seek(0, 0)
-    const buffer = new ArrayBuffer(size)
-    fp.read(buffer, 0, size)
-    fp.close()
-    return buffer
-}
+import { MUPDF_JS_URL, preloadMupdfWasm } from './mupdf-cdn.js'
 
 export const suite = {
     name: 'mupdf-twice',
     run: async (t: Tester): Promise<void> => {
         try {
             console.log('  Loading WASM binary...')
-            const wasmBinary = loadWasmBytes('./vendor/mupdf-wasm/mupdf-wasm.wasm')
+            const wasmBinary = await preloadMupdfWasm()
             console.log('  WASM binary loaded, size:', wasmBinary.byteLength)
 
-            ;(globalThis as any)["$libmupdf_wasm_Module"] = {
-                wasmBinary,
-                locateFile: (p: string) => p
-            }
-
             console.log('  Importing mupdf module...')
-            const mupdf: typeof import('../vendor/mupdf-wasm/mupdf.js') = await import('../vendor/mupdf-wasm/mupdf.js')
+            const mupdf: typeof import('@quickwinlabs/mupdf-wasm') = await import(MUPDF_JS_URL)
             console.log('  mupdf module imported ok')
 
-            const fp = std.open('./example.pdf', 'rb')
+            const fp = std.open('./test/example.pdf', 'rb')
             if (!fp) { console.log('SKIP: no example.pdf'); return }
             fp.seek(0, 2)
             const size = fp.tell()

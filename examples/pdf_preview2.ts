@@ -2,7 +2,8 @@ import { PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import '../lib/polyfill.js'
 import * as std from 'std'
 import * as gui from 'gui'
-import type { Document, Page, Pixmap } from '../vendor/mupdf-wasm/mupdf.js'
+import type { Document, Page, Pixmap } from '@quickwinlabs/mupdf-wasm'
+import { MUPDF_JS_URL, preloadMupdfWasm } from '../test/mupdf-cdn.js'
 import { assertNonNullable } from '../lib/assert.js'
 import { WCHAR } from '../lib/ffi/bind.js'
 import { BITMAPINFOHEADER, OPENFILENAMEW } from '../lib/windows/structs.js'
@@ -11,7 +12,7 @@ import { GetDC, ReleaseDC } from '../lib/windows/user32.js'
 import { PatBlt, SetDIBitsToDevice } from '../lib/windows/gdi32.js'
 import { Gwlp, MouseKeyFlag, ScrollBar, ScrollCmd, SetWindowPosFlag, SetWindowPosHwnd, WindowStyle, WmMsg } from '../constants'
 
-type MuPdf = typeof import('../vendor/mupdf-wasm/mupdf.js')
+type MuPdf = typeof import('@quickwinlabs/mupdf-wasm')
 
 const WHITENESS = 0x00FF0062
 
@@ -41,14 +42,13 @@ function clearCachedDoc(): void {
 }
 
 async function loadMupdf(): Promise<MuPdf | null> {
-    const wasmPath = './vendor/mupdf-wasm/mupdf-wasm.wasm'
-    const fp = std.open(wasmPath, 'rb')
-    if (!fp) { std.printf('Error: cannot open %s\n', wasmPath); return null }
-    fp.seek(0, 2); const size = fp.tell(); fp.seek(0, 0)
-    const buf = new ArrayBuffer(size); fp.read(buf, 0, size); fp.close()
-    ;(globalThis).$libmupdf_wasm_Module = { wasmBinary: buf, locateFile: (p: string) => p }
-    try { return await import('../vendor/mupdf-wasm/mupdf.js') }
-    catch (e) { std.printf('Error: mupdf load failed: %s\n', String(e)); return null }
+    try {
+        await preloadMupdfWasm()
+        return await import(MUPDF_JS_URL)
+    } catch (e) {
+        std.printf('Error: mupdf load failed: %s\n', String(e))
+        return null
+    }
 }
 
 function renderPdfPage(mupdf: MuPdf, filePath: string, pageIndex: number): PixmapInfo & { totalPages: number } | null {
@@ -326,8 +326,8 @@ let hwndBtnNext: gui.HWND | null = null
 
     gui.ShowWindow(hwndMain)
 
-    const test = std.open('example.pdf', 'rb')
-    if (test) { test.close(); showPdf(mupdf, 'example.pdf', 0) }
+    const test = std.open('test/example.pdf', 'rb')
+    if (test) { test.close(); showPdf(mupdf, 'test/example.pdf', 0) }
 }
 
 main()

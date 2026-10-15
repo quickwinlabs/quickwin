@@ -1,13 +1,6 @@
-import * as std from 'std'
+import { fetchMupdfWasm } from '../mupdf-cdn.js'
 
-const fp = std.open('./vendor/mupdf-wasm/mupdf-wasm.wasm', 'rb')
-if (!fp) { console.log('cannot open vendor/mupdf-wasm/mupdf-wasm.wasm'); std.exit(1) }
-fp.seek(0, 2)
-const size = fp.tell()
-fp.seek(0, 0)
-const buf = new ArrayBuffer(size)
-fp.read(buf, 0, size)
-fp.close()
+const buf = await fetchMupdfWasm()
 
 const module = new WebAssembly.Module(buf)
 const exports = WebAssembly.Module.exports(module)
