@@ -35,6 +35,10 @@ interface ActiveReq {
 interface Conn {
     sock: SockHandle
     parts: Uint8Array[]
+    /** Cached total length of `parts` — lets the pending-body wait check
+     *  "have we received enough yet" in O(1) instead of re-concatenating
+     *  every received byte on each read event (O(n²) for large bodies). */
+    partsLen: number
     pending: PendingReq | null
     current: ActiveReq | null
     outQueue: Uint8Array | null
@@ -69,6 +73,10 @@ function concatU8(parts: Uint8Array[]): Uint8Array {
 }
 
 function toArrayBuffer(u8: Uint8Array): ArrayBuffer {
+    // 已经是完整 buffer（byteOffset=0、无尾部余量）时零复制返回——发送大
+    // body 的主路径，避免每片 send 前白拷一份。视图场景仍 slice 出独立副本
+    //（FFI 持有的 buffer 生命周期不受 view 约束）。
+    if (u8.byteOffset === 0 && u8.byteLength === u8.buffer.byteLength) return u8.buffer as ArrayBuffer
     return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength) as ArrayBuffer
 }
 
@@ -213,6 +221,7 @@ export class HttpServer {
             const c: Conn = {
                 sock: ac.handle,
                 parts: [],
+                partsLen: 0,
                 pending: null,
                 current: null,
                 outQueue: null,
@@ -251,7 +260,9 @@ function onRead(c: Conn): void {
     while (true) {
         const d = sock.recv(c.sock, 8192)
         if (!d) break
-        c.parts.push(new Uint8Array(d))
+        const u8 = new Uint8Array(d)
+        c.parts.push(u8)
+        c.partsLen += u8.length
     }
     if (!c.closed) tryProcess(c)
 }
@@ -350,9 +361,18 @@ async function writeStreamingBody(c: Conn, body: ReadableStream<Uint8Array> | nu
             const { done, value } = await reader.read()
             if (done) break
             if (value && value.byteLength > 0) {
-                const frame = chunked ? encodeChunkFrame(value, enc) : value
-                if (!queueSend(c, frame)) {
-                    await new Promise<void>((resolve) => { c.resumeRead = resolve })
+                // 切成 ≤64KB 再入 queueSend：单发 200MB 级大 chunk 时
+                // toArrayBuffer 会全量 slice 复制，partial drain 又每次复制
+                // 剩余（O(n²)），XP 32 位 1GB 上直接把进程水位顶穿导致断连；
+                // 小片让每次复制/发送恒为常数大小，backpressure 语义不变。
+                const MAX_SEND = 65536
+                for (let off = 0; off < value.byteLength; off += MAX_SEND) {
+                    const piece = value.byteLength <= MAX_SEND ? value : value.subarray(off, Math.min(off + MAX_SEND, value.byteLength))
+                    const frame = chunked ? encodeChunkFrame(piece, enc) : piece
+                    if (!queueSend(c, frame)) {
+                        await new Promise<void>((resolve) => { c.resumeRead = resolve })
+                    }
+                    if (c.closed) break
                 }
             }
         }
@@ -396,36 +416,42 @@ function whole(c: Conn): Uint8Array {
 function trimParts(c: Conn, buf: Uint8Array, consumed: number): void {
     if (consumed >= buf.length) {
         c.parts = []
+        c.partsLen = 0
     } else {
         c.parts = [buf.subarray(consumed)]
+        c.partsLen = buf.length - consumed
     }
 }
 
 function tryProcess(c: Conn): void {
     if (c.closed || c.current) return
-    const buf = whole(c)
 
     if (c.pending) {
         const bodyStart = c.pending.bodyStart
         const parsed = c.pending.parsed
-        let body: Uint8Array
-        let end: number
-        if (parsed.chunked) {
-            const dec = decodeChunked(buf, bodyStart)
-            if (!dec) return
-            body = dec.data
-            end = dec.end
-        } else {
-            const needed = parsed.contentLength
-            if (bodyStart + needed > buf.length) return
-            body = buf.subarray(bodyStart, bodyStart + needed)
-            end = bodyStart + needed
+        if (!parsed.chunked) {
+            // O(1) length check while the body is still arriving — only
+            // concatenate once, when the last byte is in.
+            const end = bodyStart + parsed.contentLength
+            if (end > c.partsLen) return
+            const buf = whole(c)
+            c.pending = null
+            dispatchRequest(c, parsed, buf.subarray(bodyStart, end), end, buf)
+            return
         }
+        // chunked: no total length up front, so a decode attempt still needs
+        // the concatenated view (re-tried per read event as before).
+        const buf = whole(c)
+        const dec = decodeChunked(buf, bodyStart)
+        if (!dec) return
         c.pending = null
-        dispatchRequest(c, parsed, body, end)
+        dispatchRequest(c, parsed, dec.data, dec.end, buf)
         return
     }
 
+    // Header phase: bodies are checked against `partsLen` above, so a full
+    // concatenation is only needed here — once per request, not per read.
+    const buf = whole(c)
     const headerEnd = findCrLfCrLf(buf)
     if (headerEnd < 0) return
     const absEnd = headerEnd + 4
@@ -440,19 +466,19 @@ function tryProcess(c: Conn): void {
             c.pending = { parsed, bodyStart }
             return
         }
-        dispatchRequest(c, parsed, dec.data, dec.end)
+        dispatchRequest(c, parsed, dec.data, dec.end, buf)
     } else if (parsed.contentLength > 0) {
         if (bodyStart + parsed.contentLength > buf.length) {
             c.pending = { parsed, bodyStart }
             return
         }
-        dispatchRequest(c, parsed, buf.subarray(bodyStart, bodyStart + parsed.contentLength), bodyStart + parsed.contentLength)
+        dispatchRequest(c, parsed, buf.subarray(bodyStart, bodyStart + parsed.contentLength), bodyStart + parsed.contentLength, buf)
     } else {
-        dispatchRequest(c, parsed, new Uint8Array(0), bodyStart)
+        dispatchRequest(c, parsed, new Uint8Array(0), bodyStart, buf)
     }
 }
 
-function dispatchRequest(c: Conn, parsed: ParsedHeader, body: Uint8Array, end: number): void {
+function dispatchRequest(c: Conn, parsed: ParsedHeader, body: Uint8Array, end: number, wholeBuf?: Uint8Array): void {
     const connHeader = (parsed.headers['connection'] || '').toLowerCase()
     if (parsed.version === 'HTTP/1.1') c.keepAlive = connHeader.indexOf('close') < 0
     else c.keepAlive = connHeader.indexOf('keep-alive') >= 0
@@ -477,7 +503,9 @@ function dispatchRequest(c: Conn, parsed: ParsedHeader, body: Uint8Array, end: n
 
     c.ac = ac
     c.current = { req }
-    trimParts(c, whole(c), end)
+    // `wholeBuf` is the concatenation the caller already produced — reuse it
+    // instead of concatenating the very same parts a second time.
+    trimParts(c, wholeBuf ?? whole(c), end)
     void handleRequest(c)
 }
 
