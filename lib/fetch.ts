@@ -12,6 +12,7 @@ import {
     RequestImpl,
     ResponseImpl,
 } from './http-common.js'
+import { FdEvent, ReturnCode, SniType, VerifyMode, WolfsslErrorCode } from '../constants'
 
 // ── HTTP Response Parser ──
 
@@ -178,7 +179,7 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
         sock.set_on_event(fd, (event: { lNetworkEvents: number; iErrorCode: number[] }) => {
             if (state === ST_DONE) return
 
-            if (event.lNetworkEvents & sock.FdEvent.FD_CONNECT) {
+            if (event.lNetworkEvents & FdEvent.FD_CONNECT) {
                 const err = event.iErrorCode[0]
                 if (err !== 0) { doReject(new Error('Connection failed: ' + err)); return }
 
@@ -187,16 +188,16 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                     ctx = wolfssl.wolfSSL_CTX_new(tlsMethod)
                     if (!ctx) { doReject(new Error('SSL_CTX_new failed')); return }
                     if (req.rejectUnauthorized === false) {
-                        wolfssl.wolfSSL_CTX_set_verify(ctx, wolfssl.VerifyMode.SSL_VERIFY_NONE)
+                        wolfssl.wolfSSL_CTX_set_verify(ctx, VerifyMode.SSL_VERIFY_NONE)
                     } else {
-                        wolfssl.wolfSSL_CTX_set_verify(ctx, wolfssl.VerifyMode.SSL_VERIFY_PEER)
+                        wolfssl.wolfSSL_CTX_set_verify(ctx, VerifyMode.SSL_VERIFY_PEER)
                         wolfssl.loadTrustedCerts(ctx)
                     }
                     ssl = wolfssl.wolfSSL_new(ctx)
                     if (!ssl) { doReject(new Error('SSL_new failed')); return }
                     wolfssl.wolfSSL_set_fd(ssl, sock.get_fd(fd))
                     if (parsedUrl.hostname) {
-                        wolfssl.wolfSSL_UseSNI(ssl, wolfssl.SniType.WOLFSSL_SNI_HOST_NAME, parsedUrl.hostname)
+                        wolfssl.wolfSSL_UseSNI(ssl, SniType.WOLFSSL_SNI_HOST_NAME, parsedUrl.hostname)
                         if (req.rejectUnauthorized !== false) {
                             wolfssl.wolfSSL_check_domain_name(ssl, parsedUrl.hostname)
                         }
@@ -208,17 +209,17 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                 }
             }
 
-            if ((event.lNetworkEvents & sock.FdEvent.FD_READ) || (event.lNetworkEvents & sock.FdEvent.FD_WRITE)) {
+            if ((event.lNetworkEvents & FdEvent.FD_READ) || (event.lNetworkEvents & FdEvent.FD_WRITE)) {
                 if (state === ST_HANDSHAKE) {
                     if (!ssl) { doReject(new Error('TLS not initialized')); return }
                     const ret = wolfssl.wolfSSL_connect(ssl)
-                    if (ret === wolfssl.ReturnCode.SSL_SUCCESS) {
+                    if (ret === ReturnCode.SSL_SUCCESS) {
                         wolfssl.wolfSSL_write(ssl, httpRequest)
                         state = ST_RECV_HEADERS
                     } else {
                         const err = wolfssl.wolfSSL_get_error(ssl, ret)
-                        if (err !== wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_READ &&
-                            err !== wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_WRITE) {
+                        if (err !== WolfsslErrorCode.WOLFSSL_ERROR_WANT_READ &&
+                            err !== WolfsslErrorCode.WOLFSSL_ERROR_WANT_WRITE) {
                             doReject(new Error('TLS handshake failed: ' + err))
                         }
                     }
@@ -234,9 +235,9 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                                 data = buf.slice(0, n)
                             } else {
                                 const err = wolfssl.wolfSSL_get_error(ssl, n)
-                                if (err === wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_READ ||
-                                    err === wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_WRITE) break
-                                if (n === 0 || err === wolfssl.ErrorCode.WOLFSSL_ERROR_ZERO_RETURN) break
+                                if (err === WolfsslErrorCode.WOLFSSL_ERROR_WANT_READ ||
+                                    err === WolfsslErrorCode.WOLFSSL_ERROR_WANT_WRITE) break
+                                if (n === 0 || err === WolfsslErrorCode.WOLFSSL_ERROR_ZERO_RETURN) break
                                 doReject(new Error('TLS read failed: ' + err))
                                 return
                             }
@@ -315,9 +316,9 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                                 data = buf.slice(0, n)
                             } else {
                                 const err = wolfssl.wolfSSL_get_error(ssl, n)
-                                if (err === wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_READ ||
-                                    err === wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_WRITE) break
-                                if (n === 0 || err === wolfssl.ErrorCode.WOLFSSL_ERROR_ZERO_RETURN) break
+                                if (err === WolfsslErrorCode.WOLFSSL_ERROR_WANT_READ ||
+                                    err === WolfsslErrorCode.WOLFSSL_ERROR_WANT_WRITE) break
+                                if (n === 0 || err === WolfsslErrorCode.WOLFSSL_ERROR_ZERO_RETURN) break
                                 // Fatal TLS error mid-body: the response already
                                 // resolved, so fail the body stream instead of
                                 // silently waiting for an FD event that never comes.
@@ -355,7 +356,7 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                 }
             }
 
-            if (event.lNetworkEvents & sock.FdEvent.FD_CLOSE) {
+            if (event.lNetworkEvents & FdEvent.FD_CLOSE) {
                 if (state === ST_DONE) return
                 if (state === ST_RECV_HEADERS) {
                     doReject(new Error('Connection closed before response'))

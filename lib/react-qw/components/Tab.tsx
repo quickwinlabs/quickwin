@@ -4,6 +4,7 @@ import { WCHAR } from '../../ffi/bind.js'
 import { TCITEMW } from '../../windows/structs.js'
 import { nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
+import { SysLinkNotifyCode, TabStyle, TcItemFlag, TcMsg, TcNotifyCode, WindowStyle, WmMsg } from '../../../constants'
 
 export interface TabProps {
   tabs: { title: string; content: ReactNode }[]
@@ -23,11 +24,11 @@ export const Tab = forwardRef<gui.HWND, TabProps>(
     useEffect(() => {
       const h = tabHwnd.current
       if (!h) return
-      gui.SendMessage(h, gui.TcMsg.DELETEALLITEMS, 0, 0)
+      gui.SendMessage(h, TcMsg.DELETEALLITEMS, 0, 0)
       for (let i = 0; i < tabs.length; i++) {
         const titleBuf = WCHAR.encode(tabs[i]!.title)
         const tci = TCITEMW.encode({
-          mask: gui.TcItemFlag.TEXT,
+          mask: TcItemFlag.TEXT,
           dwState: 0,
           dwStateMask: 0,
           pszText: titleBuf.ptr,
@@ -36,31 +37,31 @@ export const Tab = forwardRef<gui.HWND, TabProps>(
           lParam: 0,
         })
         const tciPtr = tci.ptr
-        gui.SendMessage(h, gui.TcMsg.INSERTITEMW, i, tciPtr)
+        gui.SendMessage(h, TcMsg.INSERTITEMW, i, tciPtr)
       }
-      gui.SendMessage(h, gui.TcMsg.SETCURSEL, sel, 0)
+      gui.SendMessage(h, TcMsg.SETCURSEL, sel, 0)
     }, [tabs])
 
     useEffect(() => {
       const h = tabHwnd.current
-      if (h) gui.SendMessage(h, gui.TcMsg.SETCURSEL, sel, 0)
+      if (h) gui.SendMessage(h, TcMsg.SETCURSEL, sel, 0)
     }, [sel])
 
     return (
       <w
         type="STATIC"
-        ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN}
+        ws={WindowStyle.VISIBLE | WindowStyle.CLIPCHILDREN}
         style={{ ...style, flexDirection: 'column', alignItems: 'stretch' }}
         ref={ref}
         onEvent={(e) => {
-          if (e.msg === gui.WmMsg.NOTIFY) {
+          if (e.msg === WmMsg.NOTIFY) {
             const h = tabHwnd.current
             if (!h) return
             const code = nmCode(e.lParam)
             // SysTabControl32 在 comctl32 v6 下不发标准的 TCN_SELCHANGE (-550),
             // 收到 NM_CLICK (-2) 或 TCN_SELCHANGING (-551) 时读实际选中项
-            if (code === gui.TcNotifyCode.SELCHANGING || code === gui.SysLinkNotifyCode.CLICK) {
-              const newSel = gui.SendMessage(h, gui.TcMsg.GETCURSEL, 0, 0)
+            if (code === TcNotifyCode.SELCHANGING || code === SysLinkNotifyCode.CLICK) {
+              const newSel = gui.SendMessage(h, TcMsg.GETCURSEL, 0, 0)
               if (newSel !== sel) {
                 if (!isControlled) setInternalIndex(newSel)
                 onChange?.(newSel)
@@ -71,12 +72,12 @@ export const Tab = forwardRef<gui.HWND, TabProps>(
       >
         <w
           type="SysTabControl32"
-          ws={gui.WindowStyle.VISIBLE | gui.TabStyle.FOCUSNEVER}
+          ws={WindowStyle.VISIBLE | TabStyle.FOCUSNEVER}
           style={{ height: 20 }}
           ref={tabHwnd}
         />
         <w type="STATIC" 
-        ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN} 
+        ws={WindowStyle.VISIBLE | WindowStyle.CLIPCHILDREN} 
         style={{ flexGrow: 1, flexDirection: 'column', alignItems: 'stretch' }}>
           {tabs[sel]?.content}
         </w>

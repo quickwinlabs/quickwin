@@ -1,11 +1,11 @@
 import * as std from 'std'
-import * as gui from 'gui'
 import * as ffi from 'ffi'
 import * as os from 'os'
 import { Tester } from './test_helper.js'
 import { bind, bindLib, closure, WCHAR, BYTE, type CodecMap } from '../lib/ffi/bind.js'
 import { struct } from '../lib/ffi/struct.js'
 import { NULL, type C_Struct, type MaybePtr, Ptr, PtrArrayBuffer, readScalar, writeScalar, PTR_SIZE, normToken } from '../lib/ffi/ctype.js'
+import { DrawTextFlag, SetWindowPosFlag, SetWindowPosHwnd, ShowWindowCmd } from '../constants'
 
 // 编译期断言工具（仅类型层，运行时无开销）
 type Equal<A, B> = (<G>() => G extends A ? 1 : 2) extends (<G>() => G extends B ? 1 : 2) ? true : false
@@ -86,7 +86,7 @@ export const suite = {
         const rect = new PtrArrayBuffer(16)
         const dv = new DataView(rect)
         dv.setInt32(8, 500, true)
-        const lines = user32.DrawTextW(dc, 'hello ffi-bind', -1, rect, gui.DrawTextFlag.CALCRECT)
+        const lines = user32.DrawTextW(dc, 'hello ffi-bind', -1, rect, DrawTextFlag.CALCRECT)
         t.checkTrue('DrawTextW returns line count > 0', lines > 0)
         t.checkTrue('measured width > 0', dv.getInt32(8, true) > 0)
         t.checkTrue('measured height > 0', dv.getInt32(12, true) > 0)
@@ -602,9 +602,9 @@ export const suite = {
         const dtRect = new PtrArrayBuffer(16)
         if (dcScreen) {
             t.checkTrue('DrawTextW 非空 DC 通过 ! 参数位',
-                drawText(dcScreen, 'hi !', -1, dtRect, gui.DrawTextFlag.CALCRECT) > 0)
+                drawText(dcScreen, 'hi !', -1, dtRect, DrawTextFlag.CALCRECT) > 0)
             try {
-                drawText(0, 'hi !', -1, dtRect, gui.DrawTextFlag.CALCRECT)
+                drawText(0, 'hi !', -1, dtRect, DrawTextFlag.CALCRECT)
                 t.checkTrue('DrawTextW NULL DC 标 ! 后应 throw', false)
             } catch (e) { t.checkTrue('! 参数位（第 1 位）throw 指明 arg#1', String(e).includes('arg#1')) }
         }
@@ -658,13 +658,13 @@ export const suite = {
         if (false) {
             const sw = bind('user32.dll', 'ShowWindow', '<X>ptr i32@ShowWindowCmd -> i32')
             const sp = bind('user32.dll', 'SetWindowPos', '<X>ptr <>ptr@SetWindowPosHwnd i32 i32 i32 i32 u32 -> i32')
-            sw(NULL, gui.ShowWindowCmd.SHOW)  // 枚举成员
+            sw(NULL, ShowWindowCmd.SHOW)  // 枚举成员
             sw(NULL, 5)                       // 域内字面量（5 = SW_SHOW）
-            sp(NULL, gui.SetWindowPosHwnd.TOP, 0, 0, 0, 0, gui.SetWindowPosFlag.SWP_NOSIZE)
+            sp(NULL, SetWindowPosHwnd.TOP, 0, 0, 0, 0, SetWindowPosFlag.SWP_NOSIZE)
             // @ts-expect-error 域外字面量被拦（11152 不是任何 ShowWindow 命令）
             sw(NULL, 0x2B90)
             // @ts-expect-error 跨枚举误用：HWND_TOP/TOPMOST 不是 ShowWindow 命令
-            sw(NULL, gui.SetWindowPosHwnd.TOP)
+            sw(NULL, SetWindowPosHwnd.TOP)
         }
     },
 }

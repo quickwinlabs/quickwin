@@ -83,7 +83,7 @@ export const suite = {
         if (himl !== 0) t.checkTrue('ImageListDestroy(himl) 成功', ImageListDestroy(himl) !== 0)
 
         t.section('user32: LoadImage 双变体（string 自动编码 / ordinal MAKEINTRESOURCE）')
-        // Win32 IMAGE_* 真值：BITMAP=0 CURSOR=1 ICON=2；LR_SHARED=0x8000（注意 gui.ImageType d.ts 当前值与此不一致）
+        // Win32 IMAGE_* 真值：BITMAP=0 CURSOR=1 ICON=2；LR_SHARED=0x8000（注意 ImageType d.ts 当前值与此不一致）
         t.checkTrue('LoadImageOrdinal(NULL, IDI_APPLICATION, IMAGE_ICON, LR_SHARED) 非 0',
             LoadImageOrdinal(NULL, 32512, 2, 0, 0, 0x8000) !== 0)
         t.check('LoadImage(LOADFROMFILE, 不存在文件) → 0', 0,

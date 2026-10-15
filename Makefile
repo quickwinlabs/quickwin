@@ -282,8 +282,9 @@ clean:
 distclean: clean
 
 
-# 交叉编译 gen_const.exe（Windows PE）；重生成 d.ts 以后在 VM 里跑该 exe，
-# 拷回宿主后跑一次 make enum-map 重建 EnumMap 预填（quickwin_enum_map.d.ts）
+# 交叉编译 gen_const.exe（Windows PE）；在 VM 里跑该 exe 重生成 constants.ts：
+#   POST /exec {"cmd":"Z:\\quickwin\\gen_const.exe > Z:\\quickwin\\constants.ts"}（_build = SMB 共享）
+# 拷回仓库根后跑一次 make enum-map 重建 EnumMap 预填（enum_map.d.ts）
 # 固定 mingw + 子 make CROSS=1/x64-cross：Linux 顶层 CC=gcc 无 winsock2.h，
 # 且 native wolfssl 不能配 -DCMAKE_SYSTEM_NAME=Windows；只需 options.h，不链 .a
 GEN_CONST_CC ?= x86_64-w64-mingw32-gcc
@@ -291,7 +292,7 @@ GEN_CONST_CC ?= x86_64-w64-mingw32-gcc
 gen-const:
 	@$(MAKE) CROSS=1 ARCH_TAG=x64 $(BUILD_DIR)/gen_const.exe
 
-# 从 quickwin_const.d.ts 提取 const enum → EnumMap 预填（token '@Name' 标注的值域表）
+# 从 constants.ts 提取 const enum → EnumMap 预填（token '@Name' 标注的值域表）
 enum-map:
 	@sh tools/gen_enum_map.sh
 
@@ -441,7 +442,7 @@ npm-pkg: js wasm
 	find lib \( -name '*.ts' -o -name '*.mts' \) -exec cp --parents {} $(NPM_PKG_DIR)/ \;
 	cp test/*.ts $(NPM_PKG_DIR)/test/
 	cp examples/*.ts examples/*.tsx $(NPM_PKG_DIR)/examples/
-	cp quickwin.d.ts quickwin_const.d.ts quickwin_enum_map.d.ts tsconfig.json package.json README.md README.en.md $(NPM_PKG_DIR)/
+	cp quickwin.d.ts constants.ts enum_map.d.ts tsconfig.json package.json README.md README.en.md $(NPM_PKG_DIR)/
 	cp $(BUILD_DIR)/$(TARGET_NAME) $(BUILD_DIR)/$(TARGET_NAME_32) $(BUILD_DIR)/$(TARGET_NOWASM) $(BUILD_DIR)/$(TARGET_NOWASM_32) $(NPM_PKG_DIR)/
 	cp $(BUILD_DIR)/main.js $(NPM_PKG_DIR)/main.js
 	@echo "npm package created at $(NPM_PKG_DIR)"
@@ -500,7 +501,7 @@ help:
 	@echo "  wasm      - Convert WAT files to WASM (requires wabt)"
 	@echo "  npm-pkg   - Package distributable into $(NPM_PKG_DIR)"
 	@echo "  gen-const - Cross-compile tools/gen_const.exe -> $(BUILD_DIR)/gen_const.exe"
-	@echo "  enum-map  - Regenerate quickwin_enum_map.d.ts (EnumMap preset) from quickwin_const.d.ts"
+	@echo "  enum-map  - Regenerate enum_map.d.ts (EnumMap preset) from constants.ts"
 	@echo "  wamr      - Build WAMR static library (auto-built on demand)"
 	@echo "  execd      - examples/execd/main.tsx -> execd.exe（nowasm 底座，无 WAMR，省 297KB x86 / 262KB x64）"
 	@echo "  execd-full - 同上，但用含 WAMR 的完整底座"

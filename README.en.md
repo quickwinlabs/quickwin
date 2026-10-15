@@ -201,7 +201,7 @@ that build run `make test TEST=-wasm` to skip WASM tests.
 | `make execd` | bundle `examples/execd/main.tsx` and brotli-embed into `_build/execd.exe` |
 | `make embed-js` / `embed-js-br` | embed JS (brotli-compressed) into exe |
 | `make npm-pkg` | package into `dist/quickwin/` |
-| `make gen-const` | regenerate `quickwin_const.d.ts` |
+| `make gen-const` | regenerate `constants.ts` (run `_build/gen_const.exe` in the VM) |
 | `make clean` / `distclean` | clean (wipes all of `_build/`; afterwards run `make js wasm`) |
 
 Build and troubleshooting details: `.agents/DEVELOPMENT_WORKFLOW.md`.

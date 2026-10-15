@@ -24,7 +24,8 @@
     "examples/",
     "vendor/",
     "quickwin.d.ts",
-    "quickwin_const.d.ts",
+    "constants.ts",
+    "enum_map.d.ts",
     "tsconfig.json",
     "README.md",
     "README.en.md"

@@ -4,6 +4,7 @@ import * as os from 'os'
 import '../lib/fetch.js'
 import '../lib/websocket.js'
 import { Tester } from './test_helper.js'
+import { FdEvent } from '../constants'
 
 const HTTP_PORT = 18923
 const HTTPS_PORT = 18924
@@ -32,7 +33,7 @@ export const suite = {
             let connected = false, gotData = false
 
             sock.set_on_event(s, (event: { lNetworkEvents: number; iErrorCode: number[] }) => {
-                if (event.lNetworkEvents & sock.FdEvent.FD_CONNECT) {
+                if (event.lNetworkEvents & FdEvent.FD_CONNECT) {
                     if (event.iErrorCode[0] === 0) {
                         connected = true; t.ok++
                         const req = "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
@@ -45,11 +46,11 @@ export const suite = {
                         reject(new Error('connect error: ' + event.iErrorCode[0]))
                     }
                 }
-                if (event.lNetworkEvents & sock.FdEvent.FD_READ && connected && !gotData) {
+                if (event.lNetworkEvents & FdEvent.FD_READ && connected && !gotData) {
                     const data = sock.recv(s, 4096)
                     if (data && data.byteLength > 0) { gotData = true; t.ok++ }
                 }
-                if (event.lNetworkEvents & sock.FdEvent.FD_CLOSE) {
+                if (event.lNetworkEvents & FdEvent.FD_CLOSE) {
                     sock.closesocket(s)
                     if (gotData && connected) resolve()
                     else reject(new Error('test incomplete'))

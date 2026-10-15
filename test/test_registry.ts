@@ -1,11 +1,11 @@
 import * as os from 'os'
-import * as gui from 'gui'
 import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import {
     RegCloseKey, RegCreateKeyEx, RegDeleteKey, RegOpenKeyEx,
     RegQueryValueEx, RegSetValueEx,
 } from '../lib/windows/advapi32.js'
 import { Tester } from './test_helper.js'
+import { HKey, RegAccess, RegType } from '../constants'
 
 // 跨架构读指针宽句柄（ia32 4B / x64 8B）—— 照 test_ffi.ts 的 readPtr 先例
 function readPtr(dv: DataView, offset: number): number {
@@ -45,8 +45,8 @@ export const suite = {
         const phk = new PtrArrayBuffer(8)
         // hKey 位双来源：预定义键常量（HKEY_CURRENT_USER = 0x80000001 的 i32 形）
         // 或真实句柄——裸 <>ptr 位收两者；符号/零扩展语义由本调用实测检验
-        const rcCreate = RegCreateKeyEx(gui.HKey.CURRENT_USER, KEY, 0, NULL, 0,
-            gui.RegAccess.ALL_ACCESS, NULL, phk, NULL)
+        const rcCreate = RegCreateKeyEx(HKey.CURRENT_USER, KEY, 0, NULL, 0,
+            RegAccess.ALL_ACCESS, NULL, phk, NULL)
         t.check('create key = ERROR_SUCCESS', 0, rcCreate)
         if (rcCreate !== 0) return                          // 基座失败，后续无意义
         const hkey = readPtr(new DataView(phk), 0)
@@ -55,7 +55,7 @@ export const suite = {
         t.section('RegSetValueEx + RegQueryValueEx: REG_SZ roundtrip')
         const data = wbuf(MSG)
         t.check('set REG_SZ = ERROR_SUCCESS', 0,
-            RegSetValueEx(hkey, 'greeting', 0, gui.RegType.SZ, data, (MSG.length + 1) * 2))
+            RegSetValueEx(hkey, 'greeting', 0, RegType.SZ, data, (MSG.length + 1) * 2))
         const pType = new PtrArrayBuffer(4)
         const pCb = new PtrArrayBuffer(4)
         const pData = new PtrArrayBuffer(64)
@@ -75,21 +75,21 @@ export const suite = {
         t.section('RegOpenKeyEx: reopen + missings')
         const phk2 = new PtrArrayBuffer(8)
         t.check('reopen = ERROR_SUCCESS', 0,
-            RegOpenKeyEx(gui.HKey.CURRENT_USER, KEY, 0, gui.RegAccess.READ, phk2))
+            RegOpenKeyEx(HKey.CURRENT_USER, KEY, 0, RegAccess.READ, phk2))
         const hkey2 = readPtr(new DataView(phk2), 0)
         t.check('missing value → ERROR_FILE_NOT_FOUND', 2,
             RegQueryValueEx(hkey2, 'no-such-value', NULL, NULL, NULL, NULL))
         t.check('missing key → ERROR_FILE_NOT_FOUND', 2,
-            RegOpenKeyEx(gui.HKey.CURRENT_USER, KEY + 'X', 0, gui.RegAccess.READ,
+            RegOpenKeyEx(HKey.CURRENT_USER, KEY + 'X', 0, RegAccess.READ,
                 new PtrArrayBuffer(8)))
         RegCloseKey(hkey2)
 
         t.section('RegDeleteKey + RegCloseKey: cleanup')
         t.check('delete key = ERROR_SUCCESS', 0,
-            RegDeleteKey(gui.HKey.CURRENT_USER, KEY))
+            RegDeleteKey(HKey.CURRENT_USER, KEY))
         t.check('close = ERROR_SUCCESS', 0, RegCloseKey(hkey))
         t.check('open deleted → ERROR_FILE_NOT_FOUND', 2,
-            RegOpenKeyEx(gui.HKey.CURRENT_USER, KEY, 0, gui.RegAccess.READ,
+            RegOpenKeyEx(HKey.CURRENT_USER, KEY, 0, RegAccess.READ,
                 new PtrArrayBuffer(8)))
     },
 }

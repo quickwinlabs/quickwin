@@ -10,6 +10,7 @@ import { applyProps } from './props.js'
 import { calculateFlexLayout, type FlexStyle } from './layout.js'
 import { getButtonIdealSize, measureTextForHwnd } from '../text-measure.js'
 import type { WIntrinsicProps } from './jsx.js'
+import { Gwlp, SetWindowPosFlag, SetWindowPosHwnd, ShowWindowCmd, WindowStyle, WmMsg } from '../../constants'
 
 // DEBUG 由 esbuild --define 在 bundle 时替换（见 build.ts），生产环境为 false
 declare const DEBUG: boolean
@@ -42,7 +43,7 @@ function isDelayedControl(winClass: string): boolean {
 
 function setupWindowProc(instance: Instance, hwnd: gui.HWND) {
   instance.hwnd = hwnd
-  const oldProc = GetWindowLongPtr(hwnd, gui.Gwlp.WNDPROC)
+  const oldProc = GetWindowLongPtr(hwnd, Gwlp.WNDPROC)
   instancesByHwnd.set(hwnd, instance)
   gui.SetWindowProc(hwnd, (hwnd: gui.HWND, msg: number, wParam: number, lParam: number) => {
     const ev = instance.props.onEvent
@@ -59,14 +60,14 @@ function setupWindowProc(instance: Instance, hwnd: gui.HWND) {
 function ensureChildWindow(child: Instance, parentHwnd: gui.HWND): gui.HWND {
   if (child.hwnd !== null) return child.hwnd
   const sty = child.props.style || {}
-  const ws = ((child.props.ws ?? 0) | gui.WindowStyle.CHILD) & ~gui.WindowStyle.VISIBLE
+  const ws = ((child.props.ws ?? 0) | WindowStyle.CHILD) & ~WindowStyle.VISIBLE
   const hwnd = gui.CreateWindow(
     child.type, child.props.text || '', ws,
     0, 0,
     (typeof sty.width === 'number' ? sty.width : 100) * scaleFactor, (typeof sty.height === 'number' ? sty.height : 30) * scaleFactor,
     parentHwnd, null
   )!
-  if (dpiFont) gui.SendMessage(hwnd, gui.WmMsg.SETFONT, dpiFont, 1)
+  if (dpiFont) gui.SendMessage(hwnd, WmMsg.SETFONT, dpiFont, 1)
   setupWindowProc(child, hwnd)
   return hwnd
 }
@@ -118,7 +119,7 @@ function runFlexLayout(inst: Instance) {
     const lr = child.lastRect
     if (lr && lr.x === r.x && lr.y === r.y && lr.w === r.width && lr.h === r.height) continue
     console.log('flex: set', child.type, child.hwnd, 'to', r.x, r.y, r.width, r.height)
-    SetWindowPos(child.hwnd!, gui.SetWindowPosHwnd.TOP, (r.x + pl) * scaleFactor, (r.y + pt) * scaleFactor, r.width * scaleFactor, r.height * scaleFactor, gui.SetWindowPosFlag.SWP_SHOWWINDOW)
+    SetWindowPos(child.hwnd!, SetWindowPosHwnd.TOP, (r.x + pl) * scaleFactor, (r.y + pt) * scaleFactor, r.width * scaleFactor, r.height * scaleFactor, SetWindowPosFlag.SWP_SHOWWINDOW)
     InvalidateRect(child.hwnd!, NULL, 1)
     child.lastRect = { x: r.x, y: r.y, w: r.width, h: r.height }
   }
@@ -164,7 +165,7 @@ const hostConfig: QuickWinHostConfig = {
     }
     const sty = props.style || {}
     // reconciler 创建的都是子窗口，确保 WS_CHILD 避免定位异常；创建时不带 WS_VISIBLE 防止 (0,0) 闪烁
-    const ws = ((props.ws ?? 0) | gui.WindowStyle.CHILD) & ~gui.WindowStyle.VISIBLE
+    const ws = ((props.ws ?? 0) | WindowStyle.CHILD) & ~WindowStyle.VISIBLE
     if (DEBUG) console.log('[reconciler] CreateWindow args:', winClass, props.text ?? '', ws, 0, 0, sty.width ?? 100, sty.height ?? 30, rootContainer)
     const hwnd = gui.CreateWindow(
       winClass, props.text ?? '', ws,
@@ -172,7 +173,7 @@ const hostConfig: QuickWinHostConfig = {
       (typeof sty.width === 'number' ? sty.width : 100) * scaleFactor, (typeof sty.height === 'number' ? sty.height : 30) * scaleFactor,
       rootContainer, null
     )!
-    if (dpiFont) gui.SendMessage(hwnd, gui.WmMsg.SETFONT, dpiFont, 1)
+    if (dpiFont) gui.SendMessage(hwnd, WmMsg.SETFONT, dpiFont, 1)
     if (DEBUG) console.log('[reconciler] createInstance hwnd result:', hwnd, 'null?', hwnd === null)
     const instance: Instance = { hwnd, type: winClass, props, children: [] }
     setupWindowProc(instance, hwnd)
@@ -283,19 +284,19 @@ const hostConfig: QuickWinHostConfig = {
   },
 
   hideInstance(instance: Instance) {
-    if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, gui.ShowWindowCmd.HIDE)
+    if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, ShowWindowCmd.HIDE)
   },
 
   hideTextInstance(instance: Instance) {
-    if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, gui.ShowWindowCmd.HIDE)
+    if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, ShowWindowCmd.HIDE)
   },
 
   unhideInstance(instance: Instance, _props: Props) {
-    if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, gui.ShowWindowCmd.SHOW)
+    if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, ShowWindowCmd.SHOW)
   },
 
   unhideTextInstance(instance: Instance, _text: string) {
-    if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, gui.ShowWindowCmd.SHOW)
+    if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, ShowWindowCmd.SHOW)
   },
 
   shouldSetTextContent(_type: string, props: Props) {

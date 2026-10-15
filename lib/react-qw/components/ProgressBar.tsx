@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useRef } from 'react'
 import * as gui from 'gui'
 import type { WStyle } from '../jsx.d.ts'
+import { ProgressMsg, ProgressStyle, WindowStyle } from '../../../constants'
 
 export interface ProgressBarProps {
   value?: number
@@ -13,14 +14,14 @@ export const ProgressBar = forwardRef<gui.HWND, ProgressBarProps>(
   ({ value = 0, max = 100, style, smooth }, ref) => {
     const pbRef = useRef<gui.HWND>(null)
 
-    const ws = gui.WindowStyle.VISIBLE | gui.WindowStyle.BORDER
-      | (smooth ? gui.ProgressStyle.SMOOTH : 0)
+    const ws = WindowStyle.VISIBLE | WindowStyle.BORDER
+      | (smooth ? ProgressStyle.SMOOTH : 0)
 
     useEffect(() => {
       const h = pbRef.current
       if (!h) return
-      gui.SendMessage(h, gui.ProgressMsg.SETRANGE32, 0, max)
-      gui.SendMessage(h, gui.ProgressMsg.SETPOS, Math.min(value, max), 0)
+      gui.SendMessage(h, ProgressMsg.SETRANGE32, 0, max)
+      gui.SendMessage(h, ProgressMsg.SETPOS, Math.min(value, max), 0)
     }, [value, max])
 
     return (

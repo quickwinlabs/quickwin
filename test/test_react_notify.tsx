@@ -11,6 +11,7 @@ import { createRoot, ListView, Link, DateTimePicker, Tab, TreeView, type Column 
 import { SendMessage, GetWindow } from '../lib/windows/user32.js'
 import { CreateCompatibleDC, DeleteDC } from '../lib/windows/gdi32.js'
 import { NULL } from '../lib/ffi/ctype.js'
+import { CustomDrawFlag, CustomDrawStage, DtFlag, DtMsg, DtNotifyCode, LvItemState, LvNotifyCode, SysLinkNotifyCode, TcMsg, TcNotifyCode, TvGnRelative, TvMsg, WmMsg } from '../constants'
 
 const P = os.arch === 'x64' ? 8 : 4
 const align = (n: number, a: number): number => (n + a - 1) & ~(a - 1)
@@ -34,7 +35,7 @@ function setPtr(dv: DataView, off: number, v: number): void {
   else dv.setUint32(off, v >>> 0, true)
 }
 function notify(h: gui.HWND, b: ArrayBuffer): number {
-  return SendMessage(h, gui.WmMsg.NOTIFY, 0, ffi.bufferPtr(b)) as number
+  return SendMessage(h, WmMsg.NOTIFY, 0, ffi.bufferPtr(b)) as number
 }
 
 // ---------- 组件与记录 ----------
@@ -88,27 +89,27 @@ function runAll(): void {
   try {
     // ---- ListView：NM_CLICK → onCellClick ----
     const lvNM = (code: number): { b: ArrayBuffer; dv: DataView } => nm(HDR + 128, code)
-    let m = lvNM(gui.LvNotifyCode.CLICK)
+    let m = lvNM(LvNotifyCode.CLICK)
     m.dv.setInt32(HDR, 1, true); m.dv.setInt32(HDR + 4, 2, true)
     notify(lvW!, m.b)
     expect('LV click(item=1,sub=2) 触发 onCellClick', lvClicks.slice(), ['b@1'])
-    m = lvNM(gui.LvNotifyCode.CLICK); m.dv.setInt32(HDR, 0, true); m.dv.setInt32(HDR + 4, 0, true)
+    m = lvNM(LvNotifyCode.CLICK); m.dv.setInt32(HDR, 0, true); m.dv.setInt32(HDR + 4, 0, true)
     notify(lvW!, m.b)
     expect('LV click(sub=0, 该列无 onCellClick) 不触发', lvClicks.slice(), ['b@1'])
-    m = lvNM(gui.LvNotifyCode.CLICK); m.dv.setInt32(HDR, 9, true); m.dv.setInt32(HDR + 4, 2, true)
+    m = lvNM(LvNotifyCode.CLICK); m.dv.setInt32(HDR, 9, true); m.dv.setInt32(HDR + 4, 2, true)
     notify(lvW!, m.b)
     expect('LV click(item 越界) 不触发', lvClicks.slice(), ['b@1'])
-    m = lvNM(gui.LvNotifyCode.CLICK); m.dv.setInt32(HDR, 2, true); m.dv.setInt32(HDR + 4, 2, true)
+    m = lvNM(LvNotifyCode.CLICK); m.dv.setInt32(HDR, 2, true); m.dv.setInt32(HDR + 4, 2, true)
     notify(lvW!, m.b)
     expect('LV click(item=2,sub=2)', lvClicks.slice(), ['b@1', 'c@2'])
 
     // ---- ListView：LVN_ITEMCHANGING 拦截选中变化 ----
-    const SEL = gui.LvItemState.SELECTED
-    m = lvNM(gui.LvNotifyCode.ITEMCHANGING); m.dv.setUint32(HDR + 8, SEL, true); m.dv.setUint32(HDR + 12, 0, true)
+    const SEL = LvItemState.SELECTED
+    m = lvNM(LvNotifyCode.ITEMCHANGING); m.dv.setUint32(HDR + 8, SEL, true); m.dv.setUint32(HDR + 12, 0, true)
     expect('LV ITEMCHANGING 选中位变化 → 拦截(1)', notify(lvW!, m.b), 1)
-    m = lvNM(gui.LvNotifyCode.ITEMCHANGING); m.dv.setUint32(HDR + 8, 1 /* FOCUSED */, true); m.dv.setUint32(HDR + 12, 0, true)
+    m = lvNM(LvNotifyCode.ITEMCHANGING); m.dv.setUint32(HDR + 8, 1 /* FOCUSED */, true); m.dv.setUint32(HDR + 12, 0, true)
     expect('LV ITEMCHANGING 选中位不变 → 放行(0)', notify(lvW!, m.b), 0)
-    m = lvNM(gui.LvNotifyCode.ITEMCHANGING); m.dv.setUint32(HDR + 8, 0x80000000 | SEL, true); m.dv.setUint32(HDR + 12, 0x80000000, true)
+    m = lvNM(LvNotifyCode.ITEMCHANGING); m.dv.setUint32(HDR + 8, 0x80000000 | SEL, true); m.dv.setUint32(HDR + 12, 0x80000000, true)
     expect('LV ITEMCHANGING 高位置位的 u32 状态仍判出选中位变化', notify(lvW!, m.b), 1)
 
     // ---- ListView：NM_CUSTOMDRAW ----
@@ -117,18 +118,18 @@ function runAll(): void {
     const lvText = cdEnd, lvBk = cdEnd + 4, lvSub = cdEnd + 8
     const memDc = CreateCompatibleDC(NULL)
     const cd = (stage: number, row: number, sub: number): { b: ArrayBuffer; dv: DataView } => {
-      const x = nm(cdEnd + 64, gui.LvNotifyCode.CUSTOMDRAW)
+      const x = nm(cdEnd + 64, LvNotifyCode.CUSTOMDRAW)
       x.dv.setUint32(cdStage, stage, true)
       setPtr(x.dv, cdHdc, memDc as number)
       setPtr(x.dv, cdItem, row)
       x.dv.setInt32(lvSub, sub, true)
       return x
     }
-    expect('LV CUSTOMDRAW PREPAINT → NOTIFYITEMDRAW', notify(lvW!, cd(gui.CustomDrawStage.PREPAINT, 0, 0).b), gui.CustomDrawFlag.NOTIFYITEMDRAW)
-    expect('LV CUSTOMDRAW ITEMPREPAINT → NOTIFYSUBITEMDRAW', notify(lvW!, cd(gui.CustomDrawStage.ITEMPREPAINT, 0, 0).b), gui.CustomDrawFlag.NOTIFYSUBITEMDRAW)
-    expect('LV CUSTOMDRAW SUBITEMPREPAINT(无样式列) → DODEFAULT', notify(lvW!, cd(gui.CustomDrawStage.SUBITEMPREPAINT, 1, 0).b), gui.CustomDrawFlag.DODEFAULT)
-    const sub = cd(gui.CustomDrawStage.SUBITEMPREPAINT, 1, 2)
-    expect('LV CUSTOMDRAW SUBITEMPREPAINT(样式列, 带字体) → NEWFONT', notify(lvW!, sub.b), gui.CustomDrawFlag.NEWFONT)
+    expect('LV CUSTOMDRAW PREPAINT → NOTIFYITEMDRAW', notify(lvW!, cd(CustomDrawStage.PREPAINT, 0, 0).b), CustomDrawFlag.NOTIFYITEMDRAW)
+    expect('LV CUSTOMDRAW ITEMPREPAINT → NOTIFYSUBITEMDRAW', notify(lvW!, cd(CustomDrawStage.ITEMPREPAINT, 0, 0).b), CustomDrawFlag.NOTIFYSUBITEMDRAW)
+    expect('LV CUSTOMDRAW SUBITEMPREPAINT(无样式列) → DODEFAULT', notify(lvW!, cd(CustomDrawStage.SUBITEMPREPAINT, 1, 0).b), CustomDrawFlag.DODEFAULT)
+    const sub = cd(CustomDrawStage.SUBITEMPREPAINT, 1, 2)
+    expect('LV CUSTOMDRAW SUBITEMPREPAINT(样式列, 带字体) → NEWFONT', notify(lvW!, sub.b), CustomDrawFlag.NEWFONT)
     expect('LV CUSTOMDRAW 写回 clrText', sub.dv.getUint32(lvText, true), 0x00FF0000)
     expect('LV CUSTOMDRAW 写回 clrTextBk', sub.dv.getUint32(lvBk, true), 0x00112233)
     if (memDc) DeleteDC(memDc)
@@ -140,13 +141,13 @@ function runAll(): void {
       for (let i = 0; i < URL.length; i++) x.dv.setUint16(HDR + 112 + i * 2, URL.charCodeAt(i), true)
       return x
     }
-    notify(linkW!, lk(gui.SysLinkNotifyCode.CLICK).b)
-    notify(linkW!, lk(gui.SysLinkNotifyCode.RETURN).b)
+    notify(linkW!, lk(SysLinkNotifyCode.CLICK).b)
+    notify(linkW!, lk(SysLinkNotifyCode.RETURN).b)
     expect('Link CLICK/RETURN → onClick(url)', linkUrls.slice(), [URL, URL])
 
     // ---- DateTimePicker：DTN_DATETIMECHANGE ----
     const dt = (flags: number): { b: ArrayBuffer; dv: DataView } => {
-      const x = nm(HDR + 4 + 16 + 8, gui.DtNotifyCode.DATETIMECHANGE)
+      const x = nm(HDR + 4 + 16 + 8, DtNotifyCode.DATETIMECHANGE)
       x.dv.setUint32(HDR, flags, true)
       const s = HDR + 4
       x.dv.setUint16(s, 2024, true); x.dv.setUint16(s + 2, 2, true); x.dv.setUint16(s + 4, 4, true)
@@ -154,13 +155,13 @@ function runAll(): void {
       x.dv.setUint16(s + 12, 59, true); x.dv.setUint16(s + 14, 0, true)
       return x
     }
-    notify(dtpW!, dt(gui.DtFlag.GDT_VALID).b)
-    notify(dtpW!, dt(gui.DtFlag.GDT_NONE).b)
+    notify(dtpW!, dt(DtFlag.GDT_VALID).b)
+    notify(dtpW!, dt(DtFlag.GDT_NONE).b)
     expect('DTP DATETIMECHANGE → onChange(Date | null)', dtpVals.slice(), [new Date(2024, 1, 29, 13, 45, 59).getTime(), null])
 
     // ---- DateTimePicker：value → SYSTEMTIME.encode → 控件回读 ----
     const back = new ArrayBuffer(16)
-    const ret = SendMessage(child(dtpW2), gui.DtMsg.GETSYSTEMTIME, 0, ffi.bufferPtr(back)) as number
+    const ret = SendMessage(child(dtpW2), DtMsg.GETSYSTEMTIME, 0, ffi.bufferPtr(back)) as number
     const bdv = new DataView(back)
     expect('DTP value 写入后控件回读 GDT_VALID', ret, 0)
     expect('DTP value 写入后控件回读 年月日', [bdv.getUint16(0, true), bdv.getUint16(2, true), bdv.getUint16(6, true)], [2023, 6, 7])
@@ -171,15 +172,15 @@ function runAll(): void {
     // 标签控件是最先创建的 = 兄弟里最底层的 GW_HWNDLAST
     const tabCtl = GetWindow(child(tabW), 1 /* GW_HWNDLAST */)
     if (!tabCtl) throw new Error('no tab control')
-    SendMessage(tabCtl, gui.TcMsg.SETCURSEL, 1, 0)
-    notify(tabW!, nm(HDR + 8, gui.TcNotifyCode.SELCHANGING).b)
+    SendMessage(tabCtl, TcMsg.SETCURSEL, 1, 0)
+    notify(tabW!, nm(HDR + 8, TcNotifyCode.SELCHANGING).b)
     expect('Tab SELCHANGING → onChange(1)', tabSel.slice(), [1])
 
     // ---- TreeView：真实 TVN_SELCHANGED（由控件自己发）----
     const tv = child(tvW)
-    const root = SendMessage(tv, gui.TvMsg.GETNEXTITEM, gui.TvGnRelative.ROOT, 0) as number
-    const second = SendMessage(tv, gui.TvMsg.GETNEXTITEM, gui.TvGnRelative.NEXT, root) as number
-    SendMessage(tv, gui.TvMsg.SELECTITEM, gui.TvGnRelative.CARET, second)
+    const root = SendMessage(tv, TvMsg.GETNEXTITEM, TvGnRelative.ROOT, 0) as number
+    const second = SendMessage(tv, TvMsg.GETNEXTITEM, TvGnRelative.NEXT, root) as number
+    SendMessage(tv, TvMsg.SELECTITEM, TvGnRelative.CARET, second)
     expect('TreeView 选中第二项 → onSelect(k2)', tvSel.slice(), ['k2'])
   } catch (e) {
     fail++

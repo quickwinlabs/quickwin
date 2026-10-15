@@ -2,6 +2,7 @@ import './polyfill.js'
 import * as sock from 'sock'
 import { HeadersImpl, RequestImpl, ResponseImpl, _readStream } from './http-common.js'
 import { AbortController } from './abort.js'
+import { FdEvent } from '../constants'
 
 type SockHandle = import('sock').SockHandle
 
@@ -191,7 +192,7 @@ export class HttpServer {
         if (sock.listen(s, backlog ?? 64) !== 0) { sock.closesocket(s); return -1 }
         this.serverSock = s
         sock.set_on_event(s, (event: NetEvent) => {
-            if (event.lNetworkEvents & sock.FdEvent.FD_ACCEPT) this.acceptLoop()
+            if (event.lNetworkEvents & FdEvent.FD_ACCEPT) this.acceptLoop()
         })
         return 0
     }
@@ -229,9 +230,9 @@ export class HttpServer {
 
     private onConnEvent(c: Conn, event: NetEvent): void {
         if (c.closed) return
-        if (event.lNetworkEvents & sock.FdEvent.FD_READ) onRead(c)
-        if (event.lNetworkEvents & sock.FdEvent.FD_WRITE) flushQueue(c)
-        if (event.lNetworkEvents & sock.FdEvent.FD_CLOSE) {
+        if (event.lNetworkEvents & FdEvent.FD_READ) onRead(c)
+        if (event.lNetworkEvents & FdEvent.FD_WRITE) flushQueue(c)
+        if (event.lNetworkEvents & FdEvent.FD_CLOSE) {
             onRead(c)
             abortConn(c)
             closeConn(c)

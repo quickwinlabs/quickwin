@@ -1,7 +1,6 @@
 import { NULL, type Ptr, type PtrArrayBuffer } from '../../ffi/ctype.js'
 import { forwardRef, useRef, useEffect, type ForwardedRef } from 'react'
 import * as gui from 'gui'
-import { LvItemFlag, LvItemState, LvColumnMask } from 'gui'
 import * as ffi from 'ffi'
 import { WCHAR } from '../../ffi/bind.js'
 import { nmCode } from '../nmhdr.js'
@@ -12,6 +11,7 @@ import {
   LVHITTESTINFO, LVITEMW, LVCOLUMNW,
 } from '../../windows/structs.js'
 import type { WStyle } from '../jsx.d.ts'
+import { CustomDrawFlag, CustomDrawStage, FontWeight, HdmMsg, HitTest, ImageListFlag, ListViewStyle, LvColumnFormat, LvColumnMask, LvColumnWidthCmd, LvExStyle, LvImageList, LvItemFlag, LvItemState, LvMsg, LvNotifyCode, StandardCursor, WindowStyle, WmMsg } from '../../../constants'
 
 export function makeColorBlock(size: number, bgra: number): ArrayBuffer {
   const n = size * size
@@ -36,8 +36,8 @@ function writeU32(ptr: number, offset: number, v: number): void {
 }
 
 
-const LV_WS = gui.WindowStyle.VISIBLE | gui.WindowStyle.BORDER | gui.WindowStyle.VSCROLL | gui.WindowStyle.HSCROLL
-  | gui.ListViewStyle.REPORT | gui.ListViewStyle.SINGLESEL
+const LV_WS = WindowStyle.VISIBLE | WindowStyle.BORDER | WindowStyle.VSCROLL | WindowStyle.HSCROLL
+  | ListViewStyle.REPORT | ListViewStyle.SINGLESEL
 
 const CD_CLRTEXT = NMLVCUSTOMDRAW.offsetOf('clrText')
 const CD_CLRTEXTBK = NMLVCUSTOMDRAW.offsetOf('clrTextBk')
@@ -53,7 +53,7 @@ function getCellFont(hwnd: gui.HWND, style: CellStyle): Ptr<'HGDIOBJ'> | null {
   if (!hwnd) return null
   // 以控件当前字体为底（取不到则用 -13 高度的默认字体），再叠加粗 / 斜 / 下划线
   let base: Parameters<typeof CreateFontIndirect>[0] = { lfHeight: -13 }
-  const cur = gui.SendMessage(hwnd, gui.WmMsg.GETFONT, 0, 0)
+  const cur = gui.SendMessage(hwnd, WmMsg.GETFONT, 0, 0)
   if (cur) {
     const lf = LOGFONTW.alloc()
     // GETFONT 的 LRESULT 断言为 HFONT（gdi32 <HGDIOBJ>ptr 位）
@@ -62,7 +62,7 @@ function getCellFont(hwnd: gui.HWND, style: CellStyle): Ptr<'HGDIOBJ'> | null {
   }
   const h = CreateFontIndirect({
     ...base,
-    ...(style.bold ? { lfWeight: gui.FontWeight.BOLD } : {}),
+    ...(style.bold ? { lfWeight: FontWeight.BOLD } : {}),
     ...(style.italic ? { lfItalic: 1 } : {}),
     ...(style.underline ? { lfUnderline: 1 } : {}),
   })
@@ -72,13 +72,13 @@ function getCellFont(hwnd: gui.HWND, style: CellStyle): Ptr<'HGDIOBJ'> | null {
 
 function handleCustomDraw<D>(lParam: number, columns: Column<D>[], data: D[], hwnd: gui.HWND | null): number {
   const { dwDrawStage: stage } = NMCUSTOMDRAW.decode(lParam as Ptr<'NMCUSTOMDRAW'>)
-  if (stage === gui.CustomDrawStage.PREPAINT) return gui.CustomDrawFlag.NOTIFYITEMDRAW
-  if (stage === gui.CustomDrawStage.ITEMPREPAINT) return gui.CustomDrawFlag.NOTIFYSUBITEMDRAW
-  if (stage === gui.CustomDrawStage.SUBITEMPREPAINT) {
+  if (stage === CustomDrawStage.PREPAINT) return CustomDrawFlag.NOTIFYITEMDRAW
+  if (stage === CustomDrawStage.ITEMPREPAINT) return CustomDrawFlag.NOTIFYSUBITEMDRAW
+  if (stage === CustomDrawStage.SUBITEMPREPAINT) {
     // 只有子项阶段才按 NMLVCUSTOMDRAW（更大的结构）读，前面的阶段只读了 NMCUSTOMDRAW 的前缀
     const cd = NMLVCUSTOMDRAW.decode(lParam as Ptr<'NMLVCUSTOMDRAW'>)
     const style = resolveCellStyle(columns, data, cd.dwItemSpec, cd.iSubItem)
-    if (!style) return gui.CustomDrawFlag.DODEFAULT
+    if (!style) return CustomDrawFlag.DODEFAULT
 
     if (style.color !== undefined) writeU32(lParam, CD_CLRTEXT, style.color)
     if (style.background !== undefined) writeU32(lParam, CD_CLRTEXTBK, style.background)
@@ -86,10 +86,10 @@ function handleCustomDraw<D>(lParam: number, columns: Column<D>[], data: D[], hw
     const hfont = getCellFont(hwnd!, style)
     if (hfont && cd.hdc) {
       SelectObject(cd.hdc, hfont)
-      return gui.CustomDrawFlag.NEWFONT
+      return CustomDrawFlag.NEWFONT
     }
   }
-  return gui.CustomDrawFlag.DODEFAULT
+  return CustomDrawFlag.DODEFAULT
 }
 
 export type Align = 'left' | 'center' | 'right'
@@ -100,7 +100,7 @@ export interface CellStyle {
   bold?: boolean
   underline?: boolean
   italic?: boolean
-  cursor?: gui.StandardCursor
+  cursor?: StandardCursor
 }
 
 export interface Column<D> {
@@ -126,9 +126,9 @@ export interface ListViewProps<D extends object> {
 }
 
 function alignToFmt(align: Align | undefined): number {
-  if (align === 'center') return gui.LvColumnFormat.CENTER
-  if (align === 'right') return gui.LvColumnFormat.RIGHT
-  return gui.LvColumnFormat.LEFT
+  if (align === 'center') return LvColumnFormat.CENTER
+  if (align === 'right') return LvColumnFormat.RIGHT
+  return LvColumnFormat.LEFT
 }
 
 function cellText<D>(record: D, col: Column<D>, index: number): string {
@@ -183,12 +183,12 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
     const il = iconListRef.current
     iconListRef.current = 0
     if (il) {
-      gui.SendMessage(h, gui.LvMsg.SETIMAGELIST, gui.LvImageList.SMALL, 0)
+      gui.SendMessage(h, LvMsg.SETIMAGELIST, LvImageList.SMALL, 0)
       gui.ImageListDestroy(il)
     }
     if (!icons || icons.length === 0) return
     const size = iconSize ?? 32
-    const img = gui.ImageListCreate(size, size, gui.ImageListFlag.COLOR32, icons.length, 1)
+    const img = gui.ImageListCreate(size, size, ImageListFlag.COLOR32, icons.length, 1)
     if (!img) return
     for (const p of icons) {
       const hbm = gui.CreateBitmapFromPixels(size, size, p) as Ptr<'HGDIOBJ'> | 0
@@ -197,7 +197,7 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
         DeleteObject(hbm)
       }
     }
-    gui.SendMessage(h, gui.LvMsg.SETIMAGELIST, gui.LvImageList.SMALL, img)
+    gui.SendMessage(h, LvMsg.SETIMAGELIST, LvImageList.SMALL, img)
     iconListRef.current = img
   }, [icons, iconSize])
 
@@ -206,15 +206,15 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
     if (!h) return
 
     // 从后往前删旧列
-    const hdr = gui.SendMessage(h, gui.LvMsg.GETHEADER, 0, 0) as gui.HWND
+    const hdr = gui.SendMessage(h, LvMsg.GETHEADER, 0, 0) as gui.HWND
     if (hdr) {
-      let n = gui.SendMessage(hdr, gui.HdmMsg.GETITEMCOUNT, 0, 0)
+      let n = gui.SendMessage(hdr, HdmMsg.GETITEMCOUNT, 0, 0)
       for (let k = n - 1; k >= 0; k--)
-        gui.SendMessage(h, gui.LvMsg.DELETECOLUMN, k, 0)
+        gui.SendMessage(h, LvMsg.DELETECOLUMN, k, 0)
     }
 
-    gui.SendMessage(h, gui.LvMsg.SETEXTENDEDLISTVIEWSTYLE, 0,
-      gui.LvExStyle.FULLROWSELECT | gui.LvExStyle.GRIDLINES | gui.LvExStyle.DOUBLEBUFFER)
+    gui.SendMessage(h, LvMsg.SETEXTENDEDLISTVIEWSTYLE, 0,
+      LvExStyle.FULLROWSELECT | LvExStyle.GRIDLINES | LvExStyle.DOUBLEBUFFER)
 
     const n = columns.length
     for (let j = 0; j < n; j++) {
@@ -233,7 +233,7 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
         cxIdeal: 0,
       })
       lvc.__titleBuf = titleBuf
-      gui.SendMessage(h, gui.LvMsg.INSERTCOLUMNW, j, lvc.ptr)
+      gui.SendMessage(h, LvMsg.INSERTCOLUMNW, j, lvc.ptr)
     }
   }, [columns])
 
@@ -241,44 +241,44 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
     const h = lvRef.current
     if (!h) return
 
-    gui.SendMessage(h, gui.LvMsg.DELETEALLITEMS, 0, 0)
+    gui.SendMessage(h, LvMsg.DELETEALLITEMS, 0, 0)
     const nCols = columns.length
 
     for (let i = 0; i < data.length; i++) {
       const record = data[i]!
       const img = getIcon ? getIcon(record, i) : undefined
       const itemBuf = makeLVItem(i, 0, cellText(record, columns[0]!, i), img)
-      gui.SendMessage(h, gui.LvMsg.INSERTITEMW, 0, itemBuf.ptr)
+      gui.SendMessage(h, LvMsg.INSERTITEMW, 0, itemBuf.ptr)
 
       for (let j = 1; j < nCols; j++) {
         const subBuf = makeLVItem(i, j, cellText(record, columns[j]!, i))
-        gui.SendMessage(h, gui.LvMsg.SETITEMW, 0, subBuf.ptr)
+        gui.SendMessage(h, LvMsg.SETITEMW, 0, subBuf.ptr)
       }
     }
 
     for (let j = 0; j < columns.length; j++) {
       if (columns[j]!.width == null) {
-        gui.SendMessage(h, gui.LvMsg.SETCOLUMNWIDTH, j, gui.LvColumnWidthCmd.AUTOSIZE_USEHEADER)
+        gui.SendMessage(h, LvMsg.SETCOLUMNWIDTH, j, LvColumnWidthCmd.AUTOSIZE_USEHEADER)
       }
     }
   }, [data, columns, getIcon])
 
   return (
     <w type="STATIC"
-      ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN}
+      ws={WindowStyle.VISIBLE | WindowStyle.CLIPCHILDREN}
       style={{ ...style, flexDirection: 'column', alignItems: 'stretch' }}
       ref={ref}
       onEvent={(e) => {
-        if (e.msg === gui.WmMsg.NOTIFY) {
+        if (e.msg === WmMsg.NOTIFY) {
           const code = nmCode(e.lParam)
-          if (code === gui.LvNotifyCode.CUSTOMDRAW) {
+          if (code === LvNotifyCode.CUSTOMDRAW) {
             return handleCustomDraw(e.lParam, columns, data, lvRef.current)
           }
-          if (code === gui.LvNotifyCode.ITEMCHANGING) {
+          if (code === LvNotifyCode.ITEMCHANGING) {
             const { uNewState, uOldState } = NMLISTVIEW.decode(e.lParam as Ptr<'NMLISTVIEW'>)
             if ((uNewState & LvItemState.SELECTED) !== (uOldState & LvItemState.SELECTED)) return 1
           }
-          if (code === gui.LvNotifyCode.CLICK) {
+          if (code === LvNotifyCode.CLICK) {
             const { iItem, iSubItem } = NMLISTVIEW.decode(e.lParam as Ptr<'NMLISTVIEW'>)
             const col = columns[iSubItem]
             const record = data[iItem]
@@ -294,8 +294,8 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
           lvRef.current = h
         }}
         onEvent={(e) => {
-          if (e.msg !== gui.WmMsg.SETCURSOR) return
-          if ((e.lParam & 0xFFFF) !== gui.HitTest.CLIENT) return
+          if (e.msg !== WmMsg.SETCURSOR) return
+          if ((e.lParam & 0xFFFF) !== HitTest.CLIENT) return
           const h = lvRef.current
           if (!h) return
 
@@ -306,7 +306,7 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
           const { x: sx, y: sy } = POINT.decode(pt)
 
           const hit = LVHITTESTINFO.encode({ pt: [sx, sy], iItem: -1, iSubItem: -1 })
-          gui.SendMessage(h, gui.LvMsg.SUBITEMHITTEST, 0, hit.ptr)
+          gui.SendMessage(h, LvMsg.SUBITEMHITTEST, 0, hit.ptr)
           const { iItem, iSubItem } = LVHITTESTINFO.decode(hit)
           const style = resolveCellStyle(columns, data, iItem, iSubItem)
           if (!style || style.cursor === undefined) return

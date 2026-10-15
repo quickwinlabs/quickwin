@@ -1,6 +1,7 @@
 import { forwardRef, useState, useEffect, useRef } from 'react'
 import * as gui from 'gui'
 import type { WStyle } from '../jsx.d.ts'
+import { ButtonCheckState, ButtonMsg, ButtonStyle, WindowStyle, WmMsg } from '../../../constants'
 
 export interface RadioButtonProps {
   checked?: boolean
@@ -21,15 +22,15 @@ export const RadioButton = forwardRef<gui.HWND, RadioButtonProps>(
     useEffect(() => {
       const h = rbRef.current
       if (!h) return
-      gui.SendMessage(h, gui.ButtonMsg.SETCHECK,
-        displayChecked ? gui.ButtonCheckState.CHECKED : gui.ButtonCheckState.UNCHECKED, 0)
+      gui.SendMessage(h, ButtonMsg.SETCHECK,
+        displayChecked ? ButtonCheckState.CHECKED : ButtonCheckState.UNCHECKED, 0)
     }, [displayChecked])
 
     return (
       <w
         type="BUTTON"
         text={label ?? ''}
-        ws={gui.WindowStyle.VISIBLE | gui.ButtonStyle.AUTORADIOBUTTON}
+        ws={WindowStyle.VISIBLE | ButtonStyle.AUTORADIOBUTTON}
         style={style}
         disabled={disabled}
         ref={(h: gui.HWND) => {
@@ -38,8 +39,8 @@ export const RadioButton = forwardRef<gui.HWND, RadioButtonProps>(
           else if (ref) ref.current = h
         }}
         onEvent={(e) => {
-          if (e.msg === gui.WmMsg.LBUTTONUP) {
-            const newChecked = gui.SendMessage(e.hwnd, gui.ButtonMsg.GETCHECK, 0, 0) !== 0
+          if (e.msg === WmMsg.LBUTTONUP) {
+            const newChecked = gui.SendMessage(e.hwnd, ButtonMsg.GETCHECK, 0, 0) !== 0
             if (newChecked !== displayChecked) {
               if (!isControlled) setInternalChecked(newChecked)
               onChange?.(newChecked)

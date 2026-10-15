@@ -173,7 +173,7 @@ export const ReadFile = /*@__PURE__*/ b('ReadFile', '<HFILE>ptr! <BYTE>ptr u32 <
  *                组合（flags 位不标枚举）
  *  @param args_2 dwShareMode 共享掩码：FILE_SHARE_READ(0x1)|FILE_SHARE_WRITE(0x2)，独占传 0
  *  @param args_3 lpSecurityAttributes 安全属性，传 NULL
- *  @param args_4 dwCreationDisposition 创建处置 gui.FileCreation.*（互斥单选）
+ *  @param args_4 dwCreationDisposition 创建处置 FileCreation.*（互斥单选）
  *  @param args_5 dwFlagsAndAttributes 属性：FILE_ATTRIBUTE_NORMAL(0x80) 等（可组合不标）
  *  @param args_6 hTemplateFile 模板文件句柄，传 NULL */
 export const CreateFile = /*@__PURE__*/ b('CreateFileW',
@@ -213,7 +213,7 @@ export const MoveFileEx = /*@__PURE__*/ b('MoveFileExW', '<WCHAR>ptr! <WCHAR>ptr
  *  与合法的 0xFFFFFFFF 偏移）
  *  @param args_1 lDistanceToMove 偏移（LONG，可负）
  *  @param args_2 lpDistanceToMoveHigh 64 位偏移高半（出参双向），32 位够用传 NULL
- *  @param args_3 dwMoveMethod 起点 gui.FileSeekFrom.BEGIN / CURRENT / END */
+ *  @param args_3 dwMoveMethod 起点 FileSeekFrom.BEGIN / CURRENT / END */
 export const SetFilePointer = /*@__PURE__*/ b('SetFilePointer', '<HFILE>ptr! i32 <BYTE>ptr u32@FileSeekFrom -> u32')
 /** 读文件大小
  *  @returns 文件大小（低 32 位）；0xFFFFFFFF = 失败（INVALID_FILE_SIZE，须 GetLastError 区分）

@@ -2,6 +2,7 @@ import * as gui from 'gui'
 import React from 'react'
 import { DefWindowProc, GetSystemMetrics } from '../windows/user32.js'
 import reconciler, { scaleFactor, instancesByHwnd, forceFlexLayout, type Instance } from './reconciler.js'
+import { CreatePos, WindowStyle, WmMsg } from '../../constants'
 
 const noop = () => { }
 
@@ -24,7 +25,7 @@ function ensureDefaultClass() {
   if (defaultClassRegistered) return DEFAULT_CLASS
   gui.RegisterClass(DEFAULT_CLASS, (hwnd, msg, wParam, lParam) => {
     const entry = rootMap.get(hwnd)
-    if (msg === gui.WmMsg.DESTROY && entry) {
+    if (msg === WmMsg.DESTROY && entry) {
       rootMap.delete(hwnd)
       reconciler.updateContainer(null, entry.root, null, () => {
         instancesByHwnd.delete(hwnd)
@@ -32,7 +33,7 @@ function ensureDefaultClass() {
     }
     const result = entry?.onEvent?.({ hwnd, msg, wParam, lParam })
     if (typeof result === 'number') return result
-    if (msg === gui.WmMsg.SIZE) forceFlexLayout(hwnd)
+    if (msg === WmMsg.SIZE) forceFlexLayout(hwnd)
     return DefWindowProc(hwnd, msg, wParam, lParam)
   })
   defaultClassRegistered = true
@@ -44,16 +45,16 @@ export function createRoot(container: gui.HWND | RootWindowConfig) {
   if (typeof container === 'object') {
     const cfg = container
     const className = ensureDefaultClass()
-    const ws = (cfg.ws ?? 0) | gui.WindowStyle.OVERLAPPEDWINDOW
+    const ws = (cfg.ws ?? 0) | WindowStyle.OVERLAPPEDWINDOW
     const w = (cfg.width ?? 800) * scaleFactor
     const h = (cfg.height ?? 600) * scaleFactor
     // GetScreenSize 等价内联：SM_CXSCREEN=0 / SM_CYSCREEN=1
     const [sw, sh] = [GetSystemMetrics(0), GetSystemMetrics(1)]
     const x = cfg.x === undefined ? ((sw - w) / 2) | 0
-      : cfg.x === gui.CreatePos.USEDEFAULT ? gui.CreatePos.USEDEFAULT
+      : cfg.x === CreatePos.USEDEFAULT ? CreatePos.USEDEFAULT
       : cfg.x * scaleFactor
     const y = cfg.y === undefined ? ((sh - h) / 2) | 0
-      : cfg.y === gui.CreatePos.USEDEFAULT ? gui.CreatePos.USEDEFAULT
+      : cfg.y === CreatePos.USEDEFAULT ? CreatePos.USEDEFAULT
       : cfg.y * scaleFactor
     const hwin = gui.CreateWindow(className, cfg.text || '', ws, x, y, w, h, null, null)
     if (!hwin) throw new Error('CreateWindow failed')

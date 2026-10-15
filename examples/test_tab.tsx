@@ -2,10 +2,11 @@ import '../lib/polyfill.js'
 import * as gui from 'gui'
 import { useState } from 'react'
 import { render, Button, Tab } from '../lib/react-qw/index.js'
+import { WindowStyle, WmMsg } from '../constants'
 
 gui.RegisterClass('TabDemo', (hwnd, msg, wParam, lParam) => {
   if (!hwnd) return gui.DefWindowProc(hwnd, msg, wParam, lParam)
-  if (msg === gui.WmMsg.DESTROY) {
+  if (msg === WmMsg.DESTROY) {
     gui.PostQuitMessage(0)
     return 0
   }
@@ -17,7 +18,7 @@ function App() {
 
   return (
     <w type="STATIC"
-      ws={gui.WindowStyle.VISIBLE}
+      ws={WindowStyle.VISIBLE}
       style={{ flexDirection: 'column', width: 600, height: 400, padding: 10 }}
     >
       <Tab
@@ -26,7 +27,7 @@ function App() {
             title: 'Counter',
             content: (
               <w type="STATIC" 
-              ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN} 
+              ws={WindowStyle.VISIBLE | WindowStyle.CLIPCHILDREN} 
                style={{ flexDirection: 'column', gap: 10, padding: 10, width: 580, height: 300 }}>
                 <Button onClick={() => setTabIndex(1)}>Go to Tab 2</Button>
               </w>
@@ -36,7 +37,7 @@ function App() {
             title: 'Buttons',
             content: (
               <w type="STATIC"
-              ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN} 
+              ws={WindowStyle.VISIBLE | WindowStyle.CLIPCHILDREN} 
                style={{ flexDirection: 'row', gap: 10, padding: 10, width: 580, height: 300, alignItems: 'stretch' }}>
                 <Button onClick={() => setTabIndex(2)}>Go to Tab 3</Button>
                 <Button onClick={() => setTabIndex(0)} style={{ width: 120 }}>Back</Button>
@@ -47,7 +48,7 @@ function App() {
             title: 'Final',
             content: (
               <w type="STATIC"
-              ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN} 
+              ws={WindowStyle.VISIBLE | WindowStyle.CLIPCHILDREN} 
               style={{ flexDirection: 'column', gap: 10, padding: 10, width: 580, height: 300 }}>
                 <Button onClick={() => setTabIndex(0)}>Back to Tab 1</Button>
                 <Button onClick={() => setTabIndex(1)}>Back to Tab 2</Button>
@@ -65,7 +66,7 @@ function App() {
 
 const hwnd = gui.CreateWindow(
   'TabDemo', 'Tab Demo',
-  gui.WindowStyle.OVERLAPPEDWINDOW,
+  WindowStyle.OVERLAPPEDWINDOW,
   100, 100, 640, 480, null, null
 )
 

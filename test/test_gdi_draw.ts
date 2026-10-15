@@ -1,5 +1,4 @@
 import { Tester } from './test_helper.js'
-import * as gui from 'gui'
 import { NULL, PtrArrayBuffer, type Ptr } from '../lib/ffi/ctype.js'
 import { FrameRect, GetDC, InvertRect, ReleaseDC } from '../lib/windows/user32.js'
 import {
@@ -14,6 +13,7 @@ import {
 } from '../lib/windows/gdi32.js'
 import { AlphaBlend, TransparentBlt } from '../lib/windows/msimg32.js'
 import { BITMAPINFOHEADER, POINT, SIZE, TEXTMETRICW } from '../lib/windows/structs.js'
+import { ArcDirection, BackgroundMode, HatchStyle, PenStyle, PolyFillMode, RasterMode, RasterOp, StockObject, StretchBltMode, TextAlign, TextOutOptions } from '../constants'
 
 // 像素比较统一用 COLORREF 形（0x00BBGGRR）—— 与画图入参同形，读回直接对比。
 const RED = 0x000000ff
@@ -59,7 +59,7 @@ export const suite = {
             return (pxU8[i]! << 16) | (pxU8[i + 1]! << 8) | pxU8[i + 2]!   // B,G,R → COLORREF
         }
         const clearWhite = (): void => {
-            PatBlt(mem, 0, 0, W, H, gui.RasterOp.WHITENESS)   // 与画刷无关的整白
+            PatBlt(mem, 0, 0, W, H, RasterOp.WHITENESS)   // 与画刷无关的整白
             readPx()
         }
         clearWhite()
@@ -68,10 +68,10 @@ export const suite = {
 
         t.section('state: return-previous semantics')
         t.check('fresh DC default bkMode = OPAQUE',
-            gui.BackgroundMode.OPAQUE, SetBkMode(mem, gui.BackgroundMode.OPAQUE))
-        t.check('SetBkMode returns previous', gui.BackgroundMode.OPAQUE,
-            SetBkMode(mem, gui.BackgroundMode.TRANSPARENT))
-        SetBkMode(mem, gui.BackgroundMode.OPAQUE)
+            BackgroundMode.OPAQUE, SetBkMode(mem, BackgroundMode.OPAQUE))
+        t.check('SetBkMode returns previous', BackgroundMode.OPAQUE,
+            SetBkMode(mem, BackgroundMode.TRANSPARENT))
+        SetBkMode(mem, BackgroundMode.OPAQUE)
         SetTextColor(mem, RED)                                    // 返回默认色（不假设）
         t.check('SetTextColor returns previous', RED, SetTextColor(mem, BLUE))
         SetTextColor(mem, 0)
@@ -82,7 +82,7 @@ export const suite = {
         // 类型专用块（只过 tsc、不执行）
         const typeOnly: unknown = () => {
             // @ts-expect-error 跨枚举 nominal：BackgroundMode 成员进不了 PenStyle 位
-            CreatePen(gui.BackgroundMode.TRANSPARENT, 1, 0)
+            CreatePen(BackgroundMode.TRANSPARENT, 1, 0)
             // @ts-expect-error '<HDC>ptr!' 禁空位不收 NULL
             Rectangle(NULL, 0, 0, 1, 1)
             // @ts-expect-error encoder 数组位不收裸对象（单对象对 C 是越界基址）
@@ -92,39 +92,39 @@ export const suite = {
             // @ts-expect-error <WCHAR>ptr 文本位收 string / NULL，不收裸数字
             TextOut(0 as Ptr<'HDC'>, 0, 0, 123, 1)
             // @ts-expect-error 跨枚举 nominal：PenStyle 成员进不了 StockObject 位
-            GetStockObject(gui.PenStyle.SOLID)
+            GetStockObject(PenStyle.SOLID)
             // @ts-expect-error 跨枚举 nominal：HatchStyle 成员进不了 PolyFillMode 位
-            SetPolyFillMode(0 as Ptr<'HDC'>, gui.HatchStyle.CROSS)
+            SetPolyFillMode(0 as Ptr<'HDC'>, HatchStyle.CROSS)
             // @ts-expect-error u32@RasterOp 标注拦枚举外光栅码（字面量不匹配成员值）
             PatBlt(0 as Ptr<'HDC'>, 0, 0, 1, 1, 0x123456)
             // @ts-expect-error '<SIZE>ptr!' 出参位不收 NULL
             GetTextExtentPoint32(0 as Ptr<'HDC'>, 'x', 1, NULL)
             // @ts-expect-error 跨枚举 nominal：StretchBltMode 成员进不了 ArcDirection 位
-            SetArcDirection(0 as Ptr<'HDC'>, gui.StretchBltMode.HALFTONE)
+            SetArcDirection(0 as Ptr<'HDC'>, StretchBltMode.HALFTONE)
         }
         t.checkTrue('type-only block wired', typeof typeOnly === 'function')
 
         t.section('SaveDC/RestoreDC: state stack rollback')
         // 先定基态（断言不依赖前面 section 的收尾值）
         SetTextColor(mem, 0)
-        SetBkMode(mem, gui.BackgroundMode.OPAQUE)
+        SetBkMode(mem, BackgroundMode.OPAQUE)
         SetBkColor(mem, WHITE)
         const saved = SaveDC(mem)
         t.checkTrue(`SaveDC state id ≠ 0 (${saved})`, saved !== 0)
         // 打乱：三项绘图状态 + 换一支笔
         SetTextColor(mem, RED)
-        SetBkMode(mem, gui.BackgroundMode.TRANSPARENT)
+        SetBkMode(mem, BackgroundMode.TRANSPARENT)
         SetBkColor(mem, BLUE)
-        const junkPen = CreatePen(gui.PenStyle.DASH, 1, GREEN)
+        const junkPen = CreatePen(PenStyle.DASH, 1, GREEN)
         SelectObject(mem, junkPen)
         t.checkTrue('RestoreDC ok', RestoreDC(mem, saved) !== 0)
         DeleteObject(junkPen)                    // 恢复后已卸下，可安全删
         // 逐项回滚断言：各 Set 返回的就是回滚后的当前值
         t.check('text color rolled back', 0, SetTextColor(mem, RED))
         SetTextColor(mem, 0)
-        t.check('bkMode rolled back', gui.BackgroundMode.OPAQUE,
-            SetBkMode(mem, gui.BackgroundMode.TRANSPARENT))
-        SetBkMode(mem, gui.BackgroundMode.OPAQUE)
+        t.check('bkMode rolled back', BackgroundMode.OPAQUE,
+            SetBkMode(mem, BackgroundMode.TRANSPARENT))
+        SetBkMode(mem, BackgroundMode.OPAQUE)
         t.check('bkColor rolled back', WHITE, SetBkColor(mem, RED))
         SetBkColor(mem, WHITE)
 
@@ -143,7 +143,7 @@ export const suite = {
 
         t.section('Polyline: encoder array position + NULL passthrough')
         clearWhite()
-        const pen = CreatePen(gui.PenStyle.SOLID, 1, GREEN)
+        const pen = CreatePen(PenStyle.SOLID, 1, GREEN)
         t.checkTrue('pen created', !!pen)
         const oldPen = SelectObject(mem, pen)
         t.checkTrue('Polyline success',
@@ -179,10 +179,10 @@ export const suite = {
         DeleteObject(pen)
 
         t.section('SetROP2: R2_XORPEN reversible')
-        PatBlt(mem, 0, 0, W, H, gui.RasterOp.BLACKNESS)     // 黑底：黑^绿=绿，绿^绿=黑
-        t.check('default raster mode = R2_COPYPEN', gui.RasterMode.R2_COPYPEN,
-            SetROP2(mem, gui.RasterMode.R2_XORPEN))         // 返回旧值 = 默认，同时设为 XOR
-        const xorPen = CreatePen(gui.PenStyle.SOLID, 1, GREEN)
+        PatBlt(mem, 0, 0, W, H, RasterOp.BLACKNESS)     // 黑底：黑^绿=绿，绿^绿=黑
+        t.check('default raster mode = R2_COPYPEN', RasterMode.R2_COPYPEN,
+            SetROP2(mem, RasterMode.R2_XORPEN))         // 返回旧值 = 默认，同时设为 XOR
+        const xorPen = CreatePen(PenStyle.SOLID, 1, GREEN)
         const xorOld = SelectObject(mem, xorPen)
         MoveToEx(mem, 10, 200, NULL)
         LineTo(mem, 100, 200)
@@ -194,7 +194,7 @@ export const suite = {
         t.check('second pass cancels back to black', BLACK, px(50, 200))
         SelectObject(mem, xorOld)
         DeleteObject(xorPen)
-        SetROP2(mem, gui.RasterMode.R2_COPYPEN)           // 恢复
+        SetROP2(mem, RasterMode.R2_COPYPEN)           // 恢复
 
         t.section('Polygon: fill + outline (auto-close)')
         clearWhite()
@@ -228,7 +228,7 @@ export const suite = {
         // 圆 (100,100)-(200,200) 心 (150,150) r=50；起 12 点 (150,100) → 终 9 点 (100,150)：
         // GDI 默认逆时针 12→11→10→9 = 左上 90° 弧（SetArcDirection 可改，见 MSDN Arc）
         clearWhite()
-        const arcPen = CreatePen(gui.PenStyle.SOLID, 1, RED)
+        const arcPen = CreatePen(PenStyle.SOLID, 1, RED)
         const arcOldPen = SelectObject(mem, arcPen)
         Arc(mem, 100, 100, 200, 200, 150, 100, 100, 150)
         readPx()
@@ -272,15 +272,15 @@ export const suite = {
         clearWhite()
         const dirBrush = CreateSolidBrush(RED)
         const dirOldB = SelectObject(mem, dirBrush)
-        t.check('default arc direction = counterclockwise', gui.ArcDirection.COUNTERCLOCKWISE,
+        t.check('default arc direction = counterclockwise', ArcDirection.COUNTERCLOCKWISE,
             GetArcDirection(mem))
-        t.check('SetArcDirection returns previous', gui.ArcDirection.COUNTERCLOCKWISE,
-            SetArcDirection(mem, gui.ArcDirection.CLOCKWISE))
+        t.check('SetArcDirection returns previous', ArcDirection.COUNTERCLOCKWISE,
+            SetArcDirection(mem, ArcDirection.CLOCKWISE))
         Pie(mem, 100, 100, 200, 200, 150, 100, 100, 150)          // 起 12 点终 9 点：顺时针 → 右下 270°
         readPx()
         t.check('clockwise sweep fills opposite side', RED, px(180, 180))
         t.check('clockwise sweep skips upper-left', WHITE, px(118, 128))
-        SetArcDirection(mem, gui.ArcDirection.COUNTERCLOCKWISE)    // 恢复默认
+        SetArcDirection(mem, ArcDirection.COUNTERCLOCKWISE)    // 恢复默认
         SelectObject(mem, dirOldB)
         DeleteObject(dirBrush)
 
@@ -293,8 +293,8 @@ export const suite = {
             V.push({ x: Math.round(150 + 55 * Math.cos(a)), y: Math.round(150 + 55 * Math.sin(a)) })
         }
         const star = [V[0]!, V[2]!, V[4]!, V[1]!, V[3]!]
-        t.check('default fill mode = ALTERNATE', gui.PolyFillMode.ALTERNATE,
-            SetPolyFillMode(mem, gui.PolyFillMode.ALTERNATE))
+        t.check('default fill mode = ALTERNATE', PolyFillMode.ALTERNATE,
+            SetPolyFillMode(mem, PolyFillMode.ALTERNATE))
         const starBrush = CreateSolidBrush(RED)
         const starOldB = SelectObject(mem, starBrush)
         Polygon(mem, star, 5)
@@ -307,19 +307,19 @@ export const suite = {
         }
         t.checkTrue(`ALTERNATE: star drawn (${starRed}px)`, starRed > 200)
         t.check('ALTERNATE: center hollow (even-odd)', WHITE, px(150, 150))
-        SetPolyFillMode(mem, gui.PolyFillMode.WINDING)
+        SetPolyFillMode(mem, PolyFillMode.WINDING)
         clearWhite()
         Polygon(mem, star, 5)
         readPx()
         t.check('WINDING: center filled (nonzero)', RED, px(150, 150))
         SelectObject(mem, starOldB)
         DeleteObject(starBrush)
-        SetPolyFillMode(mem, gui.PolyFillMode.ALTERNATE)   // 恢复默认
+        SetPolyFillMode(mem, PolyFillMode.ALTERNATE)   // 恢复默认
 
         t.section('GetStockObject: stock objects, outline-only shape')
         clearWhite()
-        const hollow = GetStockObject(gui.StockObject.NULL_BRUSH)
-        const stkPen = GetStockObject(gui.StockObject.BLACK_PEN)
+        const hollow = GetStockObject(StockObject.NULL_BRUSH)
+        const stkPen = GetStockObject(StockObject.BLACK_PEN)
         t.checkTrue(`stock handles non-zero (0x${hollow.toString(16)}, 0x${stkPen.toString(16)})`,
             hollow !== 0 && stkPen !== 0)
         const stockOldBrush = SelectObject(mem, hollow)
@@ -347,8 +347,8 @@ export const suite = {
 
         t.section('CreateHatchBrush: textured fill')
         clearWhite()
-        SetBkMode(mem, gui.BackgroundMode.TRANSPARENT)      // 间隙透底 = 白
-        const hatch = CreateHatchBrush(gui.HatchStyle.HORIZONTAL, RED)
+        SetBkMode(mem, BackgroundMode.TRANSPARENT)      // 间隙透底 = 白
+        const hatch = CreateHatchBrush(HatchStyle.HORIZONTAL, RED)
         t.checkTrue('hatch brush created', hatch !== 0)
         const hatchOldB = SelectObject(mem, hatch)
         Rectangle(mem, 20, 20, 120, 60)
@@ -369,7 +369,7 @@ export const suite = {
         t.check('no other colors in hatch', 0, hOther)
         SelectObject(mem, hatchOldB)
         DeleteObject(hatch)
-        SetBkMode(mem, gui.BackgroundMode.OPAQUE)
+        SetBkMode(mem, BackgroundMode.OPAQUE)
 
         t.section('FrameRect/InvertRect: border and invert (user32)')
         clearWhite()
@@ -401,17 +401,17 @@ export const suite = {
         const stOldBmp = SelectObject(stTmp, stBmp)
         const stFill = CreateSolidBrush(RED)
         SelectObject(stTmp, stFill)
-        PatBlt(stTmp, 0, 0, 4, 4, gui.RasterOp.PATCOPY)              // 源 4×4 全红
+        PatBlt(stTmp, 0, 0, 4, 4, RasterOp.PATCOPY)              // 源 4×4 全红
         t.checkTrue('StretchBlt ok',
-            StretchBlt(mem, 10, 10, 40, 40, stTmp, 0, 0, 4, 4, gui.RasterOp.SRCCOPY) !== 0)
+            StretchBlt(mem, 10, 10, 40, 40, stTmp, 0, 0, 4, 4, RasterOp.SRCCOPY) !== 0)
         readPx()
         t.check('scaled center red', RED, px(30, 30))
         t.check('scaled near-origin red', RED, px(11, 11))
         t.check('outside target untouched', WHITE, px(60, 30))
         const stMode0 = GetStretchBltMode(mem)
         t.check('SetStretchBltMode returns current', stMode0,
-            SetStretchBltMode(mem, gui.StretchBltMode.HALFTONE))
-        t.check('GetStretchBltMode = HALFTONE', gui.StretchBltMode.HALFTONE, GetStretchBltMode(mem))
+            SetStretchBltMode(mem, StretchBltMode.HALFTONE))
+        t.check('GetStretchBltMode = HALFTONE', StretchBltMode.HALFTONE, GetStretchBltMode(mem))
         SelectObject(stTmp, stOldBmp)
         DeleteObject(stFill)
         DeleteObject(stBmp)
@@ -428,11 +428,11 @@ export const suite = {
         const pkOldBmp = SelectObject(pkTmp, pkBmp)
         const pkRed = CreateSolidBrush(RED)
         SelectObject(pkTmp, pkRed)
-        PatBlt(pkTmp, 0, 0, 4, 4, gui.RasterOp.PATCOPY)              // 红底
+        PatBlt(pkTmp, 0, 0, 4, 4, RasterOp.PATCOPY)              // 红底
         const pkWhite = CreateSolidBrush(WHITE)
         SelectObject(pkTmp, pkWhite)
-        PatBlt(pkTmp, 2, 0, 2, 2, gui.RasterOp.PATCOPY)              // 挖两白角 = 2×2 棋盘
-        PatBlt(pkTmp, 0, 2, 2, 2, gui.RasterOp.PATCOPY)
+        PatBlt(pkTmp, 2, 0, 2, 2, RasterOp.PATCOPY)              // 挖两白角 = 2×2 棋盘
+        PatBlt(pkTmp, 0, 2, 2, 2, RasterOp.PATCOPY)
         SelectObject(pkTmp, pkOldBmp)                                // 位图退出选入状态
         const pkPat = CreatePatternBrush(pkBmp)
         t.checkTrue('pattern brush created', pkPat !== 0)
@@ -477,7 +477,7 @@ export const suite = {
         clearWhite()
         t.checkTrue('StretchDIBits ok',
             StretchDIBits(mem, 20, 20, 40, 40, 0, 0, 4, 4, dibBits, dibBmi, 0,
-                gui.RasterOp.SRCCOPY) === 4)
+                RasterOp.SRCCOPY) === 4)
         readPx()
         t.check('stretched top half red', RED, px(40, 30))
         t.check('stretched bottom half blue', BLUE, px(40, 50))
@@ -491,7 +491,7 @@ export const suite = {
         const plgOldB = SelectObject(plgTmp, plgBmp)
         const plgRed = CreateSolidBrush(RED)
         SelectObject(plgTmp, plgRed)
-        PatBlt(plgTmp, 0, 0, 40, 40, gui.RasterOp.PATCOPY)      // 源 40×40 全红
+        PatBlt(plgTmp, 0, 0, 40, 40, RasterOp.PATCOPY)      // 源 40×40 全红
         // 三点 TL(40,60) TR(160,60) BL(70,160) → 方向 s(120,0)+t(30,100)，中心 (115,110)
         t.checkTrue('PlgBlt ok',
             PlgBlt(mem, [{ x: 40, y: 60 }, { x: 160, y: 60 }, { x: 70, y: 160 }],
@@ -512,7 +512,7 @@ export const suite = {
         const mkOldB = SelectObject(mkTmp, mkBmp)
         const mkRed = CreateSolidBrush(RED)
         SelectObject(mkTmp, mkRed)
-        PatBlt(mkTmp, 0, 0, 4, 4, gui.RasterOp.PATCOPY)         // 源 4×4 全红
+        PatBlt(mkTmp, 0, 0, 4, 4, RasterOp.PATCOPY)         // 源 4×4 全红
         // 1bpp 掩码 4×4：行按 word(2B) 对齐（CreateBitmap 惯例，非 DIB 的 4B）——
         // 行 0/2 = 0xFF（白）、行 1/3 = 0x00（黑）
         const mkBits = new PtrArrayBuffer(8)
@@ -521,9 +521,9 @@ export const suite = {
         mkU8[4] = 0xFF
         const mask = CreateBitmap(4, 4, 1, 1, mkBits)
         t.checkTrue('CreateBitmap(1bpp) ok', mask !== 0)
-        PatBlt(mem, 30, 30, 4, 4, gui.RasterOp.BLACKNESS)       // 目标底黑 → back 白可辨
+        PatBlt(mem, 30, 30, 4, 4, RasterOp.BLACKNESS)       // 目标底黑 → back 白可辨
         // MAKEROP4(fore=SRCCOPY 取源, back=WHITENESS 画白)：back 码在 bit31..24、fore 在 bit23..16
-        const rop4 = (((gui.RasterOp.WHITENESS << 8) & 0xFF000000) | gui.RasterOp.SRCCOPY) >>> 0
+        const rop4 = (((RasterOp.WHITENESS << 8) & 0xFF000000) | RasterOp.SRCCOPY) >>> 0
         t.checkTrue('MaskBlt ok',
             MaskBlt(mem, 30, 30, 4, 4, mkTmp, 0, 0, mask, 0, 0, rop4) !== 0)
         readPx()
@@ -545,10 +545,10 @@ export const suite = {
         const trOldB = SelectObject(trTmp, trBmp)
         const trRed = CreateSolidBrush(RED)
         SelectObject(trTmp, trRed)
-        PatBlt(trTmp, 0, 0, 20, 16, gui.RasterOp.PATCOPY)       // 左半红
+        PatBlt(trTmp, 0, 0, 20, 16, RasterOp.PATCOPY)       // 左半红
         const trBlue = CreateSolidBrush(BLUE)
         SelectObject(trTmp, trBlue)
-        PatBlt(trTmp, 20, 0, 20, 16, gui.RasterOp.PATCOPY)      // 右半蓝 = 键色
+        PatBlt(trTmp, 20, 0, 20, 16, RasterOp.PATCOPY)      // 右半蓝 = 键色
         t.checkTrue('TransparentBlt ok',
             TransparentBlt(mem, 20, 20, 40, 16, trTmp, 0, 0, 40, 16, BLUE) !== 0)
         readPx()
@@ -570,7 +570,7 @@ export const suite = {
         const abOldB = SelectObject(abTmp, abBmp)
         const abGreen = CreateSolidBrush(GREEN)
         SelectObject(abTmp, abGreen)
-        PatBlt(abTmp, 0, 0, 40, 16, gui.RasterOp.PATCOPY)          // 源 = 纯绿（不透明）
+        PatBlt(abTmp, 0, 0, 40, 16, RasterOp.PATCOPY)          // 源 = 纯绿（不透明）
         // 完全覆盖：SourceConstantAlpha=255、无调制（BlendFlags=0）、BlendOp=AC_SRC_OVER(0)
         t.checkTrue('AlphaBlend full alpha ok',
             AlphaBlend(mem, 20, 20, 40, 16, abTmp, 0, 0, 40, 16,
@@ -604,7 +604,7 @@ export const suite = {
         t.section('TextOut: transparent background + text color')
         clearWhite()
         SetBkColor(mem, BLUE)        // 衬底设蓝：若 TRANSPARENT 未生效，字底必现蓝块
-        SetBkMode(mem, gui.BackgroundMode.TRANSPARENT)
+        SetBkMode(mem, BackgroundMode.TRANSPARENT)
         SetTextColor(mem, RED)
         t.checkTrue('TextOut success', TextOut(mem, 20, 100, 'Hello GDI', 9) !== 0)
         readPx()
@@ -620,7 +620,7 @@ export const suite = {
         }
         t.checkTrue(`glyph pixels rendered (red=${redPx})`, redPx > 20)
         t.checkTrue(`transparent bg: zero blue backdrop (blue=${bluePx})`, bluePx === 0)
-        SetBkMode(mem, gui.BackgroundMode.OPAQUE)
+        SetBkMode(mem, BackgroundMode.OPAQUE)
         SetBkColor(mem, WHITE)
         SetTextColor(mem, 0)
 
@@ -648,7 +648,7 @@ export const suite = {
         // (c) SetTextAlign 右对齐：字形全部落在锚点左侧
         SetTextColor(mem, RED)
         t.check('default align = 0 (LEFT|TOP|NOUPDATECP)', 0,
-            SetTextAlign(mem, gui.TextAlign.TA_RIGHT))
+            SetTextAlign(mem, TextAlign.TA_RIGHT))
         TextOut(mem, 200, 100, 'Right', 5)
         readPx()
         let rRight = 0
@@ -664,14 +664,14 @@ export const suite = {
         }
         t.checkTrue(`right-aligned glyphs left of anchor (red=${rRight})`, rRight > 10)
         t.check('no glyphs right of anchor', 0, rWrong)
-        SetTextAlign(mem, gui.TextAlign.TA_LEFT)           // 恢复 0
+        SetTextAlign(mem, TextAlign.TA_LEFT)           // 恢复 0
         SetTextColor(mem, 0)
 
         // (d) ExtTextOut ETO_OPAQUE 衬底（lprc 对象形直传 = encoder 入参位）
         SetTextColor(mem, RED)
         SetBkColor(mem, BLUE)
         t.checkTrue('ExtTextOut ETO_OPAQUE ok',
-            ExtTextOut(mem, 20, 100, gui.TextOutOptions.ETO_OPAQUE,
+            ExtTextOut(mem, 20, 100, TextOutOptions.ETO_OPAQUE,
                 { left: 18, top: 98, right: 100, bottom: 118 }, 'Opaque', 6, NULL) !== 0)
         readPx()
         let oBlue = 0
