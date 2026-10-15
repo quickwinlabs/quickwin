@@ -106,7 +106,7 @@ jobs:
               exe: qwin.exe, nowasm_exe: qwin-nowasm.exe }
           - { id: xp,   cc: i686,   deps: cc32, nowasm: cc32-nowasm,
               snap_key: xp-ready-v3,  snap_file: xp_ready.qcow2,   artifact: qwin-x86,
-              exe: qwin-x86.exe, nowasm_exe: qwin-nowasm-x86.exe }
+              exe: qwin-x86.exe, nowasm_exe: qwin-nowasm-x86.exe, execd: execd-x86 }
           # win11 暂时关闭：x64 ABI 已由 win7 覆盖，win11 仅多覆盖 NT>=10 分支与
           # 新系统 DLL，但 VM（UEFI+TPM+SecureBoot）最重且 flaky。需要时取消注释即可。
           # - { id: win11, cc: x86_64, deps: cc64, nowasm: cc64-nowasm,
@@ -198,6 +198,20 @@ jobs:
           ls -lh _build/execd.exe _build/qwin*.exe
           file _build/execd.exe
 
+      # 仅 xp job 上传（32 位底座 → XP 可跑），进 GitHub release；win7 的 64 位
+      # execd 只服务本 job 测试段，不发布
+      - name: Prepare execd artifact
+        if: matrix.execd
+        run: cp _build/execd.exe _build/${{ matrix.execd }}.exe
+
+      - name: Upload execd artifact
+        if: matrix.execd
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.execd }}
+          path: _build/${{ matrix.execd }}.exe
+          if-no-files-found: error
+
       - name: Start ${{ matrix.id }} VM (resident)
         run: |
           cd docker
@@ -257,6 +271,13 @@ jobs:
           path: _build
           merge-multiple: true
 
+      - name: Download execd artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: execd-*
+          path: _build
+          merge-multiple: true
+
       - name: Verify exes
         run: |
           ls -lh _build/qwin*.exe
@@ -288,10 +309,11 @@ jobs:
             _build/qwin-x86.exe \
             _build/qwin-nowasm.exe \
             _build/qwin-nowasm-x86.exe \
+            _build/execd-x86.exe \
             _build/main.js \
             "dist/quickwin/quickwin-${TAG_VER}.tgz" \
             --title "$TAG" \
-            --notes "QuickWin $TAG — qwin.exe (x64), qwin-x86.exe (x86), qwin-nowasm.exe, qwin-nowasm-x86.exe, main.js, npm tarball"
+            --notes "QuickWin $TAG — qwin.exe (x64), qwin-x86.exe (x86), qwin-nowasm.exe, qwin-nowasm-x86.exe, execd-x86.exe (x86), main.js, npm tarball"
 
       - name: Verify npm auth
         run: npm whoami --registry https://registry.npmjs.org/
