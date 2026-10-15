@@ -3,6 +3,7 @@ import * as gui from 'gui'
 import { NULL, PtrArrayBuffer } from '../../ffi/ctype.js'
 import { TTTOOLINFOW } from '../../windows/structs.js'
 import { SetWindowPos } from '../../windows/user32.js'
+import { SetWindowPosFlag, SetWindowPosHwnd, TooltipStyle, TtMsg, TtToolFlag, WindowStyle } from '../../../constants'
 
 export interface TooltipProps {
   text: string
@@ -16,7 +17,7 @@ function buildToolInfo(hTarget: gui.HWND, text: string): PtrArrayBuffer<string> 
   const buf = new PtrArrayBuffer(size + textLen)
   TTTOOLINFOW.encode({
     cbSize: size,
-    uFlags: gui.TtToolFlag.SUBCLASS | gui.TtToolFlag.IDISHWND,
+    uFlags: TtToolFlag.SUBCLASS | TtToolFlag.IDISHWND,
     hwnd: hTarget,
     uId: hTarget,
     rect: [0, 0, 0, 0],
@@ -42,25 +43,25 @@ function Tooltip({ text, children, balloon }: TooltipProps) {
 
     const hTT = gui.CreateWindow(
       'tooltips_class32', '',
-      gui.WindowStyle.POPUP | gui.TooltipStyle.ALWAYSTIP | gui.TooltipStyle.NOPREFIX
-        | (balloon ? gui.TooltipStyle.BALLOON : 0),
+      WindowStyle.POPUP | TooltipStyle.ALWAYSTIP | TooltipStyle.NOPREFIX
+        | (balloon ? TooltipStyle.BALLOON : 0),
       0, 0, 0, 0,
       hTarget, null
     )
     if (!hTT) return
     hTTRef.current = hTT
 
-    SetWindowPos(hTT, gui.SetWindowPosHwnd.TOPMOST, 0, 0, 0, 0, gui.SetWindowPosFlag.SWP_NOMOVE | gui.SetWindowPosFlag.SWP_NOSIZE | gui.SetWindowPosFlag.SWP_NOACTIVATE)
+    SetWindowPos(hTT, SetWindowPosHwnd.TOPMOST, 0, 0, 0, 0, SetWindowPosFlag.SWP_NOMOVE | SetWindowPosFlag.SWP_NOSIZE | SetWindowPosFlag.SWP_NOACTIVATE)
 
     const ti = buildToolInfo(hTarget, text)
-    gui.SendMessage(hTT, gui.TtMsg.ADDTOOLW, 0, ti.ptr)
-    gui.SendMessage(hTT, gui.TtMsg.SETMAXTIPWIDTH, 0, 400)
-    gui.SendMessage(hTT, gui.TtMsg.ACTIVATE, 1, 0)
+    gui.SendMessage(hTT, TtMsg.ADDTOOLW, 0, ti.ptr)
+    gui.SendMessage(hTT, TtMsg.SETMAXTIPWIDTH, 0, 400)
+    gui.SendMessage(hTT, TtMsg.ACTIVATE, 1, 0)
 
     return () => {
       if (hTT) {
         const ti2 = buildToolInfo(hTarget, text)
-        gui.SendMessage(hTT, gui.TtMsg.DELTOOLW, 0, ti2.ptr)
+        gui.SendMessage(hTT, TtMsg.DELTOOLW, 0, ti2.ptr)
         gui.DestroyWindow(hTT)
       }
       hTTRef.current = null

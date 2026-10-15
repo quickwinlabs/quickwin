@@ -1,10 +1,10 @@
 import * as os from 'os'
-import * as gui from 'gui'
 import { Tester } from './test_helper.js'
 import { struct, union } from '../lib/ffi/struct.js'
 import { bind, } from '../lib/ffi/bind.js'
 import { type MaybePtr, Ptr, PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import type { C_Struct, C_Union } from '../lib/ffi/ctype.js'
+import { MouseKeyFlag, WmMsg } from '../constants'
 
 // 编译期断言工具（仅类型层，运行时无开销）
 type Equal<A, B> = (<G>() => G extends A ? 1 : 2) extends (<G>() => G extends B ? 1 : 2) ? true : false
@@ -769,14 +769,14 @@ export const suite = {
 
             // encode 必填判定：0 ∉ 值域的 @ 字段必填（省略 = 新槽写 0 = 静默违约）；
             // 0 ∈ 值域可省。下面 { key } 行能编译即 msg/hp 可省的断言。
-            EV.encode({ key: gui.MouseKeyFlag.MK_SHIFT })
+            EV.encode({ key: MouseKeyFlag.MK_SHIFT })
             // @ts-expect-error key 必填：省略即编译错（0 ∉ MouseKeyFlag）
             EV.encode({ msg: 0 })
             if (false) {
                 // @ts-expect-error 域外字面量（3 不是任何 MK_ 标志）
                 EV.encode({ key: 3 })
                 // @ts-expect-error 跨枚举误用（WmMsg 成员不是 MouseKeyFlag）
-                EV.encode({ key: gui.WmMsg.CREATE })
+                EV.encode({ key: WmMsg.CREATE })
             }
 
             // 数组糖元素带 @：lower 递归归一（normToken 剥 @）+ 元素值域

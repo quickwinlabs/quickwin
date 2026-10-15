@@ -97,7 +97,7 @@ _build/
   obj/{x64,ia32}-{cross,native}/   # .o .d libquickjs.a
   deps/{x64,ia32}-{cross,native}/  # libiwasm.a libwolfssl.a libbrotli*.a + cmake build/
   version.h                        # 由 package.json 生成
-  gen_const.exe                    # make gen-const 产物（在 VM 里运行以重生成 d.ts）
+  gen_const.exe                    # make gen-const 产物（在 VM 里运行重定向生成仓库根 constants.ts）
   *.exe                            # 最终目标
 ```
 
@@ -211,7 +211,7 @@ qwin.exe [options]                # 无参数时加载 main.js 或内嵌 JS
 
 1. **先展示再提交**：宿主跑 `git diff`，写出拟用 commit message，**用户明确同意后**才 `git add` / `commit` / `push`
 2. **message 依据 diff**：不凭文件名猜；风格对齐 `git log`（如 `feat(docker): ...`、`fix: ...`）
-3. **Windows 常量**：禁止手写数值，必须在 `tools/gen_const.c` 用 `DEC(...)` 定义 → `make gen-const` → 在 VM 跑 `gen_const.exe` → TS 里用 `gui.EnumName.MEMBER`
+3. **Windows 常量**：禁止手写数值，必须在 `tools/gen_const.c` 用 `DEC(...)` 定义 → `make gen-const` → 在 VM 跑 `gen_const.exe` → TS 里 `import { EnumName } from 'quickwin/constants'`（仓库内相对路径）用 `EnumName.MEMBER`
 4. 大文件不直接提交：中文 ISO 放 `docker/iso/`（本地/CI 缓存，不入库）；子模块改动走 `patches/`（见上「XP 兼容 patch」）
 
 ### Windows 常量（gen_const）
@@ -219,7 +219,7 @@ qwin.exe [options]                # 无参数时加载 main.js 或内嵌 JS
 所有 Windows API 常量（窗口样式、消息号、通知码等）必须通过 `tools/gen_const.c` 的 `DEC(TS_NAME, SDK_MACRO)` 宏从 SDK 头文件获取，不得在 TS 代码中手写数值。流程：
 
 1. 在 `tools/gen_const.c` `print_enums()` 添加 `DEC(TS_NAME, SDK_MACRO)` 行
-2. `make gen-const` 交叉编译 `_build/gen_const.exe`，在 Windows/VM 里运行该 exe 重新生成 `quickwin_const.d.ts`
+2. `make gen-const` 交叉编译 `_build/gen_const.exe`，在 Windows/VM 里运行该 exe 重新生成 `constants.ts`（真实 .ts 平铺单文件，tsc/esbuild 均可内联；enum 名全局唯一，改名前先全局搜）
 3. 在 TS 代码中通过 `gui.EnumName.MEMBER` 使用
 
 ## 排错索引

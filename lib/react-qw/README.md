@@ -6,12 +6,13 @@ A React reconciler that renders native Win32 controls (buttons, edits, list view
 
 ```ts
 import { render, Button, Input } from '../lib/react-qw/index.js'
+import { WindowStyle } from '../constants'
 
 gui.RegisterClass('MyApp')
-const hwnd = gui.CreateWindow('MyApp', 'Hello', gui.WindowStyle.OVERLAPPEDWINDOW, 100, 100, 400, 300, null, null)
+const hwnd = gui.CreateWindow('MyApp', 'Hello', WindowStyle.OVERLAPPEDWINDOW, 100, 100, 400, 300, null, null)
 
 render(
-  <w ws={gui.WindowStyle.VISIBLE} style={{flexDirection:'column', gap:4, width:380, height:260}}>
+  <w ws={WindowStyle.VISIBLE} style={{flexDirection:'column', gap:4, width:380, height:260}}>
     <Button onClick={() => alert('clicked')}>Click me</Button>
     <Input placeholder="type something" />
   </w>,
@@ -47,7 +48,7 @@ Config-path windows get DPI scaling, auto `WM_SIZE` → `forceFlexLayout`, and d
 // 组件根元素用 flexGrow: 1 填满窗口
 function MyPanel() {
   return (
-    <w type="STATIC" ws={gui.WindowStyle.VISIBLE}
+    <w type="STATIC" ws={WindowStyle.VISIBLE}
       style={{ flexDirection: 'column', gap: 8, flexGrow: 1 }}>
       <Button>Top</Button>
       <Button>Bottom</Button>
@@ -73,7 +74,7 @@ The only intrinsic element. Maps to a Win32 window of the class specified by `ty
 |------|------|-------------|
 | `type` | `string` | Win32 class name (`BUTTON`, `EDIT`, `STATIC`, `LISTBOX`, etc.) |
 | `text` | `string` | Window text / control label |
-| `ws` | `number` | Window style flags (OR-ed constants like `gui.WindowStyle.VISIBLE`) |
+| `ws` | `number` | Window style flags (OR-ed constants like `WindowStyle.VISIBLE`, imported from `quickwin/constants`) |
 | `style` | `WStyle` | Position/size/flexbox properties |
 | `disabled` | `boolean` | Calls `EnableWindow` |
 | `hidden` | `boolean` | Shows/hides the window |

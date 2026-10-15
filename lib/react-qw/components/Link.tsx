@@ -6,6 +6,7 @@ import type { Ptr } from '../../ffi/ctype.js'
 import { NMLINK } from '../../windows/structs.js'
 import { nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
+import { SysLinkNotifyCode, WindowStyle, WmMsg } from '../../../constants'
 
 export interface LinkProps {
   href?: string
@@ -32,19 +33,19 @@ const Link = forwardRef(function Link(
 
   return (
     <w type="STATIC"
-      ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN}
+      ws={WindowStyle.VISIBLE | WindowStyle.CLIPCHILDREN}
       style={{ ...style, flexDirection: 'column', alignItems: 'stretch' }}
       ref={ref}
       onEvent={(e) => {
-        if (e.msg === gui.WmMsg.NOTIFY) {
+        if (e.msg === WmMsg.NOTIFY) {
           const code = nmCode(e.lParam)
-          if (code === gui.SysLinkNotifyCode.CLICK || code === gui.SysLinkNotifyCode.RETURN) {
+          if (code === SysLinkNotifyCode.CLICK || code === SysLinkNotifyCode.RETURN) {
             onClickRef.current?.(NMLINK.decode(e.lParam as Ptr<'NMLINK'>).item.szUrl)
           }
         }
       }}
     >
-      <w type="SysLink" ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.TABSTOP}
+      <w type="SysLink" ws={WindowStyle.VISIBLE | WindowStyle.TABSTOP}
         text={linkText}
         style={{flexGrow:1}}
         ref={(h: gui.HWND) => { linkRef.current = h }}

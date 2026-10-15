@@ -1,5 +1,4 @@
-﻿/// <reference path="quickwin_const.d.ts" />
-/// <reference path="quickwin_enum_map.d.ts" />
+﻿/// <reference path="enum_map.d.ts" />
 interface ImportMeta {
     url: string
 }
@@ -348,6 +347,12 @@ declare module "os" {
 declare module "sock" {
     type SockHandle = number & { readonly __brand: unique symbol };
     type SockFd = number & { readonly __brand: unique symbol };
+    // 枚举唯一定义在 constants.ts（真实 .ts，tsc/esbuild 均内联）；此处别名仅供签名引用，
+    // 使用方请直接 import { AddrFamily } from 'quickwin/constants'。
+    type AddrFamily = import('./constants').AddrFamily;
+    type SockType = import('./constants').SockType;
+    type Protocol = import('./constants').Protocol;
+    type Shutdown = import('./constants').Shutdown;
 
     function socket(domain?: AddrFamily, type?: SockType, protocol?: Protocol): SockHandle;
     function connect(sock: SockHandle, addr: string, port: number): number;
@@ -374,6 +379,10 @@ declare module "wolfssl" {
     type WOLFSSL = number & { readonly __brand: unique symbol };
     type WOLFSSL_CTX = number & { readonly __brand: unique symbol };
     type WOLFSSL_METHOD = number & { readonly __brand: unique symbol };
+    // 枚举唯一定义在 constants.ts（见 sock 块注释）。
+    type VerifyMode = import('./constants').VerifyMode;
+    type SniType = import('./constants').SniType;
+    type FileType = import('./constants').FileType;
 
     function wolfSSL_library_init(): number;
     function wolfSSL_CTX_new(method: WOLFSSL_METHOD): WOLFSSL_CTX | null;
@@ -433,6 +442,18 @@ declare module "gui" {
     type HFONT = number & { readonly ptrBrand: "HFONT" };
     type HICON = number & { readonly ptrBrand: "HICON" };
     type WNDPROC = number & { readonly ptrBrand: "WNDPROC" };
+    // 枚举唯一定义在 constants.ts（真实 .ts，tsc/esbuild 均内联）；此处别名仅供签名引用，
+    // 使用方请直接 import { WindowStyle } from 'quickwin/constants'。
+    // Gwlp/ImageType 的成员访问（如 Gwlp.WNDPROC）需写 import('./constants').Gwlp.WNDPROC
+    // ——类型别名不建命名空间，无法穿透取成员。
+    type GetWindowCmd = import('./constants').GetWindowCmd;
+    type ShowWindowCmd = import('./constants').ShowWindowCmd;
+    type SetWindowPosHwnd = import('./constants').SetWindowPosHwnd;
+    type Gwlp = import('./constants').Gwlp;
+    type NotifyIconCmd = import('./constants').NotifyIconCmd;
+    type ImageType = import('./constants').ImageType;
+    type IDI = import('./constants').IDI;
+    type ScrollBar = import('./constants').ScrollBar;
 
     function RegisterClass(className: string, wndProc?: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): number;
     function CreateWindow(className: string, title: string, style: number, x: number, y: number, width: number, height: number, parent: HWND | null, menu: HMENU | null): HWND | null;
@@ -450,7 +471,7 @@ declare module "gui" {
     function GetWindowText(hwnd: HWND): string;
     function GetScaleFactor(): number;
     function CreateSystemDpiFont(): HFONT | null;
-    type GwlpReturnType<T extends Gwlp> = T extends Gwlp.WNDPROC ? WNDPROC : number;
+    type GwlpReturnType<T extends Gwlp> = T extends import('./constants').Gwlp.WNDPROC ? WNDPROC : number;
     function GetWindowLongPtr<T extends Gwlp>(hwnd: HWND, nIndex: T): GwlpReturnType<T>;
     function SetWindowLongPtr(hwnd: HWND, nIndex: Gwlp, newLong: number): number;
     function UnsetWindowProc(hwnd: HWND): boolean;
@@ -475,20 +496,21 @@ declare module "gui" {
      * Thin wrapper around LoadImageW. Parameter order matches Win32 LoadImageW: (hinst, name, uType?, cx?, cy?, fuLoad?).
      * hinst: null for system resources/file path, number for module handle;
      * name: when hinst=null, a system icon IDI or .ico file path; when hinst=module handle, a resource ID (number) or resource name (string);
-     * uType: gui.ImageType constant, default IMAGE_ICON (returns HICON), pass BITMAP/CURSOR for number return;
-     * cx/cy: target size (0 for default, use gui.LoadImageFlag.DEFAULTSIZE for system default size);
-     * fuLoad: gui.LoadImageFlag constants. Note: loading system icons (IDI_*, hinst=null) requires gui.LoadImageFlag.SHARED.
-     * Example: gui.LoadImage(null, "app.ico", gui.ImageType.ICON, 32, 32, gui.LoadImageFlag.LOADFROMFILE)
-     *          gui.LoadImage(null, gui.IDI.APPLICATION, gui.ImageType.ICON, 0, 0, gui.LoadImageFlag.SHARED)
+     * uType: ImageType constant, default IMAGE_ICON (returns HICON), pass BITMAP/CURSOR for number return;
+     * cx/cy: target size (0 for default, use LoadImageFlag.DEFAULTSIZE for system default size);
+     * fuLoad: LoadImageFlag constants. Note: loading system icons (IDI_*, hinst=null) requires LoadImageFlag.SHARED.
+     * Example: import { IDI, ImageType, LoadImageFlag } from 'quickwin/constants'
+     *          gui.LoadImage(null, "app.ico", ImageType.ICON, 32, 32, LoadImageFlag.LOADFROMFILE)
+     *          gui.LoadImage(null, IDI.APPLICATION, ImageType.ICON, 0, 0, LoadImageFlag.SHARED)
      */
-    function LoadImage<H extends (import("win").HMODULE) | null, T extends ImageType = ImageType.ICON>(
+    function LoadImage<H extends (import("win").HMODULE) | null, T extends ImageType = import('./constants').ImageType.ICON>(
         hinst: H,
         name: H extends null ? string | IDI : string | number,
         uType?: T,
         cx?: number,
         cy?: number,
         fuLoad?: number
-    ): T extends ImageType.ICON ? HICON | null : number | null;
+    ): T extends import('./constants').ImageType.ICON ? HICON | null : number | null;
     /**
      * Loads the first icon group (RT_GROUP_ICON) from this exe, i.e. the custom icon
      * embedded by rcedit. Works with any resource ID including 0. Returns null if the

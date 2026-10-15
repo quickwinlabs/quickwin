@@ -2,10 +2,11 @@ import '../lib/polyfill.js'
 import * as gui from 'gui'
 import { Suspense, lazy, useState } from 'react'
 import { render } from '../lib/react-qw/index.js'
+import { WindowStyle, WmMsg } from '../constants'
 
 gui.RegisterClass('LazyTest', (hwnd, msg, wParam, lParam) => {
   if (!hwnd) return gui.DefWindowProc(hwnd, msg, wParam, lParam)
-  if (msg === gui.WmMsg.DESTROY) {
+  if (msg === WmMsg.DESTROY) {
     gui.PostQuitMessage(0)
     return 0
   }
@@ -15,7 +16,7 @@ gui.RegisterClass('LazyTest', (hwnd, msg, wParam, lParam) => {
 function SimpleComponent() {
   return (
     <w type="STATIC" text="Hello from lazy component!"
-      ws={gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE}
+      ws={WindowStyle.CHILD | WindowStyle.VISIBLE}
       style={{width:300, height:30}} />
   )
 }
@@ -28,11 +29,11 @@ const LazySimple = lazy(async () => {
 function App() {
   const [show, setShow] = useState(false)
   return (
-    <w type="STATIC" ws={gui.WindowStyle.VISIBLE}
+    <w type="STATIC" ws={WindowStyle.VISIBLE}
       style={{flexDirection:'column', padding:10, gap:10, flexGrow:1}}>
       <w type="BUTTON"
         text={show ? 'Hide Lazy' : 'Show Lazy'}
-        ws={gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE}
+        ws={WindowStyle.CHILD | WindowStyle.VISIBLE}
         style={{width:150, height:30}}
         onEvent={(e: { msg: number; wParam: number; lParam: number }) => {
           if (e.msg === 0x0202) setShow(!show)
@@ -41,7 +42,7 @@ function App() {
       {show && (
         <Suspense fallback={
           <w type="STATIC" text="Loading..."
-            ws={gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE}
+            ws={WindowStyle.CHILD | WindowStyle.VISIBLE}
             style={{width:200, height:30}} />
         }>
           <LazySimple />
@@ -53,7 +54,7 @@ function App() {
 
 const hwnd = gui.CreateWindow(
   'LazyTest', 'React.lazy Test',
-  gui.WindowStyle.OVERLAPPEDWINDOW,
+  WindowStyle.OVERLAPPEDWINDOW,
   200, 200, 400, 300, null, null
 )
 

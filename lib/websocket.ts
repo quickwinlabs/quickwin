@@ -2,6 +2,7 @@ import '../lib/polyfill.js'
 import * as sock from 'sock'
 import * as wolfssl from 'wolfssl'
 import * as os from 'os'
+import { FdEvent, ReturnCode, SniType, VerifyMode, WolfsslErrorCode } from '../constants'
 
 // ── Constants ──
 
@@ -301,17 +302,17 @@ class WebSocketImpl {
         sock.set_on_event(fd, async (event: { lNetworkEvents: number; iErrorCode: number[] }) => {
             if (this._processingHandshake) return
             if (resolved && state === 'open') {
-                if (event.lNetworkEvents & sock.FdEvent.FD_READ) {
+                if (event.lNetworkEvents & FdEvent.FD_READ) {
                     this._onData()
                 }
-                if (event.lNetworkEvents & sock.FdEvent.FD_CLOSE) {
+                if (event.lNetworkEvents & FdEvent.FD_CLOSE) {
                     this._cleanup()
                     this._setState(State.CLOSED)
                 }
                 return
             }
 
-            if (event.lNetworkEvents & sock.FdEvent.FD_CONNECT) {
+            if (event.lNetworkEvents & FdEvent.FD_CONNECT) {
                 const errCode = event.iErrorCode[0]
                 if (errCode !== 0) {
                     doError(new Error('Connection failed: ' + errCode))
@@ -322,9 +323,9 @@ class WebSocketImpl {
                     this._ctx = wolfssl.wolfSSL_CTX_new(method)
                     if (!this._ctx) { doError(new Error('SSL_CTX_new failed')); return }
                     if (this._options.rejectUnauthorized === false) {
-                        wolfssl.wolfSSL_CTX_set_verify(this._ctx, wolfssl.VerifyMode.SSL_VERIFY_NONE)
+                        wolfssl.wolfSSL_CTX_set_verify(this._ctx, VerifyMode.SSL_VERIFY_NONE)
                     } else {
-                        wolfssl.wolfSSL_CTX_set_verify(this._ctx, wolfssl.VerifyMode.SSL_VERIFY_PEER)
+                        wolfssl.wolfSSL_CTX_set_verify(this._ctx, VerifyMode.SSL_VERIFY_PEER)
                         wolfssl.loadTrustedCerts(this._ctx)
                     }
                     this._ssl = wolfssl.wolfSSL_new(this._ctx)
@@ -332,7 +333,7 @@ class WebSocketImpl {
                     wolfssl.wolfSSL_set_fd(this._ssl, sock.get_fd(fd))
                     const sniHost = host
                     if (sniHost) {
-                        wolfssl.wolfSSL_UseSNI(this._ssl, wolfssl.SniType.WOLFSSL_SNI_HOST_NAME, sniHost)
+                        wolfssl.wolfSSL_UseSNI(this._ssl, SniType.WOLFSSL_SNI_HOST_NAME, sniHost)
                         if (this._options.rejectUnauthorized !== false) {
                             wolfssl.wolfSSL_check_domain_name(this._ssl, sniHost)
                         }
@@ -344,17 +345,17 @@ class WebSocketImpl {
                 }
             }
 
-            if ((event.lNetworkEvents & sock.FdEvent.FD_READ) || (event.lNetworkEvents & sock.FdEvent.FD_WRITE)) {
+            if ((event.lNetworkEvents & FdEvent.FD_READ) || (event.lNetworkEvents & FdEvent.FD_WRITE)) {
                 if (state === 'handshake') {
                     if (!this._ssl) { doError(new Error('TLS not initialized')); return }
                     const ret = wolfssl.wolfSSL_connect(this._ssl)
-                    if (ret === wolfssl.ReturnCode.SSL_SUCCESS) {
+                    if (ret === ReturnCode.SSL_SUCCESS) {
                         this._sendRawStr(request)
                         state = 'request'
                     } else {
                         const err = wolfssl.wolfSSL_get_error(this._ssl, ret)
-                        if (err !== wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_READ &&
-                            err !== wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_WRITE) {
+                        if (err !== WolfsslErrorCode.WOLFSSL_ERROR_WANT_READ &&
+                            err !== WolfsslErrorCode.WOLFSSL_ERROR_WANT_WRITE) {
                             doError(new Error('TLS handshake failed: ' + err))
                         }
                     }
@@ -369,9 +370,9 @@ class WebSocketImpl {
                                 data = buf.slice(0, n)
                             } else {
                                 const err = wolfssl.wolfSSL_get_error(this._ssl, n)
-                                if (err === wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_READ ||
-                                    err === wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_WRITE) break
-                                if (n === 0 || err === wolfssl.ErrorCode.WOLFSSL_ERROR_ZERO_RETURN) break
+                                if (err === WolfsslErrorCode.WOLFSSL_ERROR_WANT_READ ||
+                                    err === WolfsslErrorCode.WOLFSSL_ERROR_WANT_WRITE) break
+                                if (n === 0 || err === WolfsslErrorCode.WOLFSSL_ERROR_ZERO_RETURN) break
                                 doError(new Error('TLS read failed: ' + err))
                                 return
                             }
@@ -431,7 +432,7 @@ class WebSocketImpl {
                 }
             }
 
-            if (event.lNetworkEvents & sock.FdEvent.FD_CLOSE) {
+            if (event.lNetworkEvents & FdEvent.FD_CLOSE) {
                 if (state !== 'open') {
                     doError(new Error('Connection closed'))
                 }
@@ -477,9 +478,9 @@ class WebSocketImpl {
                     data = buf.slice(0, n)
                 } else {
                     const err = wolfssl.wolfSSL_get_error(this._ssl, n)
-                    if (err === wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_READ ||
-                        err === wolfssl.ErrorCode.WOLFSSL_ERROR_WANT_WRITE) break
-                    if (n === 0 || err === wolfssl.ErrorCode.WOLFSSL_ERROR_ZERO_RETURN) break
+                    if (err === WolfsslErrorCode.WOLFSSL_ERROR_WANT_READ ||
+                        err === WolfsslErrorCode.WOLFSSL_ERROR_WANT_WRITE) break
+                    if (n === 0 || err === WolfsslErrorCode.WOLFSSL_ERROR_ZERO_RETURN) break
                     this._fireError(new Error('TLS read failed: ' + err))
                     if (this._state !== State.CLOSED) this._setState(State.CLOSED)
                     return

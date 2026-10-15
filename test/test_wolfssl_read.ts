@@ -3,6 +3,7 @@ import * as wolfssl from 'wolfssl'
 import * as os from 'os'
 import * as std from 'std'
 import { Tester } from './test_helper.js'
+import { FdEvent, ReturnCode, SniType, VerifyMode } from '../constants'
 
 const HTTPS_PORT = 18924
 const WANT_READ = 2
@@ -110,7 +111,7 @@ export const suite = {
             sock.set_on_event(s, (event: { lNetworkEvents: number; iErrorCode: number[] }) => {
                 if (done) return
 
-                if (event.lNetworkEvents & sock.FdEvent.FD_CONNECT) {
+                if (event.lNetworkEvents & FdEvent.FD_CONNECT) {
                     if (event.iErrorCode[0] !== 0) {
                         assert('connect error code 0', false)
                         finish()
@@ -120,15 +121,15 @@ export const suite = {
                     const method = wolfssl.wolfTLSv1_2_client_method()
                     ctx = wolfssl.wolfSSL_CTX_new(method)
                     if (!ctx) { assert('CTX_new', false); finish(); return }
-                    wolfssl.wolfSSL_CTX_set_verify(ctx, wolfssl.VerifyMode.SSL_VERIFY_NONE)
+                    wolfssl.wolfSSL_CTX_set_verify(ctx, VerifyMode.SSL_VERIFY_NONE)
                     ssl = wolfssl.wolfSSL_new(ctx)
                     if (!ssl) { assert('SSL_new', false); finish(); return }
                     wolfssl.wolfSSL_set_fd(ssl, sock.get_fd(s))
-                    wolfssl.wolfSSL_UseSNI(ssl, wolfssl.SniType.WOLFSSL_SNI_HOST_NAME, 'localhost')
+                    wolfssl.wolfSSL_UseSNI(ssl, SniType.WOLFSSL_SNI_HOST_NAME, 'localhost')
                     // kick handshake immediately (FD_WRITE may not re-fire)
                     {
                         const ret = wolfssl.wolfSSL_connect(ssl)
-                        if (ret === wolfssl.ReturnCode.SSL_SUCCESS) {
+                        if (ret === ReturnCode.SSL_SUCCESS) {
                             handshakeDone = true
                             sendReq()
                         } else {
@@ -141,12 +142,12 @@ export const suite = {
                     }
                 }
 
-                if ((event.lNetworkEvents & sock.FdEvent.FD_READ) ||
-                    (event.lNetworkEvents & sock.FdEvent.FD_WRITE)) {
+                if ((event.lNetworkEvents & FdEvent.FD_READ) ||
+                    (event.lNetworkEvents & FdEvent.FD_WRITE)) {
                     if (!ssl) return
                     if (!handshakeDone) {
                         const ret = wolfssl.wolfSSL_connect(ssl)
-                        if (ret === wolfssl.ReturnCode.SSL_SUCCESS) {
+                        if (ret === ReturnCode.SSL_SUCCESS) {
                             handshakeDone = true
                             sendReq()
                         } else {
@@ -161,7 +162,7 @@ export const suite = {
                     if (sentRequest) onReadable()
                 }
 
-                if (event.lNetworkEvents & sock.FdEvent.FD_CLOSE) {
+                if (event.lNetworkEvents & FdEvent.FD_CLOSE) {
                     // drain remaining then finish
                     if (ssl && sentRequest && !sawNonNumber) {
                         onReadable()

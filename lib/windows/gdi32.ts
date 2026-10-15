@@ -77,7 +77,7 @@ export const SelectObject = /*@__PURE__*/ b('SelectObject', '<HDC>ptr! <HGDIOBJ>
  *  @param args_5 hdcSrc 源 DC
  *  @param args_6 x1 源起始 x
  *  @param args_7 y1 源起始 y
- *  @param args_8 dwRop gui.RasterOp.SRCCOPY 等互斥单选光栅操作码（标 @ 枚举拦手误值） */
+ *  @param args_8 dwRop RasterOp.SRCCOPY 等互斥单选光栅操作码（标 @ 枚举拦手误值） */
 // hdcDest 非空（!）；hdcSrc 在 PATCOPY 等特定 rop 下 C 允许 NULL，保持可空档。
 export const BitBlt = /*@__PURE__*/ b('BitBlt', '<HDC>ptr! i32 i32 i32 i32 <HDC>ptr i32 i32 u32@RasterOp -> i32')
 /** 取位图像素到 lpvBits（lpbmi 为 BITMAPINFO，32bpp BI_RGB 无颜色表时头部即全部：
@@ -109,7 +109,7 @@ export const DeleteDC = /*@__PURE__*/ b('DeleteDC', '<HDC>ptr! -> i32')
  *  @param args_2 y 左上角 y
  *  @param args_3 w 宽度
  *  @param args_4 h 高度
- *  @param args_5 rop gui.RasterOp.PATCOPY / WHITENESS 等互斥单选光栅操作码 */
+ *  @param args_5 rop RasterOp.PATCOPY / WHITENESS 等互斥单选光栅操作码 */
 export const PatBlt = /*@__PURE__*/ b('PatBlt', '<HDC>ptr! i32 i32 i32 i32 u32@RasterOp -> i32')
 /** 拉伸位图传送（源区 wSrc×hSrc 放/缩到目标 wDest×hDest）
  *  @returns 成功 → 非 0
@@ -123,16 +123,16 @@ export const PatBlt = /*@__PURE__*/ b('PatBlt', '<HDC>ptr! i32 i32 i32 i32 u32@R
  *  @param args_7 ySrc 源区左上 y
  *  @param args_8 wSrc 源区宽
  *  @param args_9 hSrc 源区高
- *  @param args_10 dwRop gui.RasterOp.SRCCOPY 等互斥单选光栅操作码 */
+ *  @param args_10 dwRop RasterOp.SRCCOPY 等互斥单选光栅操作码 */
 export const StretchBlt = /*@__PURE__*/ b('StretchBlt',
     '<HDC>ptr! i32 i32 i32 i32 <HDC>ptr i32 i32 i32 i32 u32@RasterOp -> i32')
 /** 设置拉伸取色模式；放大时各模式像素同为源色，缩小时降采样策略不同
  *  （DELETESCANS 丢行 / HALFTONE 平均取色最保真）
  *  @returns 旧值
  *  @param args_0 hdc 目标 DC
- *  @param args_1 iMode gui.StretchBltMode.ANDSCANS(1) / ORSCANS(2) / DELETESCANS(3) / HALFTONE(4) */
+ *  @param args_1 iMode StretchBltMode.ANDSCANS(1) / ORSCANS(2) / DELETESCANS(3) / HALFTONE(4) */
 export const SetStretchBltMode = /*@__PURE__*/ b('SetStretchBltMode', '<HDC>ptr! i32@StretchBltMode -> i32')
-/** 读拉伸取色模式（值域 = gui.StretchBltMode 成员）；回传
+/** 读拉伸取色模式（值域 = StretchBltMode 成员）；回传
  *  SetStretchBltMode 前需按成员值使用（裸 number 进不了枚举位）
  *  @returns number */
 export const GetStretchBltMode = /*@__PURE__*/ b('GetStretchBltMode', '<HDC>ptr! -> i32')
@@ -202,7 +202,7 @@ export const SetDIBitsToDevice = /*@__PURE__*/ b('SetDIBitsToDevice',
  *  @param args_9 lpvBits 像素缓冲（ArrayBuffer）
  *  @param args_10 lpbmi BITMAPINFO 缓冲（BITMAPINFOHEADER.encode({...}).ptr）
  *  @param args_11 iUsage DIB_RGB_COLORS(0)
- *  @param args_12 rop gui.RasterOp.SRCCOPY 等互斥单选光栅操作码 */
+ *  @param args_12 rop RasterOp.SRCCOPY 等互斥单选光栅操作码 */
 export const StretchDIBits = /*@__PURE__*/ b('StretchDIBits',
     '<HDC>ptr! i32 i32 i32 i32 i32 i32 i32 i32 <BYTE>ptr <BYTE>ptr u32 u32@RasterOp -> i32')
 
@@ -211,13 +211,13 @@ export const StretchDIBits = /*@__PURE__*/ b('StretchDIBits',
 /** 取系统共享对象（笔/刷/字体/调色板）；共享句柄不要 DeleteObject——
  *  SelectObject 选入 hdc 生效（如 NULL_BRUSH 让形状只描边不填充）
  *  @returns 失败 → 0
- *  @param args_0 iObject gui.StockObject.NULL_BRUSH / BLACK_PEN / DEFAULT_GUI_FONT 等 */
+ *  @param args_0 iObject StockObject.NULL_BRUSH / BLACK_PEN / DEFAULT_GUI_FONT 等 */
 export const GetStockObject = /*@__PURE__*/ b('GetStockObject', 'i32@StockObject -> <HGDIOBJ>ptr')
 
 /** 创建网格纹理画刷（线色 = crColor，间隙 = 背景：SetBkMode=TRANSPARENT 透底、OPAQUE
  *  用 SetBkColor）；配对 DeleteObject
  *  @returns 失败 → 0
- *  @param args_0 iHatch gui.HatchStyle.HORIZONTAL（横线）/ VERTICAL / FDIAGONAL /
+ *  @param args_0 iHatch HatchStyle.HORIZONTAL（横线）/ VERTICAL / FDIAGONAL /
  *  BDIAGONAL / CROSS / DIAGCROSS
  *  @param args_1 crColor 纹理线颜色 0x00BBGGRR */
 export const CreateHatchBrush = /*@__PURE__*/ b('CreateHatchBrush', 'i32@HatchStyle u32 -> <HGDIOBJ>ptr')
@@ -230,14 +230,14 @@ export const CreatePatternBrush = /*@__PURE__*/ b('CreatePatternBrush', '<HGDIOB
 
 /** 创建画笔（选入 hdc 生效，SelectObject 选回旧对象后 DeleteObject 配对）
  *  @returns 失败 → 0
- *  @param args_0 iStyle 笔型（gui.PenStyle.SOLID / DASH / NULL 等）
+ *  @param args_0 iStyle 笔型（PenStyle.SOLID / DASH / NULL 等）
  *  @param args_1 cWidth 笔宽（像素；>1 的几何宽设备相关，虚线样式可能被拉伸）
  *  @param args_2 crColor 笔色 0x00BBGGRR */
 export const CreatePen = /*@__PURE__*/ b('CreatePen', 'i32@PenStyle i32 u32 -> <HGDIOBJ>ptr')
 /** 设置文字/阴影背景填充模式
  *  @returns 旧模式（新建 DC 默认 OPAQUE）
  *  @param args_0 hdc 目标 DC
- *  @param args_1 iBkMode gui.BackgroundMode.OPAQUE（衬底填充）/ TRANSPARENT（透明） */
+ *  @param args_1 iBkMode BackgroundMode.OPAQUE（衬底填充）/ TRANSPARENT（透明） */
 export const SetBkMode = /*@__PURE__*/ b('SetBkMode', '<HDC>ptr! i32@BackgroundMode -> i32')
 /** 设置文字颜色
  *  @returns 旧 COLORREF（0x00BBGGRR）
@@ -262,19 +262,19 @@ export const RestoreDC = /*@__PURE__*/ b('RestoreDC', '<HDC>ptr! i32 -> i32')
 /** 设置多边形填充规则
  *  @returns 旧值（新建 DC 默认 ALTERNATE = 奇偶规则）
  *  @param args_0 hdc 目标 DC
- *  @param args_1 iMode gui.PolyFillMode.ALTERNATE（自相交区域交替镂空）/
+ *  @param args_1 iMode PolyFillMode.ALTERNATE（自相交区域交替镂空）/
  *  WINDING（非零环绕，自相交区域整体实心） */
 export const SetPolyFillMode = /*@__PURE__*/ b('SetPolyFillMode', '<HDC>ptr! i32@PolyFillMode -> i32')
 /** 设置前景画笔与目的像素的混合方式（二元光栅模式）；
  *  R2_XORPEN 可逆（同路径画两次抵消原样），适合橡皮筋交互
  *  @returns 旧值（默认 R2_COPYPEN = 直接画）
  *  @param args_0 hdc 目标 DC
- *  @param args_1 iMode gui.RasterMode.R2_COPYPEN / R2_XORPEN / R2_NOT 等（单选，标 @ 枚举） */
+ *  @param args_1 iMode RasterMode.R2_COPYPEN / R2_XORPEN / R2_NOT 等（单选，标 @ 枚举） */
 export const SetROP2 = /*@__PURE__*/ b('SetROP2', '<HDC>ptr! i32@RasterMode -> i32')
 /** 设置弧/弦/扇形的扫过方向
  *  @returns 旧值（新 DC 默认逆时针）
  *  @param args_0 hdc 目标 DC
- *  @param args_1 iDir gui.ArcDirection.COUNTERCLOCKWISE（默认）/ CLOCKWISE */
+ *  @param args_1 iDir ArcDirection.COUNTERCLOCKWISE（默认）/ CLOCKWISE */
 export const SetArcDirection = /*@__PURE__*/ b('SetArcDirection', '<HDC>ptr! i32@ArcDirection -> i32')
 /** 读弧扫过方向
  *  @returns AD_COUNTERCLOCKWISE=1 / AD_CLOCKWISE=2；失败 → 0 */
@@ -383,10 +383,10 @@ export const Pie = /*@__PURE__*/ b('Pie', '<HDC>ptr! i32 i32 i32 i32 i32 i32 i32
  *  @param args_4 c 字符数（= str.length；C 要字符数不是字节数，不含 NUL） */
 export const TextOut = /*@__PURE__*/ b('TextOutW', '<HDC>ptr! i32 i32 <WCHAR>ptr i32 -> i32')
 /** 设置 TextOut/ExtTextOut 的对齐与当前位置更新方式；TA_* 按位组合
- *  （如 gui.TextAlign.TA_CENTER | gui.TextAlign.TA_UPDATECP），故签名保持 u32 不标枚举
+ *  （如 TextAlign.TA_CENTER | TextAlign.TA_UPDATECP），故签名保持 u32 不标枚举
  *  @returns 旧 flags（新 DC 默认 TA_LEFT|TA_TOP|TA_NOUPDATECP = 0）
  *  @param args_0 hdc 目标 DC
- *  @param args_1 fMode gui.TextAlign 成员按位或 */
+ *  @param args_1 fMode TextAlign 成员按位或 */
 export const SetTextAlign = /*@__PURE__*/ b('SetTextAlign', '<HDC>ptr! u32 -> u32')
 /** 按当前字体量字符串宽高（不含衬底与额外间距）
  *  @returns 成功 → 非 0
@@ -409,7 +409,7 @@ export const GetTextMetrics = /*@__PURE__*/ b('GetTextMetricsW',
  *  @param args_0 hdc 目标 DC
  *  @param args_1 x 起点 x
  *  @param args_2 y 起点 y
- *  @param args_3 fOptions gui.TextOutOptions.ETO_OPAQUE（矩形填衬底）|
+ *  @param args_3 fOptions TextOutOptions.ETO_OPAQUE（矩形填衬底）|
  *  ETO_CLIPPED（矩形裁剪字形）按位或（可 0 = 都不用）
  *  @param args_4 lprc ETO_OPAQUE/ETO_CLIPPED 的作用矩形：DeepPartial 对象直传 /
  *  RECT.alloc().ptr / NULL = 整个当前可裁剪区（有 encoder 的纯入参位三形态）

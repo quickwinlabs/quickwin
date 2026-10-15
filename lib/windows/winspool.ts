@@ -17,7 +17,7 @@ const b = <const S extends string, const LE extends CodecMap = {}>(name: string,
 /** 枚举打印队列（Level=2 → PRINTER_INFO_2W 数组）；两段式：先
  *  NULL+cbBuf 0 拿 pcbNeeded，再按需分配缓冲重调
  *  @returns 成功 → 非 0
- *  @param args_0 dwFlags 枚举范围：gui.PrinterEnum.LOCAL(0x2) 本地 | CONNECTIONS(0x4)
+ *  @param args_0 dwFlags 枚举范围：PrinterEnum.LOCAL(0x2) 本地 | CONNECTIONS(0x4)
  *                已连接，组合 OR 传裸数（可组合 flags 不标枚举）
  *  @param args_1 pName 服务器名（仅 Level=4/5/6 用），本地枚举传 NULL
  *  @param args_2 dwLevel 信息级别，取 2（PRINTER_INFO_2W）
@@ -34,12 +34,12 @@ export const EnumPrinters = /*@__PURE__*/ b('EnumPrintersW',
  *  @param args_1 pcchBuffer 出入长度槽（入 = 缓冲 WCHAR 容量，出 = 实际长度），PtrArrayBuffer(4) */
 export const GetDefaultPrinter = /*@__PURE__*/ b('GetDefaultPrinterW', '<BYTE>ptr <BYTE>ptr -> i32')
 
-/** 查设备能力；nCapability 单选 gui.DeviceCap.*
+/** 查设备能力；nCapability 单选 DeviceCap.*
  *  @returns 返回值随能力（数值能力 = 数值，
  *  -1 = 失败）
  *  @param args_0 pDevice 打印机名（禁空）
  *  @param args_1 pPort 端口名，传 NULL 用打印机配置端口
- *  @param args_2 nCapability 能力码（gui.DeviceCap.HORZRES 等单选）
+ *  @param args_2 nCapability 能力码（DeviceCap.HORZRES 等单选）
  *  @param args_3 pOutput 字符串列表型能力的缓冲；数值型查询传 NULL
  *  @param args_4 pDevmode DEVMODE，传 NULL */
 export const DeviceCapabilities = /*@__PURE__*/ b('DeviceCapabilitiesW',

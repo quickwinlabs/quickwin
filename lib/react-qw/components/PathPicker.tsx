@@ -6,6 +6,7 @@ import { GetOpenFileName } from '../../windows/comdlg32.js'
 import { SHBrowseForFolder, SHGetPathFromIDList } from '../../windows/shell32.js'
 import { CoTaskMemFree } from '../../windows/ole32.js'
 import type { WStyle } from '../jsx.d.ts'
+import { EditStyle, WindowStyle, WmMsg } from '../../../constants'
 
 function openFileDialog(
   owner: gui.HWND,
@@ -118,7 +119,7 @@ export const PathPicker = forwardRef<gui.HWND, PathPickerProps>(
     return (
       <w
         type="STATIC"
-        ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN}
+        ws={WindowStyle.VISIBLE | WindowStyle.CLIPCHILDREN}
         style={{ ...style, flexDirection: 'row', alignItems: 'stretch' }}
         ref={(h: gui.HWND) => {
           containerRef.current = h
@@ -129,17 +130,17 @@ export const PathPicker = forwardRef<gui.HWND, PathPickerProps>(
         <w
           type="EDIT"
           text={displayText}
-          ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.BORDER | gui.EditStyle.READONLY | gui.EditStyle.AUTOHSCROLL}
+          ws={WindowStyle.VISIBLE | WindowStyle.BORDER | EditStyle.READONLY | EditStyle.AUTOHSCROLL}
           style={{ flexGrow: 1 }}
         />
         <w
           type="BUTTON"
           text="..."
-          ws={gui.WindowStyle.VISIBLE}
+          ws={WindowStyle.VISIBLE}
           style={{ width: 70 }}
           disabled={disabled}
           onEvent={(e) => {
-            if (e.msg === gui.WmMsg.LBUTTONUP) handleBrowse()
+            if (e.msg === WmMsg.LBUTTONUP) handleBrowse()
           }}
         />
       </w>

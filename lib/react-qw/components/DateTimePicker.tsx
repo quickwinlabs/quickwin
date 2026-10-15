@@ -6,6 +6,7 @@ import { NULL } from '../../ffi/ctype.js'
 import { SYSTEMTIME, NMDATETIMECHANGE } from '../../windows/structs.js'
 import { nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
+import { DtFlag, DtMsg, DtNotifyCode, DtStyle, WindowStyle, WmMsg } from '../../../constants'
 
 export interface DateTimePickerProps {
   value?: Date | null
@@ -42,11 +43,11 @@ const DateTimePicker = forwardRef(function DateTimePicker(
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
 
-  let dpStyle = gui.WindowStyle.VISIBLE | gui.WindowStyle.BORDER
-  if (format === 'long') dpStyle |= gui.DtStyle.LONGDATEFORMAT
-  else if (format === 'time') dpStyle |= gui.DtStyle.TIMEFORMAT
-  if (updown) dpStyle |= gui.DtStyle.UPDOWN
-  if (allowNone) dpStyle |= gui.DtStyle.SHOWNONE
+  let dpStyle = WindowStyle.VISIBLE | WindowStyle.BORDER
+  if (format === 'long') dpStyle |= DtStyle.LONGDATEFORMAT
+  else if (format === 'time') dpStyle |= DtStyle.TIMEFORMAT
+  if (updown) dpStyle |= DtStyle.UPDOWN
+  if (allowNone) dpStyle |= DtStyle.SHOWNONE
 
   useEffect(() => {
     const h = dpRef.current
@@ -54,9 +55,9 @@ const DateTimePicker = forwardRef(function DateTimePicker(
     const d = effectiveDate
     if (d) {
       const buf = dateToSysTimeBuf(d)
-      gui.SendMessage(h, gui.DtMsg.SETSYSTEMTIME, gui.DtFlag.GDT_VALID, buf.ptr)
+      gui.SendMessage(h, DtMsg.SETSYSTEMTIME, DtFlag.GDT_VALID, buf.ptr)
     } else {
-      gui.SendMessage(h, gui.DtMsg.SETSYSTEMTIME, gui.DtFlag.GDT_NONE, 0)
+      gui.SendMessage(h, DtMsg.SETSYSTEMTIME, DtFlag.GDT_NONE, 0)
     }
   }, [effectiveDate])
 
@@ -69,22 +70,22 @@ const DateTimePicker = forwardRef(function DateTimePicker(
     if (cr) {
       const w = cr.right - cr.left
       const hh = cr.bottom - cr.top
-      gui.SendMessage(h, gui.WmMsg.SIZE, 0, (hh << 16) | w)
+      gui.SendMessage(h, WmMsg.SIZE, 0, (hh << 16) | w)
     }
   }, [])
 
   return (
     <w type="STATIC"
-      ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN}
+      ws={WindowStyle.VISIBLE | WindowStyle.CLIPCHILDREN}
       style={{ ...style, flexDirection: 'column', alignItems: 'stretch' }}
       ref={ref}
       onEvent={(e) => {
-        if (e.msg === gui.WmMsg.NOTIFY) {
+        if (e.msg === WmMsg.NOTIFY) {
           const code = nmCode(e.lParam)
-          if (code === gui.DtNotifyCode.DATETIMECHANGE) {
+          if (code === DtNotifyCode.DATETIMECHANGE) {
             // NMDATETIMECHANGE: NMHDR + DWORD dwFlags + SYSTEMTIME st
             const { dwFlags, st } = NMDATETIMECHANGE.decode(e.lParam as Ptr<'NMDATETIMECHANGE'>)
-            if (dwFlags === gui.DtFlag.GDT_NONE) {
+            if (dwFlags === DtFlag.GDT_NONE) {
               if (!isControlled) setInternalDate(null)
               onChangeRef.current?.(null)
             } else {

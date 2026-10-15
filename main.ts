@@ -2,8 +2,8 @@ import {
     CallWindowProc, CreateSystemDpiFont, CreateWindow as CreateWindowWithoutScale, DefWindowProc,
     GetScaleFactor, GetWindowLongPtr, GetWindowText, HWND,
     RegisterClass, SendMessage, SetWindowProc, ShowWindow,
-    WmMsg, WindowStyle, ButtonStyle, Gwlp, LbMsg,
 } from "gui";
+import { WmMsg, WindowStyle, ButtonStyle, Gwlp, LbMsg } from "./constants";
 
 const scaleFactor = GetScaleFactor();
 const dpiFont = CreateSystemDpiFont();

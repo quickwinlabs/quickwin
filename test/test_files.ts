@@ -1,4 +1,3 @@
-import * as gui from 'gui'
 import { WCHAR } from '../lib/ffi/bind.js'
 import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import {
@@ -8,6 +7,7 @@ import {
 } from '../lib/windows/kernel32.js'
 import { WIN32_FIND_DATAW } from '../lib/windows/structs.js'
 import { Tester } from './test_helper.js'
+import { FileCreation, FileSeekFrom } from '../constants'
 
 const GENERIC_READ = 0x80000000
 const GENERIC_WRITE = 0x40000000
@@ -49,7 +49,7 @@ export const suite = {
 
         t.section('CreateFile + WriteFile: write payload')
         const hW = CreateFile(pathA, GENERIC_WRITE, 0, NULL,
-            gui.FileCreation.CREATE_ALWAYS, 0x80 /* FILE_ATTRIBUTE_NORMAL */, NULL)
+            FileCreation.CREATE_ALWAYS, 0x80 /* FILE_ATTRIBUTE_NORMAL */, NULL)
         t.checkTrue(`write handle valid (${hW})`, hW !== -1) // 失败 = INVALID_HANDLE_VALUE(-1)
         const payload = 'hello files'
         const wData = toWide(payload)
@@ -60,17 +60,17 @@ export const suite = {
 
         t.section('CreateFile(READ) + GetFileSize + SetFilePointer + ReadFile')
         const hR = CreateFile(pathA, GENERIC_READ, 0, NULL,
-            gui.FileCreation.OPEN_EXISTING, 0x80, NULL)
+            FileCreation.OPEN_EXISTING, 0x80, NULL)
         t.checkTrue(`read handle valid (${hR})`, hR !== -1)
         t.check('GetFileSize', payload.length * 2, GetFileSize(hR, NULL))
-        t.check('SetFilePointer BEGIN → 0', 0, SetFilePointer(hR, 0, NULL, gui.FileSeekFrom.BEGIN))
+        t.check('SetFilePointer BEGIN → 0', 0, SetFilePointer(hR, 0, NULL, FileSeekFrom.BEGIN))
         const rData = new PtrArrayBuffer(payload.length * 2)
         const pRd = new PtrArrayBuffer(4)
         t.checkTrue('ReadFile ok', ReadFile(hR, rData, payload.length * 2, pRd, NULL) !== 0)
         t.check('read roundtrip', payload, fromWide(rData, payload.length))
         // seek 到 END-4 验证负偏移 + 读尾 4 字节
         t.check('SetFilePointer END-4', payload.length * 2 - 4,
-            SetFilePointer(hR, -4, NULL, gui.FileSeekFrom.END))
+            SetFilePointer(hR, -4, NULL, FileSeekFrom.END))
         const rTail = new PtrArrayBuffer(8)
         ReadFile(hR, rTail, 4, pRd, NULL)
         t.check('seeked tail', payload.slice(-2), fromWide(rTail, 2))
@@ -78,13 +78,13 @@ export const suite = {
 
         t.section('CopyFile + MoveFileEx + GetFileAttributes')
         const hB = CreateFile(pathB, GENERIC_WRITE, 0, NULL,
-            gui.FileCreation.CREATE_ALWAYS, 0x80, NULL)
+            FileCreation.CREATE_ALWAYS, 0x80, NULL)
         const bData = toWide('bb')
         WriteFile(hB, bData, 4, pWr, NULL)
         CloseHandle(hB)
         t.checkTrue('CopyFile ok', CopyFile(pathB, pathC, 0) !== 0)
         const hC = CreateFile(pathC, GENERIC_READ, 0, NULL,
-            gui.FileCreation.OPEN_EXISTING, 0x80, NULL)
+            FileCreation.OPEN_EXISTING, 0x80, NULL)
         t.check('copied size', 4, GetFileSize(hC, NULL))
         t.checkTrue('CloseHandle (copy reader)', CloseHandle(hC) !== 0)
         t.checkTrue('MoveFileEx replace ok',
@@ -95,7 +95,7 @@ export const suite = {
 
         t.section('FindFirstFile/FindNextFile: enumerate *.txt incl. CJK name')
         const hCn = CreateFile(pathCn, GENERIC_WRITE, 0, NULL,
-            gui.FileCreation.CREATE_ALWAYS, 0x80, NULL)
+            FileCreation.CREATE_ALWAYS, 0x80, NULL)
         CloseHandle(hCn)                                      // 0 字节中文名文件
         const fd = WIN32_FIND_DATAW.alloc()
         const hFind = FindFirstFile(`${dir}\\a.txt`, fd.ptr)

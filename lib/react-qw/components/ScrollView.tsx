@@ -5,6 +5,7 @@ import { NULL } from '../../ffi/ctype.js'
 import { GetDeviceCaps } from '../../windows/gdi32.js'
 import type { WStyle } from '../jsx.d.ts'
 import { forceFlexLayout } from '../reconciler.js'
+import { MouseKeyFlag, ScrollBar, ScrollCmd, SetWindowPosFlag, SetWindowPosHwnd, WindowStyle, WmMsg } from '../../../constants'
 
 export interface ScrollViewProps {
   children?: React.ReactNode
@@ -41,26 +42,26 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
       scrollXRef.current = Math.max(0, Math.min(scrollXRef.current, natW - svW))
       scrollYRef.current = Math.max(0, Math.min(scrollYRef.current, natH - svH))
 
-      SetWindowPos(content, gui.SetWindowPosHwnd.TOP, -scrollXRef.current, -scrollYRef.current, natW, natH,
-        gui.SetWindowPosFlag.SWP_NOZORDER)
+      SetWindowPos(content, SetWindowPosHwnd.TOP, -scrollXRef.current, -scrollYRef.current, natW, natH,
+        SetWindowPosFlag.SWP_NOZORDER)
       forceFlexLayout(content)
 
       if (natW > svW) {
-        gui.SetScrollInfo(sv, gui.ScrollBar.HORZ,
+        gui.SetScrollInfo(sv, ScrollBar.HORZ,
           { min: 0, max: natW - 1, page: svW, pos: scrollXRef.current }, true)
-        ShowScrollBar(sv, gui.ScrollBar.HORZ, 1)
+        ShowScrollBar(sv, ScrollBar.HORZ, 1)
       } else {
         scrollXRef.current = 0
-        ShowScrollBar(sv, gui.ScrollBar.HORZ, 0)
+        ShowScrollBar(sv, ScrollBar.HORZ, 0)
       }
 
       if (natH > svH) {
-        gui.SetScrollInfo(sv, gui.ScrollBar.VERT,
+        gui.SetScrollInfo(sv, ScrollBar.VERT,
           { min: 0, max: natH - 1, page: svH, pos: scrollYRef.current }, true)
-        ShowScrollBar(sv, gui.ScrollBar.VERT, 1)
+        ShowScrollBar(sv, ScrollBar.VERT, 1)
       } else {
         scrollYRef.current = 0
-        ShowScrollBar(sv, gui.ScrollBar.VERT, 0)
+        ShowScrollBar(sv, ScrollBar.VERT, 0)
       }
     }
 
@@ -72,13 +73,13 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
     }, [contentWidth, contentHeight])
 
     function setScrollPos(sv: gui.HWND, content: gui.HWND, bar: number, newPos: number) {
-      if (bar === gui.ScrollBar.VERT) {
+      if (bar === ScrollBar.VERT) {
         scrollYRef.current = newPos
       } else {
         scrollXRef.current = newPos
       }
-      SetWindowPos(content, gui.SetWindowPosHwnd.TOP, -scrollXRef.current, -scrollYRef.current, 0, 0,
-        gui.SetWindowPosFlag.SWP_NOSIZE | gui.SetWindowPosFlag.SWP_NOZORDER)
+      SetWindowPos(content, SetWindowPosHwnd.TOP, -scrollXRef.current, -scrollYRef.current, 0, 0,
+        SetWindowPosFlag.SWP_NOSIZE | SetWindowPosFlag.SWP_NOZORDER)
       gui.SetScrollInfo(sv, bar, { pos: newPos }, true)
     }
 
@@ -89,15 +90,15 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
       const info = gui.GetScrollInfo(sv, bar)
       const maxPos = info.max - info.page + 1
       const code = e.wParam & 0xFFFF
-      const ref_ = bar === gui.ScrollBar.VERT ? scrollYRef : scrollXRef
+      const ref_ = bar === ScrollBar.VERT ? scrollYRef : scrollXRef
 
       let newPos = ref_.current
-      if (code === gui.ScrollCmd.THUMBTRACK) {
+      if (code === ScrollCmd.THUMBTRACK) {
         newPos = Math.max(0, Math.min(maxPos, (e.wParam >> 16) & 0xFFFF))
-      } else if (code === gui.ScrollCmd.LINEUP) newPos -= 20
-      else if (code === gui.ScrollCmd.LINEDOWN) newPos += 20
-      else if (code === gui.ScrollCmd.PAGEUP) newPos -= info.page
-      else if (code === gui.ScrollCmd.PAGEDOWN) newPos += info.page
+      } else if (code === ScrollCmd.LINEUP) newPos -= 20
+      else if (code === ScrollCmd.LINEDOWN) newPos += 20
+      else if (code === ScrollCmd.PAGEUP) newPos -= info.page
+      else if (code === ScrollCmd.PAGEDOWN) newPos += info.page
       else return
       newPos = Math.max(0, Math.min(maxPos, newPos))
       if (newPos !== ref_.current) setScrollPos(sv, content, bar, newPos)
@@ -109,11 +110,11 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
       if (!sv || !content) return
       const wheel = e.wParam >> 16
       const dy = -Math.round(wheel * 40 / 120)
-      const isHorz = (e.wParam & gui.MouseKeyFlag.MK_SHIFT) !== 0
+      const isHorz = (e.wParam & MouseKeyFlag.MK_SHIFT) !== 0
 
       if (isHorz && contentWidth === undefined) return
       if (!isHorz && contentHeight === undefined) return
-      const bar = isHorz ? gui.ScrollBar.HORZ : gui.ScrollBar.VERT
+      const bar = isHorz ? ScrollBar.HORZ : ScrollBar.VERT
       const info = gui.GetScrollInfo(sv, bar)
       const maxPos = info.max - info.page + 1
       const ref_ = isHorz ? scrollXRef : scrollYRef
@@ -124,9 +125,9 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
 
     return (
       <w type="STATIC"
-        ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN |
-          (contentWidth !== undefined ? gui.WindowStyle.HSCROLL : 0) |
-          (contentHeight !== undefined ? gui.WindowStyle.VSCROLL : 0)}
+        ws={WindowStyle.VISIBLE | WindowStyle.CLIPCHILDREN |
+          (contentWidth !== undefined ? WindowStyle.HSCROLL : 0) |
+          (contentHeight !== undefined ? WindowStyle.VSCROLL : 0)}
         style={style}
         ref={(h: gui.HWND) => {
           svRef.current = h
@@ -135,19 +136,19 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
         }}
         onEvent={{
           fn: (e) => {
-            if (e.msg === gui.WmMsg.NCHITTEST ||
-                e.msg === gui.WmMsg.NCLBUTTONDOWN) {
+            if (e.msg === WmMsg.NCHITTEST ||
+                e.msg === WmMsg.NCLBUTTONDOWN) {
               return DefWindowProc(e.hwnd, e.msg, e.wParam, e.lParam)
             }
-            if (e.msg === gui.WmMsg.VSCROLL) { handleScroll(e, gui.ScrollBar.VERT); return 0 }
-            if (e.msg === gui.WmMsg.HSCROLL) { handleScroll(e, gui.ScrollBar.HORZ); return 0 }
-            if (e.msg === gui.WmMsg.MOUSEWHEEL) { handleMouseWheel(e); return 0 }
+            if (e.msg === WmMsg.VSCROLL) { handleScroll(e, ScrollBar.VERT); return 0 }
+            if (e.msg === WmMsg.HSCROLL) { handleScroll(e, ScrollBar.HORZ); return 0 }
+            if (e.msg === WmMsg.MOUSEWHEEL) { handleMouseWheel(e); return 0 }
             return e.callOldWndProc()
           }
         }}
       >
         <w type="STATIC"
-          ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN}
+          ws={WindowStyle.VISIBLE | WindowStyle.CLIPCHILDREN}
           style={{flexDirection:'column', alignItems:'flex-start'}}
           ref={(h: gui.HWND) => { contentRef.current = h }}
         >

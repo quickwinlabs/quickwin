@@ -3,12 +3,13 @@ import * as gui from 'gui'
 import { useState } from 'react'
 import { createRoot } from '../lib/react-qw/index.js'
 import { Tester } from './test_helper.js'
+import { GetWindowCmd, WmMsg } from '../constants'
 
 let __setItems: ((v: any) => void) | null = null
 
 gui.RegisterClass('FlexTest', (hwnd, msg, wParam, lParam) => {
   if (!hwnd) return gui.DefWindowProc(hwnd, msg, wParam, lParam)
-  if (msg === gui.WmMsg.DESTROY) {
+  if (msg === WmMsg.DESTROY) {
     gui.PostQuitMessage(0)
     return 0
   }
@@ -17,10 +18,10 @@ gui.RegisterClass('FlexTest', (hwnd, msg, wParam, lParam) => {
 
 function childrenOf(hwnd: any): any[] {
   const kids: any[] = []
-  let child = gui.GetWindow(hwnd, gui.GetWindowCmd.CHILD)
+  let child = gui.GetWindow(hwnd, GetWindowCmd.CHILD)
   while (child) {
     kids.push(child)
-    child = gui.GetWindow(child, gui.GetWindowCmd.NEXT)
+    child = gui.GetWindow(child, GetWindowCmd.NEXT)
   }
   return kids.reverse()
 }

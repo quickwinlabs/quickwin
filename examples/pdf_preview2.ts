@@ -9,6 +9,7 @@ import { BITMAPINFOHEADER, OPENFILENAMEW } from '../lib/windows/structs.js'
 import { GetOpenFileName } from '../lib/windows/comdlg32.js'
 import { GetDC, ReleaseDC } from '../lib/windows/user32.js'
 import { PatBlt, SetDIBitsToDevice } from '../lib/windows/gdi32.js'
+import { Gwlp, MouseKeyFlag, ScrollBar, ScrollCmd, SetWindowPosFlag, SetWindowPosHwnd, WindowStyle, WmMsg } from '../constants'
 
 type MuPdf = typeof import('../vendor/mupdf-wasm/mupdf.js')
 
@@ -120,32 +121,32 @@ function updateScrollRange(): void {
     scrollX = Math.min(scrollX, maxX)
     scrollY = Math.min(scrollY, maxY)
     if (currentPixmap.w > cw) {
-        const style = gui.GetWindowLongPtr(hwndCanvas, gui.Gwlp.STYLE) | 0
-        if (!(style & gui.WindowStyle.HSCROLL)) {
-            gui.SetWindowLongPtr(hwndCanvas, gui.Gwlp.STYLE, style | gui.WindowStyle.HSCROLL)
-            gui.SetWindowPos(hwndCanvas, gui.SetWindowPosHwnd.TOP, 0, 0, 0, 0,
-                gui.SetWindowPosFlag.SWP_NOMOVE | gui.SetWindowPosFlag.SWP_NOSIZE |
-                gui.SetWindowPosFlag.SWP_NOZORDER | gui.SetWindowPosFlag.SWP_FRAMECHANGED)
+        const style = gui.GetWindowLongPtr(hwndCanvas, Gwlp.STYLE) | 0
+        if (!(style & WindowStyle.HSCROLL)) {
+            gui.SetWindowLongPtr(hwndCanvas, Gwlp.STYLE, style | WindowStyle.HSCROLL)
+            gui.SetWindowPos(hwndCanvas, SetWindowPosHwnd.TOP, 0, 0, 0, 0,
+                SetWindowPosFlag.SWP_NOMOVE | SetWindowPosFlag.SWP_NOSIZE |
+                SetWindowPosFlag.SWP_NOZORDER | SetWindowPosFlag.SWP_FRAMECHANGED)
         }
-        gui.SetScrollInfo(hwndCanvas, gui.ScrollBar.HORZ, { min: 0, max: currentPixmap.w - 1, page: cw, pos: scrollX }, true)
-        gui.ShowScrollBar(hwndCanvas, gui.ScrollBar.HORZ, true)
+        gui.SetScrollInfo(hwndCanvas, ScrollBar.HORZ, { min: 0, max: currentPixmap.w - 1, page: cw, pos: scrollX }, true)
+        gui.ShowScrollBar(hwndCanvas, ScrollBar.HORZ, true)
     } else {
         scrollX = 0
-        const style = gui.GetWindowLongPtr(hwndCanvas, gui.Gwlp.STYLE) | 0
-        if (style & gui.WindowStyle.HSCROLL) {
-            gui.SetWindowLongPtr(hwndCanvas, gui.Gwlp.STYLE, style & ~gui.WindowStyle.HSCROLL)
-            gui.SetWindowPos(hwndCanvas, gui.SetWindowPosHwnd.TOP, 0, 0, 0, 0,
-                gui.SetWindowPosFlag.SWP_NOMOVE | gui.SetWindowPosFlag.SWP_NOSIZE |
-                gui.SetWindowPosFlag.SWP_NOZORDER | gui.SetWindowPosFlag.SWP_FRAMECHANGED)
+        const style = gui.GetWindowLongPtr(hwndCanvas, Gwlp.STYLE) | 0
+        if (style & WindowStyle.HSCROLL) {
+            gui.SetWindowLongPtr(hwndCanvas, Gwlp.STYLE, style & ~WindowStyle.HSCROLL)
+            gui.SetWindowPos(hwndCanvas, SetWindowPosHwnd.TOP, 0, 0, 0, 0,
+                SetWindowPosFlag.SWP_NOMOVE | SetWindowPosFlag.SWP_NOSIZE |
+                SetWindowPosFlag.SWP_NOZORDER | SetWindowPosFlag.SWP_FRAMECHANGED)
         }
-        gui.ShowScrollBar(hwndCanvas, gui.ScrollBar.HORZ, false)
+        gui.ShowScrollBar(hwndCanvas, ScrollBar.HORZ, false)
     }
     if (currentPixmap.h > ch) {
-        gui.SetScrollInfo(hwndCanvas, gui.ScrollBar.VERT, { min: 0, max: currentPixmap.h - 1, page: ch, pos: scrollY }, true)
-        gui.ShowScrollBar(hwndCanvas, gui.ScrollBar.VERT, true)
-    } else { scrollY = 0; gui.ShowScrollBar(hwndCanvas, gui.ScrollBar.VERT, false) }
-    gui.SetWindowPos(hwndContent, gui.SetWindowPosHwnd.TOP, -scrollX, -scrollY, 0, 0,
-        gui.SetWindowPosFlag.SWP_NOSIZE | gui.SetWindowPosFlag.SWP_NOZORDER)
+        gui.SetScrollInfo(hwndCanvas, ScrollBar.VERT, { min: 0, max: currentPixmap.h - 1, page: ch, pos: scrollY }, true)
+        gui.ShowScrollBar(hwndCanvas, ScrollBar.VERT, true)
+    } else { scrollY = 0; gui.ShowScrollBar(hwndCanvas, ScrollBar.VERT, false) }
+    gui.SetWindowPos(hwndContent, SetWindowPosHwnd.TOP, -scrollX, -scrollY, 0, 0,
+        SetWindowPosFlag.SWP_NOSIZE | SetWindowPosFlag.SWP_NOZORDER)
 }
 
 function showPdf(mupdf: MuPdf, path: string, pageIdx: number): void {
@@ -155,8 +156,8 @@ function showPdf(mupdf: MuPdf, path: string, pageIdx: number): void {
     currentPixmap = pix; currentPage = pageIdx; totalPages = pix.totalPages
     gui.SetWindowText(hwndMain, 'PDF 预览 - 第 ' + (pageIdx + 1) + '/' + totalPages + ' 页')
     scrollX = 0; scrollY = 0
-    gui.SetWindowPos(hwndContent, gui.SetWindowPosHwnd.TOP, 0, 0, pix.w, pix.h,
-        gui.SetWindowPosFlag.SWP_NOZORDER | gui.SetWindowPosFlag.SWP_NOMOVE)
+    gui.SetWindowPos(hwndContent, SetWindowPosHwnd.TOP, 0, 0, pix.w, pix.h,
+        SetWindowPosFlag.SWP_NOZORDER | SetWindowPosFlag.SWP_NOMOVE)
     updateScrollRange()
     gui.InvalidateRect(hwndContent, null, true)
 }
@@ -170,19 +171,19 @@ function doScroll(dx: number, dy: number): void {
     const maxY = Math.max(0, currentPixmap.h - ch)
     scrollX = Math.max(0, Math.min(maxX, scrollX + dx))
     scrollY = Math.max(0, Math.min(maxY, scrollY + dy))
-    gui.SetWindowPos(hwndContent, gui.SetWindowPosHwnd.TOP, -scrollX, -scrollY, 0, 0,
-        gui.SetWindowPosFlag.SWP_NOSIZE | gui.SetWindowPosFlag.SWP_NOZORDER)
-    gui.SetScrollInfo(hwndCanvas, gui.ScrollBar.HORZ, { pos: scrollX }, true)
-    gui.SetScrollInfo(hwndCanvas, gui.ScrollBar.VERT, { pos: scrollY }, true)
+    gui.SetWindowPos(hwndContent, SetWindowPosHwnd.TOP, -scrollX, -scrollY, 0, 0,
+        SetWindowPosFlag.SWP_NOSIZE | SetWindowPosFlag.SWP_NOZORDER)
+    gui.SetScrollInfo(hwndCanvas, ScrollBar.HORZ, { pos: scrollX }, true)
+    gui.SetScrollInfo(hwndCanvas, ScrollBar.VERT, { pos: scrollY }, true)
 }
 
 async function main(): Promise<void> {
     const mupdf = await loadMupdf()
     if (!mupdf) { gui.MessageBox('加载 mupdf WASM 失败'); return }
 
-    const WS_CHILD = gui.WindowStyle.CHILD
-    const WS_VIS = gui.WindowStyle.VISIBLE
-    const WS_BORDER = gui.WindowStyle.BORDER
+    const WS_CHILD = WindowStyle.CHILD
+    const WS_VIS = WindowStyle.VISIBLE
+    const WS_BORDER = WindowStyle.BORDER
     const ctrlY = 12, ctrlH = 26, gap = 4, btnW = 80, btnPageW = 72
 
 let hwndBtnOpen: gui.HWND | null = null
@@ -191,18 +192,18 @@ let hwndBtnNext: gui.HWND | null = null
 
     gui.RegisterClass('PdfViewer2', (hwnd, msg, wParam, lParam) => {
         assertNonNullable(hwndCanvas); assertNonNullable(hwndEdit); assertNonNullable(hwndBtnOpen); assertNonNullable(hwndBtnPrev); assertNonNullable(hwndBtnNext)
-        if (msg === gui.WmMsg.DESTROY) { gui.PostQuitMessage(0); return 0 }
-        if (msg === gui.WmMsg.SIZE) {
+        if (msg === WmMsg.DESTROY) { gui.PostQuitMessage(0); return 0 }
+        if (msg === WmMsg.SIZE) {
             const cr = gui.GetClientRect(hwnd)
             if (cr) {
                 const cw = cr.right - cr.left, ch = cr.bottom - cr.top
-                gui.SetWindowPos(hwndCanvas, gui.SetWindowPosHwnd.TOP, 0, 50, cw, Math.max(1, ch - 50), gui.SetWindowPosFlag.SWP_NOZORDER)
-                gui.SetWindowPos(hwndEdit, gui.SetWindowPosHwnd.TOP, 0, 0, Math.max(100, cw - 320), 0,
-                    gui.SetWindowPosFlag.SWP_NOMOVE | gui.SetWindowPosFlag.SWP_NOZORDER)
+                gui.SetWindowPos(hwndCanvas, SetWindowPosHwnd.TOP, 0, 50, cw, Math.max(1, ch - 50), SetWindowPosFlag.SWP_NOZORDER)
+                gui.SetWindowPos(hwndEdit, SetWindowPosHwnd.TOP, 0, 0, Math.max(100, cw - 320), 0,
+                    SetWindowPosFlag.SWP_NOMOVE | SetWindowPosFlag.SWP_NOZORDER)
             }
             return gui.DefWindowProc(hwnd, msg, wParam, lParam)
         }
-        if (msg === gui.WmMsg.COMMAND) {
+        if (msg === WmMsg.COMMAND) {
             const hCtrl = lParam
             if (hCtrl === hwndBtnOpen) {
                 const path = openPdfFileDialog()
@@ -219,7 +220,7 @@ let hwndBtnNext: gui.HWND | null = null
         return gui.DefWindowProc(hwnd, msg, wParam, lParam)
     })
     hwndMain = gui.CreateWindow('PdfViewer2', 'PDF 预览 2',
-        gui.WindowStyle.OVERLAPPEDWINDOW | gui.WindowStyle.CLIPCHILDREN,
+        WindowStyle.OVERLAPPEDWINDOW | WindowStyle.CLIPCHILDREN,
         100, 100, 1100, 800, null, null)!
     if (!hwndMain) { gui.MessageBox('创建主窗口失败'); return }
 
@@ -239,7 +240,7 @@ let hwndBtnNext: gui.HWND | null = null
 
     // 画布（带滚动条）
     hwndCanvas = gui.CreateWindow('STATIC', '',
-        WS_CHILD | WS_VIS | gui.WindowStyle.CLIPCHILDREN | gui.WindowStyle.VSCROLL | gui.WindowStyle.HSCROLL,
+        WS_CHILD | WS_VIS | WindowStyle.CLIPCHILDREN | WindowStyle.VSCROLL | WindowStyle.HSCROLL,
         0, 50, 1100, 750, hwndMain, null)!
 
     // 内容窗口（画 pixmap）
@@ -256,8 +257,8 @@ let hwndBtnNext: gui.HWND | null = null
 
     // 内容窗口 PAINT
     gui.SetWindowProc(hwndContent, (hwnd: gui.HWND, msg: number, wParam: number, lParam: number): number => {
-        if (msg === gui.WmMsg.ERASEBKGND) return 1
-        if (msg === gui.WmMsg.PAINT) {
+        if (msg === WmMsg.ERASEBKGND) return 1
+        if (msg === WmMsg.PAINT) {
             gui.DefWindowProc(hwnd, msg, wParam, lParam)
             const pm = currentPixmap
             if (!pm) return 0
@@ -274,8 +275,8 @@ let hwndBtnNext: gui.HWND | null = null
 
     // 画布消息处理（PAINT 填白、滚动条、滚轮）
     gui.SetWindowProc(hwndCanvas, (hwnd: gui.HWND, msg: number, wParam: number, lParam: number): number => {
-        if (msg === gui.WmMsg.ERASEBKGND) return 1
-        if (msg === gui.WmMsg.PAINT) {
+        if (msg === WmMsg.ERASEBKGND) return 1
+        if (msg === WmMsg.PAINT) {
             const cr = gui.GetClientRect(hwnd)
             if (cr) {
                 const cw = cr.right - cr.left, ch = cr.bottom - cr.top
@@ -288,29 +289,29 @@ let hwndBtnNext: gui.HWND | null = null
             gui.DefWindowProc(hwnd, msg, wParam, lParam)
             return 0
         }
-        if (msg === gui.WmMsg.VSCROLL || msg === gui.WmMsg.HSCROLL) {
-            const bar = msg === gui.WmMsg.VSCROLL ? gui.ScrollBar.VERT : gui.ScrollBar.HORZ
+        if (msg === WmMsg.VSCROLL || msg === WmMsg.HSCROLL) {
+            const bar = msg === WmMsg.VSCROLL ? ScrollBar.VERT : ScrollBar.HORZ
             const info = gui.GetScrollInfo(hwnd, bar)
             const maxPos = info.max - info.page + 1
             const code = wParam & 0xFFFF
-            let newPos = bar === gui.ScrollBar.VERT ? scrollY : scrollX
-            if (code === gui.ScrollCmd.THUMBTRACK || code === gui.ScrollCmd.THUMBPOSITION)
+            let newPos = bar === ScrollBar.VERT ? scrollY : scrollX
+            if (code === ScrollCmd.THUMBTRACK || code === ScrollCmd.THUMBPOSITION)
                 newPos = Math.max(0, Math.min(maxPos, (wParam >> 16) & 0xFFFF))
-            else if (code === gui.ScrollCmd.LINEUP) newPos -= 20
-            else if (code === gui.ScrollCmd.LINEDOWN) newPos += 20
-            else if (code === gui.ScrollCmd.PAGEUP) newPos -= info.page
-            else if (code === gui.ScrollCmd.PAGEDOWN) newPos += info.page
+            else if (code === ScrollCmd.LINEUP) newPos -= 20
+            else if (code === ScrollCmd.LINEDOWN) newPos += 20
+            else if (code === ScrollCmd.PAGEUP) newPos -= info.page
+            else if (code === ScrollCmd.PAGEDOWN) newPos += info.page
             else return 0
             newPos = Math.max(0, Math.min(maxPos, newPos))
-            if (bar === gui.ScrollBar.VERT) doScroll(0, newPos - scrollY)
+            if (bar === ScrollBar.VERT) doScroll(0, newPos - scrollY)
             else doScroll(newPos - scrollX, 0)
             return 0
         }
-        if (msg === gui.WmMsg.MOUSEWHEEL) {
+        if (msg === WmMsg.MOUSEWHEEL) {
             const raw = (wParam >>> 16) & 0xFFFF
             const wheel = raw >= 0x8000 ? raw - 0x10000 : raw
-            const isHorz = (wParam & gui.MouseKeyFlag.MK_SHIFT) !== 0
-            const bar = isHorz ? gui.ScrollBar.HORZ : gui.ScrollBar.VERT
+            const isHorz = (wParam & MouseKeyFlag.MK_SHIFT) !== 0
+            const bar = isHorz ? ScrollBar.HORZ : ScrollBar.VERT
             const info = gui.GetScrollInfo(hwnd, bar)
             const maxPos = info.max - info.page + 1
             let newPos = (isHorz ? scrollX : scrollY) - Math.round(wheel * 40 / 120)
@@ -319,7 +320,7 @@ let hwndBtnNext: gui.HWND | null = null
             else doScroll(0, newPos - scrollY)
             return 0
         }
-        if (msg === gui.WmMsg.SIZE) { updateScrollRange(); return gui.DefWindowProc(hwnd, msg, wParam, lParam) }
+        if (msg === WmMsg.SIZE) { updateScrollRange(); return gui.DefWindowProc(hwnd, msg, wParam, lParam) }
         return gui.DefWindowProc(hwnd, msg, wParam, lParam)
     })
 

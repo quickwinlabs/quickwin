@@ -4,6 +4,7 @@ import { WCHAR } from '../../ffi/bind.js'
 import { TVITEM, TVINSERTSTRUCT } from '../../windows/structs.js'
 import { nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
+import { TreeViewStyle, TvExStyle, TvExpandCmd, TvGnRelative, TvIfFlag, TvInsertAfter, TvMsg, TvNotifyCode, WindowStyle, WmMsg } from '../../../constants'
 
 export interface TreeNode<D = unknown> {
   key?: string
@@ -21,8 +22,8 @@ export interface TreeViewProps<D> {
 
 
 function buildTvItem(textPtr: number, cChildren: number): ArrayBuffer {
-    let mask = gui.TvIfFlag.TEXT
-    if (cChildren > 0) mask |= gui.TvIfFlag.CHILDREN
+    let mask = TvIfFlag.TEXT
+    if (cChildren > 0) mask |= TvIfFlag.CHILDREN
     return TVITEM.encode({
         mask, hItem: 0, state: 0, stateMask: 0,
         pszText: textPtr, cchTextMax: 260,
@@ -39,21 +40,21 @@ function insertItems(
     const textBuf = WCHAR.encode(node.label)
     const itemBuf = buildTvItem(textBuf.ptr, cChildren)
     const item = TVITEM.decode(itemBuf)
-    const tvins = TVINSERTSTRUCT.encode({ hParent: parentHandle, hInsertAfter: gui.TvInsertAfter.ROOT, item })
-    const hItem = gui.SendMessage(hTree, gui.TvMsg.INSERTITEMW, 0, tvins.ptr)
+    const tvins = TVINSERTSTRUCT.encode({ hParent: parentHandle, hInsertAfter: TvInsertAfter.ROOT, item })
+    const hItem = gui.SendMessage(hTree, TvMsg.INSERTITEMW, 0, tvins.ptr)
     hItemMap.set(hItem, node)
     if (node.key) keyMap.set(node.key, hItem)
     if (node.children && node.children.length > 0) {
       insertItems(hTree, node.children, hItem, hItemMap, keyMap)
-      gui.SendMessage(hTree, gui.TvMsg.EXPAND, gui.TvExpandCmd.EXPAND, hItem)
+      gui.SendMessage(hTree, TvMsg.EXPAND, TvExpandCmd.EXPAND, hItem)
     }
   }
 }
 
 function deleteAllItems(hTree: gui.HWND): void {
-  const n = gui.SendMessage(hTree, gui.TvMsg.GETCOUNT, 0, 0)
+  const n = gui.SendMessage(hTree, TvMsg.GETCOUNT, 0, 0)
   if (n > 0)
-    gui.SendMessage(hTree, gui.TvMsg.DELETEITEM, 1, gui.TvInsertAfter.ROOT)
+    gui.SendMessage(hTree, TvMsg.DELETEITEM, 1, TvInsertAfter.ROOT)
 }
 
 const TreeView = forwardRef(function TreeViewInner<D>(
@@ -69,12 +70,12 @@ const TreeView = forwardRef(function TreeViewInner<D>(
   const onChangeRef = useRef(onSelect)
   onChangeRef.current = onSelect
 
-  const tvWs = gui.WindowStyle.VISIBLE | gui.WindowStyle.BORDER | gui.WindowStyle.VSCROLL
-    | gui.WindowStyle.TABSTOP
-    | gui.TreeViewStyle.HASLINES
-    | gui.TreeViewStyle.HASBUTTONS
-    | gui.TreeViewStyle.LINESATROOT
-    | gui.TreeViewStyle.SHOWSELALWAYS
+  const tvWs = WindowStyle.VISIBLE | WindowStyle.BORDER | WindowStyle.VSCROLL
+    | WindowStyle.TABSTOP
+    | TreeViewStyle.HASLINES
+    | TreeViewStyle.HASBUTTONS
+    | TreeViewStyle.LINESATROOT
+    | TreeViewStyle.SHOWSELALWAYS
 
   useEffect(() => {
     const h = tvRef.current
@@ -83,13 +84,13 @@ const TreeView = forwardRef(function TreeViewInner<D>(
     hItemMapRef.current.clear()
     keyMapRef.current.clear()
     if (data && data.length > 0)
-      insertItems(h, data, gui.TvInsertAfter.ROOT, hItemMapRef.current, keyMapRef.current)
+      insertItems(h, data, TvInsertAfter.ROOT, hItemMapRef.current, keyMapRef.current)
   }, [data])
 
   useEffect(() => {
     const h = tvRef.current
     if (!h) return
-    gui.SendMessage(h, gui.TvMsg.SETEXTENDEDSTYLE, 0, gui.TvExStyle.DOUBLEBUFFER)
+    gui.SendMessage(h, TvMsg.SETEXTENDEDSTYLE, 0, TvExStyle.DOUBLEBUFFER)
   }, [])
 
   useEffect(() => {
@@ -98,21 +99,21 @@ const TreeView = forwardRef(function TreeViewInner<D>(
     if (!h) return
     const hItem = keyMapRef.current.get(selKey)
     if (hItem !== undefined)
-      gui.SendMessage(h, gui.TvMsg.SELECTITEM, gui.TvGnRelative.CARET, hItem)
+      gui.SendMessage(h, TvMsg.SELECTITEM, TvGnRelative.CARET, hItem)
   }, [selKey])
 
   return (
     <w type="STATIC"
-      ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN}
+      ws={WindowStyle.VISIBLE | WindowStyle.CLIPCHILDREN}
       style={{ ...style, flexDirection: 'column', alignItems: 'stretch' }}
       ref={ref}
       onEvent={(e) => {
-        if (e.msg === gui.WmMsg.NOTIFY) {
+        if (e.msg === WmMsg.NOTIFY) {
           const code = nmCode(e.lParam)
-          if (code === gui.TvNotifyCode.SELCHANGEDW) {
+          if (code === TvNotifyCode.SELCHANGEDW) {
             const h = tvRef.current
             if (!h) return
-            const hCaret =             gui.SendMessage(h, gui.TvMsg.GETNEXTITEM, gui.TvGnRelative.CARET, 0)
+            const hCaret =             gui.SendMessage(h, TvMsg.GETNEXTITEM, TvGnRelative.CARET, 0)
             const node = hItemMapRef.current.get(hCaret) ?? null
             const key = node?.key ?? null
             if (!isControlled) setInternalKey(key)

@@ -2,6 +2,7 @@ import { forwardRef, useState, useRef, useEffect } from 'react'
 import * as gui from 'gui'
 import { WCHAR } from '../../ffi/bind.js'
 import type { WStyle } from '../jsx.d.ts'
+import { EditMsg, EditStyle, WindowStyle, WmMsg } from '../../../constants'
 
 export interface InputProps {
   value?: string
@@ -24,17 +25,17 @@ export const Input = forwardRef<gui.HWND, InputProps>(
     const displayValue = isControlled ? controlledValue : internalValue
     const inputRef = useRef<gui.HWND>(null)
 
-    let ws = gui.WindowStyle.VISIBLE | gui.WindowStyle.BORDER
-    if (multiline) ws |= gui.EditStyle.MULTILINE | gui.EditStyle.AUTOVSCROLL | gui.WindowStyle.VSCROLL
-    if (readonly) ws |= gui.EditStyle.READONLY
-    if (number) ws |= gui.EditStyle.NUMBER
-    if (password) ws |= gui.EditStyle.PASSWORD | gui.EditStyle.AUTOHSCROLL
+    let ws = WindowStyle.VISIBLE | WindowStyle.BORDER
+    if (multiline) ws |= EditStyle.MULTILINE | EditStyle.AUTOVSCROLL | WindowStyle.VSCROLL
+    if (readonly) ws |= EditStyle.READONLY
+    if (number) ws |= EditStyle.NUMBER
+    if (password) ws |= EditStyle.PASSWORD | EditStyle.AUTOHSCROLL
 
     useEffect(() => {
       const h = inputRef.current
       if (!h || !placeholder) return
       const buf = WCHAR.encode(placeholder)
-      gui.SendMessage(h, gui.EditMsg.SETCUEBANNER, 1, buf.ptr)
+      gui.SendMessage(h, EditMsg.SETCUEBANNER, 1, buf.ptr)
     }, [placeholder])
 
     return (
@@ -50,7 +51,7 @@ export const Input = forwardRef<gui.HWND, InputProps>(
           else if (ref) ref.current = h
         }}
         onEvent={(e) => {
-          if (e.msg === gui.WmMsg.CHAR) {
+          if (e.msg === WmMsg.CHAR) {
             const h = inputRef.current
             if (!h) return
             const newText = gui.GetWindowText(h)

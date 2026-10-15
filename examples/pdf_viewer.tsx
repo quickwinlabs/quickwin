@@ -9,6 +9,7 @@ import { WCHAR } from '../lib/ffi/bind.js'
 import { PdfCanvas } from './PdfCanvas.js'
 import { OPENFILENAMEW } from '../lib/windows/structs.js'
 import { GetOpenFileName } from '../lib/windows/comdlg32.js'
+import { WindowStyle } from '../constants'
 
 type MuPdf = typeof import('../vendor/mupdf-wasm/mupdf.js')
 
@@ -180,17 +181,17 @@ function App({ mupdf, mainHwnd: hwnd }: { mupdf: MuPdf; mainHwnd: gui.HWND }) {
 
   return (
     <w type="STATIC"
-      ws={gui.WindowStyle.VISIBLE | gui.WindowStyle.CLIPCHILDREN}
+      ws={WindowStyle.VISIBLE | WindowStyle.CLIPCHILDREN}
       style={{ flexDirection: 'column', gap: 4, width: 1180, height: 720 }}
     >
-      <w type="STATIC" ws={gui.WindowStyle.VISIBLE}
+      <w type="STATIC" ws={WindowStyle.VISIBLE}
         style={{ flexDirection: 'row', gap: 6, alignItems: 'stretch', height: 28 }}
       >
         <w type="STATIC" style={{ width: 6 }} />
         <Button onClick={handleOpen} style={{ width: 80 }}>Open</Button>
         <Input value={filePath} placeholder="File path..." readonly style={{ flexGrow: 1 }} />
         <Button onClick={handlePrev} disabled={currentPage <= 0} style={{ width: 60 }}>Prev</Button>
-        <w type="STATIC" ws={gui.WindowStyle.VISIBLE}
+        <w type="STATIC" ws={WindowStyle.VISIBLE}
           text={totalPages > 0 ? `Page ${currentPage + 1} / ${totalPages}` : 'No file'}
           style={{ width: 120 }}
         />
@@ -205,7 +206,7 @@ function App({ mupdf, mainHwnd: hwnd }: { mupdf: MuPdf; mainHwnd: gui.HWND }) {
             style={{ width: pixmap.w, height: pixmap.h }}
           />
         ) : (
-          <w type="STATIC" ws={gui.WindowStyle.VISIBLE}
+          <w type="STATIC" ws={WindowStyle.VISIBLE}
             text="Open a PDF file to preview"
             style={{ width: 300, height: 30 }}
           />
@@ -225,7 +226,7 @@ async function main() {
   gui.RegisterClass('PdfViewerWin')
   const hwnd = gui.CreateWindow(
     'PdfViewerWin', 'PDF Viewer',
-    gui.WindowStyle.OVERLAPPEDWINDOW,
+    WindowStyle.OVERLAPPEDWINDOW,
     100, 100, 1200, 800, null, null
   )
 

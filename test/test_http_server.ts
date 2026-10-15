@@ -5,6 +5,7 @@ import * as sock from 'sock'
 import { Tester } from './test_helper.js'
 import { createServer } from '../lib/http-server.js'
 import '../lib/fetch.js'
+import { FdEvent } from '../constants'
 
 // ── Minimal raw HTTP client for testing ──
 
@@ -19,7 +20,7 @@ function httpSend(host: string, port: number, raw: string, nResponses = 1): Prom
         }, 10000)
         sock.set_on_event(s, (event) => {
             if (done) return
-            if (event.lNetworkEvents & sock.FdEvent.FD_CONNECT) {
+            if (event.lNetworkEvents & FdEvent.FD_CONNECT) {
                 const err = event.iErrorCode[0]
                 if (err !== 0) {
                     done = true
@@ -31,7 +32,7 @@ function httpSend(host: string, port: number, raw: string, nResponses = 1): Prom
                 const bytes = new TextEncoder().encode(raw)
                 sock.send(s, bytes.buffer)
             }
-            if (event.lNetworkEvents & sock.FdEvent.FD_READ) {
+            if (event.lNetworkEvents & FdEvent.FD_READ) {
                 while (true) {
                     const d = sock.recv(s, 8192) as unknown as ArrayBuffer | number
                     if (typeof d === 'number') break
@@ -46,7 +47,7 @@ function httpSend(host: string, port: number, raw: string, nResponses = 1): Prom
                     resolve(buf)
                 }
             }
-            if (event.lNetworkEvents & sock.FdEvent.FD_CLOSE) {
+            if (event.lNetworkEvents & FdEvent.FD_CLOSE) {
                 if (!done) { done = true; os.clearTimeout(timer); sock.closesocket(s); resolve(buf) }
             }
         })

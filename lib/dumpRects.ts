@@ -1,9 +1,10 @@
 import * as os from 'os'
 import * as gui from 'gui'
+import { GetWindowCmd } from '../constants'
 
 export function startDumpRects(rootHwnd: gui.HWND, intervalMs: number = 3000): void {
   function dumpChild(parent: gui.HWND, indent: string): void {
-    var ch = gui.GetWindow(parent, gui.GetWindowCmd.CHILD)
+    var ch = gui.GetWindow(parent, GetWindowCmd.CHILD)
     var n = 0
     while (ch) {
       n++
@@ -12,7 +13,7 @@ export function startDumpRects(rootHwnd: gui.HWND, intervalMs: number = 3000): v
       var txt = String(gui.GetWindowText(ch) || '').slice(0, 16)
       console.log(indent + '[' + n + '] hwnd=' + String(ch) + ' txt="' + txt + '" wr=' + JSON.stringify(wr) + ' cr=' + JSON.stringify(cr))
       dumpChild(ch, indent + '  ')
-      ch = gui.GetWindow(ch, gui.GetWindowCmd.NEXT)
+      ch = gui.GetWindow(ch, GetWindowCmd.NEXT)
     }
     if (n === 0) console.log(indent + '(no children)')
   }

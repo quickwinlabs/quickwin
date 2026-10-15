@@ -17,6 +17,7 @@ import {
 } from '../../lib/windows/gdi32.js'
 import { BITMAPFILEHEADER, BITMAPINFOHEADER, DEVMODEW, INPUT, POINT, RECT } from '../../lib/windows/structs.js'
 import { listTrayIcons, probeTrayIcon } from './tray.js'
+import { ChangeDisplayFlag, DevModeField, DisplayChangeResult, EnumDisplaySetting, ShowWindowCmd, SysMetrics, WindowStyle } from '../../constants'
 
 // WORKER_DATA_URL 由 esbuild --define 在 build.ts 中注入（base64 data: URL）
 declare const WORKER_DATA_URL: string
@@ -129,7 +130,7 @@ function initGui(): void {
         })
         root.render(<LogPanel />)
         // run.bat 用 `start /min` 启动，这里显式还原，避免窗口只留一条标题栏
-        gui.ShowWindow(root.hwnd, gui.ShowWindowCmd.RESTORE)
+        gui.ShowWindow(root.hwnd, ShowWindowCmd.RESTORE)
     } catch (ex) {
         // 无桌面/建窗失败时回退 headless，绝不影响服务
         console.error('[execd] gui init failed (fallback headless):', ex)
@@ -147,8 +148,8 @@ function LogPanel() {
     }, [])
 
     return (
-        <w type="STATIC" ws={gui.WindowStyle.VISIBLE} style={{ flexDirection: 'column', gap: 4, flexGrow: 1 }}>
-            <w type="STATIC" ws={gui.WindowStyle.VISIBLE} text={info} style={{ height: 24 }} />
+        <w type="STATIC" ws={WindowStyle.VISIBLE} style={{ flexDirection: 'column', gap: 4, flexGrow: 1 }}>
+            <w type="STATIC" ws={WindowStyle.VISIBLE} text={info} style={{ height: 24 }} />
             <ListBox items={lines} scrollToBottom style={{ flexGrow: 1 }} />
         </w>
     )
@@ -592,14 +593,14 @@ interface DisplayModeChange {
 }
 
 const DISP_CHANGE_NAME: Record<number, string> = {
-    [gui.DisplayChangeResult.SUCCESSFUL]: 'SUCCESSFUL',
-    [gui.DisplayChangeResult.RESTART]: 'RESTART',
-    [gui.DisplayChangeResult.FAILED]: 'FAILED',
-    [gui.DisplayChangeResult.BADMODE]: 'BADMODE',
-    [gui.DisplayChangeResult.NOTUPDATED]: 'NOTUPDATED',
-    [gui.DisplayChangeResult.BADFLAGS]: 'BADFLAGS',
-    [gui.DisplayChangeResult.BADPARAM]: 'BADPARAM',
-    [gui.DisplayChangeResult.BADDUALVIEW]: 'BADDUALVIEW',
+    [DisplayChangeResult.SUCCESSFUL]: 'SUCCESSFUL',
+    [DisplayChangeResult.RESTART]: 'RESTART',
+    [DisplayChangeResult.FAILED]: 'FAILED',
+    [DisplayChangeResult.BADMODE]: 'BADMODE',
+    [DisplayChangeResult.NOTUPDATED]: 'NOTUPDATED',
+    [DisplayChangeResult.BADFLAGS]: 'BADFLAGS',
+    [DisplayChangeResult.BADPARAM]: 'BADPARAM',
+    [DisplayChangeResult.BADDUALVIEW]: 'BADDUALVIEW',
 }
 
 function dispChangeName(ret: number): string {
@@ -608,7 +609,7 @@ function dispChangeName(ret: number): string {
 
 /** 当前屏幕实测尺寸 'WxH'（模式切换后立即反映） */
 function currentScreen(): string {
-    return GetSystemMetrics(gui.SysMetrics.CXSCREEN) + 'x' + GetSystemMetrics(gui.SysMetrics.CYSCREEN)
+    return GetSystemMetrics(SysMetrics.CXSCREEN) + 'x' + GetSystemMetrics(SysMetrics.CYSCREEN)
 }
 
 /** 枚举 32bpp 显示模式 → 'WxH@Hz' 列表（上限 200 次迭代防死循环） */
@@ -632,7 +633,7 @@ function applyDisplayMode(w: number, h: number, persist: boolean): DisplayModeCh
     }
     // dmSize 先置（Win32 硬要求，否则 API 拒绝）；Enum 就地填当前模式其余字段
     const dm = DEVMODEW.encode({ dmSize: DEVMODEW.size })
-    if (!EnumDisplaySettings(NULL, gui.EnumDisplaySetting.CURRENT_SETTINGS, dm.ptr)) {
+    if (!EnumDisplaySettings(NULL, EnumDisplaySetting.CURRENT_SETTINGS, dm.ptr)) {
         throw new Error('applyDisplayMode: EnumDisplaySettings CURRENT failed')
     }
     const cur = DEVMODEW.decode(dm)
@@ -640,12 +641,12 @@ function applyDisplayMode(w: number, h: number, persist: boolean): DisplayModeCh
 
     // 同一 buffer 原地改三项（encode 缺省字段跳过 = 保留 Enum 填的其余项）
     DEVMODEW.encode({
-        dmFields: cur.dmFields | gui.DevModeField.PELSWIDTH | gui.DevModeField.PELSHEIGHT,
+        dmFields: cur.dmFields | DevModeField.PELSWIDTH | DevModeField.PELSHEIGHT,
         dmPelsWidth: w,
         dmPelsHeight: h,
     }, dm)
 
-    const testRet = ChangeDisplaySettings(dm.ptr, gui.ChangeDisplayFlag.TEST)
+    const testRet = ChangeDisplaySettings(dm.ptr, ChangeDisplayFlag.TEST)
     if (testRet !== 0) {
         // 预检即拒：不碰实际显示，附可用列表
         return {
@@ -657,7 +658,7 @@ function applyDisplayMode(w: number, h: number, persist: boolean): DisplayModeCh
     // flags=0 = 动态切换即时生效；persist 再写一遍注册表（CDS_UPDATEREGISTRY 跨重启）
     let ret = ChangeDisplaySettings(dm.ptr, 0)
     if (ret === 0 && persist) {
-        ret = ChangeDisplaySettings(dm.ptr, gui.ChangeDisplayFlag.UPDATEREGISTRY)
+        ret = ChangeDisplaySettings(dm.ptr, ChangeDisplayFlag.UPDATEREGISTRY)
     }
     // 成功也带可用列表：一次请求拿到结果+全量模式，失败再请求才给列表就多一个来回
     return { before, after: currentScreen(), testRet, ret, retName: dispChangeName(ret), modes32: listModes32() }

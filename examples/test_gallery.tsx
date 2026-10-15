@@ -6,19 +6,20 @@ import {
   ListView, type Column, ListBox, ScrollView, RadioButton, Slider,
   TreeView, type TreeNode, DateTimePicker, Link, Tooltip, PathPicker,
 } from '../lib/react-qw/index.js'
+import { WindowStyle, WmMsg } from '../constants'
 
 
 gui.RegisterClass('Gallery', (hwnd, msg, wParam, lParam) => {
   if (!hwnd) return gui.DefWindowProc(hwnd, msg, wParam, lParam)
-  if (msg === gui.WmMsg.DESTROY) {
+  if (msg === WmMsg.DESTROY) {
     gui.PostQuitMessage(0)
     return 0
   }
   return gui.DefWindowProc(hwnd, msg, wParam, lParam)
 })
 
-const VISIBLE = gui.WindowStyle.VISIBLE
-const CLIPCHILDREN = gui.WindowStyle.CLIPCHILDREN
+const VISIBLE = WindowStyle.VISIBLE
+const CLIPCHILDREN = WindowStyle.CLIPCHILDREN
 
 interface Fruit {
   name: string
@@ -85,7 +86,7 @@ function App({ svW, svH }: { svW: number; svH: number }) {
 
   return (
       <ScrollView style={{width:svW, height:svH}} contentHeight={1600}>
-      <w type="STATIC" ws={VISIBLE | CLIPCHILDREN | gui.WindowStyle.BORDER} style={{flexDirection:'column', gap:8, alignSelf:'stretch', flexGrow:1, padding:8}}>
+      <w type="STATIC" ws={VISIBLE | CLIPCHILDREN | WindowStyle.BORDER} style={{flexDirection:'column', gap:8, alignSelf:'stretch', flexGrow:1, padding:8}}>
       {/* ===== 三列上半区 ===== */}
       <w type="STATIC" ws={VISIBLE} style={{flexDirection:'row', gap:10, height:345}}>
 
@@ -160,7 +161,7 @@ function App({ svW, svH }: { svW: number; svH: number }) {
 
       {/* ===== Auto-Size ===== */}
       <w type="STATIC" ws={VISIBLE} text="Auto-Size" style={{height:24}} />
-      <w type="STATIC" ws={VISIBLE | CLIPCHILDREN | gui.WindowStyle.BORDER} style={{flexDirection:'column', gap:6, alignSelf:'stretch', flexGrow:1}}>
+      <w type="STATIC" ws={VISIBLE | CLIPCHILDREN | WindowStyle.BORDER} style={{flexDirection:'column', gap:6, alignSelf:'stretch', flexGrow:1}}>
         <w type="STATIC" ws={VISIBLE} text="Buttons (auto width)" style={{height:24}} />
         <w type="STATIC" ws={VISIBLE} style={{flexDirection:'row', gap:8, alignItems:'stretch', height:30}}>
           <Button style={{width:'auto', height:30}}>OK</Button>
@@ -169,8 +170,8 @@ function App({ svW, svH }: { svW: number; svH: number }) {
         </w>
         <w type="STATIC" ws={VISIBLE} text="Statics (auto width)" style={{height:24}} />
         <w type="STATIC" ws={VISIBLE} style={{flexDirection:'row', gap:8, alignItems:'stretch', height:24}}>
-          <w type="STATIC" ws={VISIBLE | gui.WindowStyle.BORDER} text="Short" style={{width:'auto', height:24}} />
-          <w type="STATIC" ws={VISIBLE | gui.WindowStyle.BORDER} text="A much longer label" style={{width:'auto', height:24}} />
+          <w type="STATIC" ws={VISIBLE | WindowStyle.BORDER} text="Short" style={{width:'auto', height:24}} />
+          <w type="STATIC" ws={VISIBLE | WindowStyle.BORDER} text="A much longer label" style={{width:'auto', height:24}} />
         </w>
         <w type="STATIC" ws={VISIBLE} text="Mixed auto + fixed" style={{height:24}} />
         <w type="STATIC" ws={VISIBLE} style={{flexDirection:'row', gap:8, alignItems:'stretch', height:30}}>
@@ -269,7 +270,7 @@ function App({ svW, svH }: { svW: number; svH: number }) {
 
 const hwnd = gui.CreateWindow(
   'Gallery', 'Component Gallery',
-  gui.WindowStyle.OVERLAPPEDWINDOW,
+  WindowStyle.OVERLAPPEDWINDOW,
   100, 100, 1400, 1200, null, null
 )
 

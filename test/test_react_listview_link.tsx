@@ -1,8 +1,8 @@
 import '../lib/polyfill.js'
 import * as std from 'std'
-import * as gui from 'gui'
 import React from 'react'
 import { createRoot, ListView, makeColorBlock, type Column } from '../lib/react-qw/index.js'
+import { StandardCursor, WmMsg } from '../constants'
 
 let clicks = 0
 
@@ -40,7 +40,7 @@ const columns: Column<Row>[] = [
     name: '操作',
     dataIndex: 'action',
     align: 'center',
-    cellStyle: { color: 0x00FF0000, underline: true, cursor: gui.StandardCursor.CROSS },
+    cellStyle: { color: 0x00FF0000, underline: true, cursor: StandardCursor.CROSS },
     onCellClick: (record, row) => {
       clicks++
       console.log(`link clicked row=${row} name=${record.name} clicks=${clicks}`)
@@ -71,7 +71,7 @@ function App() {
 createRoot({
   text: 'ListView cell style test', width: 420, height: 260,
   onEvent: (e) => {
-    if (e.msg === gui.WmMsg.CLOSE) {
+    if (e.msg === WmMsg.CLOSE) {
       console.log('test_react_listview_link done clicks=' + clicks)
       std.exit(0)
     }

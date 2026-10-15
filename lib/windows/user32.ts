@@ -49,7 +49,7 @@ const LONG_PTR_SYM = os.arch === 'x64' ? 'PtrW' : 'W'
  *  @param args_0 dwExStyle WS_EX_*
  *  @param args_1 lpClassName 窗口类名 string 或 NULL
  *  @param args_2 lpWindowName 窗口标题 string 或 NULL
- *  @param args_3 dwStyle WS_*（gui.WindowStyle 类常量）
+ *  @param args_3 dwStyle WS_*（WindowStyle 类常量）
  *  @param args_4 x 初始左上角（CW_USEDEFAULT = -1）
  *  @param args_5 y 初始左上角（CW_USEDEFAULT = -1）
  *  @param args_6 nWidth
@@ -64,7 +64,7 @@ export const CreateWindowEx = /*@__PURE__*/ b('CreateWindowExW',
  *  @returns 成功 → 非 0
  *  @param args_0 hWnd */
 export const DestroyWindow = /*@__PURE__*/ b('DestroyWindow', '<HWND>ptr -> i32')
-/** 显示/隐藏窗口（nCmdShow = gui.WindowStyle 类常量）
+/** 显示/隐藏窗口（nCmdShow = WindowStyle 类常量）
  *  @returns 先前可见性
  *  @param args_0 hWnd
  *  @param args_1 nCmdShow 显示命令（SW_SHOW/SW_HIDE 等） */
@@ -314,7 +314,7 @@ export const EndPaint = /*@__PURE__*/ b('EndPaint', '<HWND>ptr <PAINTSTRUCT>ptr 
  *  @param args_1 lpchText 文本 string（自动 UTF-16 编码）
  *  @param args_2 cchText 字符数（-1 = 自动算到 NUL）
  *  @param args_3 lpRect 矩形（双向不注册 encoder；CALCRECT 就地写回：RECT.encode(初值) 传 .ptr、decode 读回）
- *  @param args_4 uFormat DT_* 排版标志（gui.DrawTextFlag） */
+ *  @param args_4 uFormat DT_* 排版标志（DrawTextFlag） */
 export const DrawText = /*@__PURE__*/ b('DrawTextW', '<HDC>ptr! <WCHAR>ptr i32 <RECT>ptr i32 -> i32')
 /** 用画刷填充矩形
  *  @returns 填充高度
@@ -563,7 +563,7 @@ export const MessageBox = /*@__PURE__*/ b('MessageBoxW', '<HWND>ptr <WCHAR>ptr <
 
 // ============ 图像 ============
 
-/** 按名加载图像（string 自动编码；uType/fuLoad 用 Win32 真值——与 gui.ImageType 枚举当前值
+/** 按名加载图像（string 自动编码；uType/fuLoad 用 Win32 真值——与 ImageType 枚举当前值
  *  不同）
  *  @returns 图像句柄；失败 → 0
  *  @param args_0 hinst 模块句柄，NULL = 系统资源或 .ico 文件

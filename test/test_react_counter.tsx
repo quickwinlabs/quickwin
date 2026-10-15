@@ -2,10 +2,11 @@ import '../lib/polyfill.js'
 import * as gui from 'gui'
 import { useState } from 'react'
 import { render } from '../lib/react-qw/index.js'
+import { WindowStyle, WmMsg } from '../constants'
 
 gui.RegisterClass('ReactCounter', (hwnd, msg, wParam, lParam) => {
   if (!hwnd) return gui.DefWindowProc(hwnd, msg, wParam, lParam)
-  if (msg === gui.WmMsg.DESTROY) {
+  if (msg === WmMsg.DESTROY) {
     gui.PostQuitMessage(0)
     return 0
   }
@@ -20,7 +21,7 @@ function Counter() {
     <w
       type="BUTTON"
       text={`Count: ${count}`}
-      ws={gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE}
+      ws={WindowStyle.CHILD | WindowStyle.VISIBLE}
       style={{width:200, height:30}}
       onEvent={(e: any) => {
         if (e.msg === WM_LBUTTONUP) {
@@ -33,7 +34,7 @@ function Counter() {
 
 const hwnd = gui.CreateWindow(
   'ReactCounter', 'React Counter',
-  gui.WindowStyle.OVERLAPPEDWINDOW,
+  WindowStyle.OVERLAPPEDWINDOW,
   200, 200, 500, 400, null, null
 )
 

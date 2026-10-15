@@ -1,5 +1,4 @@
 import * as ffi from 'ffi'
-import * as gui from 'gui'
 import * as os from 'os'
 import { WCHAR } from '../lib/ffi/bind.js'
 import { structArray } from '../lib/ffi/struct.js'
@@ -11,8 +10,9 @@ import {
 } from '../lib/windows/winspool.js'
 import { PRINTER_INFO_2W } from '../lib/windows/structs.js'
 import { Tester } from './test_helper.js'
+import { DeviceCap, FileCreation } from '../constants'
 
-// gui.PrinterEnum.LOCAL(0x2) | CONNECTIONS(0x4)：可组合 flags 组合 OR 裸传
+// PrinterEnum.LOCAL(0x2) | CONNECTIONS(0x4)：可组合 flags 组合 OR 裸传
 const LOCAL_OR_CONNECTIONS = 0x6
 const MAX_WCHARS = 4096
 
@@ -80,9 +80,9 @@ export const suite = {
 
         t.section('DeviceCapabilities: numeric caps on default printer')
         const defPort = ports[defName] ?? NULL
-        const horz = DeviceCapabilities(defName, defPort, gui.DeviceCap.HORZRES, NULL, NULL)
+        const horz = DeviceCapabilities(defName, defPort, DeviceCap.HORZRES, NULL, NULL)
         t.checkTrue(`HORZRES sane (${horz})`, horz > 0)
-        const vert = DeviceCapabilities(defName, defPort, gui.DeviceCap.VERTRES, NULL, NULL)
+        const vert = DeviceCapabilities(defName, defPort, DeviceCap.VERTRES, NULL, NULL)
         t.checkTrue(`VERTRES sane (${vert})`, vert > 0)
 
         t.section('raw job chain on default printer (FILE: port -> .prn file, no UI)')
@@ -128,7 +128,7 @@ export const suite = {
 
         // 作业落盘断言：FILE: 端口把 RAW 数据写到 pOutputFile
         const hOut = CreateFile(outPrn, 0x80000000 /* GENERIC_READ */, 0, NULL,
-            gui.FileCreation.OPEN_EXISTING, 0, NULL)
+            FileCreation.OPEN_EXISTING, 0, NULL)
         t.checkTrue(`job file exists (${outPrn})`, hOut !== -1)
         if (hOut !== -1) {
             const fSize = GetFileSize(hOut, NULL)

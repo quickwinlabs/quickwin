@@ -1,5 +1,6 @@
 import * as gui from 'gui'
 import * as std from 'std'
+import { IDI, ImageType, LoadImageFlag, NotifyIconCmd, NotifyIconFlag, WindowStyle, WmMsg } from '../constants'
 
 const WM_TRAY = 0x8001
 
@@ -24,14 +25,14 @@ gui.RegisterClass('TrayApp', (hwnd, msg, wParam, lParam) => {
                 if (cmd === 1) {
                     gui.ShowWindow(hwnd, 5) // SW_SHOW
                 } else if (cmd === 2) {
-                    gui.ShellNotifyIcon(gui.NotifyIconCmd.DELETE, { hwnd, uID: 1 })
+                    gui.ShellNotifyIcon(NotifyIconCmd.DELETE, { hwnd, uID: 1 })
                     gui.PostQuitMessage(0)
                 }
             }
         }
         return 0
     }
-    if (msg === gui.WmMsg.CLOSE) {
+    if (msg === WmMsg.CLOSE) {
         gui.ShowWindow(hwnd, 0) // SW_HIDE
         return 0
     }
@@ -43,14 +44,14 @@ const W = 500, H = 400
 const scr = gui.GetScreenSize()
 const x = (scr[0] - W) >> 1
 const y = (scr[1] - H) >> 1
-const hwnd = gui.CreateWindow('TrayApp', '系统托盘示例', gui.WindowStyle.OVERLAPPEDWINDOW, x, y, W, H, null, null)
+const hwnd = gui.CreateWindow('TrayApp', '系统托盘示例', WindowStyle.OVERLAPPEDWINDOW, x, y, W, H, null, null)
 if (!hwnd) std.exit(0)
 gui.ShowWindow(hwnd)
 
 // 添加说明文字
 const ES_MULTILINE = 0x0004
 const ES_READONLY = 0x0800
-const style = gui.WindowStyle.CHILD | gui.WindowStyle.VISIBLE | ES_MULTILINE | ES_READONLY
+const style = WindowStyle.CHILD | WindowStyle.VISIBLE | ES_MULTILINE | ES_READONLY
 const text = gui.CreateWindow('EDIT',
     'QuickWin 系统托盘示例\r\n'
     + '\r\n'
@@ -61,15 +62,15 @@ const text = gui.CreateWindow('EDIT',
 if (text) {
     const font = gui.CreateSystemDpiFont()
     if (font)
-        gui.SendMessage(text, gui.WmMsg.SETFONT, font, 1)
+        gui.SendMessage(text, WmMsg.SETFONT, font, 1)
 }
 
 let hIcon = gui.LoadAppIcon()
-if (!hIcon) hIcon = gui.LoadImage(null, gui.IDI.APPLICATION, gui.ImageType.ICON, 0, 0, gui.LoadImageFlag.SHARED)
+if (!hIcon) hIcon = gui.LoadImage(null, IDI.APPLICATION, ImageType.ICON, 0, 0, LoadImageFlag.SHARED)
 if (hIcon) {
-    const ok = gui.ShellNotifyIcon(gui.NotifyIconCmd.ADD, {
+    const ok = gui.ShellNotifyIcon(NotifyIconCmd.ADD, {
         hwnd: hwnd, uID: 1,
-        flags: gui.NotifyIconFlag.MESSAGE | gui.NotifyIconFlag.ICON,
+        flags: NotifyIconFlag.MESSAGE | NotifyIconFlag.ICON,
         callbackMessage: WM_TRAY,
         hIcon,
     })
