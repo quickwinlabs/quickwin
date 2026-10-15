@@ -961,6 +961,13 @@ export const enum ProcessCreationFlag {
     NO_WINDOW = 134217728, // 0x8000000
 }
 
+// File
+export const enum MoveFileFlag {
+    REPLACE_EXISTING = 1, // 0x1
+    COPY_ALLOWED = 2, // 0x2
+    WRITE_THROUGH = 8, // 0x8
+}
+
 // Error codes
 export const enum ErrorCode {
     FILE_NOT_FOUND = 2, // 0x2
