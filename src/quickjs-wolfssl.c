@@ -213,7 +213,7 @@ static JSValue js_wolfSSL_CTX_set_verify(JSContext *ctx, JSValueConst this_val, 
  * contexts and would never reach the JS-side registration code. Rationale
  * for the design lives in .agents/TLS_TRUST_STORE.md. */
 
-#define QW_CA_SLOTS 8
+#define QW_CA_SLOTS 16
 
 typedef struct {
     unsigned char *data;
