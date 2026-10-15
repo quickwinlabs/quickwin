@@ -6,9 +6,10 @@
 // bundle and are pushed into wolfSSL's process-wide trust store as soon
 // as this module is imported.
 //
-// The process-wide store has a fixed QW_CA_SLOTS (8) capacity; this
-// bundle uses 8 (full). Adding a ninth anchor requires raising
-// QW_CA_SLOTS in src/quickjs-wolfssl.c first.
+// The process-wide store has a fixed QW_CA_SLOTS (16) capacity; this
+// bundle uses 8, leaving headroom for future anchors. If the bundle
+// ever outgrows it, raise QW_CA_SLOTS in src/quickjs-wolfssl.c first —
+// a full store throws at import time.
 //
 // Each anchor covers a different root hierarchy, and none is
 // interchangeable: wolfSSL resolves a CA by AKID/SKID and does not walk
