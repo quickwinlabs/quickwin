@@ -16,8 +16,9 @@ import {
     BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, SelectObject,
 } from '../../lib/windows/gdi32.js'
 import { BITMAPFILEHEADER, BITMAPINFOHEADER, DEVMODEW, INPUT, POINT, RECT } from '../../lib/windows/structs.js'
+import { GetLastError, MoveFileEx } from '../../lib/windows/kernel32.js'
 import { listTrayIcons, probeTrayIcon } from './tray.js'
-import { ChangeDisplayFlag, DevModeField, DisplayChangeResult, EnumDisplaySetting, ShowWindowCmd, SysMetrics, WindowStyle } from '../../constants'
+import { ChangeDisplayFlag, DevModeField, DisplayChangeResult, EnumDisplaySetting, MoveFileFlag, ShowWindowCmd, SysMetrics, WindowStyle } from '../../constants'
 
 // WORKER_DATA_URL 由 esbuild --define 在 build.ts 中注入（base64 data: URL）
 declare const WORKER_DATA_URL: string
@@ -687,7 +688,14 @@ API（配置 token 后需 Authorization: Bearer <token>，未配置则放行）�
   POST /input        body = JSON 数组（批量注入；x/y 物理像素）：
                      {"t":"move","x":,"y":} | {"t":"down|up","btn":"left|right|middle|x1|x2","x":,"y":?} |
                      {"t":"key","key":"a|enter|0x41","up":true?} | {"t":"sleep","ms":0..5000}
-                     → JSON {sent,expected}；按 sleep 切段，段内一次 SendInput 原子注入`
+                     → JSON {sent,expected}；按 sleep 切段，段内一次 SendInput 原子注入
+  POST /upload       ?path=<目标路径>&mkdir=0 body=原始字节（非空）→ JSON {bytes,path}
+                     默认逐层建父目录（mkdir=0 严格要求父目录已存在，防路径 typo）；
+                     原子写：先写 <path>.uploading 再 MoveFileEx 覆盖，看不到半截文件。
+                     无 SMB 环境的传文件通道，路径全放开。8MB 分块写盘（CRT 单块大写
+                     在 XP 网络盘 ~64MiB 边界会被整块拒绝），XP/win7 实测 100MB+ OK
+  GET  /download     ?path=<文件路径> → 原始字节流（application/octet-stream，X-Bytes 头；
+                     分块读到 EOF 无大小上限）——type 命令的二进制安全版`
 
 function usageResponse(): Response {
     return new Response(USAGE, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
@@ -728,11 +736,24 @@ function vkOf(key: unknown): number {
 // SendInput 的 <INPUT>ptr encoder 值域即本类型的普通数组，tsc 逐元素校验）
 type InputEl = Parameters<typeof INPUT.encode>[0]
 
+// /upload mkdir=1 的父目录逐层创建：引擎 os.mkdir 单层且失败即 throw（无 unlink、
+// 无 errno 区分），"已存在"与"真失败"不可辨，统一吞掉——目标是让写入尝试自己说话。
+// 支持盘符/相对路径；UNC（\\srv\share\...）未适配（execd 场景以本地盘与映射盘为主）。
+function mkdirParents(dest: string): void {
+    const segs = dest.replace(/\//g, '\\').split('\\')
+    let acc = ''
+    for (let i = 0; i < segs.length - 1; i++) {   // 末段是文件名，不建
+        acc = acc === '' ? segs[i]! : acc + '\\' + segs[i]!
+        if (acc === '' || /^[A-Za-z]:$/.test(acc)) continue   // UNC 首空段 / 盘符跳过
+        try { os.mkdir(acc) } catch { /* 已存在（或真失败，由后续 open/write 报）*/ }
+    }
+}
+
 const server = createServer(async (req) => {
     const t0 = Date.now()
     const path = new URL(req.url).pathname
-    const isApi = (req.method === 'POST' && (path === '/exec' || path === '/set_resolution' || path === '/input')) ||
-        (req.method === 'GET' && (path === '/window_list' || path === '/screenshot' || path === '/tray_list'))
+    const isApi = (req.method === 'POST' && (path === '/exec' || path === '/set_resolution' || path === '/input' || path === '/upload')) ||
+        (req.method === 'GET' && (path === '/window_list' || path === '/screenshot' || path === '/tray_list' || path === '/download'))
     if (!isApi) return usageResponse()
     const denied = authCheck(req)
     if (denied !== null) {
@@ -947,6 +968,97 @@ const server = createServer(async (req) => {
         } catch (ex) {
             logReq(t0, cmd, 504, 'exec timeout')
             return jsonError(504, String(ex))
+        }
+    }
+    // /upload、/download：HTTP 直传文件（无 SMB 环境的通道；信任模型与 /exec 同级——
+    // 已有任意命令执行权，路径全放开，token 鉴权同其余 API）。body 在 http-server 层
+    // 已全量缓冲，此处流式写盘 / 分块读出，内存占用与文件大小同阶。
+    if (req.method === 'POST' && path === '/upload') {
+        const bad = (msg: string): Response => {
+            logReq(t0, 'POST /upload', 400, msg)
+            return jsonError(400, msg)
+        }
+        const params = new URL(req.url).searchParams
+        const dest = params.get('path')
+        if (!dest) return bad('path=<目标路径>')
+        let bytes: Uint8Array
+        try {
+            bytes = new Uint8Array(await req.arrayBuffer())
+        } catch (ex) {
+            return bad('bad body: ' + String(ex))
+        }
+        if (bytes.length === 0) return bad('empty body')
+        try {
+            if (params.get('mkdir') !== '0') mkdirParents(dest)   // 默认建父目录；mkdir=0 严格模式
+            // 原子写：<path>.uploading 落全量再 rename（同卷原子替换）。引擎无 std.unlink，
+            // rename 之前失败会残留 .uploading（无害，下次上传覆盖）。
+            const tmp = dest + '.uploading'
+            const f = std.open(tmp, 'wb')
+            if (!f) throw new Error('open for write failed: ' + tmp)
+            let w = 0
+            try {
+                // CRT 单次大块 fwrite 到 XP 网络重定向器在 ~64MiB 边界整块拒绝（0 字节，
+                // cmd copy 同路径正常 → 重定向器无罪，是 1GB XP 上大块锁页预算效应）；
+                // 8MB 分块写绕开，本地盘/win7 无感
+                const CHUNK = 8 * 1024 * 1024
+                for (let off = 0; off < bytes.length; off += CHUNK) {
+                    const n = f.write(bytes.buffer as ArrayBuffer, off, Math.min(CHUNK, bytes.length - off))
+                    if (n <= 0) break
+                    w += n
+                }
+            } finally { f.close() }
+            if (w !== bytes.length) throw new Error('short write: ' + w + '/' + bytes.length)
+            // MSVCRT C rename 不覆盖已存在目标（EEXIST），qemu 共享文件夹上行为更脆；
+            // MoveFileExW + MOVEFILE_REPLACE_EXISTING 同卷原子替换，带 GetLastError 诊断
+            if (!MoveFileEx(tmp, dest, MoveFileFlag.REPLACE_EXISTING))
+                throw new Error('MoveFileEx failed (GetLastError ' + GetLastError() + '): ' + tmp + ' -> ' + dest)
+        } catch (ex) {
+            logReq(t0, 'POST /upload', 500, String(ex))
+            return jsonError(500, String(ex))
+        }
+        logReq(t0, 'POST /upload', 200, bytes.length + 'B -> ' + dest)
+        return new Response(JSON.stringify({ bytes: bytes.length, path: dest }),
+            { headers: { 'Content-Type': 'application/json' } })
+    }
+    if (req.method === 'GET' && path === '/download') {
+        const p = new URL(req.url).searchParams.get('path')
+        if (!p) {
+            logReq(t0, 'GET /download', 400, 'path=<文件路径>')
+            return jsonError(400, 'path=<文件路径>')
+        }
+        let f: std.FILE | null = null
+        try { f = std.open(p, 'rb') } catch (ex) {
+            logReq(t0, 'GET /download', 500, String(ex))
+            return jsonError(500, String(ex))
+        }
+        if (f === null) {
+            logReq(t0, 'GET /download', 404, p)
+            return jsonError(404, 'cannot open: ' + p)
+        }
+        try {
+            // 引擎 FILE 无 tell/fstat（seek 只回 fseek 结果）：64KB 分块读到 EOF 拼接，
+            // 大小自适应、一次成型后走整块发送（sendResponse 缓冲/流式均可）
+            const chunks: Uint8Array[] = []
+            const buf = new Uint8Array(64 * 1024)
+            let total = 0
+            for (; ;) {
+                const n = f.read(buf.buffer, 0, buf.length)
+                if (n <= 0) break
+                chunks.push(n === buf.length ? buf.slice() : buf.slice(0, n))
+                total += n
+            }
+            const all = new Uint8Array(total)
+            let off = 0
+            for (const c of chunks) { all.set(c, off); off += c.length }
+            logReq(t0, 'GET /download', 200, total + 'B <- ' + p)
+            return new Response(all, {
+                headers: { 'Content-Type': 'application/octet-stream', 'X-Bytes': String(total) },
+            })
+        } catch (ex) {
+            logReq(t0, 'GET /download', 500, String(ex))
+            return jsonError(500, String(ex))
+        } finally {
+            f.close()
         }
     }
     // isApi 判定已收口所有未匹配路径——此处仅兜 async 回调的返回类型（运行时不可达）

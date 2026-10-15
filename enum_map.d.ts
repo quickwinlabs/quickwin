@@ -108,6 +108,7 @@ interface EnumMap {
     IDI: import('./constants').IDI
     DrawTextFlag: import('./constants').DrawTextFlag
     ProcessCreationFlag: import('./constants').ProcessCreationFlag
+    MoveFileFlag: import('./constants').MoveFileFlag
     ErrorCode: import('./constants').ErrorCode
     PowerBroadcast: import('./constants').PowerBroadcast
     DevMode: import('./constants').DevMode

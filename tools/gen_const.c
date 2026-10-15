@@ -983,6 +983,13 @@ static void print_enums(void) {
     DEC(NO_WINDOW, CREATE_NO_WINDOW);
     printf("}\n\n");
 
+    printf("// File\n");
+    printf("export const enum MoveFileFlag {\n");
+    DEC(REPLACE_EXISTING, MOVEFILE_REPLACE_EXISTING);
+    DEC(COPY_ALLOWED, MOVEFILE_COPY_ALLOWED);
+    DEC(WRITE_THROUGH, MOVEFILE_WRITE_THROUGH);
+    printf("}\n\n");
+
     printf("// Error codes\n");
     printf("export const enum ErrorCode {\n");
     DEC(FILE_NOT_FOUND, ERROR_FILE_NOT_FOUND);
