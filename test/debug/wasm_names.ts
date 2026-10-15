@@ -1,14 +1,7 @@
-import * as std from 'std'
+import { fetchMupdfWasm } from '../mupdf-cdn.js'
 
-// Load the vendor/mupdf-wasm binary using our pre-load mechanism
-const fp = std.open('./vendor/mupdf-wasm/mupdf-wasm.wasm', 'rb')
-if (!fp) { console.log('cannot open vendor/mupdf-wasm/mupdf-wasm.wasm'); std.exit(1) }
-fp.seek(0, 2)
-const size = fp.tell()
-fp.seek(0, 0)
-const buf = new ArrayBuffer(size)
-fp.read(buf, 0, size)
-fp.close()
+// Fetch the mupdf-wasm binary over HTTPS (process-wide HTTP cache applies)
+const buf = await fetchMupdfWasm()
 
 // Check exports for Tf
 const module = new WebAssembly.Module(buf)

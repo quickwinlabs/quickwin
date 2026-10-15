@@ -7,7 +7,8 @@
 // as this module is imported.
 //
 // The process-wide store has a fixed QW_CA_SLOTS (8) capacity; this
-// bundle uses 7, leaving headroom for run-time registrations.
+// bundle uses 8 (full). Adding a ninth anchor requires raising
+// QW_CA_SLOTS in src/quickjs-wolfssl.c first.
 //
 // Each anchor covers a different root hierarchy, and none is
 // interchangeable: wolfSSL resolves a CA by AKID/SKID and does not walk
@@ -25,6 +26,10 @@
 //     G2 (bing.com), RSA 2048.
 //   * GLOBALSIGN_R46, ISRG_X1, ISRG_X2 — the newer GlobalSign R46 and
 //     Let's Encrypt hierarchies (taobao.com, qq.com).
+//   * GTS_R4 — cross-signed GTS Root R4 (issued by GlobalSign Root CA,
+//     notAfter 2028-01-28, EC P-256). unpkg.com and other properties
+//     whose chains terminate at Google Trust Services (WE1/E5/E6
+//     intermediates).
 //
 // Known limitation (wolfSSL, not the bundle): GLOBALSIGN_R46 and ISRG_X1
 // are RSA 4096, and this wolfSSL build compiles the SP bignum with
@@ -211,6 +216,28 @@ tL4ndQavEi51mI38AjEAi/V3bNTIZargCyzuFJ0nN6T5U6VR5CmD1/iQMVtCnwr1
 /q4AaOeMSQ+2b1tbFfLn
 -----END CERTIFICATE-----`
 
+const GTS_R4 = `-----BEGIN CERTIFICATE-----
+MIIDejCCAmKgAwIBAgIQf+UwvzMTQ77dghYQST2KGzANBgkqhkiG9w0BAQsFADBX
+MQswCQYDVQQGEwJCRTEZMBcGA1UEChMQR2xvYmFsU2lnbiBudi1zYTEQMA4GA1UE
+CxMHUm9vdCBDQTEbMBkGA1UEAxMSR2xvYmFsU2lnbiBSb290IENBMB4XDTIzMTEx
+NTAzNDMyMVoXDTI4MDEyODAwMDA0MlowRzELMAkGA1UEBhMCVVMxIjAgBgNVBAoT
+GUdvb2dsZSBUcnVzdCBTZXJ2aWNlcyBMTEMxFDASBgNVBAMTC0dUUyBSb290IFI0
+MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE83Rzp2iLYK5DuDXFgTB7S0md+8Fhzube
+Rr1r1WEYNa5A3XP3iZEwWus87oV8okB2O6nGuEfYKueSkWpz6bFyOZ8pn6KY019e
+WIZlD6GEZQbR3IvJx3PIjGov5cSr0R2Ko4H/MIH8MA4GA1UdDwEB/wQEAwIBhjAd
+BgNVHSUEFjAUBggrBgEFBQcDAQYIKwYBBQUHAwIwDwYDVR0TAQH/BAUwAwEB/zAd
+BgNVHQ4EFgQUgEzW63T/STaj1dj8tT7FavCUHYwwHwYDVR0jBBgwFoAUYHtmGkUN
+l8qJUC99BM00qP/8/UswNgYIKwYBBQUHAQEEKjAoMCYGCCsGAQUFBzAChhpodHRw
+Oi8vaS5wa2kuZ29vZy9nc3IxLmNydDAtBgNVHR8EJjAkMCKgIKAehhxodHRwOi8v
+Yy5wa2kuZ29vZy9yL2dzcjEuY3JsMBMGA1UdIAQMMAowCAYGZ4EMAQIBMA0GCSqG
+SIb3DQEBCwUAA4IBAQAYQrsPBtYDh5bjP2OBDwmkoWhIDDkic574y04tfzHpn+cJ
+odI2D4SseesQ6bDrarZ7C30ddLibZatoKiws3UL9xnELz4ct92vID24FfVbiI1hY
++SW6FoVHkNeWIP0GCbaM4C6uVdF5dTUsMVs/ZbzNnIdCp5Gxmx5ejvEau8otR/Cs
+kGN+hr/W5GvT1tMBjgWKZ1i4//emhA1JG1BbPzoLJQvyEotc03lXjTaCzv8mEbep
+8RqZ7a2CPsgRbuvTPBwcOMBBmuFeU88+FSBX6+7iP0il8b4Z0QFqIwwMHfs/L6K1
+vepuoxtGzi4CZ68zJpiq1UvSqTbFJjtbD4seiMHl
+-----END CERTIFICATE-----`
+
 // Register at import time. Importers of this module get the anchors
 // without writing any code themselves. addTrustedCA only returns the
 // slot count (-1 when full/empty); the fatal-vs-not decision is ours.
@@ -225,5 +252,6 @@ trust(DIGICERT_GLOBAL_G2)
 trust(GLOBALSIGN_R46)
 trust(ISRG_X1)
 trust(ISRG_X2)
+trust(GTS_R4)
 
-export const TRUSTED_CA_COUNT = 7
+export const TRUSTED_CA_COUNT = 8

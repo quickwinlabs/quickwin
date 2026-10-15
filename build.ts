@@ -1,6 +1,6 @@
 import { build } from 'esbuild'
 
-const nativeModules = ['gui', 'os', 'std', 'sock', 'brotli', 'ffi', 'wamr', 'win', 'tls', 'wolfssl', '../lib/polyfill.js', '../vendor/mupdf-wasm/mupdf.js', '../vendor/mupdf-wasm/mupdf-wasm.js']
+const nativeModules = ['gui', 'os', 'std', 'sock', 'brotli', 'ffi', 'wamr', 'win', 'tls', 'wolfssl', '../lib/polyfill.js']
 
 async function buildExecWorkerDataUrl(): Promise<string> {
   const result = await build({

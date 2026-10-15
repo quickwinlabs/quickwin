@@ -425,9 +425,8 @@ info:
 js:
 	@echo "Compiling TypeScript files to JavaScript using tsc..."
 	@npx tsc --project tsconfig.json
-	@echo "Copying vendor/mupdf-wasm to $(BUILD_DIR)/vendor/mupdf-wasm..."
-	@rm -rf $(BUILD_DIR)/vendor/mupdf-wasm && mkdir -p $(BUILD_DIR)/vendor/mupdf-wasm && cp -r vendor/mupdf-wasm/. $(BUILD_DIR)/vendor/mupdf-wasm/
 	@mkdir -p $(BUILD_DIR)/lib/vendor/web-streams && cp lib/vendor/web-streams/ponyfill.mjs $(BUILD_DIR)/lib/vendor/web-streams/
+	@cp test/example.pdf $(BUILD_DIR)/test/
 	@echo "Bundling entries with esbuild..."
 	@node build.ts
 	@echo "TypeScript compilation complete"
@@ -438,7 +437,7 @@ test: cc64 js wasm
 npm-pkg: js wasm
 	rm -rf $(NPM_PKG_DIR)
 	mkdir -p $(NPM_PKG_DIR)
-	cp -r $(BUILD_DIR)/lib $(BUILD_DIR)/test $(BUILD_DIR)/examples $(BUILD_DIR)/vendor $(NPM_PKG_DIR)/
+	cp -r $(BUILD_DIR)/lib $(BUILD_DIR)/test $(BUILD_DIR)/examples $(NPM_PKG_DIR)/
 	find lib \( -name '*.ts' -o -name '*.mts' \) -exec cp --parents {} $(NPM_PKG_DIR)/ \;
 	cp test/*.ts $(NPM_PKG_DIR)/test/
 	cp examples/*.ts examples/*.tsx $(NPM_PKG_DIR)/examples/

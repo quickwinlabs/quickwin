@@ -1,10 +1,12 @@
-import { Tester, readWasmFile } from './test_helper.js'
+import { Tester } from './test_helper.js'
+import { fetchMupdfWasm } from './mupdf-cdn.js'
 
 export const suite = {
-    name: 'vendor/mupdf-wasm',
-    run: (t: Tester) => {
+    name: 'mupdf-wasm',
+    run: async (t: Tester) => {
         t.section('validate binary')
-        const buf = readWasmFile('../vendor/mupdf-wasm/mupdf-wasm.wasm')
+        let buf: ArrayBuffer | null = null
+        try { buf = await fetchMupdfWasm() } catch (e) { console.log('mupdf wasm fetch failed: ' + String(e)) }
         if (!buf) { t.fail++; return }
         t.check('file size > 0', true, buf.byteLength > 0)
         const header = new Uint8Array(buf)
