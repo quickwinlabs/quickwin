@@ -3,14 +3,18 @@ set -e
 
 # ============================================================
 #  自动下载 Windows ISO
-#  用法: ./download-iso.sh <xp|7u|10|11|tiny11> [目标目录]
+#  用法: ./download-iso.sh <xp|7u|10|11|tiny11|tiny11std> [目标目录]
 #
 #  优先级: 自有 release (quickwinlabs/assets, CI 发布的分卷+SHA 门禁)
-#           → 镜像源: archive.org (xp/7u);tiny11 = SF + archive.org(双构建,见下);
-#             10/11 用 bobpony/files.dog。testip 已 521 死源;win7 原 archive.org
-#             item 被 DMCA 撤,已换存活同文件 item。
-#  tiny11 双构建: 自有 release/archive.org = NTDEV Nov25 core(OWN_FILE/OWN_SIZE
-#                 单独门禁),SF = 2026-08-23 盘(FILE,无大小校验)—— 各自名实相符落盘。
+#           → 镜像源: archive.org (xp/7u);tiny11/tiny11std = SF 盘(own release 缺失时
+#             回落,SF 对 GitHub runner IP 段间歇 403);10/11 用 bobpony/files.dog。
+#             testip 已 521 死源;win7 原 archive.org item 被 DMCA 撤,已换存活同文件 item。
+#  双构建(各自名实相符落盘):
+#    tiny11    core: 自有 release/archive.org = NTDEV Nov25(OWN_FILE/OWN_SIZE 门禁),
+#                    SF = 2026-08-23 盘(FILE,无大小校验)。
+#    tiny11std 标准: 自有 release/archive.org = NTDEV Nov25(OWN_FILE/OWN_SIZE/OWN_SHA
+#                    门禁),SF = 2026-08-23 盘(SIZE/SHA 门禁)。换发布批次时 OWN_* 要
+#                    跟着 release 的 SHA256SUMS.txt 更新。
 #  下载完成后校验 SHA256
 # ============================================================
 
@@ -18,13 +22,15 @@ VERSION="${1:-}"
 DEST="${2:-.}"
 
 # 自有 release（quickwinlabs/assets）——CI 发布的分卷优先,失败回落下方镜像源。
-# 分卷命名 ${OWN_FILE:-FILE}.part00..NN,逐卷试拉至 404 即止;SHA/大小门禁同镜像源。
-# OWN_FILE/OWN_SIZE:tiny11 的自有盘(NTDEV Nov25 core)与镜像盘(SF 2026-08-23)是
-# 两个不同构建 —— 资产前缀与大小门禁分开设,各自名实相符落盘(消费方 glob 不受限)。
+# 分卷命名 ${OWN_FILE:-FILE}.part00..NN,逐卷试拉至 404 即止;拼接后走 OWN_* 门禁
+# (OWN_SIZE 缺省回落 SIZE、OWN_SHA 缺省回落 SHA),失败不退出 —— 软回落镜像源。
+# OWN_FILE/OWN_SIZE/OWN_SHA:自有盘与镜像盘是两个不同构建时分开设,各自名实相符落盘
+# (消费方 glob 不受限);值是 release 的 SHA256SUMS.txt / 资产列表里那两行。
 OWN_BASE="https://github.com/quickwinlabs/assets/releases/download"
 OWN_TAG=""
 OWN_FILE=""
 OWN_SIZE=""
+OWN_SHA=""
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 ts() { date '+%H:%M:%S'; }
@@ -33,13 +39,14 @@ warn()  { echo -e "${YELLOW}[$(ts)] [WARN]${NC} $*"; }
 error() { echo -e "${RED}[$(ts)] [ERROR]${NC} $*"; exit 1; }
 
 if [ -z "$VERSION" ]; then
-    echo "用法: $0 <xp|7u|10|11|tiny11> [目标目录]"
+    echo "用法: $0 <xp|7u|10|11|tiny11|tiny11std> [目标目录]"
     echo ""
-    echo "  xp     - Windows XP Professional SP3 中文 VL (601MB)"
-    echo "  7u     - Windows 7 Ultimate SP1 x64 中文 (3.2GB)"
-    echo "  10     - Windows 10 22H2 x64 (5.7GB)"
-    echo "  11     - Windows 11 25H2 x64 (7.9GB)"
-    echo "  tiny11 - Tiny11 Core 25H2 Pro x64 英文 (2.96GB, 不可服务化精简版)"
+    echo "  xp       - Windows XP Professional SP3 中文 VL (601MB)"
+    echo "  7u       - Windows 7 Ultimate SP1 x64 中文 (3.2GB)"
+    echo "  10       - Windows 10 22H2 x64 (5.7GB)"
+    echo "  11       - Windows 11 25H2 x64 (7.9GB)"
+    echo "  tiny11   - Tiny11 Core 25H2 Pro x64 英文 (2.96GB, 不可服务化精简版)"
+    echo "  tiny11std- Tiny11 25H2 Pro x64 英文 标准版 (5.1GB, 可服务化, 自带 Defender)"
     exit 1
 fi
 
@@ -98,8 +105,8 @@ get_iso_info() {
             ;;
         "tiny11" )
             # 双构建并存,各自名实相符:
-            #  - FILE  = SF 盘 2026-08-23(3.0GB,本机可下)——镜像回落;SF 对数据中心 IP
-            #           被 Cloudflare 拦(runner 必败),SIZE 放开(两个构建大小不同)。
+            #  - FILE  = SF 盘 2026-08-23(3.0GB,本机可下)——镜像回落;SF 对 GitHub
+            #           runner IP 段间歇 403(Cloudflare 反爬),SIZE 放开(两个构建大小不同)。
             #  - OWN_* = 自有 release / archive.org 的 NTDEV 官方 Nov25 core(3.3GB),
             #           单独大小门禁。
             FILE="Tiny11Core-25H2-26200.8037-English-Pro-2026-08-23.iso"
@@ -113,8 +120,29 @@ get_iso_info() {
                 "https://archive.org/download/tiny11_25H2/tiny11core_25H2_Nov25.iso"
             )
             ;;
+        "tiny11std" | "tiny11-std" )
+            # 标准 tiny11(可服务化,自带 Defender;kelexine/tiny11-automated 产物)。
+            # 双构建并存,各自名实相符:
+            #  - FILE/SIZE/SHA = SF 盘 2026-08-23(5.1GB;2026-10 在本机实测过的那份,
+            #    SHA256 取自同 release 的 .sha256 资产)—— 自带 release 缺失时的回落。
+            #  - OWN_* = 自有 release win-isos-tiny11-std(CI 从 archive.org NTDEV
+            #    官方 item 发布,Nov25 盘 5.3GB)—— 常态路径,单独大小/SHA 门禁。
+            # 注意:SF 与 archive.org 是两份不同构建,OWN/SF 的大小与 SHA 互不通用;
+            #       重跑 workflow 换批次后,OWN_SIZE/OWN_SHA 要按 release 的
+            #       SHA256SUMS.txt 同步更新(不符会告警并软回落 SF)。
+            FILE="Tiny11-25H2-26200.8037-English-Pro-2026-08-23.iso"
+            SIZE="5475780608"
+            SHA="c2303bdaffed0e455e49d48644238977913aacd73a7c07eef71777619ae26c48"
+            OWN_TAG="win-isos-tiny11-std"
+            OWN_FILE="tiny11_25H2_Nov25.iso"
+            OWN_SIZE="5730246656"
+            OWN_SHA="7b24815845684add7250808b3b0027ba4e94cf52c62e9ef40d5b965dd304d6ca"
+            URLS=(
+                "https://downloads.sourceforge.net/project/tiny-11-releases/Tiny11-Pro-25H2/${FILE}"
+            )
+            ;;
         * )
-            error "不支持的版本: $version (支持: xp, 7u, 10, 11, tiny11)"
+            error "不支持的版本: $version (支持: xp, 7u, 10, 11, tiny11, tiny11std)"
             ;;
     esac
 }
@@ -161,15 +189,18 @@ resolve_url() {
 
 # ── 自有 release 优先 ──
 # quickwinlabs/assets 由 CI 发布的分卷(${OWN_FILE:-FILE}.part00..NN):逐卷试拉至
-# 404 即止,拼接后走与镜像源同款的大小/SHA 门禁(失败不退出 —— 软回落镜像源)。
-# 落盘名 = ${OWN_FILE:-FILE}(tiny11 与镜像盘不同构建,分开命名),已存在则校验幂等。
+# 404 即止,拼接后走 OWN_SIZE/OWN_SHA 门禁(缺省回落 SIZE/SHA;失败不退出 —— 软回落
+# 镜像源)。落盘名 = ${OWN_FILE:-FILE}(自有盘与镜像盘是不同构建时分开命名),已存在
+# 则校验幂等。
 try_own_release() {
     [ -z "$OWN_TAG" ] && return 1
-    local name="${OWN_FILE:-$FILE}" out="$DEST/$name" gate="${OWN_SIZE:-$SIZE}"
+    local name="${OWN_FILE:-$FILE}"
+    local out="$DEST/$name" gate="${OWN_SIZE:-$SIZE}"
+    local want="${OWN_SHA:-$SHA}"
     local base="$OWN_BASE/$OWN_TAG" i part got=false
     if [ -f "$out" ]; then
         info "自有 release 文件已存在，校验完整性: $out"
-        verify_sha "$out" "$SHA"
+        verify_sha "$out" "$want"
         return 0
     fi
     info "优先尝试自有 release: $OWN_TAG ($name)"
@@ -189,11 +220,11 @@ try_own_release() {
         warn "自有 release 大小不符: 期望 $gate 实际 $actual —— 回落镜像源"
         rm -f "$out"; return 1
     fi
-    if [ -n "$SHA" ]; then
+    if [ -n "$want" ]; then
         local sum
         sum=$(sha256sum "$out" | awk '{print $1}')
-        if [ "$sum" != "$SHA" ]; then
-            warn "自有 release SHA256 不符: 期望 $SHA 实际 $sum —— 回落镜像源"
+        if [ "$sum" != "$want" ]; then
+            warn "自有 release SHA256 不符: 期望 $want 实际 $sum —— 回落镜像源"
             rm -f "$out"; return 1
         fi
     fi

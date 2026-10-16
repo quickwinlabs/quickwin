@@ -81,6 +81,46 @@
       <Diagnostics>
         <OptIn>false</OptIn>
       </Diagnostics>
+      <!-- WinPE 阶段：目标 OS 还没启动过，趁此时改它的离线 SOFTWARE hive 关掉
+           Defender Tamper Protection（键在 OS 起来后被 WdFilter 内核回调 + ACL 保护，
+           运行期改不了）。deftweak-pe.cmd 放在软盘根上，作为后台任务跑：它轮询直到
+           setup 把镜像写进目标卷、hive 文件出现，再 reg load/改/reg unload。
+           参考 cschneegans/unattend-generator 的 DisableDefender.vbs（同为 PE 阶段离线改）。 -->
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Description>Offline disable Defender tamper protection (WinPE stage)</Description>
+          <Path>cmd /c "for %d in (A B C D E F G H) do @if exist %d:\deftweak-pe.cmd start /MIN cmd /c %d:\deftweak-pe.cmd"</Path>
+        </RunSynchronousCommand>
+      <!-- 硬件检查绕过：本 ISO（tiny11 std/core, kelexine 构建）不带绕过，装机会在兼容
+           检查处拒绝。LabConfig 键必须在 WinPE 的兼容检查之前落盘 → 放 RunSynchronous
+           里；用 reg add（返回 0），避免 RunSynchronous 非零导致安装中断。 -->
+      <RunSynchronousCommand wcm:action="add">
+        <Order>2</Order>
+        <Description>Bypass TPM 2.0 check</Description>
+        <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path>
+      </RunSynchronousCommand>
+      <RunSynchronousCommand wcm:action="add">
+        <Order>3</Order>
+        <Description>Bypass Secure Boot check</Description>
+        <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path>
+      </RunSynchronousCommand>
+      <RunSynchronousCommand wcm:action="add">
+        <Order>4</Order>
+        <Description>Bypass RAM check</Description>
+        <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path>
+      </RunSynchronousCommand>
+      <RunSynchronousCommand wcm:action="add">
+        <Order>5</Order>
+        <Description>Bypass CPU check</Description>
+        <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassCPUCheck /t REG_DWORD /d 1 /f</Path>
+      </RunSynchronousCommand>
+      <RunSynchronousCommand wcm:action="add">
+        <Order>6</Order>
+        <Description>Bypass storage check</Description>
+        <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassStorageCheck /t REG_DWORD /d 1 /f</Path>
+      </RunSynchronousCommand>
+      </RunSynchronous>
       <UseConfigurationSet>true</UseConfigurationSet>
     </component>
   </settings>
