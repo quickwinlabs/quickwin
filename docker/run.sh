@@ -9,7 +9,10 @@ cd "$(dirname "$0")"
 #  测试经 hostfwd HTTP 下发（win7:8007 / xp:8005 / win11:8011 → guest:8080）。
 #  端口助记：HTTP = 8000+版本号，noVNC = 6000+版本号（8009/6009 留空，Win9 未发布）。
 #
-#  用法: ./run.sh <win7|xp|win11> [--restart] [--stop]
+#  用法: ./run.sh <win7|xp|win11|win11core> [--restart] [--stop]
+#    win11     = 标准 tiny11(带 Defender)，默认盘 win11_ready.qcow2;
+#    win11core = 精简 tiny11 core，win11_ready-core.qcow2（先 ./setup-win11.sh core）
+#    两者都是 UEFI 引导：普通 OVMF（非 Secure Boot、无 TPM）；盘为 GPT 装的，故必须 pflash。
 #    默认：已在跑则只做健康检查后退出（真常驻）；实际启动时无条件重建
 #          overlay 与 OVMF VARS（不吃旧脏状态，跨 job/会话不残留）
 #    --restart：先停再起（等价默认开机路径，兼容保留）
@@ -17,10 +20,14 @@ cd "$(dirname "$0")"
 # ============================================================
 
 START_TIME=$(date +%s)
-VM="${1:?usage: ./run.sh <win7|xp|win11> [--restart] [--stop]}"
+VM_ARG="${1:?usage: ./run.sh <win7|xp|win11|win11core> [--restart] [--stop]}"
 shift
-TPM=0
-TPM_EXTRA=()
+# win11 有两套镜像（win11 = 标准 tiny11 / win11core = 精简 core），靠产物文件名后缀区分。
+# 只有 win11 用得到 $SFX（win7/xp 恒为空）；名字原样交给下面的 case，未匹配即报错（如 win11-foo）。
+VM="$VM_ARG"
+SFX=""
+[ "$VM_ARG" = win11core ] && { VM=win11; SFX="-core"; }
+PIDFILE="qemu-${VM_ARG}.pid"
 
 case "$VM" in
   win7)
@@ -38,29 +45,24 @@ case "$VM" in
     EXTRA=(-machine pc-i440fx-5.2 -cpu qemu32 -device VGA,vgamem_mb=64 -vnc 0.0.0.0:1)
     ;;
   win11)
-    SNAPSHOT="$(pwd)/snapshots/win11_ready.qcow2"
-    OVERLAY="$(pwd)/snapshots/win11_test.qcow2"
-    MONITOR=/tmp/qemu-monitor-win11.sock
+    SNAPSHOT="$(pwd)/snapshots/win11_ready$SFX.qcow2"
+    OVERLAY="$(pwd)/snapshots/win11_test$SFX.qcow2"
+    MONITOR=/tmp/qemu-monitor-win11$SFX.sock
     MEM=8192; SMP=4; NETDEV=e1000e; FWD=8011
-    # UEFI + Secure Boot + TPM 2.0：需 OVMF_secboot 固件（pflash）+ swtpm
-    # 注意: 新版 edk2-ovmf 的 2M OVMF 无 TPM 支持，Windows 11 会报 TPM 2.0 缺失；
-    #       必须用 4M 版（qcow2 镜像）OVMF_CODE_4M.secboot.qcow2 / OVMF_VARS_4M.secboot.qcow2。
-    TPM=1
-    TPM_DIR=/tmp/tpm-win11; TPM_SOCK=/tmp/swtpm-win11.sock; TPM_PID=/tmp/swtpm-win11.pid
-    OVMF_CODE=/usr/share/edk2/ovmf/OVMF_CODE_4M.secboot.qcow2
-    OVMF_VARS_TEMPLATE=/usr/share/edk2/ovmf/OVMF_VARS_4M.secboot.qcow2
-    VARS="$(pwd)/snapshots/win11_VARS.qcow2"
+    # UEFI（非 secboot、无 TPM）：盘是 UEFI/GPT 装的，仍必须 pflash 引导；
+    # 4M 固件是 code/vars 分离，必须给一份可写 VARS（模板不带 Secure Boot 密钥）。
+    # 实测该镜像 BitLocker=Off、TPM 状态与 VARS 每轮都重建 → 没有任何东西依赖 TPM/SB，
+    # 去掉后行为不变（少一个常驻 swtpm 与一类 socket 陈旧 flaky）。
+    OVMF_CODE=/usr/share/edk2/ovmf/OVMF_CODE_4M.qcow2
+    OVMF_VARS_TEMPLATE=/usr/share/edk2/ovmf/OVMF_VARS_4M.qcow2
+    VARS="$(pwd)/snapshots/win11_VARS$SFX.qcow2"
     [ -e /dev/kvm ] && CPUOPTS=(-cpu host) || CPUOPTS=(-cpu max)
     EXTRA=(-machine q35 "${CPUOPTS[@]}" \
         -drive if=pflash,format=qcow2,readonly=on,file="$OVMF_CODE" \
         -drive if=pflash,format=qcow2,file="$VARS" \
         -vga std -vnc 0.0.0.0:3)
-    TPM_EXTRA=(-chardev socket,id=chrtpm,path="$TPM_SOCK" \
-        -tpmdev emulator,id=tpm0,chardev=chrtpm \
-        -device tpm-tis,tpmdev=tpm0)
-    command -v swtpm >/dev/null || { echo "需要安装: swtpm"; exit 1; }
     ;;
-  *) echo "未知 VM: $VM（可选 win7|xp|win11）"; exit 1 ;;
+  *) echo "未知 VM: $VM_ARG（可选 win7|xp|win11|win11core）"; exit 1 ;;
 esac
 
 SHARE_DIR="${SHARE_DIR:-/workspace/_build}"
@@ -80,7 +82,7 @@ done
 for c in qemu-system-x86_64 qemu-img socat unix2dos; do
     command -v "$c" >/dev/null || { echo "需要安装: $c"; exit 1; }
 done
-[ -f "$SNAPSHOT" ] || { echo "找不到 snapshot: $SNAPSHOT，请先运行 ./setup-${VM}.sh"; exit 1; }
+[ -f "$SNAPSHOT" ] || { echo "找不到 snapshot: $SNAPSHOT，请先运行 ./setup-${VM}.sh${SFX:+ ${SFX#-}}"; exit 1; }
 [ -e /dev/kvm ] && KVM="-accel kvm"
 
 health() {
@@ -88,38 +90,33 @@ health() {
 }
 
 # ── --stop: ACPI 关机 ──
-# 用 qemu-${VM}.pid 是否存在判断退出（QEMU 退出时会自己 unlink），不能用 kill -0：
+# 用 $PIDFILE 是否存在判断退出（QEMU 退出时会自己 unlink），不能用 kill -0：
 # 它对僵尸进程也返回 0，容器里 PID 1 不回收孤儿僵尸 → 恒为 0。
 if $STOP; then
-    [ -f qemu-$VM.pid ] || { echo "找不到 qemu-$VM.pid，VM 可能未运行"; exit 1; }
-    QEMU_PID=$(cat qemu-$VM.pid)
+    [ -f $PIDFILE ] || { echo "找不到 $PIDFILE，VM 可能未运行"; exit 1; }
+    QEMU_PID=$(cat $PIDFILE)
     echo "system_powerdown" | socat - UNIX-CONNECT:"$MONITOR"
-    # win11 的 TPM 随 VM 一起停（若仅在 force-kill 分支清理，ACPI 正常关机后会残留）
-    if [ "$TPM" = 1 ] && [ -f "$TPM_PID" ]; then
-        kill "$(cat "$TPM_PID")" 2>/dev/null || true
-        rm -f "$TPM_PID"
-    fi
     for i in $(seq 1 30); do
         sleep 2
-        [ -f qemu-$VM.pid ] || { echo "VM 已关机（$((i*2))s）"; exit 0; }
+        [ -f $PIDFILE ] || { echo "VM 已关机（$((i*2))s）"; exit 0; }
     done
     echo "关机超时（60s），强制 kill"
-    kill -9 "$QEMU_PID"; rm -f qemu-$VM.pid
+    kill -9 "$QEMU_PID"; rm -f $PIDFILE
     exit 0
 fi
 
 # ── 已在跑：不杀，只报健康状态（常驻语义）──
 # --restart 才强制重启；实际启动路径（下方）无条件重建 overlay/VARS。
-if [ -f qemu-$VM.pid ] && ! $RESTART; then
-    echo "VM 已在运行 (PID=$(cat qemu-$VM.pid))，检查健康..."
+if [ -f $PIDFILE ] && ! $RESTART; then
+    echo "VM 已在运行 (PID=$(cat $PIDFILE))，检查健康..."
     for i in $(seq 1 12); do
         if health; then
             echo "execd 健康 (http://127.0.0.1:${FWD}/)  耗时 $(( $(date +%s) - START_TIME ))s"
             echo "跑测试: ./http_test.sh $VM [filter]"
-            echo "停止:   ./run.sh $VM --stop"
+            echo "停止:   ./run.sh $VM_ARG --stop"
             exit 0
         fi
-        [ -f qemu-$VM.pid ] || { echo "VM 已退出"; break; }
+        [ -f $PIDFILE ] || { echo "VM 已退出"; break; }
         sleep 5
         printf "\r  等待健康 %ds..." $((i*5))
     done
@@ -130,23 +127,20 @@ fi
 
 # ── 杀旧 QEMU + 清理 ──
 # pid 文件可能残留已死进程：kill 失败不能让 set -e 中断脚本
-if [ -f qemu-$VM.pid ]; then
-    kill -9 "$(cat qemu-$VM.pid)" 2>/dev/null || true
+if [ -f $PIDFILE ]; then
+    kill -9 "$(cat $PIDFILE)" 2>/dev/null || true
     sleep 1
 fi
-if [ "$TPM" = 1 ] && [ -f "$TPM_PID" ]; then
-    kill -9 "$(cat "$TPM_PID")" 2>/dev/null || true
-    rm -f "$TPM_PID"
-fi
-rm -f qemu-$VM.pid "$LOGFILE"
+rm -f $PIDFILE "$LOGFILE"
 
 # ── 创建 overlay（无条件重建：不吃旧脏状态）──
 rm -f "$OVERLAY"
 echo "创建 overlay..."
 qemu-img create -f qcow2 -b "$SNAPSHOT" -F qcow2 "$OVERLAY" >/dev/null
 
-# ── OVMF VARS（win11，恒重置：Secure Boot 密钥归位）──
-if [ "$TPM" = 1 ]; then
+# ── OVMF VARS（win11，恒重置：不吃旧脏状态）──
+# 4M 固件是 code/vars 分离，必须有可写 VARS；模板本身不带 Secure Boot 密钥。
+if [ -n "$VARS" ]; then
     rm -f "$VARS"
     cp "$OVMF_VARS_TEMPLATE" "$VARS"
     echo "重置 OVMF VARS: $VARS"
@@ -165,32 +159,20 @@ fi
 # 每次运行都转一遍（原地），不依赖 checkout 的行尾设置。
 unix2dos -q ci_share/run.bat
 
-# ── 启动 swtpm（win11 TPM 2.0）──
-if [ "$TPM" = 1 ]; then
-    rm -rf "$TPM_DIR"; mkdir -p "$TPM_DIR"
-    rm -f "$TPM_SOCK" "$TPM_PID"
-    swtpm socket \
-        --tpmstate dir="$TPM_DIR" \
-        --ctrl type=unixio,path="$TPM_SOCK" \
-        --tpm2 --pid file="$TPM_PID" --daemon
-    echo "swtpm 已启动 (PID=$(cat "$TPM_PID"))"
-fi
-
 # ── 启动 QEMU ──
 # win7/xp 硬件差异在 case 中已配置（内存/CPU/网卡/端口/machine），
 # EXTRA 为空时不展开（win7 不需要 -machine 参数）。
 qemu-system-x86_64 \
     $KVM \
     "${EXTRA[@]}" \
-    "${TPM_EXTRA[@]}" \
     -hda "$OVERLAY" -m "$MEM" -smp "$SMP" \
     -netdev user,id=net0,guestfwd=tcp:10.0.2.4:445-cmd:"$(pwd)/smb_wrapper.sh",hostfwd=tcp::"$FWD"-:8080 \
     -device "$NETDEV",netdev=net0 \
-    -display none -pidfile qemu-$VM.pid \
+    -display none -pidfile "$PIDFILE" \
     -monitor unix:"$MONITOR",server,nowait \
     -daemonize
 
-echo "QEMU 已启动 (PID=$(cat qemu-$VM.pid))，等待 execd..."
+echo "QEMU 已启动 (PID=$(cat $PIDFILE))，等待 execd..."
 
 # ── 等待 run.log（run.bat 首行 echo 即创建）──
 for i in $(seq 1 24); do
@@ -216,10 +198,10 @@ for i in $(seq 1 36); do
         cat "$LOGFILE"
         echo
         echo "跑测试: ./http_test.sh $VM [filter]"
-        echo "停止:   ./run.sh $VM --stop"
+        echo "停止:   ./run.sh $VM_ARG --stop"
         exit 0
     fi
-    if [ ! -f qemu-$VM.pid ]; then
+    if [ ! -f $PIDFILE ]; then
         echo "VM 已退出"
         cat "$LOGFILE" 2>/dev/null || true
         exit 1

@@ -6,26 +6,38 @@ rem  启动 execd（HTTP 8080），不自动跑测试。
 rem  结果写 Z:\run-win7.log / Z:\run-xp.log / Z:\run-win11.log
 rem  （run.sh 据此 / 或 host curl 健康检查）。
 rem ============================================================
-set LOG=Z:\run-win7.log
-set EXE=qwin.exe
-rem ---- 判断系统版本：XP=5.x 走单独分支；win11=10.x（只差日志名）----
-ver | findstr /r /c:"5\." >nul 2>&1
-if not errorlevel 1 (set LOG=Z:\run-xp.log & set EXE=qwin-x86.exe)
-echo [%date% %time%] run.bat started >> %LOG%
+rem ---- 系统判定：取 ver 中 '[' 括号内的版本串，再去掉本地化的"词" ----
+rem   en: "Microsoft Windows [Version 10.0.19045.3803]"
+rem   zh: "Microsoft Windows XP [版本 5.1.2600]"
+rem   词会被本地化，但数字段不带语言；抽出后做前缀比较（非子串匹配）
+set "VER="
+for /f "tokens=2 delims=[]" %%v in ('ver') do set "VER=%%v"
+for /f "tokens=1,*" %%a in ("%VER%") do if "%%b"=="" (set "VER=%%a") else (set "VER=%%b")
+
+set "LOG=Z:\run-win7.log"
+set "EXE=qwin.exe"
+set "ISXP=0"
+rem 前缀比较：否则 10.0.19045.x 里的 "5." 子串会被误判成 XP
+if "%VER:~0,4%"=="5.1." (
+    set "ISXP=1"
+    set "LOG=Z:\run-xp.log"
+    set "EXE=qwin-x86.exe"
+)
+if "%VER:~0,5%"=="10.0." set "LOG=Z:\run-win11.log"
+echo [%date% %time%] run.bat started ver=[%VER%] >> %LOG%
 
 Z:
 
-rem ---- 判断系统版本：XP=5.x，win11=10.x，win7=6.x ----
-ver | findstr /r /c:"5\." >nul 2>&1
-if %errorlevel%==0 goto xp
-ver | findstr /r /c:"10\." >nul 2>&1
-if not errorlevel 1 set LOG=Z:\run-win11.log
+if "%ISXP%"=="1" goto xp
 
 rem ---------------- win11 / win7 ----------------
 rem Disable Windows Firewall (QEMU SLIRP forwarded connections are blocked by it)
 echo [%date% %time%] Disabling firewall... >> %LOG%
 netsh advfirewall set allprofiles state off >nul 2>&1
 echo [%date% %time%] Firewall disabled >> %LOG%
+
+rem ---- Win11（标准 tiny11 自带 Defender）：关实时保护，服务保留只是不扫/不拦测试负载 ----
+if "%VER:~0,5%"=="10.0." powershell -NoProfile -Command "Set-MpPreference -DisableRealtimeMonitoring $true" >> %LOG% 2>&1
 
 rem Forward guest ports to host test server (10.0.2.2)
 rem (basic-fetch and net tests hit the container serve_test via these proxies)

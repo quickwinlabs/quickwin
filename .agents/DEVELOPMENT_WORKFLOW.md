@@ -125,13 +125,47 @@ WASM 导出到 JS 的函数用 `JS_NewCFunctionData`（`magic` 传函数 ID）�
 
 ```bash
 cd docker
-./setup-win7.sh    # → snapshots/win7_ready.qcow2
-./setup-xp.sh       # → snapshots/xp_ready.qcow2
+./setup-win7.sh                  # → snapshots/win7_ready.qcow2
+./setup-xp.sh                    # → snapshots/xp_ready.qcow2
+./setup-win11.sh win11           # → snapshots/win11_ready.qcow2（标准 tiny11，带 Defender）
+./setup-win11.sh win11core       # → snapshots/win11_ready-core.qcow2（tiny11 core）
 ```
 
+- Win11 第二参数是 `iso/win11/*<片段>*.iso` 的匹配串（可覆盖内置选盘，免去挪动 ISO）；
+  变体与 Defender 细节见 `.agents/WIN11_DEFENDER.md`
+- Win11 装机与运行都**不含 TPM/Secure Boot**：硬件检查由 `floppy-win11/Autounattend.xml` 的
+  `LabConfig` 键（`BypassTPMCheck` 等 5 项：TPM/SecureBoot/RAM/CPU/Storage）在 WinPE 阶段绕过，
+  QEMU 侧只要普通 4M OVMF（pflash，code/vars 分离）+ GPT 盘 → 不再需要 `swtpm` / `tpm-tis`
 - XP：提取 ISO → 注入 `WINNT.SIF` + `$OEM$`（`.bat` 经 `unix2dos` 转 CRLF）→ 重建 ISO → 无人值守安装（约 5–6 分钟）
 - Win7：直接用原始 ISO 安装；软盘里的 `install.bat`/`bootstrap.bat` 同样 `unix2dos` 转 CRLF（中文 cmd + LF 会吞行尾）
 - 安装脚本会自动清理残留 pid / 旧盘；QEMU 干净关机后脚本轮询退出
+
+### 测试镜像（ISO）来源与发布
+
+`docker/scripts/download-iso.sh <类型> [目标目录]` 按 **自有 release → 公开镜像源** 取盘：
+
+| 类型 | 自有 release（`quickwinlabs/assets`） | 原始文件（资产前缀） | 镜像回落 |
+|------|--------------------------------------|----------------------|----------|
+| `xp` | `win-isos-xp` | `zh-hans_windows_xp_...x14-74070.iso` | testip → archive.org |
+| `7u` | `win-isos-win7` | `cn_windows_7_ultimate_..._677408.iso` | archive.org ×3 → testip |
+| `tiny11`（core） | `win-isos-tiny11` | `tiny11core_25H2_Nov25.iso` | SourceForge → archive.org |
+| `tiny11std`（标准） | `win-isos-tiny11-std` | `tiny11_25H2_Nov25.iso` | SourceForge |
+
+- 自有 release 是**分卷**（`${OWN_FILE:-FILE}.part00..NN`，`split -b 1800m` —— GitHub 单资产 2 GiB 硬限）+ `SHA256SUMS.txt`；
+  `try_own_release()` 逐卷试拉到 404 即止，拼接后过 `OWN_SIZE`/`OWN_SHA` 门禁（缺省回落 `SIZE`/`SHA`）——
+  **不符只告警并软回落镜像源，不硬失败**。
+- core 与标准盘用的是**两份不同构建**（archive.org 的 NTDEV Nov25 resp. SourceForge 的 kelexine 2026-08-23），
+  所以 `OWN_FILE`/`OWN_SIZE`/`OWN_SHA` 与 `FILE`/`SIZE`/`SHA` 分开设、各自名实相符；
+  **重跑发布换批次后要同步 `OWN_*`**（值在 release 的 `SHA256SUMS.txt`）。
+- 发布在 **assets 仓**（`quickwinlabs/assets`）：`scripts/publish.sh <xp|7u|tiny11|tiny11std>`
+  （下载 → 1800m 分卷 → `gh release upload --clobber`），由 `.github/workflows/build-<type>.yml` 的
+  `workflow_dispatch` 手动触发（`GH_TOKEN` = 仓库自带 token）。**重跑即覆盖，`sha256` 是唯一 integrity 锚点**。
+  新增类型 = 抄一个 workflow + `publish.sh` case 表一行 + `download-iso.sh` 的 ISO 定义。
+- **为什么不用 SourceForge 当主源**：SF 对 GitHub runner IP 段**间歇 403**（Cloudflare 反爬；assets 仓 2026-10 的
+  runner 探针实测 + 多个外部项目佐证），且其文件与 archive.org 那份**同名不同内容**；archive.org 才是 runner 可达源
+  （并发多个 workflow 时撞过限流，退避重跑即可）。
+- 本环境（宿主/容器）**访问 archive.org 不通**（DNS 污染 + SNI RST）→ **本机走 SF、CI 走 archive.org**，两条路各取所需。
+- 换/加盘后验证自有 release 路径：`./download-iso.sh <类型> /tmp/iso-test`（会实下整盘，注意流量/时间）。
 
 ### 每次测试（常驻模式）
 
@@ -173,7 +207,7 @@ Win7 用 `qwin.exe`（64 位），XP 用 `qwin-x86.exe`（32 位），`http_test
 | VM 内挂不上 Z: | XP 仅 SMB1：须走 `smb_wrapper.sh`（guestfwd + `server min protocol = NT1`），不能用 QEMU `-smb` |
 | `net use` 成功但不跑 run.bat | `.bat` 必须 CRLF：仓库根 `.gitattributes` 已 `eol=crlf`（checkout 即 CRLF），`run.sh` 每次再 `unix2dos` 作双保险 |
 | 网络测试连不上宿主 | guest `portproxy` 18923/18924 + 容器内 `serve_test` 必须都在；`--fresh` 会丢 overlay 里的 portproxy，由 run.bat 每次重建；`http_test.sh` 会自动拉起 serve_test |
-| `/exec` 超时 | `popen` 在 Worker 里跑，主循环不阻塞；默认 60s，`http_test.sh` 给 300s。真挂死用 `./run.sh <vm> --restart` |
+| `/exec` 超时/不返回 | **无默认上限**：连接活着就一直跑，客户端断连或 body 传 `"timeout"` 毫秒才 kill（代码是 `CreatePipe` + `CreateProcessW` 的读循环，**不是 popen**——唯一 popen 是超时后 `taskkill /T` 那个 helper）。后代进程持有管道写端也会拖住请求，见 `.agents/CONSOLE_STDOUT_MECHANISM.md` §7.6。真挂死用 `./run.sh <vm> --restart` |
 | 关机/等待死循环 | 不能用 `kill -0` 判 QEMU（容器 PID1 不回收僵尸）；看 pid **文件是否还存在**（QEMU 退出时自行 unlink） |
 | 需要看 VM 画面 | 容器内 `./start-novnc.sh` 后浏览器开 XP `:6005` / Win7 `:6007`（宿主已映射）；或 monitor `screendump` 截图 |
 | 残留 QEMU | `./run.sh <vm> --stop`；pid 文件残留用 `kill -9 $(cat qemu-<vm>.pid) \|\| true` |
@@ -229,6 +263,7 @@ qwin.exe [options]                # 无参数时加载 main.js 或内嵌 JS
 | 本文档 | 构建/测试命令、CLI、WAMR flag、XP patch、已知问题 |
 | `../docs/qemu-xp-automated-testing.md` | QEMU 无人值守安装 + SMB + bootstrap 原理 |
 | `.agents/QEMU_NET_SUITE_TEST.md` | 逐 suite 网络测试与 ipv6/portproxy 历史 |
+| `.agents/WIN11_DEFENDER.md` | Win11 两套镜像、TP/实时保护开关、定义库更新与 EICAR 冒烟实测 |
 | `docker/run.sh` / `http_test.sh` / `setup-*.sh` | 常驻启停、HTTP 下发测试、装机脚本内注释 |
 | `make debug` + `-o LOG` | bridge 调用日志；release 构建会编译掉 `DEBUG_PRINTF` |
 | monitor `screendump` / noVNC | VM 卡界面时截图或实时查看 |

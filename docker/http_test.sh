@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 # ============================================================
 #  经常驻 execd 的 HTTP 下发测试（win7 / xp / win11 共用）
 #  前置：run.sh <vm> 已起且健康；host 上 serve_test 在 18923。
-#  用法: ./http_test.sh <win7|xp|win11> [filter]
+#  用法: ./http_test.sh <win7|xp|win11|win11core> [filter]
 #    filter 透传给 test/run.js，如: -net / basic / wasm
 #  协议:
 #    200 → body = popen 原始字节（cmd 内置=UTF-16LE、外部程序原生如 GBK），退出码在 X-Exit-Code
@@ -13,14 +13,15 @@ cd "$(dirname "$0")"
 #  判定: Summary failed<=1（XP 打印机 ffi 容忍 1）
 # ============================================================
 
-VM="${1:?usage: ./http_test.sh <win7|xp|win11> [filter]}"
+VM="${1:?usage: ./http_test.sh <win7|xp|win11|win11core> [filter]}"
 FILTER="${2:-}"
 
 case "$VM" in
   win7)  FWD=8007 ;;
   xp)    FWD=8005 ;;
-  win11) FWD=8011 ;;
-  *) echo "未知 VM: $VM（可选 win7|xp|win11）"; exit 1 ;;
+  # win11 的两套镜像（标准 / core）共用端口与日志——同一时刻只跑一台
+  win11|win11core) FWD=8011 ;;
+  *) echo "未知 VM: $VM（可选 win7|xp|win11|win11core）"; exit 1 ;;
 esac
 
 # 命令用相对路径（execd 启动时 cwd=Z:\quickwin，popen 继承）。

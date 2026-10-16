@@ -169,6 +169,17 @@ EOF 语义变化是入坑点：**管道 EOF = 所有写端句柄都关闭**（�
 - [x] 行尾：双系统均为 `\r\n`（qwin 继承 cmd 文本模式 stdout，与 winpty 输出一致）
 - [x] 失败教训：一开始 `cmd.exe` 无全路径、靠 PATH 查找 **失败**（err 267 `ERROR_DIRECTORY`/123 `ERROR_INVALID_NAME`）→ 用 `GetSystemDirectoryW` 拼全路径即解决。CreateProcess 的 PATH 解析在本环境不可依赖
 
+### 7.6 后代进程持有写端 → `/exec` 不返回（2026-10-16 实测）
+
+§7.4 的 EOF 语义最先咬人的地方：**只要进程树里还有任何进程持有写端，请求就不返回**——哪怕直接子进程早就退了。
+
+- 实测：guest 里 `start "" /min Z:\sigupd.cmd`（脚本本身 0.09s 就跑完并写好日志）→ `POST /exec` 拖到 180s 仍未回。
+  持写端的是 `start` 带出来的孙进程/窗口宿主，**不是那个 cmd**（它秒退）。
+- `/exec` **默认无超时**：`{"cmd":...,"timeout":毫秒}` 可选，不给则不设上限（"连接活着就一直跑，断连才 kill"）。
+  客户端断连 → abort → `taskkill /F /T /PID <cmd pid>` 递归杀树收尾（`X-Exit-Code: -1`）。
+- 规避：把子进程输出重定向到文件（`cmd /c ... > C:\qwtmp\x.log 2>&1`，实测正常返回）或
+  `Start-Process -RedirectStandardOutput <file>`；**不要**用 `start "" /min <script>` 这类会留常驻窗口/孙进程的写法。
+
 ## 8. 验证入口
 
 - `docker/http_test.sh xp` → XP（`qwin-x86.exe`，ia32），结果 `547/548 (failed=1)` PASS（该 1 例是 http_test.sh 注释认可的 printer ffi 已知差异）
