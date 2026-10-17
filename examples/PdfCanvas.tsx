@@ -5,7 +5,7 @@ import { GetDC, ReleaseDC } from '../lib/windows/user32.js'
 import { SetDIBitsToDevice } from '../lib/windows/gdi32.js'
 import { BITMAPINFOHEADER } from '../lib/windows/structs.js'
 import type { WStyle } from '../lib/react-qw/jsx.d.ts'
-import { WindowStyle, WmMsg } from '../constants'
+import { ColorUse, WindowStyle, WmMsg } from '../constants'
 
 function makeBitmapInfo(w: number, h: number) {
   // biHeight 负 = 自顶向下（DIB 原点左上）；biCompression 缺省 0 = BI_RGB 无压缩
@@ -41,7 +41,7 @@ export const PdfCanvas = forwardRef<gui.HWND, PdfCanvasProps>(
             const hdc = GetDC(hwnd)
             if (hdc) {
               const bmi = makeBitmapInfo(pm.w, pm.h)
-              SetDIBitsToDevice(hdc, 0, 0, pm.w, pm.h, 0, 0, 0, pm.h, pm.data, bmi, 0)
+              SetDIBitsToDevice(hdc, 0, 0, pm.w, pm.h, 0, 0, 0, pm.h, pm.data, bmi, ColorUse.RGB_COLORS)
               ReleaseDC(hwnd, hdc)
             }
             return 0

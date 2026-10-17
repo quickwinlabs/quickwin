@@ -89,8 +89,32 @@ export const BitBlt = /*@__PURE__*/ b('BitBlt', '<HDC>ptr! i32 i32 i32 i32 <HDC>
  *  @param args_3 cLines 扫描行数
  *  @param args_4 lpvBits 像素接收缓冲（ArrayBuffer）
  *  @param args_5 lpbmi BITMAPINFO 缓冲（BITMAPINFOHEADER.encode({...}).ptr）
- *  @param args_6 uUsage DIB_RGB_COLORS(0) */
-export const GetDIBits = /*@__PURE__*/ b('GetDIBits', '<HDC>ptr! <HGDIOBJ>ptr u32 u32 <BYTE>ptr <>ptr u32 -> i32')
+ *  @param args_6 uUsage ColorUse.RGB_COLORS */
+export const GetDIBits = /*@__PURE__*/ b('GetDIBits', '<HDC>ptr! <HGDIOBJ>ptr u32 u32 <BYTE>ptr <>ptr u32@ColorUse -> i32')
+/** 建 32bpp DIB 段位图（biHeight 负 = 自顶向下，像素内存由系统分配）——像素内容靠
+ *  SetDIBits 从调用方缓冲装入，故 ppvBits 出参槽可传 NULL 不取位地址（要直写像素
+ *  才需要非空槽）
+ *  @returns 位图句柄；失败 → 0（用完 DeleteObject）
+ *  @param args_0 hdc 参考 DC（NULL 即可，只取 DIB 格式）
+ *  @param args_1 pbmi BITMAPINFO 缓冲（BITMAPINFOHEADER.encode({...}).ptr，同 GetDIBits）
+ *  @param args_2 iUsage ColorUse.RGB_COLORS
+ *  @param args_3 ppvBits 收位地址的出参槽（NULL = 不取）
+ *  @param args_4 hSection NULL（无文件映射区）
+ *  @param args_5 offset 位数据在映射区内的偏移（无映射区恒 0） */
+export const CreateDIBSection = /*@__PURE__*/ b('CreateDIBSection',
+    '<HDC>ptr <>ptr u32@ColorUse <>ptr <>ptr u32 -> <HGDIOBJ>ptr')
+/** 把 lpvBits 的像素装进位图（lpbmi 描述源的格式；ColorUse.RGB_COLORS 时 hdc 只定
+ *  目标格式，本仓传 NULL 实测可用——MSDN：仅 DIB_PAL_COLORS 才用 hdc）
+ *  @returns 成功复制的扫描行数；失败 → 0
+ *  @param args_0 hdc 参考 DC（NULL 即可，见上）
+ *  @param args_1 hbm 目标位图（DIB 段同可用）
+ *  @param args_2 uStartScan 起始扫描行
+ *  @param args_3 cLines 扫描行数
+ *  @param args_4 lpvBits 像素源缓冲（ArrayBuffer）
+ *  @param args_5 lpbmi BITMAPINFO 缓冲（同 GetDIBits）
+ *  @param args_6 iUsage ColorUse.RGB_COLORS */
+export const SetDIBits = /*@__PURE__*/ b('SetDIBits',
+    '<HDC>ptr <HGDIOBJ>ptr! u32 u32 <BYTE>ptr <>ptr u32@ColorUse -> i32')
 /** 取 GDI 对象信息到 lpv（hFont → LOGFONTW 等）
  *  @returns 写入的字节数；失败 → 0
  *  @param args_0 h GDI 对象句柄（字体/画笔/位图等）
@@ -184,9 +208,9 @@ export const MaskBlt = /*@__PURE__*/ b('MaskBlt',
  *  @param args_8 uNumScans 扫描行数
  *  @param args_9 lpvBits 像素缓冲（ArrayBuffer）
  *  @param args_10 lpbmi BITMAPINFO 缓冲
- *  @param args_11 iUsage DIB_RGB_COLORS(0) */
+ *  @param args_11 iUsage ColorUse.RGB_COLORS */
 export const SetDIBitsToDevice = /*@__PURE__*/ b('SetDIBitsToDevice',
-    '<HDC>ptr! i32 i32 u32 u32 i32 i32 u32 u32 <BYTE>ptr <BYTE>ptr u32 -> i32')
+    '<HDC>ptr! i32 i32 u32 u32 i32 i32 u32 u32 <BYTE>ptr <BYTE>ptr u32@ColorUse -> i32')
 
 /** 拉伸 DIB 传送（内存像素缓冲直接放/缩到目标，免创建 HBITMAP 中转）；
  *  DestWidth/DestHeight 传 0 = 源自然尺寸；SrcWidth/SrcHeight 负 = 翻转
@@ -201,10 +225,10 @@ export const SetDIBitsToDevice = /*@__PURE__*/ b('SetDIBitsToDevice',
  *  @param args_8 SrcHeight 源区高
  *  @param args_9 lpvBits 像素缓冲（ArrayBuffer）
  *  @param args_10 lpbmi BITMAPINFO 缓冲（BITMAPINFOHEADER.encode({...}).ptr）
- *  @param args_11 iUsage DIB_RGB_COLORS(0)
+ *  @param args_11 iUsage ColorUse.RGB_COLORS
  *  @param args_12 rop RasterOp.SRCCOPY 等互斥单选光栅操作码 */
 export const StretchDIBits = /*@__PURE__*/ b('StretchDIBits',
-    '<HDC>ptr! i32 i32 i32 i32 i32 i32 i32 i32 <BYTE>ptr <BYTE>ptr u32 u32@RasterOp -> i32')
+    '<HDC>ptr! i32 i32 i32 i32 i32 i32 i32 i32 <BYTE>ptr <BYTE>ptr u32@ColorUse u32@RasterOp -> i32')
 
 // ============ 画图原语（笔 / 线 / 形状 / 文字） ============
 

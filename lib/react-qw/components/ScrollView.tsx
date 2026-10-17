@@ -1,11 +1,11 @@
 import { forwardRef, useLayoutEffect, useRef } from 'react'
 import * as gui from 'gui'
-import { DefWindowProc, SetWindowPos, ShowScrollBar, GetDC, ReleaseDC } from '../../windows/user32.js'
-import { NULL } from '../../ffi/ctype.js'
-import { GetDeviceCaps } from '../../windows/gdi32.js'
+import { DefWindowProc, GetClientRect, GetScrollInfo, SetScrollInfo, SetWindowPos, ShowScrollBar } from '../../windows/user32.js'
+import { RECT, SCROLLINFO } from '../../windows/structs.js'
 import type { WStyle } from '../jsx.d.ts'
 import { forceFlexLayout } from '../reconciler.js'
-import { MouseKeyFlag, ScrollBar, ScrollCmd, SetWindowPosFlag, SetWindowPosHwnd, WindowStyle, WmMsg } from '../../../constants'
+import { getScaleFactor } from '../../dpi.js'
+import { MouseKeyFlag, ScrollBar, ScrollCmd, ScrollInfoFlag, SetWindowPosFlag, SetWindowPosHwnd, WindowStyle, WmMsg } from '../../../constants'
 
 export interface ScrollViewProps {
   children?: React.ReactNode
@@ -27,15 +27,13 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
     //   page  = viewportSize（可见行数）
     //   nPos  = 0 … max - page + 1（即 0 … contentSize - viewportSize）
     function updateScroll(sv: gui.HWND, content: gui.HWND) {
-      const svRect = gui.GetClientRect(sv)
-      if (!svRect) return
-      const svW = svRect.right - svRect.left
-      const svH = svRect.bottom - svRect.top
+      const svBuf = RECT.alloc()
+      if (!GetClientRect(sv, svBuf.ptr)) return
+      const { left, top, right, bottom } = RECT.decode(svBuf)
+      const svW = right - left
+      const svH = bottom - top
 
-      // GetScaleFactor 等价内联：GetDC → GetDeviceCaps(LOGPIXELSX=88) → ReleaseDC 配对
-      const hdc = GetDC(NULL)
-      const scale = hdc ? GetDeviceCaps(hdc, 88) / 96 : 1
-      if (hdc) ReleaseDC(NULL, hdc)
+      const scale = getScaleFactor()
       const natW = Math.round((contentWidth ?? (svW / scale)) * scale)
       const natH = Math.round((contentHeight ?? (svH / scale)) * scale)
 
@@ -47,8 +45,10 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
       forceFlexLayout(content)
 
       if (natW > svW) {
-        gui.SetScrollInfo(sv, ScrollBar.HORZ,
-          { min: 0, max: natW - 1, page: svW, pos: scrollXRef.current }, true)
+        SetScrollInfo(sv, ScrollBar.HORZ, {
+          cbSize: SCROLLINFO.size, fMask: ScrollInfoFlag.RANGE | ScrollInfoFlag.PAGE | ScrollInfoFlag.POS,
+          nMin: 0, nMax: natW - 1, nPage: svW, nPos: scrollXRef.current,
+        }, 1)
         ShowScrollBar(sv, ScrollBar.HORZ, 1)
       } else {
         scrollXRef.current = 0
@@ -56,8 +56,10 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
       }
 
       if (natH > svH) {
-        gui.SetScrollInfo(sv, ScrollBar.VERT,
-          { min: 0, max: natH - 1, page: svH, pos: scrollYRef.current }, true)
+        SetScrollInfo(sv, ScrollBar.VERT, {
+          cbSize: SCROLLINFO.size, fMask: ScrollInfoFlag.RANGE | ScrollInfoFlag.PAGE | ScrollInfoFlag.POS,
+          nMin: 0, nMax: natH - 1, nPage: svH, nPos: scrollYRef.current,
+        }, 1)
         ShowScrollBar(sv, ScrollBar.VERT, 1)
       } else {
         scrollYRef.current = 0
@@ -80,15 +82,17 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
       }
       SetWindowPos(content, SetWindowPosHwnd.TOP, -scrollXRef.current, -scrollYRef.current, 0, 0,
         SetWindowPosFlag.SWP_NOSIZE | SetWindowPosFlag.SWP_NOZORDER)
-      gui.SetScrollInfo(sv, bar, { pos: newPos }, true)
+      SetScrollInfo(sv, bar, { cbSize: SCROLLINFO.size, fMask: ScrollInfoFlag.POS, nPos: newPos }, 1)
     }
 
     function handleScroll(e: { msg: number; wParam: number }, bar: number) {
       const sv = svRef.current
       const content = contentRef.current
       if (!sv || !content) return
-      const info = gui.GetScrollInfo(sv, bar)
-      const maxPos = info.max - info.page + 1
+      const si = SCROLLINFO.encode({ cbSize: SCROLLINFO.size, fMask: ScrollInfoFlag.ALL })
+      GetScrollInfo(sv, bar, si.ptr)
+      const info = SCROLLINFO.decode(si)
+      const maxPos = info.nMax - info.nPage + 1
       const code = e.wParam & 0xFFFF
       const ref_ = bar === ScrollBar.VERT ? scrollYRef : scrollXRef
 
@@ -97,8 +101,8 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
         newPos = Math.max(0, Math.min(maxPos, (e.wParam >> 16) & 0xFFFF))
       } else if (code === ScrollCmd.LINEUP) newPos -= 20
       else if (code === ScrollCmd.LINEDOWN) newPos += 20
-      else if (code === ScrollCmd.PAGEUP) newPos -= info.page
-      else if (code === ScrollCmd.PAGEDOWN) newPos += info.page
+      else if (code === ScrollCmd.PAGEUP) newPos -= info.nPage
+      else if (code === ScrollCmd.PAGEDOWN) newPos += info.nPage
       else return
       newPos = Math.max(0, Math.min(maxPos, newPos))
       if (newPos !== ref_.current) setScrollPos(sv, content, bar, newPos)
@@ -115,8 +119,10 @@ export const ScrollView = forwardRef<gui.HWND, ScrollViewProps>(
       if (isHorz && contentWidth === undefined) return
       if (!isHorz && contentHeight === undefined) return
       const bar = isHorz ? ScrollBar.HORZ : ScrollBar.VERT
-      const info = gui.GetScrollInfo(sv, bar)
-      const maxPos = info.max - info.page + 1
+      const si = SCROLLINFO.encode({ cbSize: SCROLLINFO.size, fMask: ScrollInfoFlag.ALL })
+      GetScrollInfo(sv, bar, si.ptr)
+      const info = SCROLLINFO.decode(si)
+      const maxPos = info.nMax - info.nPage + 1
       const ref_ = isHorz ? scrollXRef : scrollYRef
       let newPos = ref_.current + dy
       newPos = Math.max(0, Math.min(maxPos, newPos))

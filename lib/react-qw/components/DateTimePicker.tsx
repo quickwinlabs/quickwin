@@ -1,9 +1,9 @@
 import type { Ptr } from '../../ffi/ctype.js'
 import { forwardRef, useRef, useEffect, useState, type Ref } from 'react'
 import * as gui from 'gui'
-import { InvalidateRect } from '../../windows/user32.js'
+import { GetClientRect, InvalidateRect } from '../../windows/user32.js'
 import { NULL } from '../../ffi/ctype.js'
-import { SYSTEMTIME, NMDATETIMECHANGE } from '../../windows/structs.js'
+import { RECT, SYSTEMTIME, NMDATETIMECHANGE } from '../../windows/structs.js'
 import { nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
 import { DtFlag, DtMsg, DtNotifyCode, DtStyle, WindowStyle, WmMsg } from '../../../constants'
@@ -66,11 +66,10 @@ const DateTimePicker = forwardRef(function DateTimePicker(
     if (!h) return
     InvalidateRect(h, NULL, 1)
     // 发送 WM_SIZE 让控件（尤其是 DTS_UPDOWN）重新布局内部子窗口
-    const cr = gui.GetClientRect(h)
-    if (cr) {
-      const w = cr.right - cr.left
-      const hh = cr.bottom - cr.top
-      gui.SendMessage(h, WmMsg.SIZE, 0, (hh << 16) | w)
+    const cr = RECT.alloc()
+    if (GetClientRect(h, cr.ptr)) {
+      const { left, top, right, bottom } = RECT.decode(cr)
+      gui.SendMessage(h, WmMsg.SIZE, 0, ((bottom - top) << 16) | (right - left))
     }
   }, [])
 

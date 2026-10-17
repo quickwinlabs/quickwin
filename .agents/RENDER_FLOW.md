@@ -12,7 +12,7 @@
 │    wndProc: handles COMMAND/    │
 │    DESTROY/SIZE)                │
 │  gui.CreateWindow('DemoApp',..) │
-│  gui.ShowWindow(hwnd)          │
+│  ShowWindow(hwnd, SHOWNORMAL)  │
 │  render(<App />, hwnd)          │
 └──────────┬──────────────────────┘
            │
@@ -66,7 +66,7 @@
 ```
 用户程序入口：
   hwnd = gui.CreateWindow("DemoApp", ...)
-  gui.ShowWindow(hwnd)
+  ShowWindow(hwnd, ShowWindowCmd.SHOWNORMAL)   // 框架根窗口路径还带 UpdateWindow
   render(<App />, hwnd)
         │
         ▼

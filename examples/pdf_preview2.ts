@@ -1,4 +1,4 @@
-import { PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { PtrArrayBuffer, NULL } from '../lib/ffi/ctype.js'
 import '../lib/polyfill.js'
 import * as std from 'std'
 import * as gui from 'gui'
@@ -6,11 +6,11 @@ import type { Document, Page, Pixmap } from '@quickwinlabs/mupdf-wasm'
 import { MUPDF_JS_URL, preloadMupdfWasm } from '../test/mupdf-cdn.js'
 import { assertNonNullable } from '../lib/assert.js'
 import { WCHAR } from '../lib/ffi/bind.js'
-import { BITMAPINFOHEADER, OPENFILENAMEW } from '../lib/windows/structs.js'
+import { BITMAPINFOHEADER, OPENFILENAMEW, RECT, SCROLLINFO } from '../lib/windows/structs.js'
 import { GetOpenFileName } from '../lib/windows/comdlg32.js'
-import { GetDC, ReleaseDC } from '../lib/windows/user32.js'
+import { GetClientRect, GetDC, GetScrollInfo, GetWindowLongPtr, GetWindowText, GetWindowTextLength, InvalidateRect, MessageBox, PostQuitMessage, ReleaseDC, SetScrollInfo, SetWindowPos, SetWindowLongPtr, SetWindowText, ShowScrollBar, ShowWindow } from '../lib/windows/user32.js'
 import { PatBlt, SetDIBitsToDevice } from '../lib/windows/gdi32.js'
-import { Gwlp, MouseKeyFlag, ScrollBar, ScrollCmd, SetWindowPosFlag, SetWindowPosHwnd, WindowStyle, WmMsg } from '../constants'
+import { ColorUse, Gwlp, MouseKeyFlag, ScrollBar, ScrollCmd, ScrollInfoFlag, SetWindowPosFlag, SetWindowPosHwnd, ShowWindowCmd, WindowStyle, WmMsg } from '../constants'
 
 type MuPdf = typeof import('@quickwinlabs/mupdf-wasm')
 
@@ -113,73 +113,81 @@ function openPdfFileDialog(): string | null {
 function updateScrollRange(): void {
     assertNonNullable(hwndCanvas); assertNonNullable(hwndContent)
     if (!currentPixmap) return
-    const cr = gui.GetClientRect(hwndCanvas)
-    if (!cr) return
-    const cw = cr.right - cr.left, ch = cr.bottom - cr.top
+    const crBuf = RECT.alloc()
+    if (!GetClientRect(hwndCanvas, crBuf.ptr)) return
+    const { left, top, right, bottom } = RECT.decode(crBuf)
+    const cw = right - left, ch = bottom - top
     const maxX = Math.max(0, currentPixmap.w - cw)
     const maxY = Math.max(0, currentPixmap.h - ch)
     scrollX = Math.min(scrollX, maxX)
     scrollY = Math.min(scrollY, maxY)
     if (currentPixmap.w > cw) {
-        const style = gui.GetWindowLongPtr(hwndCanvas, Gwlp.STYLE) | 0
+        const style = GetWindowLongPtr(hwndCanvas, Gwlp.STYLE)
         if (!(style & WindowStyle.HSCROLL)) {
-            gui.SetWindowLongPtr(hwndCanvas, Gwlp.STYLE, style | WindowStyle.HSCROLL)
-            gui.SetWindowPos(hwndCanvas, SetWindowPosHwnd.TOP, 0, 0, 0, 0,
+            SetWindowLongPtr(hwndCanvas, Gwlp.STYLE, style | WindowStyle.HSCROLL)
+            SetWindowPos(hwndCanvas, SetWindowPosHwnd.TOP, 0, 0, 0, 0,
                 SetWindowPosFlag.SWP_NOMOVE | SetWindowPosFlag.SWP_NOSIZE |
                 SetWindowPosFlag.SWP_NOZORDER | SetWindowPosFlag.SWP_FRAMECHANGED)
         }
-        gui.SetScrollInfo(hwndCanvas, ScrollBar.HORZ, { min: 0, max: currentPixmap.w - 1, page: cw, pos: scrollX }, true)
-        gui.ShowScrollBar(hwndCanvas, ScrollBar.HORZ, true)
+        SetScrollInfo(hwndCanvas, ScrollBar.HORZ, {
+            cbSize: SCROLLINFO.size, fMask: ScrollInfoFlag.RANGE | ScrollInfoFlag.PAGE | ScrollInfoFlag.POS,
+            nMin: 0, nMax: currentPixmap.w - 1, nPage: cw, nPos: scrollX,
+        }, 1)
+        ShowScrollBar(hwndCanvas, ScrollBar.HORZ, 1)
     } else {
         scrollX = 0
-        const style = gui.GetWindowLongPtr(hwndCanvas, Gwlp.STYLE) | 0
+        const style = GetWindowLongPtr(hwndCanvas, Gwlp.STYLE)
         if (style & WindowStyle.HSCROLL) {
-            gui.SetWindowLongPtr(hwndCanvas, Gwlp.STYLE, style & ~WindowStyle.HSCROLL)
-            gui.SetWindowPos(hwndCanvas, SetWindowPosHwnd.TOP, 0, 0, 0, 0,
+            SetWindowLongPtr(hwndCanvas, Gwlp.STYLE, style & ~WindowStyle.HSCROLL)
+            SetWindowPos(hwndCanvas, SetWindowPosHwnd.TOP, 0, 0, 0, 0,
                 SetWindowPosFlag.SWP_NOMOVE | SetWindowPosFlag.SWP_NOSIZE |
                 SetWindowPosFlag.SWP_NOZORDER | SetWindowPosFlag.SWP_FRAMECHANGED)
         }
-        gui.ShowScrollBar(hwndCanvas, ScrollBar.HORZ, false)
+        ShowScrollBar(hwndCanvas, ScrollBar.HORZ, 0)
     }
     if (currentPixmap.h > ch) {
-        gui.SetScrollInfo(hwndCanvas, ScrollBar.VERT, { min: 0, max: currentPixmap.h - 1, page: ch, pos: scrollY }, true)
-        gui.ShowScrollBar(hwndCanvas, ScrollBar.VERT, true)
-    } else { scrollY = 0; gui.ShowScrollBar(hwndCanvas, ScrollBar.VERT, false) }
-    gui.SetWindowPos(hwndContent, SetWindowPosHwnd.TOP, -scrollX, -scrollY, 0, 0,
+        SetScrollInfo(hwndCanvas, ScrollBar.VERT, {
+            cbSize: SCROLLINFO.size, fMask: ScrollInfoFlag.RANGE | ScrollInfoFlag.PAGE | ScrollInfoFlag.POS,
+            nMin: 0, nMax: currentPixmap.h - 1, nPage: ch, nPos: scrollY,
+        }, 1)
+        ShowScrollBar(hwndCanvas, ScrollBar.VERT, 1)
+    } else { scrollY = 0; ShowScrollBar(hwndCanvas, ScrollBar.VERT, 0) }
+    SetWindowPos(hwndContent, SetWindowPosHwnd.TOP, -scrollX, -scrollY, 0, 0,
         SetWindowPosFlag.SWP_NOSIZE | SetWindowPosFlag.SWP_NOZORDER)
 }
 
 function showPdf(mupdf: MuPdf, path: string, pageIdx: number): void {
     assertNonNullable(hwndMain); assertNonNullable(hwndContent)
     const pix = renderPdfPage(mupdf, path, pageIdx)
-    if (!pix) { gui.MessageBox('渲染 PDF 失败'); return }
+    if (!pix) { MessageBox(NULL, '渲染 PDF 失败', 'JS Alert', 0); return }
     currentPixmap = pix; currentPage = pageIdx; totalPages = pix.totalPages
-    gui.SetWindowText(hwndMain, 'PDF 预览 - 第 ' + (pageIdx + 1) + '/' + totalPages + ' 页')
+    SetWindowText(hwndMain, 'PDF 预览 - 第 ' + (pageIdx + 1) + '/' + totalPages + ' 页')
     scrollX = 0; scrollY = 0
-    gui.SetWindowPos(hwndContent, SetWindowPosHwnd.TOP, 0, 0, pix.w, pix.h,
+    SetWindowPos(hwndContent, SetWindowPosHwnd.TOP, 0, 0, pix.w, pix.h,
         SetWindowPosFlag.SWP_NOZORDER | SetWindowPosFlag.SWP_NOMOVE)
     updateScrollRange()
-    gui.InvalidateRect(hwndContent, null, true)
+    InvalidateRect(hwndContent, NULL, 1)
 }
 
 function doScroll(dx: number, dy: number): void {
     assertNonNullable(hwndCanvas); assertNonNullable(hwndContent)
-    const cr = gui.GetClientRect(hwndCanvas)
-    if (!cr || !currentPixmap) return
-    const cw = cr.right - cr.left, ch = cr.bottom - cr.top
+    const crBuf = RECT.alloc()
+    if (!GetClientRect(hwndCanvas, crBuf.ptr) || !currentPixmap) return
+    const { left, top, right, bottom } = RECT.decode(crBuf)
+    const cw = right - left, ch = bottom - top
     const maxX = Math.max(0, currentPixmap.w - cw)
     const maxY = Math.max(0, currentPixmap.h - ch)
     scrollX = Math.max(0, Math.min(maxX, scrollX + dx))
     scrollY = Math.max(0, Math.min(maxY, scrollY + dy))
-    gui.SetWindowPos(hwndContent, SetWindowPosHwnd.TOP, -scrollX, -scrollY, 0, 0,
+    SetWindowPos(hwndContent, SetWindowPosHwnd.TOP, -scrollX, -scrollY, 0, 0,
         SetWindowPosFlag.SWP_NOSIZE | SetWindowPosFlag.SWP_NOZORDER)
-    gui.SetScrollInfo(hwndCanvas, ScrollBar.HORZ, { pos: scrollX }, true)
-    gui.SetScrollInfo(hwndCanvas, ScrollBar.VERT, { pos: scrollY }, true)
+    SetScrollInfo(hwndCanvas, ScrollBar.HORZ, { cbSize: SCROLLINFO.size, fMask: ScrollInfoFlag.POS, nPos: scrollX }, 1)
+    SetScrollInfo(hwndCanvas, ScrollBar.VERT, { cbSize: SCROLLINFO.size, fMask: ScrollInfoFlag.POS, nPos: scrollY }, 1)
 }
 
 async function main(): Promise<void> {
     const mupdf = await loadMupdf()
-    if (!mupdf) { gui.MessageBox('加载 mupdf WASM 失败'); return }
+    if (!mupdf) { MessageBox(NULL, '加载 mupdf WASM 失败', 'JS Alert', 0); return }
 
     const WS_CHILD = WindowStyle.CHILD
     const WS_VIS = WindowStyle.VISIBLE
@@ -192,13 +200,14 @@ let hwndBtnNext: gui.HWND | null = null
 
     gui.RegisterClass('PdfViewer2', (hwnd, msg, wParam, lParam) => {
         assertNonNullable(hwndCanvas); assertNonNullable(hwndEdit); assertNonNullable(hwndBtnOpen); assertNonNullable(hwndBtnPrev); assertNonNullable(hwndBtnNext)
-        if (msg === WmMsg.DESTROY) { gui.PostQuitMessage(0); return 0 }
+        if (msg === WmMsg.DESTROY) { PostQuitMessage(0); return 0 }
         if (msg === WmMsg.SIZE) {
-            const cr = gui.GetClientRect(hwnd)
-            if (cr) {
-                const cw = cr.right - cr.left, ch = cr.bottom - cr.top
-                gui.SetWindowPos(hwndCanvas, SetWindowPosHwnd.TOP, 0, 50, cw, Math.max(1, ch - 50), SetWindowPosFlag.SWP_NOZORDER)
-                gui.SetWindowPos(hwndEdit, SetWindowPosHwnd.TOP, 0, 0, Math.max(100, cw - 320), 0,
+            const crBuf = RECT.alloc()
+            if (GetClientRect(hwnd, crBuf.ptr)) {
+                const { left, top, right, bottom } = RECT.decode(crBuf)
+                const cw = right - left, ch = bottom - top
+                SetWindowPos(hwndCanvas, SetWindowPosHwnd.TOP, 0, 50, cw, Math.max(1, ch - 50), SetWindowPosFlag.SWP_NOZORDER)
+                SetWindowPos(hwndEdit, SetWindowPosHwnd.TOP, 0, 0, Math.max(100, cw - 320), 0,
                     SetWindowPosFlag.SWP_NOMOVE | SetWindowPosFlag.SWP_NOZORDER)
             }
             return gui.DefWindowProc(hwnd, msg, wParam, lParam)
@@ -207,12 +216,18 @@ let hwndBtnNext: gui.HWND | null = null
             const hCtrl = lParam
             if (hCtrl === hwndBtnOpen) {
                 const path = openPdfFileDialog()
-                if (path) { gui.SetWindowText(hwndEdit, path); showPdf(mupdf, path, 0) }
+                if (path) { SetWindowText(hwndEdit, path); showPdf(mupdf, path, 0) }
             } else if (hCtrl === hwndBtnPrev) {
-                const path = gui.GetWindowText(hwndEdit)
+                const cap = GetWindowTextLength(hwndEdit) + 1
+                const buf = WCHAR.alloc(cap)
+                GetWindowText(hwndEdit, buf, cap)
+                const path = WCHAR.decode(buf)
                 if (path && currentPage > 0) showPdf(mupdf, path, currentPage - 1)
             } else if (hCtrl === hwndBtnNext) {
-                const path = gui.GetWindowText(hwndEdit)
+                const cap = GetWindowTextLength(hwndEdit) + 1
+                const buf = WCHAR.alloc(cap)
+                GetWindowText(hwndEdit, buf, cap)
+                const path = WCHAR.decode(buf)
                 if (path && currentPage < totalPages - 1) showPdf(mupdf, path, currentPage + 1)
             }
             return 0
@@ -222,7 +237,7 @@ let hwndBtnNext: gui.HWND | null = null
     hwndMain = gui.CreateWindow('PdfViewer2', 'PDF 预览 2',
         WindowStyle.OVERLAPPEDWINDOW | WindowStyle.CLIPCHILDREN,
         100, 100, 1100, 800, null, null)!
-    if (!hwndMain) { gui.MessageBox('创建主窗口失败'); return }
+    if (!hwndMain) { MessageBox(NULL, '创建主窗口失败', 'JS Alert', 0); return }
 
     // 控件直接挂在主窗口上
     hwndEdit = gui.CreateWindow('EDIT', '',
@@ -265,7 +280,7 @@ let hwndBtnNext: gui.HWND | null = null
             const hdc = GetDC(hwnd)
             if (hdc) {
                 const bmi = makeBitmapInfo(pm.w, pm.h)
-                SetDIBitsToDevice(hdc, 0, 0, pm.w, pm.h, 0, 0, 0, pm.h, pm.data, bmi, 0)
+                SetDIBitsToDevice(hdc, 0, 0, pm.w, pm.h, 0, 0, 0, pm.h, pm.data, bmi, ColorUse.RGB_COLORS)
                 ReleaseDC(hwnd, hdc)
             }
             return 0
@@ -277,9 +292,10 @@ let hwndBtnNext: gui.HWND | null = null
     gui.SetWindowProc(hwndCanvas, (hwnd: gui.HWND, msg: number, wParam: number, lParam: number): number => {
         if (msg === WmMsg.ERASEBKGND) return 1
         if (msg === WmMsg.PAINT) {
-            const cr = gui.GetClientRect(hwnd)
-            if (cr) {
-                const cw = cr.right - cr.left, ch = cr.bottom - cr.top
+            const crBuf = RECT.alloc()
+            if (GetClientRect(hwnd, crBuf.ptr)) {
+                const { left, top, right, bottom } = RECT.decode(crBuf)
+                const cw = right - left, ch = bottom - top
                 const hdc = GetDC(hwnd)
                 if (hdc) {
                     PatBlt(hdc, 0, 0, cw, ch, WHITENESS)
@@ -291,16 +307,18 @@ let hwndBtnNext: gui.HWND | null = null
         }
         if (msg === WmMsg.VSCROLL || msg === WmMsg.HSCROLL) {
             const bar = msg === WmMsg.VSCROLL ? ScrollBar.VERT : ScrollBar.HORZ
-            const info = gui.GetScrollInfo(hwnd, bar)
-            const maxPos = info.max - info.page + 1
+            const si = SCROLLINFO.encode({ cbSize: SCROLLINFO.size, fMask: ScrollInfoFlag.ALL })
+            GetScrollInfo(hwnd, bar, si.ptr)
+            const info = SCROLLINFO.decode(si)
+            const maxPos = info.nMax - info.nPage + 1
             const code = wParam & 0xFFFF
             let newPos = bar === ScrollBar.VERT ? scrollY : scrollX
             if (code === ScrollCmd.THUMBTRACK || code === ScrollCmd.THUMBPOSITION)
                 newPos = Math.max(0, Math.min(maxPos, (wParam >> 16) & 0xFFFF))
             else if (code === ScrollCmd.LINEUP) newPos -= 20
             else if (code === ScrollCmd.LINEDOWN) newPos += 20
-            else if (code === ScrollCmd.PAGEUP) newPos -= info.page
-            else if (code === ScrollCmd.PAGEDOWN) newPos += info.page
+            else if (code === ScrollCmd.PAGEUP) newPos -= info.nPage
+            else if (code === ScrollCmd.PAGEDOWN) newPos += info.nPage
             else return 0
             newPos = Math.max(0, Math.min(maxPos, newPos))
             if (bar === ScrollBar.VERT) doScroll(0, newPos - scrollY)
@@ -312,8 +330,10 @@ let hwndBtnNext: gui.HWND | null = null
             const wheel = raw >= 0x8000 ? raw - 0x10000 : raw
             const isHorz = (wParam & MouseKeyFlag.MK_SHIFT) !== 0
             const bar = isHorz ? ScrollBar.HORZ : ScrollBar.VERT
-            const info = gui.GetScrollInfo(hwnd, bar)
-            const maxPos = info.max - info.page + 1
+            const si = SCROLLINFO.encode({ cbSize: SCROLLINFO.size, fMask: ScrollInfoFlag.ALL })
+            GetScrollInfo(hwnd, bar, si.ptr)
+            const info = SCROLLINFO.decode(si)
+            const maxPos = info.nMax - info.nPage + 1
             let newPos = (isHorz ? scrollX : scrollY) - Math.round(wheel * 40 / 120)
             newPos = Math.max(0, Math.min(maxPos, newPos))
             if (isHorz) doScroll(newPos - scrollX, 0)
@@ -324,7 +344,7 @@ let hwndBtnNext: gui.HWND | null = null
         return gui.DefWindowProc(hwnd, msg, wParam, lParam)
     })
 
-    gui.ShowWindow(hwndMain)
+    ShowWindow(hwndMain, ShowWindowCmd.SHOWNORMAL)
 
     const test = std.open('test/example.pdf', 'rb')
     if (test) { test.close(); showPdf(mupdf, 'test/example.pdf', 0) }

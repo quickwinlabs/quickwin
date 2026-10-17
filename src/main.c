@@ -8,7 +8,6 @@
 
 #include "quickjs.h"
 #include "quickjs-libc.h"
-#include "quickjs-win.h"
 #include "quickjs-ffi.h"
 #include "quickjs-brotli.h"
 #include "quickjs-sock.h"
@@ -119,7 +118,6 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
     js_init_module_std(ctx, "std");
     js_init_module_os(ctx, "os");
 
-    js_init_module_win(ctx);
     js_init_module_ffi(ctx);
     js_init_module_brotli(ctx);
     js_init_module_sock(ctx);

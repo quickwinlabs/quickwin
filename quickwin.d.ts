@@ -421,96 +421,23 @@ declare module "wolfssl" {
 
 }
 
-declare module "win" {
-    /** 与 ffi 的 Ptr<"HMODULE"> 同型（ptrBrand string 键）——FFI 侧 <HMODULE>ptr 位（HINSTANCE 语义）直收 */
-    type HMODULE = number & { readonly ptrBrand: "HMODULE" };
-
-    function LoadLibrary(libName: string): HMODULE | null;
-    function GetProcAddress(hModule: HMODULE, procName: string): number | null;
-    function FreeLibrary(hModule: HMODULE): boolean;
-    /** GetModuleFileName(hModule?) — 传 HMODULE 或不传（当前进程），返回模块完整路径；失败返回 undefined */
-    function GetModuleFileName(hModule?: HMODULE): string | undefined;
-    /** GetModuleHandle(moduleName?) — 不传返回当前 exe 的模块句柄；失败返回 null */
-    function GetModuleHandle(moduleName?: string): HMODULE | null;
-}
-
 declare module "gui" {
     /** 与 ffi 的 Ptr<"N"> 结构同型（ptrBrand string 键，见 lib/ffi/ctype.ts）——各句柄可在
      *  gui 模块与 FFI 绑定两体系间互认直传（原 unique symbol 键只有 HWND 打通） */
     type HWND = number & { readonly ptrBrand: "HWND" };
     type HMENU = number & { readonly ptrBrand: "HMENU" };
-    type HFONT = number & { readonly ptrBrand: "HFONT" };
     type HICON = number & { readonly ptrBrand: "HICON" };
-    type WNDPROC = number & { readonly ptrBrand: "WNDPROC" };
-    // 枚举唯一定义在 constants.ts（真实 .ts，tsc/esbuild 均内联）；此处别名仅供签名引用，
-    // 使用方请直接 import { WindowStyle } from 'quickwin/constants'。
-    // Gwlp/ImageType 的成员访问（如 Gwlp.WNDPROC）需写 import('./constants').Gwlp.WNDPROC
-    // ——类型别名不建命名空间，无法穿透取成员。
-    type GetWindowCmd = import('./constants').GetWindowCmd;
-    type ShowWindowCmd = import('./constants').ShowWindowCmd;
-    type SetWindowPosHwnd = import('./constants').SetWindowPosHwnd;
-    type Gwlp = import('./constants').Gwlp;
-    type NotifyIconCmd = import('./constants').NotifyIconCmd;
-    type ImageType = import('./constants').ImageType;
-    type IDI = import('./constants').IDI;
-    type ScrollBar = import('./constants').ScrollBar;
+    // 枚举唯一定义在 constants.ts（真实 .ts，tsc/esbuild 均内联）；本模块不再转出枚举
+    // 别名与 RECT 等结构类型——Win32 直通请走 lib/windows（含常量与结构定义）
 
     function RegisterClass(className: string, wndProc?: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): number;
     function CreateWindow(className: string, title: string, style: number, x: number, y: number, width: number, height: number, parent: HWND | null, menu: HMENU | null): HWND | null;
     // 销毁窗口及其所有子窗口，自动清理 WNDPROC 和 JS 引用
     function DestroyWindow(hwnd: HWND): boolean;
-    function GetWindow(hwnd: HWND, cmd: GetWindowCmd): HWND;
-
-    function ShowWindow(hwnd: HWND, nCmdShow?: ShowWindowCmd): void;
     function SetWindowProc(hwnd: HWND, wndProc: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): void;
     function DefWindowProc(hwnd: HWND, msg: number, wParam: number, lParam: number): number;
-    function PostQuitMessage(exitCode: number): void;
     function SendMessage(hwnd: HWND, msg: number, wParam: number, lParam: number | string): number;
-    function MessageBox(message: string): void;
-    function SetWindowText(hwnd: HWND, text: string): void;
-    function GetWindowText(hwnd: HWND): string;
-    function GetScaleFactor(): number;
-    function CreateSystemDpiFont(): HFONT | null;
-    type GwlpReturnType<T extends Gwlp> = T extends import('./constants').Gwlp.WNDPROC ? WNDPROC : number;
-    function GetWindowLongPtr<T extends Gwlp>(hwnd: HWND, nIndex: T): GwlpReturnType<T>;
-    function SetWindowLongPtr(hwnd: HWND, nIndex: Gwlp, newLong: number): number;
     function UnsetWindowProc(hwnd: HWND): boolean;
-    function CallWindowProc(wndProc: WNDPROC, hwnd: HWND, msg: number, wParam: number, lParam: number): number;
-    function SetParent(hwnd: HWND, parent: HWND | null): void;
-    function EnableWindow(hwnd: HWND, enable: boolean): void;
-    function SetWindowPos(hwnd: HWND, insertAfter: SetWindowPosHwnd, x: number, y: number, width: number, height: number, flags: number): void;
-
-
-
-    interface NotifyIconData {
-        hwnd: HWND
-        uID?: number
-        flags?: number
-        callbackMessage?: number
-        hIcon?: HICON
-        tip?: string
-    }
-
-    function ShellNotifyIcon(cmd: NotifyIconCmd, nid: NotifyIconData): boolean;
-    /**
-     * Thin wrapper around LoadImageW. Parameter order matches Win32 LoadImageW: (hinst, name, uType?, cx?, cy?, fuLoad?).
-     * hinst: null for system resources/file path, number for module handle;
-     * name: when hinst=null, a system icon IDI or .ico file path; when hinst=module handle, a resource ID (number) or resource name (string);
-     * uType: ImageType constant, default IMAGE_ICON (returns HICON), pass BITMAP/CURSOR for number return;
-     * cx/cy: target size (0 for default, use LoadImageFlag.DEFAULTSIZE for system default size);
-     * fuLoad: LoadImageFlag constants. Note: loading system icons (IDI_*, hinst=null) requires LoadImageFlag.SHARED.
-     * Example: import { IDI, ImageType, LoadImageFlag } from 'quickwin/constants'
-     *          gui.LoadImage(null, "app.ico", ImageType.ICON, 32, 32, LoadImageFlag.LOADFROMFILE)
-     *          gui.LoadImage(null, IDI.APPLICATION, ImageType.ICON, 0, 0, LoadImageFlag.SHARED)
-     */
-    function LoadImage<H extends (import("win").HMODULE) | null, T extends ImageType = import('./constants').ImageType.ICON>(
-        hinst: H,
-        name: H extends null ? string | IDI : string | number,
-        uType?: T,
-        cx?: number,
-        cy?: number,
-        fuLoad?: number
-    ): T extends import('./constants').ImageType.ICON ? HICON | null : number | null;
     /**
      * Loads the first icon group (RT_GROUP_ICON) from this exe, i.e. the custom icon
      * embedded by rcedit. Works with any resource ID including 0. Returns null if the
@@ -519,46 +446,6 @@ declare module "gui" {
      * Example: gui.LoadAppIcon() → HICON of the exe's icon.
      */
     function LoadAppIcon(cx?: number, cy?: number): HICON | null;
-    /** 从 BGRA 像素数据创建 32bpp top-down DIB，data 为 length >= width*height*4 的 ArrayBuffer，返回 HBITMAP */
-    function CreateBitmapFromPixels(width: number, height: number, data: ArrayBuffer): number | null;
-    function DeleteObject(hObject: number): boolean;
-    function ImageListCreate(cx: number, cy: number, flags?: number, initial?: number, grow?: number): number | null;
-    function ImageListAdd(himl: number, hBitmap: number): number;
-    function ImageListDestroy(himl: number): boolean;
-
-
-    function CreatePopupMenu(): HMENU | null;
-    function AppendMenu(menu: HMENU, flags: number, id: number, text: string): boolean;
-    function TrackPopupMenu(menu: HMENU, x: number, y: number, flags?: number, hwnd?: HWND): number;
-    function DestroyMenu(menu: HMENU): boolean;
-    function SetForegroundWindow(hwnd: HWND): boolean;
-    /** Returns [x, y] or null */
-    function GetCursorPos(): [number, number] | null;
-    /** Returns [width, height] of the primary monitor */
-    function GetScreenSize(): [number, number];
-    /** Client-area/mouse rect: { left, top, right, bottom } */
-    type RECT = { left: number; top: number; right: number; bottom: number };
-    /** Returns { left, top, right, bottom } of client area, or null if invalid */
-    function GetClientRect(hwnd: HWND): RECT | null;
-    
-    function GetWindowRect(hwnd: HWND): RECT | null;
-    /** Invalidates client area (rect can be null/undefined for full window) */
-    function InvalidateRect(hwnd: HWND, rect?: RECT | null, erase?: boolean): void;
-    /** Forces immediate repaint of invalidated area */
-    function UpdateWindow(hwnd: HWND): void;
-    /** Checks if the window handle is valid */
-    function IsWindow(hwnd: HWND): boolean;
-    /** Sets scroll info; returns current scroll box position. Signature matches Win32 SetScrollInfo. */
-    function SetScrollInfo(hwnd: HWND, bar: ScrollBar, info: { pos?: number; page?: number; min?: number; max?: number }, redraw?: boolean): number;
-
-    /** Gets scroll info. Signature matches Win32 GetScrollInfo. */
-    function GetScrollInfo(hwnd: HWND, bar: ScrollBar): { pos: number; page: number; min: number; max: number; trackPos: number };
-
-    /** Shows or hides a scroll bar. Signature matches Win32 ShowScrollBar. */
-    function ShowScrollBar(hwnd: HWND, bar: ScrollBar, show: boolean): boolean;
-
-
-
 
 
 
@@ -585,6 +472,12 @@ declare module "gui" {
 }
 
 declare module "ffi" {
+    /** 指针品牌唯一定义在 lib/ffi/ctype.ts（此处只转发，不手抄结构）——本模块返回的
+     *  句柄 / 地址即对应 C 侧指针位，空值形态同 FFI 层：NULL（0），不是 JS null。 */
+    type Ptr<N extends string> = import('./lib/ffi/ctype').Ptr<N>;
+    type MaybePtr<N extends string> = import('./lib/ffi/ctype').MaybePtr<N>;
+    type HMODULE = Ptr<"HMODULE">;
+
     function ffiCall(func: number, argFrame: ArrayBuffer, retBuf: ArrayBuffer, retIsFp: 0 | 1): void;
     function bufferPtr(buf: ArrayBuffer): number;
     function readByte(ptr: number): number;
@@ -592,6 +485,11 @@ declare module "ffi" {
     function writeByte(ptr: number, value: number): void;
     function closureNew(argBytes: number, retKind: number, wrapper: (frame: ArrayBuffer, retBuf: ArrayBuffer) => void): number;
     function closureFree(ptr: number): void;
+    /** LoadLibraryW 直映：FFI 自举入口（ffi 自身没有 dlopen，取符号必先装载），
+     *  成功为模块句柄 <HMODULE>ptr（HINSTANCE 语义），失败为空指针（0）；按真值收窄。 */
+    function LoadLibrary(libName: string): MaybePtr<"HMODULE">;
+    /** GetProcAddress 直映：成功为函数地址 <FARPROC>ptr，失败为空指针（0）。 */
+    function GetProcAddress(hModule: HMODULE, procName: string): MaybePtr<"FARPROC">;
 }
 
 

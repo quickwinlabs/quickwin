@@ -76,6 +76,11 @@ static void print_enums(void) {
     DEC(POPUP, MF_POPUP);
     printf("}\n\n");
 
+    printf("export const enum TrackPopupMenuFlag {\n");
+    DEC(RETURNCMD, TPM_RETURNCMD);
+    DEC(RIGHTBUTTON, TPM_RIGHTBUTTON);
+    printf("}\n\n");
+
     printf("export const enum WindowStyle {\n");
     DEC(OVERLAPPEDWINDOW, WS_OVERLAPPEDWINDOW);
     DEC(CHILD, WS_CHILD);
@@ -247,6 +252,10 @@ static void print_enums(void) {
     DEC(CYSCREEN, SM_CYSCREEN);
     printf("}\n\n");
 
+    printf("export const enum Spi {\n");
+    DEC(GETNONCLIENTMETRICS, SPI_GETNONCLIENTMETRICS);
+    printf("}\n\n");
+
     printf("export const enum ButtonStyle {\n");
     DEC(PUSHBUTTON, BS_PUSHBUTTON);
     DEC(DEFPUSHBUTTON, BS_DEFPUSHBUTTON);
@@ -375,6 +384,7 @@ static void print_enums(void) {
     printf("export const enum ImageListFlag {\n");
     DEC(MASK, ILC_MASK);
     DEC(COLOR, ILC_COLOR);
+    DEC(COLOR24, ILC_COLOR24);
     DEC(COLOR32, ILC_COLOR32);
     DEC(HIGHQUALITYSCALE, ILC_HIGHQUALITYSCALE);
     printf("}\n\n");
@@ -697,6 +707,11 @@ static void print_enums(void) {
     DEC(ABSOLUTE, TTF_ABSOLUTE);
     DEC(TRANSPARENT, TTF_TRANSPARENT);
     DEC(DI_SETITEM, TTF_DI_SETITEM);
+    printf("}\n\n");
+
+    printf("export const enum ColorUse {\n");
+    DEC(RGB_COLORS, DIB_RGB_COLORS);
+    DEC(PAL_COLORS, DIB_PAL_COLORS);
     printf("}\n\n");
 
     printf("export const enum RasterOp {\n");

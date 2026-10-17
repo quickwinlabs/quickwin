@@ -1,6 +1,7 @@
 import { forwardRef, useState, useRef, useEffect } from 'react'
 import * as gui from 'gui'
 import { WCHAR } from '../../ffi/bind.js'
+import { GetWindowText, GetWindowTextLength } from '../../windows/user32.js'
 import type { WStyle } from '../jsx.d.ts'
 import { EditMsg, EditStyle, WindowStyle, WmMsg } from '../../../constants'
 
@@ -54,7 +55,10 @@ export const Input = forwardRef<gui.HWND, InputProps>(
           if (e.msg === WmMsg.CHAR) {
             const h = inputRef.current
             if (!h) return
-            const newText = gui.GetWindowText(h)
+            const cap = GetWindowTextLength(h) + 1
+            const buf = WCHAR.alloc(cap)
+            GetWindowText(h, buf, cap)
+            const newText = WCHAR.decode(buf)
             if (!isControlled) setInternalValue(newText)
             onChange?.(newText)
           }

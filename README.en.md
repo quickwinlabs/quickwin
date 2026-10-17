@@ -98,8 +98,7 @@ When run without a script file argument, `qwin.exe` checks for embedded JS at th
 | `gui` | built-in | Win32 window/control/message/tray API |
 | `sock` | built-in | socket networking (`AddrFamily`, `FdEvent` etc.) |
 | `wolfssl` | built-in | TLS/SSL (`VerifyMode`, `ReturnCode` etc.) |
-| `ffi` | built-in | foreign function interface |
-| `win` | built-in | DLL loading (`LoadLibrary`, `GetProcAddress`) |
+| `ffi` | built-in | foreign function interface (DLL loading: `LoadLibrary`, `GetProcAddress`) |
 | `brotli` | built-in | Brotli decompression |
 | `wamr` | built-in | low-level WAMR API |
 | `fetch` | `import './lib/fetch.js'` | adds `fetch()`, `Response`, `Headers` to globalThis |

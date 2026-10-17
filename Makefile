@@ -143,7 +143,6 @@ VERSION_H = $(BUILD_DIR)/version.h
 
 SRCS = $(addprefix src/, \
        main.c \
-       quickjs-win.c \
        quickjs-gui.c \
        quickjs-ffi.c \
        quickjs-ffi-closure.c \

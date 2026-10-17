@@ -1,6 +1,6 @@
-// shell32 绑定（shell 对话框 / PIDL→路径 / 托盘图标定位）
+// shell32 绑定（shell 对话框 / PIDL→路径 / 托盘图标增删与定位）
 import { bind, type CodecMap } from '../ffi/bind.js'
-import { NOTIFYICONIDENTIFIER } from './structs.js'
+import { NOTIFYICONIDENTIFIER, NOTIFYICONDATAW } from './structs.js'
 
 // dll 名部分应用（工厂转调保泛型 infer，见 lib/windows/user32.ts 头注释）；第三参透传
 // encoders（结构入参位注册，方向约定见 lib/windows/user32.ts 头注释）
@@ -37,3 +37,14 @@ export const Shell_NotifyIconGetRect = (() => {
         return null    // XP 等老系统无此导出（可选 API）；探测走 examples/execd/tray.ts
     }
 })()
+
+/** 托盘通知图标增删改（Shell_NotifyIconW；XP 起即有）
+ *  @returns 成功 → 非 0，失败 → 0
+ *  @param args_0 dwMessage NotifyIconCmd（ADD / MODIFY / DELETE / SETVERSION…；DELETE 只需
+ *    hWnd+uID）
+ *  @param args_1 lpData NOTIFYICONDATAW 对象直传（encoder 已注册，缺省字段跳过）；cbSize 填
+ *    NOTIFYICONDATAW.size、uFlags 取 NotifyIconFlag.*（ICON/MESSAGE/TIP…，决定下面哪些字段
+ *    生效）、uCallbackMessage 常填自定义消息号、hIcon 接 LoadImage/LoadAppIcon 的结果、
+ *    szTip 直接给 string（宽字符串糖，最长 127 字符） */
+export const ShellNotifyIcon = /*@__PURE__*/ b('Shell_NotifyIconW',
+    'u32 <NOTIFYICONDATAW>ptr -> i32', { NOTIFYICONDATAW })
