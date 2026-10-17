@@ -427,11 +427,6 @@ declare module "win" {
 
     function LoadLibrary(libName: string): HMODULE | null;
     function GetProcAddress(hModule: HMODULE, procName: string): number | null;
-    function FreeLibrary(hModule: HMODULE): boolean;
-    /** GetModuleFileName(hModule?) — 传 HMODULE 或不传（当前进程），返回模块完整路径；失败返回 undefined */
-    function GetModuleFileName(hModule?: HMODULE): string | undefined;
-    /** GetModuleHandle(moduleName?) — 不传返回当前 exe 的模块句柄；失败返回 null */
-    function GetModuleHandle(moduleName?: string): HMODULE | null;
 }
 
 declare module "gui" {
@@ -475,9 +470,6 @@ declare module "gui" {
     function GetWindowLongPtr<T extends Gwlp>(hwnd: HWND, nIndex: T): GwlpReturnType<T>;
     function SetWindowLongPtr(hwnd: HWND, nIndex: Gwlp, newLong: number): number;
     function UnsetWindowProc(hwnd: HWND): boolean;
-    function CallWindowProc(wndProc: WNDPROC, hwnd: HWND, msg: number, wParam: number, lParam: number): number;
-    function SetParent(hwnd: HWND, parent: HWND | null): void;
-    function EnableWindow(hwnd: HWND, enable: boolean): void;
     function SetWindowPos(hwnd: HWND, insertAfter: SetWindowPosHwnd, x: number, y: number, width: number, height: number, flags: number): void;
 
 
@@ -521,7 +513,6 @@ declare module "gui" {
     function LoadAppIcon(cx?: number, cy?: number): HICON | null;
     /** 从 BGRA 像素数据创建 32bpp top-down DIB，data 为 length >= width*height*4 的 ArrayBuffer，返回 HBITMAP */
     function CreateBitmapFromPixels(width: number, height: number, data: ArrayBuffer): number | null;
-    function DeleteObject(hObject: number): boolean;
     function ImageListCreate(cx: number, cy: number, flags?: number, initial?: number, grow?: number): number | null;
     function ImageListAdd(himl: number, hBitmap: number): number;
     function ImageListDestroy(himl: number): boolean;
@@ -544,8 +535,6 @@ declare module "gui" {
     function GetWindowRect(hwnd: HWND): RECT | null;
     /** Invalidates client area (rect can be null/undefined for full window) */
     function InvalidateRect(hwnd: HWND, rect?: RECT | null, erase?: boolean): void;
-    /** Forces immediate repaint of invalidated area */
-    function UpdateWindow(hwnd: HWND): void;
     /** Checks if the window handle is valid */
     function IsWindow(hwnd: HWND): boolean;
     /** Sets scroll info; returns current scroll box position. Signature matches Win32 SetScrollInfo. */

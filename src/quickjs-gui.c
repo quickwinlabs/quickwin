@@ -380,18 +380,6 @@ static JSValue js_getWindow(JSContext *ctx, JSValueConst this_val, int argc, JSV
     return JS_NewInt64(ctx, (int64_t)result);
 }
 
-static JSValue js_CallWindowProc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    int64_t wndProc, hwnd, wParam, lParam;
-    JS_ToInt64(ctx, &wndProc, argv[0]);
-    JS_ToInt64(ctx, &hwnd, argv[1]);
-    GET_INT32(ctx, argv[2], msg);
-    JS_ToInt64(ctx, &wParam, argv[3]);
-    JS_ToInt64(ctx, &lParam, argv[4]);
-    LRESULT result = CallWindowProcW((WNDPROC)wndProc, (HWND)hwnd, msg, wParam, lParam);
-    return JS_NewInt64(ctx, result);
-}
-
 static JSValue js_setWindowText(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     HWND hwnd = toHWND(ctx, argv[0]);
@@ -639,13 +627,6 @@ static JSValue js_createBitmapFromPixels(JSContext *ctx, JSValueConst this_val, 
     return JS_NewInt64(ctx, (int64_t)hbm);
 }
 
-static JSValue js_deleteObject(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    (void)this_val;
-    GET_INT64_OPT(ctx, argv[0], h, 0);
-    return JS_NewBool(ctx, DeleteObject((HGDIOBJ)h));
-}
-
 static JSValue js_imageListCreate(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     GET_INT32_OPT(ctx, argv[0], cx, 16);
@@ -800,13 +781,6 @@ static JSValue js_invalidateRect(JSContext *ctx, JSValueConst this_val, int argc
     return JS_UNDEFINED;
 }
 
-static JSValue js_updateWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HWND hwnd = toHWND(ctx, argv[0]);
-    UpdateWindow(hwnd);
-    return JS_UNDEFINED;
-}
-
 static JSValue js_isWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     HWND hwnd = toHWND(ctx, argv[0]);
@@ -898,22 +872,6 @@ static JSValue js_showScrollBar(JSContext *ctx, JSValueConst this_val, int argc,
 
 /* ─── Win32 parent/position/state ───────────────────────────── */
 
-static JSValue js_setParent(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HWND hwnd = toHWND(ctx, argv[0]);
-    HWND parent = toHWND(ctx, argv[1]);
-    HWND old = SetParent(hwnd, parent);
-    return JS_NewInt64(ctx, (int64_t)old);
-}
-
-static JSValue js_enableWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HWND hwnd = toHWND(ctx, argv[0]);
-    BOOL enable = JS_ToBool(ctx, argv[1]);
-    BOOL prev = EnableWindow(hwnd, enable);
-    return JS_NewBool(ctx, prev);
-}
-
 static JSValue js_setWindowPos(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     HWND hwnd = toHWND(ctx, argv[0]);
@@ -946,12 +904,10 @@ static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("GetWindowLongPtr", 2, js_GetWindowLongPtr),
     JS_CFUNC_DEF("SetWindowLongPtr", 3, js_SetWindowLongPtr),
     JS_CFUNC_DEF("UnsetWindowProc", 1, js_unsetWindowProc),
-    JS_CFUNC_DEF("CallWindowProc", 5, js_CallWindowProc),
     JS_CFUNC_DEF("ShellNotifyIcon", 2, js_shellNotifyIcon),
     JS_CFUNC_DEF("LoadImage", 6, js_loadImage),
     JS_CFUNC_DEF("LoadAppIcon", 2, js_loadAppIcon),
     JS_CFUNC_DEF("CreateBitmapFromPixels", 3, js_createBitmapFromPixels),
-    JS_CFUNC_DEF("DeleteObject", 1, js_deleteObject),
     JS_CFUNC_DEF("ImageListCreate", 5, js_imageListCreate),
     JS_CFUNC_DEF("ImageListAdd", 2, js_imageListAdd),
     JS_CFUNC_DEF("ImageListDestroy", 1, js_imageListDestroy),
@@ -965,13 +921,10 @@ static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("GetClientRect", 1, js_getClientRect),
     JS_CFUNC_DEF("GetWindowRect", 1, js_getWindowRect),
     JS_CFUNC_DEF("InvalidateRect", 3, js_invalidateRect),
-    JS_CFUNC_DEF("UpdateWindow", 1, js_updateWindow),
     JS_CFUNC_DEF("IsWindow", 1, js_isWindow),
     JS_CFUNC_DEF("SetScrollInfo", 4, js_setScrollInfo),
     JS_CFUNC_DEF("GetScrollInfo", 2, js_getScrollInfo),
     JS_CFUNC_DEF("ShowScrollBar", 3, js_showScrollBar),
-    JS_CFUNC_DEF("SetParent", 2, js_setParent),
-    JS_CFUNC_DEF("EnableWindow", 2, js_enableWindow),
     JS_CFUNC_DEF("SetWindowPos", 7, js_setWindowPos),
 };
 

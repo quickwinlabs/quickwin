@@ -1,8 +1,10 @@
 import {
-    CallWindowProc, CreateSystemDpiFont, CreateWindow as CreateWindowWithoutScale, DefWindowProc,
+    CreateSystemDpiFont, CreateWindow as CreateWindowWithoutScale, DefWindowProc,
     GetScaleFactor, GetWindowLongPtr, GetWindowText, HWND,
     RegisterClass, SendMessage, SetWindowProc, ShowWindow,
 } from "gui";
+// Win32 直通：CallWindowProc 无引擎状态，已从 gui 模块摘除，走 lib/windows 的 FFI 绑定
+import { CallWindowProc } from "./lib/windows/user32.js";
 import { WmMsg, WindowStyle, ButtonStyle, Gwlp, LbMsg } from "./constants";
 
 const scaleFactor = GetScaleFactor();
