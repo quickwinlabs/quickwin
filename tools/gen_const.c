@@ -709,6 +709,11 @@ static void print_enums(void) {
     DEC(DI_SETITEM, TTF_DI_SETITEM);
     printf("}\n\n");
 
+    printf("export const enum ColorUse {\n");
+    DEC(RGB_COLORS, DIB_RGB_COLORS);
+    DEC(PAL_COLORS, DIB_PAL_COLORS);
+    printf("}\n\n");
+
     printf("export const enum RasterOp {\n");
     DEC(SRCCOPY, SRCCOPY);
     DEC(WHITENESS, WHITENESS);

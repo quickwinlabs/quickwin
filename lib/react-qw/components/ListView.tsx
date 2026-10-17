@@ -6,6 +6,7 @@ import { WCHAR } from '../../ffi/bind.js'
 import { nmCode } from '../nmhdr.js'
 import { LoadCursor, SetCursor, ScreenToClient, GetCursorPos } from '../../windows/user32.js'
 import { CreateFontIndirect, DeleteObject, GetObject, SelectObject } from '../../windows/gdi32.js'
+import { createBitmapFromPixels } from '../../bitmap.js'
 import { ImageListCreate, ImageListAdd, ImageListDestroy } from '../../windows/comctl32.js'
 import {
   LOGFONTW, POINT, NMCUSTOMDRAW, NMLVCUSTOMDRAW, NMLISTVIEW,
@@ -192,7 +193,7 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
     const img = ImageListCreate(size, size, ImageListFlag.COLOR32, icons.length, 1)
     if (!img) return
     for (const p of icons) {
-      const hbm = gui.CreateBitmapFromPixels(size, size, p) as Ptr<'HGDIOBJ'> | 0
+      const hbm = createBitmapFromPixels(size, size, p)
       if (hbm) {
         ImageListAdd(img, hbm, NULL)
         DeleteObject(hbm)

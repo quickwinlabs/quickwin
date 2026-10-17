@@ -454,8 +454,6 @@ declare module "gui" {
      * Example: gui.LoadAppIcon() → HICON of the exe's icon.
      */
     function LoadAppIcon(cx?: number, cy?: number): HICON | null;
-    /** 从 BGRA 像素数据创建 32bpp top-down DIB，data 为 length >= width*height*4 的 ArrayBuffer，返回 HBITMAP */
-    function CreateBitmapFromPixels(width: number, height: number, data: ArrayBuffer): number | null;
 
 
 

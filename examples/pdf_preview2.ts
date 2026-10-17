@@ -10,7 +10,7 @@ import { BITMAPINFOHEADER, OPENFILENAMEW, RECT, SCROLLINFO } from '../lib/window
 import { GetOpenFileName } from '../lib/windows/comdlg32.js'
 import { GetClientRect, GetDC, GetScrollInfo, GetWindowLongPtr, GetWindowText, GetWindowTextLength, InvalidateRect, MessageBox, PostQuitMessage, ReleaseDC, SetScrollInfo, SetWindowPos, SetWindowLongPtr, SetWindowText, ShowScrollBar, ShowWindow } from '../lib/windows/user32.js'
 import { PatBlt, SetDIBitsToDevice } from '../lib/windows/gdi32.js'
-import { Gwlp, MouseKeyFlag, ScrollBar, ScrollCmd, ScrollInfoFlag, SetWindowPosFlag, SetWindowPosHwnd, ShowWindowCmd, WindowStyle, WmMsg } from '../constants'
+import { ColorUse, Gwlp, MouseKeyFlag, ScrollBar, ScrollCmd, ScrollInfoFlag, SetWindowPosFlag, SetWindowPosHwnd, ShowWindowCmd, WindowStyle, WmMsg } from '../constants'
 
 type MuPdf = typeof import('@quickwinlabs/mupdf-wasm')
 
@@ -280,7 +280,7 @@ let hwndBtnNext: gui.HWND | null = null
             const hdc = GetDC(hwnd)
             if (hdc) {
                 const bmi = makeBitmapInfo(pm.w, pm.h)
-                SetDIBitsToDevice(hdc, 0, 0, pm.w, pm.h, 0, 0, 0, pm.h, pm.data, bmi, 0)
+                SetDIBitsToDevice(hdc, 0, 0, pm.w, pm.h, 0, 0, 0, pm.h, pm.data, bmi, ColorUse.RGB_COLORS)
                 ReleaseDC(hwnd, hdc)
             }
             return 0

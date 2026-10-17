@@ -687,6 +687,11 @@ export const enum TtToolFlag {
     DI_SETITEM = 32768, // 0x8000
 }
 
+export const enum ColorUse {
+    RGB_COLORS = 0, // 0x0
+    PAL_COLORS = 1, // 0x1
+}
+
 export const enum RasterOp {
     SRCCOPY = 13369376, // 0xCC0020
     WHITENESS = 16711778, // 0xFF0062

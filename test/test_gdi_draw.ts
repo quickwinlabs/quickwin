@@ -13,7 +13,7 @@ import {
 } from '../lib/windows/gdi32.js'
 import { AlphaBlend, TransparentBlt } from '../lib/windows/msimg32.js'
 import { BITMAPINFOHEADER, POINT, SIZE, TEXTMETRICW } from '../lib/windows/structs.js'
-import { ArcDirection, BackgroundMode, HatchStyle, PenStyle, PolyFillMode, RasterMode, RasterOp, StockObject, StretchBltMode, TextAlign, TextOutOptions } from '../constants'
+import { ArcDirection, BackgroundMode, ColorUse, HatchStyle, PenStyle, PolyFillMode, RasterMode, RasterOp, StockObject, StretchBltMode, TextAlign, TextOutOptions } from '../constants'
 
 // 像素比较统一用 COLORREF 形（0x00BBGGRR）—— 与画图入参同形，读回直接对比。
 const RED = 0x000000ff
@@ -51,7 +51,7 @@ export const suite = {
         // 失败置哨兵（px() 返回 -1）—— 像素断言 FAIL 出可诊断值，不炸整个 suite。
         let pxOk = true
         const readPx = (): void => {
-            pxOk = GetDIBits(mem, bmp, 0, H, pxB, bmi.ptr, 0) === H
+            pxOk = GetDIBits(mem, bmp, 0, H, pxB, bmi.ptr, ColorUse.RGB_COLORS) === H
         }
         const px = (x: number, y: number): number => {
             if (!pxOk) return -1
@@ -469,14 +469,14 @@ export const suite = {
             biPlanes: 1, biBitCount: 32, biSizeImage: 4 * 4 * 4,
         })
         t.checkTrue('SetDIBitsToDevice ok',
-            SetDIBitsToDevice(mem, 20, 20, 4, 4, 0, 0, 0, 4, dibBits, dibBmi, 0) === 4)
+            SetDIBitsToDevice(mem, 20, 20, 4, 4, 0, 0, 0, 4, dibBits, dibBmi, ColorUse.RGB_COLORS) === 4)
         readPx()
         t.check('dib top rows red (top-down)', RED, px(21, 21))
         t.check('dib bottom rows blue', BLUE, px(21, 23))
         t.check('dib outside untouched', WHITE, px(30, 21))
         clearWhite()
         t.checkTrue('StretchDIBits ok',
-            StretchDIBits(mem, 20, 20, 40, 40, 0, 0, 4, 4, dibBits, dibBmi, 0,
+            StretchDIBits(mem, 20, 20, 40, 40, 0, 0, 4, 4, dibBits, dibBmi, ColorUse.RGB_COLORS,
                 RasterOp.SRCCOPY) === 4)
         readPx()
         t.check('stretched top half red', RED, px(40, 30))

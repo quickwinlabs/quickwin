@@ -80,6 +80,7 @@ interface EnumMap {
     TooltipStyle: import('./constants').TooltipStyle
     CreatePos: import('./constants').CreatePos
     TtToolFlag: import('./constants').TtToolFlag
+    ColorUse: import('./constants').ColorUse
     RasterOp: import('./constants').RasterOp
     PenStyle: import('./constants').PenStyle
     BackgroundMode: import('./constants').BackgroundMode

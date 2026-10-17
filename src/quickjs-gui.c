@@ -395,14 +395,8 @@ static JSValue js_SendMessage(JSContext *ctx, JSValueConst this_val, int argc, J
     return JS_NewInt64(ctx, result);
 }
 
-/* ─── Tray icon ─────────────────────────────────────────────── */
-
 /* ─── Icons ─────────────────────────────────────────────────── */
 
-/* Thin wrapper around LoadImageW: (hinst, name, uType?, cx?, cy?, fuLoad?).
-   hinst=null for system resources/file path, number for module handle.
-   name=string for path/resource name, number for resource ID.
-   Returns HICON handle (int64) on success, null on failure. */
 /* Load the first RT_GROUP_ICON from this exe (custom icon embedded by rcedit).
    Signature: LoadAppIcon(cx?, cy?). Returns HICON handle (int64) or null. */
 static JSValue js_loadAppIcon(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -416,32 +410,6 @@ static JSValue js_loadAppIcon(JSContext *ctx, JSValueConst this_val, int argc, J
     return JS_NULL;
 }
 
-/* ─── Images (pixels) ────────────────────────────────────────── */
-
-/* 从 BGRA 像素数据创建 32bpp top-down DIB；返回 HBITMAP，失败返回 NULL。
-   data 必须是 length >= width*height*4 的 ArrayBuffer。 */
-static JSValue js_createBitmapFromPixels(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    (void)this_val;
-    int width = 0, height = 0;
-    size_t len = 0;
-    uint8_t *data = NULL;
-
-    if (argc < 3) return JS_NULL;
-    JS_ToInt32(ctx, &width, argv[0]);
-    JS_ToInt32(ctx, &height, argv[1]);
-    data = JS_GetArrayBuffer(ctx, &len, argv[2]);
-    if (!data || width <= 0 || height <= 0 || len < (size_t)width * (size_t)height * 4)
-        return JS_NULL;
-
-    BITMAPINFO bi = { .bmiHeader = { sizeof(BITMAPINFOHEADER), width, -height, 1, 32, BI_RGB } };
-    void *bits = NULL;
-    HBITMAP hbm = CreateDIBSection(NULL, &bi, DIB_RGB_COLORS, &bits, NULL, 0);
-    if (!hbm) return JS_NULL;
-    memcpy(bits, data, len);
-    return JS_NewInt64(ctx, (int64_t)hbm);
-}
-
 static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("RegisterClass", 2, js_registerClass),
     JS_CFUNC_DEF("CreateWindow", 9, js_createWindow),
@@ -451,7 +419,6 @@ static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("SendMessage", 4, js_SendMessage),
     JS_CFUNC_DEF("UnsetWindowProc", 1, js_unsetWindowProc),
     JS_CFUNC_DEF("LoadAppIcon", 2, js_loadAppIcon),
-    JS_CFUNC_DEF("CreateBitmapFromPixels", 3, js_createBitmapFromPixels),
 };
 
 

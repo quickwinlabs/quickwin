@@ -1,17 +1,18 @@
 import { Tester } from './test_helper.js'
-import { NULL, PTR_SIZE } from '../lib/ffi/ctype.js'
+import { NULL, PTR_SIZE, PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import {
     GetDesktopWindow, CreatePopupMenu, DestroyMenu, GetDC, ReleaseDC,
     LoadImage, LoadImageOrdinal, SetScrollInfo, GetScrollInfo,
 } from '../lib/windows/user32.js'
 import {
-    GetDeviceCaps, CreateSolidBrush, DeleteObject, CreateFontIndirect, GetObject, SelectObject, CreateCompatibleDC, CreateCompatibleBitmap, DeleteDC,
+    GetDeviceCaps, CreateSolidBrush, DeleteObject, CreateFontIndirect, GetObject, SelectObject, CreateCompatibleDC, CreateCompatibleBitmap, DeleteDC, GetDIBits,
 } from '../lib/windows/gdi32.js'
 import { ImageListCreate, ImageListAdd, ImageListDestroy } from '../lib/windows/comctl32.js'
 import { ShellNotifyIcon } from '../lib/windows/shell32.js'
-import { LOGFONTW, NONCLIENTMETRICSW, NOTIFYICONDATAW, SCROLLINFO } from '../lib/windows/structs.js'
-import { DeviceCap, IDI, ImageListFlag, ImageType, LoadImageFlag, NotifyIconCmd, NotifyIconFlag } from '../constants'
+import { BITMAPINFOHEADER, LOGFONTW, NONCLIENTMETRICSW, NOTIFYICONDATAW, SCROLLINFO } from '../lib/windows/structs.js'
+import { ColorUse, DeviceCap, IDI, ImageListFlag, ImageType, LoadImageFlag, NotifyIconCmd, NotifyIconFlag } from '../constants'
 import { createSystemDpiFont, getScaleFactor } from '../lib/dpi.js'
+import { createBitmapFromPixels } from '../lib/bitmap.js'
 
 export const suite = {
     run(t: Tester) {
@@ -156,5 +157,31 @@ export const suite = {
         }) !== 0)
         t.checkTrue('ShellNotifyIcon(DELETE) 成功（只需 hWnd+uID）',
             ShellNotifyIcon(NotifyIconCmd.DELETE, { cbSize: NOTIFYICONDATAW.size, hWnd: trayHwnd, uID: 77 }) !== 0)
+
+        t.section('lib/bitmap: 按像素建 32bpp DIB 段（原 gui.CreateBitmapFromPixels）')
+        const nw = 4, nh = 2
+        const px = new ArrayBuffer(nw * nh * 4)
+        const px8 = new Uint8Array(px)
+        for (let i = 0; i < px8.length; i++) px8[i] = (i * 37 + 11) & 0xff
+        const hbm = createBitmapFromPixels(nw, nh, px)
+        t.checkTrue('createBitmapFromPixels(4x2) 非 NULL', hbm !== 0)
+        if (hbm) {
+            const bmi = BITMAPINFOHEADER.encode({
+                biSize: BITMAPINFOHEADER.size, biWidth: nw, biHeight: -nh,
+                biPlanes: 1, biBitCount: 32, biSizeImage: nw * nh * 4,
+            })
+            const back = new PtrArrayBuffer<'BYTE'>(nw * nh * 4)
+            const dc = GetDC(NULL)
+            const rows = dc ? GetDIBits(dc, hbm, 0, nh, back, bmi.ptr, ColorUse.RGB_COLORS) : 0
+            if (dc) ReleaseDC(NULL, dc)
+            t.check('GetDIBits 取回全部扫描行', nh, rows)
+            const back8 = new Uint8Array(back)
+            let same = rows === nh
+            for (let i = 0; i < back8.length; i++) if (back8[i] !== px8[i]) same = false
+            t.checkTrue('像素逐字节一致（含 alpha，与旧 C 的 memcpy 等价）', same)
+            t.checkTrue('DeleteObject(位图) 成功', DeleteObject(hbm) !== 0)
+        }
+        t.checkTrue('非法入参 → NULL（宽/高 ≤ 0、像素缓冲不足，同旧 C 语义）',
+            createBitmapFromPixels(0, nh, px) === NULL && createBitmapFromPixels(nw, nh, new ArrayBuffer(4)) === NULL)
     },
 }
