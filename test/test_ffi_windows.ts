@@ -5,9 +5,9 @@ import {
     LoadImage, LoadImageOrdinal, SetScrollInfo, GetScrollInfo,
 } from '../lib/windows/user32.js'
 import {
-    GetDeviceCaps, CreateSolidBrush, DeleteObject, CreateFontIndirect, GetObject, SelectObject, CreateCompatibleDC, DeleteDC,
+    GetDeviceCaps, CreateSolidBrush, DeleteObject, CreateFontIndirect, GetObject, SelectObject, CreateCompatibleDC, CreateCompatibleBitmap, DeleteDC,
 } from '../lib/windows/gdi32.js'
-import { ImageListCreate, ImageListDestroy } from '../lib/windows/comctl32.js'
+import { ImageListCreate, ImageListAdd, ImageListDestroy } from '../lib/windows/comctl32.js'
 import { LOGFONTW, SCROLLINFO } from '../lib/windows/structs.js'
 
 export const suite = {
@@ -77,10 +77,18 @@ export const suite = {
         t.checkTrue('CreatePopupMenu 非 0', pm !== 0)
         if (pm !== 0) t.checkTrue('DestroyMenu(pm) 成功', DestroyMenu(pm) !== 0)
 
-        t.section('comctl32: ImageList 创建-销毁往返')
-        const himl = ImageListCreate(16, 16, 4, 0, 0)   // ILC_COLOR32=4；initial/grow=0 默认
-        t.checkTrue('ImageListCreate(16, 16, ILC_COLOR32) 非 0', himl !== 0)
-        if (himl !== 0) t.checkTrue('ImageListDestroy(himl) 成功', ImageListDestroy(himl) !== 0)
+        t.section('comctl32: ImageList 创建-加位图-销毁往返（hbmMask 位传 NULL）')
+        const himl = ImageListCreate(16, 16, 0x18, 0, 0)   // ILC_COLOR24；initial/grow=0 默认
+        t.checkTrue('ImageListCreate(16, 16, ILC_COLOR24) 非 0', himl !== 0)
+        if (himl !== 0) {
+            const hdcMem = CreateCompatibleDC(NULL)
+            const hbm = hdcMem !== 0 ? CreateCompatibleBitmap(hdcMem, 16, 16) : 0
+            t.checkTrue('CreateCompatibleBitmap(16, 16) 非 0', hbm !== 0)
+            if (hbm !== 0) t.check('ImageListAdd(himl, hbm, NULL) → 索引 0', 0, ImageListAdd(himl, hbm, NULL))
+            if (hbm !== 0) DeleteObject(hbm)
+            if (hdcMem !== 0) DeleteDC(hdcMem)
+            t.checkTrue('ImageListDestroy(himl) 成功', ImageListDestroy(himl) !== 0)
+        }
 
         t.section('user32: LoadImage 双变体（string 自动编码 / ordinal MAKEINTRESOURCE）')
         // Win32 IMAGE_* 真值：BITMAP=0 CURSOR=1 ICON=2；LR_SHARED=0x8000（注意 ImageType d.ts 当前值与此不一致）
@@ -107,7 +115,7 @@ export const suite = {
         t.check('decode 回读 cbSize = encode 初值', SCROLLINFO.size, info.cbSize)
         t.check('decode 回读 fMask = encode 初值', 0x0001, info.fMask)
         t.checkTrue('读回字段为 number 形态', typeof info.nMin === 'number' && typeof info.nMax === 'number')
-        // CallWindowProc / ShowScrollBar / ImageListAdd 仅由 import 的模块加载覆盖 proc 名：
-        // CallWindowProc 跨线程窗口过程不安全、ShowScrollBar 有副作用、ImageListAdd 需位图源
+        // CallWindowProc / ShowScrollBar 仅由 import 的模块加载覆盖 proc 名：
+        // CallWindowProc 跨线程窗口过程不安全、ShowScrollBar 有副作用
     },
 }

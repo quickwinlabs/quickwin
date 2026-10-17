@@ -3,6 +3,7 @@ import * as gui from 'gui'
 import * as os from 'os'
 import { useState, useEffect, useRef } from 'react'
 import { render } from '../lib/react-qw/index.js'
+import { IsWindow } from '../lib/windows/user32.js'
 import { GetWindowCmd, WindowStyle, WmMsg } from '../constants'
 
 // 打印窗口树
@@ -15,7 +16,7 @@ function printWindowTree(hwnd: gui.HWND, indent: number = 0) {
   } catch (e) {
     text = '(error)'
   }
-  const isWindow = gui.IsWindow(hwnd)
+  const isWindow = IsWindow(hwnd)
   console.log(`${prefix}hwnd=${hwnd}, text="${text}", IsWindow=${isWindow}`)
   
   let child = gui.GetWindow(hwnd, GetWindowCmd.CHILD)

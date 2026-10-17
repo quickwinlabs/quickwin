@@ -461,7 +461,6 @@ declare module "gui" {
     function DefWindowProc(hwnd: HWND, msg: number, wParam: number, lParam: number): number;
     function PostQuitMessage(exitCode: number): void;
     function SendMessage(hwnd: HWND, msg: number, wParam: number, lParam: number | string): number;
-    function MessageBox(message: string): void;
     function SetWindowText(hwnd: HWND, text: string): void;
     function GetWindowText(hwnd: HWND): string;
     function GetScaleFactor(): number;
@@ -513,20 +512,8 @@ declare module "gui" {
     function LoadAppIcon(cx?: number, cy?: number): HICON | null;
     /** 从 BGRA 像素数据创建 32bpp top-down DIB，data 为 length >= width*height*4 的 ArrayBuffer，返回 HBITMAP */
     function CreateBitmapFromPixels(width: number, height: number, data: ArrayBuffer): number | null;
-    function ImageListCreate(cx: number, cy: number, flags?: number, initial?: number, grow?: number): number | null;
-    function ImageListAdd(himl: number, hBitmap: number): number;
-    function ImageListDestroy(himl: number): boolean;
 
-
-    function CreatePopupMenu(): HMENU | null;
-    function AppendMenu(menu: HMENU, flags: number, id: number, text: string): boolean;
-    function TrackPopupMenu(menu: HMENU, x: number, y: number, flags?: number, hwnd?: HWND): number;
-    function DestroyMenu(menu: HMENU): boolean;
     function SetForegroundWindow(hwnd: HWND): boolean;
-    /** Returns [x, y] or null */
-    function GetCursorPos(): [number, number] | null;
-    /** Returns [width, height] of the primary monitor */
-    function GetScreenSize(): [number, number];
     /** Client-area/mouse rect: { left, top, right, bottom } */
     type RECT = { left: number; top: number; right: number; bottom: number };
     /** Returns { left, top, right, bottom } of client area, or null if invalid */
@@ -535,8 +522,6 @@ declare module "gui" {
     function GetWindowRect(hwnd: HWND): RECT | null;
     /** Invalidates client area (rect can be null/undefined for full window) */
     function InvalidateRect(hwnd: HWND, rect?: RECT | null, erase?: boolean): void;
-    /** Checks if the window handle is valid */
-    function IsWindow(hwnd: HWND): boolean;
     /** Sets scroll info; returns current scroll box position. Signature matches Win32 SetScrollInfo. */
     function SetScrollInfo(hwnd: HWND, bar: ScrollBar, info: { pos?: number; page?: number; min?: number; max?: number }, redraw?: boolean): number;
 

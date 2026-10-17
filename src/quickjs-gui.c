@@ -448,17 +448,6 @@ static JSValue js_SendMessage(JSContext *ctx, JSValueConst this_val, int argc, J
     return JS_NewInt64(ctx, result);
 }
 
-static JSValue js_alert(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    const char *str = JS_ToCString(ctx, argv[0]);
-    wchar_t *wstr = utf8ToWide(str);
-    wchar_t wtitle[64] = L"JS Alert";
-    MessageBoxW(NULL, wstr, wtitle, MB_OK);
-    free(wstr);
-    JS_FreeCString(ctx, str);
-    return JS_UNDEFINED;
-}
-
 static JSValue js_getScaleFactor(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     HDC hdc = GetDC(NULL);
@@ -627,107 +616,10 @@ static JSValue js_createBitmapFromPixels(JSContext *ctx, JSValueConst this_val, 
     return JS_NewInt64(ctx, (int64_t)hbm);
 }
 
-static JSValue js_imageListCreate(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    GET_INT32_OPT(ctx, argv[0], cx, 16);
-    GET_INT32_OPT(ctx, argv[1], cy, 16);
-    GET_INT32_OPT(ctx, argv[2], flags, ILC_COLOR32);
-    GET_INT32_OPT(ctx, argv[3], initial, 0);
-    GET_INT32_OPT(ctx, argv[4], grow, 0);
-    HIMAGELIST il = ImageList_Create(cx, cy, flags, initial, grow);
-    if (il) return JS_NewInt64(ctx, (int64_t)il);
-    return JS_NULL;
-}
-
-static JSValue js_imageListAdd(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    GET_INT64_OPT(ctx, argv[0], himl, 0);
-    GET_INT64_OPT(ctx, argv[1], hbm, 0);
-    int index = ImageList_Add((HIMAGELIST)himl, (HBITMAP)hbm, NULL);
-    return JS_NewInt32(ctx, index);
-}
-
-static JSValue js_imageListDestroy(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    GET_INT64_OPT(ctx, argv[0], himl, 0);
-    BOOL ok = ImageList_Destroy((HIMAGELIST)himl);
-    return JS_NewBool(ctx, ok);
-}
-
-/* ─── Popup menu ────────────────────────────────────────────── */
-
-static JSValue js_createPopupMenu(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HMENU hMenu = CreatePopupMenu();
-    if (hMenu) return JS_NewInt64(ctx, (int64_t)hMenu);
-    return JS_NULL;
-}
-
-static JSValue js_appendMenu(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    int64_t menu_val; JS_ToInt64(ctx, &menu_val, argv[0]);
-    uint32_t flags; JS_ToUint32(ctx, &flags, argv[1]);
-    int64_t id;    JS_ToInt64(ctx, &id, argv[2]);
-    const char *text = JS_ToCString(ctx, argv[3]);
-    wchar_t *wtext = utf8ToWide(text);
-    BOOL result = AppendMenuW((HMENU)menu_val, flags, (UINT_PTR)id, wtext);
-    free(wtext);
-    JS_FreeCString(ctx, text);
-    return JS_NewBool(ctx, result);
-}
-
-static JSValue js_trackPopupMenu(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    int64_t menu_val; JS_ToInt64(ctx, &menu_val, argv[0]);
-    int32_t x, y;     JS_ToInt32(ctx, &x, argv[1]); JS_ToInt32(ctx, &y, argv[2]);
-
-    UINT flags = TPM_RETURNCMD | TPM_RIGHTBUTTON;
-
-    if (argc >= 4) {
-        GET_INT32(ctx, argv[3], f);
-        if (f) flags = (UINT)f;
-    }
-
-    HWND hwnd = NULL;
-    if (argc >= 5 && !JS_IsNull(argv[4]) && !JS_IsUndefined(argv[4])) {
-        hwnd = toHWND(ctx, argv[4]);
-    }
-
-    UINT cmd = TrackPopupMenu((HMENU)menu_val, flags, x, y, 0, hwnd, NULL);
-    return JS_NewInt64(ctx, cmd);
-}
-
-static JSValue js_destroyMenu(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    int64_t menu_val; JS_ToInt64(ctx, &menu_val, argv[0]);
-    return JS_NewBool(ctx, DestroyMenu((HMENU)menu_val));
-}
-
 static JSValue js_setForegroundWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     HWND hwnd = toHWND(ctx, argv[0]);
     return JS_NewBool(ctx, SetForegroundWindow(hwnd));
-}
-
-static JSValue js_getCursorPos(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    POINT pt;
-    if (!GetCursorPos(&pt))
-        return JS_NULL;
-    JSValue arr = JS_NewArray(ctx);
-    JS_SetPropertyUint32(ctx, arr, 0, JS_NewInt32(ctx, pt.x));
-    JS_SetPropertyUint32(ctx, arr, 1, JS_NewInt32(ctx, pt.y));
-    return arr;
-}
-
-static JSValue js_getScreenSize(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    int w = GetSystemMetrics(SM_CXSCREEN);
-    int h = GetSystemMetrics(SM_CYSCREEN);
-    JSValue arr = JS_NewArray(ctx);
-    JS_SetPropertyUint32(ctx, arr, 0, JS_NewInt32(ctx, w));
-    JS_SetPropertyUint32(ctx, arr, 1, JS_NewInt32(ctx, h));
-    return arr;
 }
 
 static JSValue js_getClientRect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -779,12 +671,6 @@ static JSValue js_invalidateRect(JSContext *ctx, JSValueConst this_val, int argc
         erase = JS_ToBool(ctx, argv[2]);
     InvalidateRect(hwnd, pr, erase);
     return JS_UNDEFINED;
-}
-
-static JSValue js_isWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HWND hwnd = toHWND(ctx, argv[0]);
-    return JS_NewBool(ctx, IsWindow(hwnd));
 }
 
 static JSValue js_setScrollInfo(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -896,7 +782,6 @@ static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("DefWindowProc", 4, js_DefWindowProc),
     JS_CFUNC_DEF("PostQuitMessage", 1, js_PostQuitMessage),
     JS_CFUNC_DEF("SendMessage", 4, js_SendMessage),
-    JS_CFUNC_DEF("MessageBox", 1, js_alert),
     JS_CFUNC_DEF("SetWindowText", 2, js_setWindowText),
     JS_CFUNC_DEF("GetWindowText", 1, js_getWindowText),
     JS_CFUNC_DEF("GetScaleFactor", 0, js_getScaleFactor),
@@ -908,20 +793,10 @@ static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("LoadImage", 6, js_loadImage),
     JS_CFUNC_DEF("LoadAppIcon", 2, js_loadAppIcon),
     JS_CFUNC_DEF("CreateBitmapFromPixels", 3, js_createBitmapFromPixels),
-    JS_CFUNC_DEF("ImageListCreate", 5, js_imageListCreate),
-    JS_CFUNC_DEF("ImageListAdd", 2, js_imageListAdd),
-    JS_CFUNC_DEF("ImageListDestroy", 1, js_imageListDestroy),
-    JS_CFUNC_DEF("CreatePopupMenu", 0, js_createPopupMenu),
-    JS_CFUNC_DEF("AppendMenu", 4, js_appendMenu),
-    JS_CFUNC_DEF("TrackPopupMenu", 3, js_trackPopupMenu),
-    JS_CFUNC_DEF("DestroyMenu", 1, js_destroyMenu),
     JS_CFUNC_DEF("SetForegroundWindow", 1, js_setForegroundWindow),
-    JS_CFUNC_DEF("GetCursorPos", 0, js_getCursorPos),
-    JS_CFUNC_DEF("GetScreenSize", 0, js_getScreenSize),
     JS_CFUNC_DEF("GetClientRect", 1, js_getClientRect),
     JS_CFUNC_DEF("GetWindowRect", 1, js_getWindowRect),
     JS_CFUNC_DEF("InvalidateRect", 3, js_invalidateRect),
-    JS_CFUNC_DEF("IsWindow", 1, js_isWindow),
     JS_CFUNC_DEF("SetScrollInfo", 4, js_setScrollInfo),
     JS_CFUNC_DEF("GetScrollInfo", 2, js_getScrollInfo),
     JS_CFUNC_DEF("ShowScrollBar", 3, js_showScrollBar),

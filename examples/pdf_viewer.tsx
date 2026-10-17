@@ -1,4 +1,4 @@
-import { MaybePtr, PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { MaybePtr, PtrArrayBuffer, NULL } from '../lib/ffi/ctype.js'
 import '../lib/polyfill.js'
 import * as std from 'std'
 import * as gui from 'gui'
@@ -10,6 +10,7 @@ import { WCHAR } from '../lib/ffi/bind.js'
 import { PdfCanvas } from './PdfCanvas.js'
 import { OPENFILENAMEW } from '../lib/windows/structs.js'
 import { GetOpenFileName } from '../lib/windows/comdlg32.js'
+import { MessageBox } from '../lib/windows/user32.js'
 import { WindowStyle } from '../constants'
 
 type MuPdf = typeof import('@quickwinlabs/mupdf-wasm')
@@ -147,7 +148,7 @@ function App({ mupdf, mainHwnd: hwnd }: { mupdf: MuPdf; mainHwnd: gui.HWND }) {
       setCurrentPage(page)
       setTotalPages(result.totalPages)
     } else {
-      gui.MessageBox('Failed to render PDF page')
+      MessageBox(NULL, 'Failed to render PDF page', 'JS Alert', 0)
     }
   }
 
@@ -207,7 +208,7 @@ function App({ mupdf, mainHwnd: hwnd }: { mupdf: MuPdf; mainHwnd: gui.HWND }) {
 async function main() {
   const mupdf = await loadMupdf()
   if (!mupdf) {
-    gui.MessageBox('Loading mupdf WASM failed.\nCheck network access to unpkg.com.')
+    MessageBox(NULL, 'Loading mupdf WASM failed.\nCheck network access to unpkg.com.', 'JS Alert', 0)
     return
   }
 

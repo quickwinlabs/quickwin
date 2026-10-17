@@ -1,5 +1,8 @@
 import * as gui from 'gui'
 import * as std from 'std'
+import { NULL } from '../lib/ffi/ctype.js'
+import { GetCursorPos, CreatePopupMenu, AppendMenu, TrackPopupMenu, DestroyMenu, GetSystemMetrics } from '../lib/windows/user32.js'
+import { POINT } from '../lib/windows/structs.js'
 import { IDI, ImageType, LoadImageFlag, NotifyIconCmd, NotifyIconFlag, WindowStyle, WmMsg } from '../constants'
 
 const WM_TRAY = 0x8001
@@ -12,16 +15,18 @@ gui.RegisterClass('TrayApp', (hwnd, msg, wParam, lParam) => {
             gui.SetForegroundWindow(hwnd)
         } else if (evt === 0x0204 || evt === 0x007B) { // WM_RBUTTONDOWN or WM_CONTEXTMENU
             gui.SetForegroundWindow(hwnd)
-            const pos = gui.GetCursorPos()
-            const x = pos ? pos[0] : 0
-            const y = pos ? pos[1] : 0
-            const hMenu = gui.CreatePopupMenu()
-            if (hMenu) {
-                gui.AppendMenu(hMenu, 0, 1, '显示窗口')
-                gui.AppendMenu(hMenu, 0x0800, 0, '')
-                gui.AppendMenu(hMenu, 0, 2, '退出')
-                const cmd = gui.TrackPopupMenu(hMenu, x, y, undefined, hwnd)
-                gui.DestroyMenu(hMenu)
+            const pt = POINT.alloc()
+            const pos = GetCursorPos(pt.ptr) ? POINT.decode(pt) : null
+            const x = pos ? pos.x : 0
+            const y = pos ? pos.y : 0
+            const hMenu = CreatePopupMenu()
+            if (hMenu !== NULL) {
+                AppendMenu(hMenu, 0, 1, '显示窗口')
+                AppendMenu(hMenu, 0x0800, 0, NULL)
+                AppendMenu(hMenu, 0, 2, '退出')
+                // TPM_RETURNCMD | TPM_RIGHTBUTTON
+                const cmd = TrackPopupMenu(hMenu, 0x0102, x, y, 0, hwnd, NULL)
+                DestroyMenu(hMenu)
                 if (cmd === 1) {
                     gui.ShowWindow(hwnd, 5) // SW_SHOW
                 } else if (cmd === 2) {
@@ -41,7 +46,7 @@ gui.RegisterClass('TrayApp', (hwnd, msg, wParam, lParam) => {
 
 // 创建窗口
 const W = 500, H = 400
-const scr = gui.GetScreenSize()
+const scr: [number, number] = [GetSystemMetrics(0), GetSystemMetrics(1)]   // SM_CXSCREEN / SM_CYSCREEN
 const x = (scr[0] - W) >> 1
 const y = (scr[1] - H) >> 1
 const hwnd = gui.CreateWindow('TrayApp', '系统托盘示例', WindowStyle.OVERLAPPEDWINDOW, x, y, W, H, null, null)

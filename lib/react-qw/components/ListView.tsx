@@ -1,4 +1,4 @@
-import { NULL, type Ptr, type PtrArrayBuffer } from '../../ffi/ctype.js'
+import { NULL, type MaybePtr, type Ptr, type PtrArrayBuffer } from '../../ffi/ctype.js'
 import { forwardRef, useRef, useEffect, type ForwardedRef } from 'react'
 import * as gui from 'gui'
 import * as ffi from 'ffi'
@@ -6,6 +6,7 @@ import { WCHAR } from '../../ffi/bind.js'
 import { nmCode } from '../nmhdr.js'
 import { LoadCursor, SetCursor, ScreenToClient, GetCursorPos } from '../../windows/user32.js'
 import { CreateFontIndirect, DeleteObject, GetObject, SelectObject } from '../../windows/gdi32.js'
+import { ImageListCreate, ImageListAdd, ImageListDestroy } from '../../windows/comctl32.js'
 import {
   LOGFONTW, POINT, NMCUSTOMDRAW, NMLVCUSTOMDRAW, NMLISTVIEW,
   LVHITTESTINFO, LVITEMW, LVCOLUMNW,
@@ -175,25 +176,25 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
   ref: ForwardedRef<gui.HWND>
 ) {
   const lvRef = useRef<gui.HWND>(null)
-  const iconListRef = useRef<number>(0)
+  const iconListRef = useRef<MaybePtr<'HIMAGELIST'>>(NULL)
 
   useEffect(() => {
     const h = lvRef.current
     if (!h) return
     const il = iconListRef.current
-    iconListRef.current = 0
+    iconListRef.current = NULL
     if (il) {
       gui.SendMessage(h, LvMsg.SETIMAGELIST, LvImageList.SMALL, 0)
-      gui.ImageListDestroy(il)
+      ImageListDestroy(il)
     }
     if (!icons || icons.length === 0) return
     const size = iconSize ?? 32
-    const img = gui.ImageListCreate(size, size, ImageListFlag.COLOR32, icons.length, 1)
+    const img = ImageListCreate(size, size, ImageListFlag.COLOR32, icons.length, 1)
     if (!img) return
     for (const p of icons) {
       const hbm = gui.CreateBitmapFromPixels(size, size, p) as Ptr<'HGDIOBJ'> | 0
       if (hbm) {
-        gui.ImageListAdd(img, hbm)
+        ImageListAdd(img, hbm, NULL)
         DeleteObject(hbm)
       }
     }

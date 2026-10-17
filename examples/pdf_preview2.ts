@@ -1,4 +1,4 @@
-import { PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { PtrArrayBuffer, NULL } from '../lib/ffi/ctype.js'
 import '../lib/polyfill.js'
 import * as std from 'std'
 import * as gui from 'gui'
@@ -8,7 +8,7 @@ import { assertNonNullable } from '../lib/assert.js'
 import { WCHAR } from '../lib/ffi/bind.js'
 import { BITMAPINFOHEADER, OPENFILENAMEW } from '../lib/windows/structs.js'
 import { GetOpenFileName } from '../lib/windows/comdlg32.js'
-import { GetDC, ReleaseDC } from '../lib/windows/user32.js'
+import { GetDC, ReleaseDC, MessageBox } from '../lib/windows/user32.js'
 import { PatBlt, SetDIBitsToDevice } from '../lib/windows/gdi32.js'
 import { Gwlp, MouseKeyFlag, ScrollBar, ScrollCmd, SetWindowPosFlag, SetWindowPosHwnd, WindowStyle, WmMsg } from '../constants'
 
@@ -152,7 +152,7 @@ function updateScrollRange(): void {
 function showPdf(mupdf: MuPdf, path: string, pageIdx: number): void {
     assertNonNullable(hwndMain); assertNonNullable(hwndContent)
     const pix = renderPdfPage(mupdf, path, pageIdx)
-    if (!pix) { gui.MessageBox('渲染 PDF 失败'); return }
+    if (!pix) { MessageBox(NULL, '渲染 PDF 失败', 'JS Alert', 0); return }
     currentPixmap = pix; currentPage = pageIdx; totalPages = pix.totalPages
     gui.SetWindowText(hwndMain, 'PDF 预览 - 第 ' + (pageIdx + 1) + '/' + totalPages + ' 页')
     scrollX = 0; scrollY = 0
@@ -179,7 +179,7 @@ function doScroll(dx: number, dy: number): void {
 
 async function main(): Promise<void> {
     const mupdf = await loadMupdf()
-    if (!mupdf) { gui.MessageBox('加载 mupdf WASM 失败'); return }
+    if (!mupdf) { MessageBox(NULL, '加载 mupdf WASM 失败', 'JS Alert', 0); return }
 
     const WS_CHILD = WindowStyle.CHILD
     const WS_VIS = WindowStyle.VISIBLE
@@ -222,7 +222,7 @@ let hwndBtnNext: gui.HWND | null = null
     hwndMain = gui.CreateWindow('PdfViewer2', 'PDF 预览 2',
         WindowStyle.OVERLAPPEDWINDOW | WindowStyle.CLIPCHILDREN,
         100, 100, 1100, 800, null, null)!
-    if (!hwndMain) { gui.MessageBox('创建主窗口失败'); return }
+    if (!hwndMain) { MessageBox(NULL, '创建主窗口失败', 'JS Alert', 0); return }
 
     // 控件直接挂在主窗口上
     hwndEdit = gui.CreateWindow('EDIT', '',
