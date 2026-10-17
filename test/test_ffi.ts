@@ -1,5 +1,4 @@
 import * as std from 'std'
-import * as win from 'win'
 import * as ffi from 'ffi'
 import * as os from 'os'
 import { bind, bindLib } from '../lib/ffi/bind.js'
@@ -75,12 +74,12 @@ export const suite = {
     name: 'ffi',
     run: (t: Tester) => {
         t.section('EnumPrinters')
-        const hWinspool = win.LoadLibrary('winspool.drv')
-        t.checkTrue('LoadLibrary("winspool.drv") succeeds', hWinspool !== null)
+        const hWinspool = ffi.LoadLibrary('winspool.drv')
+        t.checkTrue('LoadLibrary("winspool.drv") succeeds', !!hWinspool)
         if (!hWinspool) return
 
-        const enumPrinters = win.GetProcAddress(hWinspool, 'EnumPrintersW')
-        t.checkTrue('GetProcAddress("EnumPrintersW") succeeds', enumPrinters !== null)
+        const enumPrinters = ffi.GetProcAddress(hWinspool, 'EnumPrintersW')
+        t.checkTrue('GetProcAddress("EnumPrintersW") succeeds', !!enumPrinters)
         if (!enumPrinters) return
 
         const { EnumPrintersW: EnumPrinters } = bindLib('winspool.drv', {
@@ -154,11 +153,11 @@ export const suite = {
         }
 
         t.section('PTR accepts raw number handles (XP 32-bit fix)')
-        const hUser32 = win.LoadLibrary('user32.dll')
-        t.checkTrue('LoadLibrary("user32.dll") succeeds', hUser32 !== null)
+        const hUser32 = ffi.LoadLibrary('user32.dll')
+        t.checkTrue('LoadLibrary("user32.dll") succeeds', !!hUser32)
         if (hUser32) {
-            const getDC = win.GetProcAddress(hUser32, 'GetDC')
-            t.checkTrue('GetProcAddress("GetDC") succeeds', getDC !== null)
+            const getDC = ffi.GetProcAddress(hUser32, 'GetDC')
+            t.checkTrue('GetProcAddress("GetDC") succeeds', !!getDC)
             if (getDC) {
                 const GetDC = bind('user32.dll', 'GetDC', '<>ptr -> <>ptr')
                 const screenDc = GetDC(0)

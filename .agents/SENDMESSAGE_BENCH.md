@@ -310,6 +310,6 @@ podman exec quickwin-dev curl -sS -m 600 -X POST http://127.0.0.1:8011/exec \
 
 ### 教训（追加 3）
 
-- **模块 import 别与局部变量同名**：`import * as win from 'win'` 之后又写
-  `const win: gui.HWND`，整个模块作用域被 HWND 遮蔽，`win.LoadLibrary` 报
+- **模块 import 别与局部变量同名**：`import * as ffi from 'ffi'` 之后又写
+  `const ffi: gui.HWND`，整个模块作用域被 HWND 遮蔽，`ffi.LoadLibrary` 报
   「Property does not exist on type 'HWND'」——句柄一律叫 `hwnd`。

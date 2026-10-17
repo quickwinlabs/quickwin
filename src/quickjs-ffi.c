@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <windows.h>
 #include "quickjs.h"
@@ -105,12 +106,50 @@ static JSValue js_ffi_read_bytes(JSContext *ctx, JSValueConst this_val,
     return JS_NewArrayBufferCopy(ctx, (const uint8_t *)(intptr_t)ptr, (size_t)len);
 }
 
+/* LoadLibrary / GetProcAddress：FFI 的自举入口——拿不到函数地址就无从 ffiCall，
+   而 `ffi` 自身只有调用器（无 dlopen），所以这两项必须留在运行时里。原在 win
+   模块，win 只剩这两项后并入本模块（名字保留 Win32 原样，是 LoadLibraryW /
+   GetProcAddress 的直映；失败为空指针，由 JS 侧按真值报错）。 */
+static wchar_t *ffi_utf8_to_wide(const char *utf8)
+{
+    int len = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NULL, 0);
+    wchar_t *w = malloc(len * sizeof(wchar_t));
+    MultiByteToWideChar(CP_UTF8, 0, utf8, -1, w, len);
+    return w;
+}
+
+/* 失败按 Win32 语义原样返回空指针（0）——空指针形态在 FFI 层只有一种（NULL 品牌
+   的 0），不在 C 侧把 0 转成 JS null（见 quickwin.d.ts 的 MaybePtr 返回位）。 */
+static JSValue js_ffi_load_library(JSContext *ctx, JSValueConst this_val,
+                                   int argc, JSValueConst *argv)
+{
+    const char *libName = JS_ToCString(ctx, argv[0]);
+    wchar_t *wlibName = ffi_utf8_to_wide(libName);
+    HMODULE hModule = LoadLibraryW(wlibName);
+    free(wlibName);
+    JS_FreeCString(ctx, libName);
+    return JS_NewInt64(ctx, (int64_t)hModule);
+}
+
+static JSValue js_ffi_get_proc_address(JSContext *ctx, JSValueConst this_val,
+                                       int argc, JSValueConst *argv)
+{
+    int64_t hModule;
+    JS_ToInt64(ctx, &hModule, argv[0]);
+    const char *procName = JS_ToCString(ctx, argv[1]);
+    FARPROC proc = GetProcAddress((HMODULE)hModule, procName);
+    JS_FreeCString(ctx, procName);
+    return JS_NewInt64(ctx, (int64_t)proc);
+}
+
 static const JSCFunctionListEntry ffi_funcs[] = {
     JS_CFUNC_DEF("ffiCall", 4, js_ffi_call),
     JS_CFUNC_DEF("bufferPtr", 1, js_ffi_buffer_ptr),
     JS_CFUNC_DEF("readByte", 1, js_ffi_read_byte),
     JS_CFUNC_DEF("readBytes", 2, js_ffi_read_bytes),
     JS_CFUNC_DEF("writeByte", 2, js_ffi_write_byte),
+    JS_CFUNC_DEF("LoadLibrary", 1, js_ffi_load_library),
+    JS_CFUNC_DEF("GetProcAddress", 2, js_ffi_get_proc_address),
 };
 
 static int js_ffi_init(JSContext *ctx, JSModuleDef *m)

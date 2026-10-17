@@ -13,7 +13,6 @@
 // 结束必须 DestroyWindow + std.exit。
 import * as std from 'std'
 import * as gui from 'gui'
-import * as win from 'win'
 import * as ffi from 'ffi'
 import { bind } from '../lib/ffi/bind.js'
 
@@ -39,10 +38,10 @@ step('stage: imports ok')
 
 // ---- proc 地址（B/C 臂绕过 bind 直驱 ffiCall）----
 function procOf(dll: string, name: string): number {
-    const h = win.LoadLibrary(dll)
+    const h = ffi.LoadLibrary(dll)
     if (!h) throw new Error('LoadLibrary(' + dll + ') failed')
-    const p = win.GetProcAddress(h, name)
-    if (p === null) throw new Error('GetProcAddress(' + dll + '!' + name + ') failed')
+    const p = ffi.GetProcAddress(h, name)
+    if (!p) throw new Error('GetProcAddress(' + dll + '!' + name + ') failed')
     return p
 }
 const pNop0 = procOf('test/nop.dll', 'nop0')

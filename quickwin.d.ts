@@ -421,14 +421,6 @@ declare module "wolfssl" {
 
 }
 
-declare module "win" {
-    /** 与 ffi 的 Ptr<"HMODULE"> 同型（ptrBrand string 键）——FFI 侧 <HMODULE>ptr 位（HINSTANCE 语义）直收 */
-    type HMODULE = number & { readonly ptrBrand: "HMODULE" };
-
-    function LoadLibrary(libName: string): HMODULE | null;
-    function GetProcAddress(hModule: HMODULE, procName: string): number | null;
-}
-
 declare module "gui" {
     /** 与 ffi 的 Ptr<"N"> 结构同型（ptrBrand string 键，见 lib/ffi/ctype.ts）——各句柄可在
      *  gui 模块与 FFI 绑定两体系间互认直传（原 unique symbol 键只有 HWND 打通） */
@@ -480,6 +472,12 @@ declare module "gui" {
 }
 
 declare module "ffi" {
+    /** 指针品牌唯一定义在 lib/ffi/ctype.ts（此处只转发，不手抄结构）——本模块返回的
+     *  句柄 / 地址即对应 C 侧指针位，空值形态同 FFI 层：NULL（0），不是 JS null。 */
+    type Ptr<N extends string> = import('./lib/ffi/ctype').Ptr<N>;
+    type MaybePtr<N extends string> = import('./lib/ffi/ctype').MaybePtr<N>;
+    type HMODULE = Ptr<"HMODULE">;
+
     function ffiCall(func: number, argFrame: ArrayBuffer, retBuf: ArrayBuffer, retIsFp: 0 | 1): void;
     function bufferPtr(buf: ArrayBuffer): number;
     function readByte(ptr: number): number;
@@ -487,6 +485,11 @@ declare module "ffi" {
     function writeByte(ptr: number, value: number): void;
     function closureNew(argBytes: number, retKind: number, wrapper: (frame: ArrayBuffer, retBuf: ArrayBuffer) => void): number;
     function closureFree(ptr: number): void;
+    /** LoadLibraryW 直映：FFI 自举入口（ffi 自身没有 dlopen，取符号必先装载），
+     *  成功为模块句柄 <HMODULE>ptr（HINSTANCE 语义），失败为空指针（0）；按真值收窄。 */
+    function LoadLibrary(libName: string): MaybePtr<"HMODULE">;
+    /** GetProcAddress 直映：成功为函数地址 <FARPROC>ptr，失败为空指针（0）。 */
+    function GetProcAddress(hModule: HMODULE, procName: string): MaybePtr<"FARPROC">;
 }
 
 

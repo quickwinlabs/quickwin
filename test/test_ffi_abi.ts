@@ -1,9 +1,9 @@
 import * as std from 'std'
-import * as win from 'win'
+import * as ffi from 'ffi'
 import * as os from 'os'
 import { bind } from '../lib/ffi/bind.js'
 import { struct } from '../lib/ffi/struct.js'
-import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { NULL, PtrArrayBuffer, type MaybePtr } from '../lib/ffi/ctype.js'
 import { POINT, RECT } from '../lib/windows/structs.js'
 import { Tester } from './test_helper.js'
 
@@ -31,17 +31,17 @@ function readAscii(buf: ArrayBuffer, len: number): string {
     return s
 }
 
-function has(dll: win.HMODULE | null, name: string): boolean {
-    return !!dll && !!win.GetProcAddress(dll, name)
+function has(dll: MaybePtr<'HMODULE'>, name: string): boolean {
+    return !!dll && !!ffi.GetProcAddress(dll, name)
 }
 
 export const suite = {
     name: 'ffi-abi',
     run: (t: Tester) => {
-        const k32 = win.LoadLibrary('kernel32.dll')
-        const usr = win.LoadLibrary('user32.dll')
-        const gdi = win.LoadLibrary('gdi32.dll')
-        const crt = win.LoadLibrary('msvcrt.dll')
+        const k32 = ffi.LoadLibrary('kernel32.dll')
+        const usr = ffi.LoadLibrary('user32.dll')
+        const gdi = ffi.LoadLibrary('gdi32.dll')
+        const crt = ffi.LoadLibrary('msvcrt.dll')
 
         t.section('param count 0 ( -> u32)')
         if (has(k32, 'GetTickCount')) {
