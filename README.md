@@ -96,8 +96,7 @@ _build/execd.exe
 | `gui` | built-in | Win32 窗口/控件/消息/托盘 API |
 | `sock` | built-in | Socket 网络（`AddrFamily`、`FdEvent` 等） |
 | `wolfssl` | built-in | TLS/SSL（`VerifyMode`、`ReturnCode` 等） |
-| `ffi` | built-in | 外部函数接口 |
-| `win` | built-in | DLL 加载（`LoadLibrary`、`GetProcAddress`） |
+| `ffi` | built-in | 外部函数接口（DLL 装载：`LoadLibrary`、`GetProcAddress`） |
 | `brotli` | built-in | Brotli 解压 |
 | `wamr` | built-in | 底层 WAMR API |
 | `fetch` | `import './lib/fetch.js'` | 向 globalThis 添加 `fetch()`、`Response`、`Headers` |

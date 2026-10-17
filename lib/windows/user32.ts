@@ -520,10 +520,10 @@ export const GetSubMenu = /*@__PURE__*/ b('GetSubMenu', '<HMENU>ptr i32 -> <HMEN
  *  @param args_1 uFlags TPM_* 标志
  *  @param args_2 x 屏幕 x
  *  @param args_3 y 屏幕 y
- *  @param args_4 nReserved 保留，传 0
- *  @param args_5 prcRect 点击区矩形（DeepPartial RECT / .ptr / NULL）
- *  @param args_6 hdc 参考 DC，可 NULL */
-export const TrackPopupMenu = /*@__PURE__*/ b('TrackPopupMenu', '<HMENU>ptr u32 i32 i32 i32 <RECT>ptr <HDC>ptr -> i32', { RECT })
+ *  @param args_4 nReserved 保留，传 0（TrackPopupMenuEx 才用）
+ *  @param args_5 hWnd 拥有者窗口（TPM_RETURNCMD 时命令 ID 回到该窗口所属线程队列）
+ *  @param args_6 prcRect 保留位，传 NULL（Win32 文档标注本 API 忽略此参数） */
+export const TrackPopupMenu = /*@__PURE__*/ b('TrackPopupMenu', '<HMENU>ptr u32 i32 i32 i32 <HWND>ptr <RECT>ptr -> i32', { RECT })
 /** 创建弹出菜单；配对 DestroyMenu
  *  @returns 菜单句柄；失败 → NULL */
 export const CreatePopupMenu = /*@__PURE__*/ b('CreatePopupMenu', ' -> <HMENU>ptr')
@@ -565,7 +565,8 @@ export const MessageBox = /*@__PURE__*/ b('MessageBoxW', '<HWND>ptr <WCHAR>ptr <
 
 /** 按名加载图像（string 自动编码；uType/fuLoad 用 Win32 真值——与 ImageType 枚举当前值
  *  不同）
- *  @returns 图像句柄；失败 → 0
+ *  @returns 图像句柄——类型随 uType（IMAGE_ICON→HICON / CURSOR→HCURSOR / BITMAP→HBITMAP），
+ *    绑定侧给不出品牌故为裸地址档；失败 → 0
  *  @param args_0 hinst 模块句柄，NULL = 系统资源或 .ico 文件
  *  @param args_1 name 图像名 string（资源名或文件路径）
  *  @param args_2 uType IMAGE_* 真值（BITMAP=0/CURSOR=1/ICON=2）

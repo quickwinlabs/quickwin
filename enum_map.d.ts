@@ -10,12 +10,14 @@ interface EnumMap {
     NotifyIconCmd: import('./constants').NotifyIconCmd
     NotifyIconFlag: import('./constants').NotifyIconFlag
     MenuFlag: import('./constants').MenuFlag
+    TrackPopupMenuFlag: import('./constants').TrackPopupMenuFlag
     WindowStyle: import('./constants').WindowStyle
     WmMsg: import('./constants').WmMsg
     ScrollBar: import('./constants').ScrollBar
     ScrollCmd: import('./constants').ScrollCmd
     ScrollInfoFlag: import('./constants').ScrollInfoFlag
     SysMetrics: import('./constants').SysMetrics
+    Spi: import('./constants').Spi
     ButtonStyle: import('./constants').ButtonStyle
     MouseKeyFlag: import('./constants').MouseKeyFlag
     LbMsg: import('./constants').LbMsg
@@ -78,6 +80,7 @@ interface EnumMap {
     TooltipStyle: import('./constants').TooltipStyle
     CreatePos: import('./constants').CreatePos
     TtToolFlag: import('./constants').TtToolFlag
+    ColorUse: import('./constants').ColorUse
     RasterOp: import('./constants').RasterOp
     PenStyle: import('./constants').PenStyle
     BackgroundMode: import('./constants').BackgroundMode

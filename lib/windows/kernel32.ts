@@ -297,6 +297,15 @@ export const GetComputerName = /*@__PURE__*/ b('GetComputerNameW', '<BYTE>ptr <B
  *  @param args_1 lpFilename 接收缓冲，传 WCHAR.alloc(n)
  *  @param args_2 nSize 缓冲容量（WCHAR 个数） */
 export const GetModuleFileName = /*@__PURE__*/ b('GetModuleFileNameW', '<HMODULE>ptr <BYTE>ptr u32 -> u32')
+/** 取**已加载**模块的句柄（不加载、不加引用计数；LoadLibrary 的反向查询）
+ *  @returns 模块句柄（HMODULE/HINSTANCE，与 win 模块同型）；失败 → NULL
+ *  @param args_0 lpModuleName 模块名（大小写不敏感，`.dll` 可省；只认模块名不认路径），
+ *    传 NULL = 当前进程主 exe —— `<WCHAR>ptr` 位收 string 或 NULL（JS null/undefined 会 fail-loud） */
+export const GetModuleHandle = /*@__PURE__*/ b('GetModuleHandleW', '<WCHAR>ptr -> <HMODULE>ptr')
+/** 卸载 LoadLibrary 加载的模块（引用计数减 1）；GetModuleHandle 拿到的句柄**不可**传此 API
+ *  @returns 成功 → 非 0
+ *  @param args_0 hModule LoadLibrary 返回的模块句柄 */
+export const FreeLibrary = /*@__PURE__*/ b('FreeLibrary', '<HMODULE>ptr -> i32')
 /** 进程命令行（含程序名；进程启动即有值，永不返回 NULL）
  *  @returns 命令行整串（返回位 `<WCHAR>ptr!`：内建 WCHAR codec 自动解码为 string，
  *    `!` 担保非 NULL 由返回位 0 检查兜底，无需接收缓冲） */

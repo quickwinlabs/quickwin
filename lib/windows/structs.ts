@@ -93,6 +93,31 @@ export const LOGFONTW_DECL = {
 
 export const LOGFONTW = /* @__PURE__ */ struct('LOGFONTW', LOGFONTW_DECL)
 
+/** 非客户区度量（504B，x64/ia32 同布局）：内嵌 4 个 LOGFONTW + iPaddedBorderWidth（Vista+）；
+ *  SystemParametersInfo(SPI_GETNONCLIENTMETRICS) 纯出参位（不注册 encoder：
+ *  encode({cbSize}) 建缓冲带初值 → 传 .ptr → decode 读回 lfMessageFont 等） */
+export const NONCLIENTMETRICSW_DECL = {
+    '#': 'struct',
+    cbSize: 'u32',
+    iBorderWidth: 'i32',
+    iScrollWidth: 'i32',
+    iScrollHeight: 'i32',
+    iCaptionWidth: 'i32',
+    iCaptionHeight: 'i32',
+    lfCaptionFont: LOGFONTW_DECL,
+    iSmCaptionWidth: 'i32',
+    iSmCaptionHeight: 'i32',
+    lfSmCaptionFont: LOGFONTW_DECL,
+    iMenuWidth: 'i32',
+    iMenuHeight: 'i32',
+    lfMenuFont: LOGFONTW_DECL,
+    lfStatusFont: LOGFONTW_DECL,
+    lfMessageFont: LOGFONTW_DECL,
+    iPaddedBorderWidth: 'i32',
+} satisfies C_Struct
+
+export const NONCLIENTMETRICSW = /* @__PURE__ */ struct('NONCLIENTMETRICSW', NONCLIENTMETRICSW_DECL)
+
 /** TEXTMETRICW（60B = 11 LONG + 4 WCHAR + 5 BYTE 尾部补齐，双架构同布局）：
  *  GetTextMetrics 纯出参位（不注册 encoder：TEXTMETRICW.alloc().ptr 进、decode 读回） */
 export const TEXTMETRICW_DECL = {
@@ -750,3 +775,33 @@ export const NOTIFYICONIDENTIFIER_DECL = {
 } satisfies C_Struct
 
 export const NOTIFYICONIDENTIFIER = /* @__PURE__ */ struct('NOTIFYICONIDENTIFIER', NOTIFYICONIDENTIFIER_DECL)
+
+/** NOTIFYICONDATAW（Shell_NotifyIconW；x86 956B / x64 976B——hWnd/hIcon/hBalloonIcon 随
+ *  位宽，GUID 固定 16B；偏移经 mingw 头文件实测对齐）。cbSize 调用前填
+ *  NOTIFYICONDATAW.size（cb 结构惯例，同 NOTIFYICONIDENTIFIER / SCROLLINFO）——
+ *  本声明取 Vista+ 布局（与 mingw sizeof 一致），XP 上同样可注册（实测）。
+ *  szTip/szInfo/szInfoTitle 走宽字符串糖（u16[N]@utf-16le，同 LOGFONTW.lfFaceName）；
+ *  图标句柄用裸 <>ptr：LoadImageW 的返回类型由 uType 决定（HICON/HCURSOR/HBITMAP），
+ *  绑定给不出品牌——裸地址收品牌指针（子型）无障碍；
+ *  uTimeout 与 uVersion 是同址 union，本仓只用前者（恒 0，不走版本协商），
+ *  故按单字段 u32 声明而非 union 布局。 */
+export const NOTIFYICONDATAW_DECL = {
+    '#': 'struct',
+    cbSize: 'u32',
+    hWnd: '<HWND>ptr',
+    uID: 'u32',
+    uFlags: 'u32',
+    uCallbackMessage: 'u32',
+    hIcon: '<>ptr',
+    szTip: 'u16[128]@utf-16le',
+    dwState: 'u32',
+    dwStateMask: 'u32',
+    szInfo: 'u16[256]@utf-16le',
+    uTimeout: 'u32',
+    szInfoTitle: 'u16[64]@utf-16le',
+    dwInfoFlags: 'u32',
+    guidItem: 'u32[4]',
+    hBalloonIcon: '<>ptr',
+} satisfies C_Struct
+
+export const NOTIFYICONDATAW = /* @__PURE__ */ struct('NOTIFYICONDATAW', NOTIFYICONDATAW_DECL)

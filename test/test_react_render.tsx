@@ -1,7 +1,8 @@
 import '../lib/polyfill.js'
 import * as gui from 'gui'
 import { render } from '../lib/react-qw/index.js'
-import { WindowStyle, WmMsg } from '../constants'
+import { ShowWindowCmd, WindowStyle, WmMsg } from '../constants'
+import { PostQuitMessage, ShowWindow } from '../lib/windows/user32.js'
 
 const WS_CHILD = 0x40000000
 const WS_VISIBLE = 0x10000000
@@ -9,7 +10,7 @@ const WS_VISIBLE = 0x10000000
 gui.RegisterClass('ReactTest', (hwnd, msg, wParam, lParam) => {
   if (!hwnd) return gui.DefWindowProc(hwnd, msg, wParam, lParam)
   if (msg === WmMsg.DESTROY) {
-    gui.PostQuitMessage(0)
+    PostQuitMessage(0)
     return 0
   }
   return gui.DefWindowProc(hwnd, msg, wParam, lParam)
@@ -26,6 +27,6 @@ const hwnd = gui.CreateWindow(
 )
 
 if (hwnd) {
-  gui.ShowWindow(hwnd)
+  ShowWindow(hwnd, ShowWindowCmd.SHOWNORMAL)
   render(<Greeting />, hwnd)
 }

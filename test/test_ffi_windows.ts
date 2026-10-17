@@ -1,14 +1,18 @@
 import { Tester } from './test_helper.js'
-import { NULL } from '../lib/ffi/ctype.js'
+import { NULL, PTR_SIZE, PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import {
     GetDesktopWindow, CreatePopupMenu, DestroyMenu, GetDC, ReleaseDC,
     LoadImage, LoadImageOrdinal, SetScrollInfo, GetScrollInfo,
 } from '../lib/windows/user32.js'
 import {
-    GetDeviceCaps, CreateSolidBrush, DeleteObject, CreateFontIndirect, GetObject, SelectObject, CreateCompatibleDC, DeleteDC,
+    GetDeviceCaps, CreateSolidBrush, DeleteObject, CreateFontIndirect, GetObject, SelectObject, CreateCompatibleDC, CreateCompatibleBitmap, DeleteDC, GetDIBits,
 } from '../lib/windows/gdi32.js'
-import { ImageListCreate, ImageListDestroy } from '../lib/windows/comctl32.js'
-import { LOGFONTW, SCROLLINFO } from '../lib/windows/structs.js'
+import { ImageListCreate, ImageListAdd, ImageListDestroy } from '../lib/windows/comctl32.js'
+import { ShellNotifyIcon } from '../lib/windows/shell32.js'
+import { BITMAPINFOHEADER, LOGFONTW, NONCLIENTMETRICSW, NOTIFYICONDATAW, SCROLLINFO } from '../lib/windows/structs.js'
+import { ColorUse, DeviceCap, IDI, ImageListFlag, ImageType, LoadImageFlag, NotifyIconCmd, NotifyIconFlag } from '../constants'
+import { createSystemDpiFont, getScaleFactor } from '../lib/dpi.js'
+import { createBitmapFromPixels } from '../lib/bitmap.js'
 
 export const suite = {
     run(t: Tester) {
@@ -69,7 +73,7 @@ export const suite = {
         t.section('gdi32: GetDeviceCaps（<HDC>ptr 跨 user32 品牌互认）')
         const hdc = GetDC(NULL)
         t.checkTrue('GetDC(NULL) 非 0', hdc !== 0)
-        if (hdc !== 0) t.checkTrue('GetDeviceCaps(hdc, LOGPIXELSX) > 0', GetDeviceCaps(hdc, 88) > 0)
+        if (hdc !== 0) t.checkTrue('GetDeviceCaps(hdc, LOGPIXELSX) > 0', GetDeviceCaps(hdc, DeviceCap.LOGPIXELSX) > 0)
         t.checkTrue('ReleaseDC(NULL, hdc) 成功', hdc !== 0 && ReleaseDC(NULL, hdc) !== 0)
 
         t.section('user32: 弹出菜单往返')
@@ -77,10 +81,18 @@ export const suite = {
         t.checkTrue('CreatePopupMenu 非 0', pm !== 0)
         if (pm !== 0) t.checkTrue('DestroyMenu(pm) 成功', DestroyMenu(pm) !== 0)
 
-        t.section('comctl32: ImageList 创建-销毁往返')
-        const himl = ImageListCreate(16, 16, 4, 0, 0)   // ILC_COLOR32=4；initial/grow=0 默认
-        t.checkTrue('ImageListCreate(16, 16, ILC_COLOR32) 非 0', himl !== 0)
-        if (himl !== 0) t.checkTrue('ImageListDestroy(himl) 成功', ImageListDestroy(himl) !== 0)
+        t.section('comctl32: ImageList 创建-加位图-销毁往返（hbmMask 位传 NULL）')
+        const himl = ImageListCreate(16, 16, ImageListFlag.COLOR24, 0, 0)   // initial/grow=0 默认
+        t.checkTrue('ImageListCreate(16, 16, ILC_COLOR24) 非 0', himl !== 0)
+        if (himl !== 0) {
+            const hdcMem = CreateCompatibleDC(NULL)
+            const hbm = hdcMem !== 0 ? CreateCompatibleBitmap(hdcMem, 16, 16) : 0
+            t.checkTrue('CreateCompatibleBitmap(16, 16) 非 0', hbm !== 0)
+            if (hbm !== 0) t.check('ImageListAdd(himl, hbm, NULL) → 索引 0', 0, ImageListAdd(himl, hbm, NULL))
+            if (hbm !== 0) DeleteObject(hbm)
+            if (hdcMem !== 0) DeleteDC(hdcMem)
+            t.checkTrue('ImageListDestroy(himl) 成功', ImageListDestroy(himl) !== 0)
+        }
 
         t.section('user32: LoadImage 双变体（string 自动编码 / ordinal MAKEINTRESOURCE）')
         // Win32 IMAGE_* 真值：BITMAP=0 CURSOR=1 ICON=2；LR_SHARED=0x8000（注意 ImageType d.ts 当前值与此不一致）
@@ -107,7 +119,69 @@ export const suite = {
         t.check('decode 回读 cbSize = encode 初值', SCROLLINFO.size, info.cbSize)
         t.check('decode 回读 fMask = encode 初值', 0x0001, info.fMask)
         t.checkTrue('读回字段为 number 形态', typeof info.nMin === 'number' && typeof info.nMax === 'number')
-        // CallWindowProc / ShowScrollBar / ImageListAdd 仅由 import 的模块加载覆盖 proc 名：
-        // CallWindowProc 跨线程窗口过程不安全、ShowScrollBar 有副作用、ImageListAdd 需位图源
+        // CallWindowProc / ShowScrollBar 仅由 import 的模块加载覆盖 proc 名：
+        // CallWindowProc 跨线程窗口过程不安全、ShowScrollBar 有副作用
+
+        // NONCLIENTMETRICS 的 cbSize/uiParam 随系统变（Vista+ 504 / XP·2003 500），
+        // 尺寸回退逻辑在 lib/dpi；此处只锁结构布局与端到端效果（见下 section）。
+        t.check('NONCLIENTMETRICSW.size == 504（4 LOGFONTW + 12 DWORD）', 504, NONCLIENTMETRICSW.size)
+
+        t.section('lib/dpi: 下沉到 JS 的 DPI / 系统字体复合逻辑')
+        t.checkTrue('getScaleFactor() ≥ 0.5', getScaleFactor() >= 0.5)
+        const dpiFont = createSystemDpiFont()
+        t.checkTrue('createSystemDpiFont() 非 NULL（SPI 尺寸回退后仍取到系统消息字体）', dpiFont !== 0)
+        if (dpiFont) {
+            const lf = LOGFONTW.alloc()
+            t.checkTrue('GetObject(dpiFont, LOGFONTW.size) 回读成功', GetObject(dpiFont, LOGFONTW.size, lf) === LOGFONTW.size)
+            const fo = LOGFONTW.decode(lf)
+            t.checkTrue('系统消息字体 lfFaceName 非空（结构确被 SPI 填过）', typeof fo.lfFaceName === 'string' && fo.lfFaceName.length > 0)
+            t.checkTrue('DeleteObject(系统字体) 成功', DeleteObject(dpiFont) !== 0)
+        }
+
+        t.section('shell32: Shell_NotifyIconW 托盘图标增删（NOTIFYICONDATAW 对象直传）')
+        // 尺寸基准来自 mingw 头文件实测（x86 956 / x64 976，随 hWnd/hIcon/hBalloonIcon 位宽）
+        t.check('NOTIFYICONDATAW.size == mingw sizeof（x86 956 / x64 976）',
+            PTR_SIZE === 4 ? 956 : 976, NOTIFYICONDATAW.size)
+        const nid = NOTIFYICONDATAW.encode({ cbSize: NOTIFYICONDATAW.size, szTip: 'quickwin', szInfoTitle: 'qw' })
+        const nidBack = NOTIFYICONDATAW.decode(nid)
+        t.check('宽字符串糖 szTip 编解码往返', 'quickwin', nidBack.szTip)
+        t.check('宽字符串糖 szInfoTitle 编解码往返', 'qw', nidBack.szInfoTitle)
+
+        const trayIcon = LoadImageOrdinal(NULL, IDI.APPLICATION, ImageType.ICON, 0, 0, LoadImageFlag.SHARED)
+        t.checkTrue('LoadImageOrdinal(IDI.APPLICATION, SHARED) 非 0', trayIcon !== 0)
+        const trayHwnd = GetDesktopWindow()
+        t.checkTrue('ShellNotifyIcon(ADD) 成功（Vista+ 尺寸在 XP/Win7 均被接受）', ShellNotifyIcon(NotifyIconCmd.ADD, {
+            cbSize: NOTIFYICONDATAW.size, hWnd: trayHwnd, uID: 77,
+            uFlags: NotifyIconFlag.MESSAGE | NotifyIconFlag.ICON | NotifyIconFlag.TIP,
+            uCallbackMessage: 0x8001, hIcon: trayIcon, szTip: 'quickwin test',
+        }) !== 0)
+        t.checkTrue('ShellNotifyIcon(DELETE) 成功（只需 hWnd+uID）',
+            ShellNotifyIcon(NotifyIconCmd.DELETE, { cbSize: NOTIFYICONDATAW.size, hWnd: trayHwnd, uID: 77 }) !== 0)
+
+        t.section('lib/bitmap: 按像素建 32bpp DIB 段（原 gui.CreateBitmapFromPixels）')
+        const nw = 4, nh = 2
+        const px = new ArrayBuffer(nw * nh * 4)
+        const px8 = new Uint8Array(px)
+        for (let i = 0; i < px8.length; i++) px8[i] = (i * 37 + 11) & 0xff
+        const hbm = createBitmapFromPixels(nw, nh, px)
+        t.checkTrue('createBitmapFromPixels(4x2) 非 NULL', hbm !== 0)
+        if (hbm) {
+            const bmi = BITMAPINFOHEADER.encode({
+                biSize: BITMAPINFOHEADER.size, biWidth: nw, biHeight: -nh,
+                biPlanes: 1, biBitCount: 32, biSizeImage: nw * nh * 4,
+            })
+            const back = new PtrArrayBuffer<'BYTE'>(nw * nh * 4)
+            const dc = GetDC(NULL)
+            const rows = dc ? GetDIBits(dc, hbm, 0, nh, back, bmi.ptr, ColorUse.RGB_COLORS) : 0
+            if (dc) ReleaseDC(NULL, dc)
+            t.check('GetDIBits 取回全部扫描行', nh, rows)
+            const back8 = new Uint8Array(back)
+            let same = rows === nh
+            for (let i = 0; i < back8.length; i++) if (back8[i] !== px8[i]) same = false
+            t.checkTrue('像素逐字节一致（含 alpha，与旧 C 的 memcpy 等价）', same)
+            t.checkTrue('DeleteObject(位图) 成功', DeleteObject(hbm) !== 0)
+        }
+        t.checkTrue('非法入参 → NULL（宽/高 ≤ 0、像素缓冲不足，同旧 C 语义）',
+            createBitmapFromPixels(0, nh, px) === NULL && createBitmapFromPixels(nw, nh, new ArrayBuffer(4)) === NULL)
     },
 }

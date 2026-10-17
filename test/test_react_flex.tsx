@@ -4,13 +4,15 @@ import { useState } from 'react'
 import { createRoot } from '../lib/react-qw/index.js'
 import { Tester } from './test_helper.js'
 import { GetWindowCmd, WmMsg } from '../constants'
+import { GetWindow, GetWindowRect, PostQuitMessage } from '../lib/windows/user32.js'
+import { RECT } from '../lib/windows/structs.js'
 
 let __setItems: ((v: any) => void) | null = null
 
 gui.RegisterClass('FlexTest', (hwnd, msg, wParam, lParam) => {
   if (!hwnd) return gui.DefWindowProc(hwnd, msg, wParam, lParam)
   if (msg === WmMsg.DESTROY) {
-    gui.PostQuitMessage(0)
+    PostQuitMessage(0)
     return 0
   }
   return gui.DefWindowProc(hwnd, msg, wParam, lParam)
@@ -18,18 +20,19 @@ gui.RegisterClass('FlexTest', (hwnd, msg, wParam, lParam) => {
 
 function childrenOf(hwnd: any): any[] {
   const kids: any[] = []
-  let child = gui.GetWindow(hwnd, GetWindowCmd.CHILD)
+  let child = GetWindow(hwnd, GetWindowCmd.CHILD)
   while (child) {
     kids.push(child)
-    child = gui.GetWindow(child, GetWindowCmd.NEXT)
+    child = GetWindow(child, GetWindowCmd.NEXT)
   }
   return kids.reverse()
 }
 
 function getRelativeRect(childHwnd: any, parentHwnd: any) {
-  const pr = gui.GetWindowRect(parentHwnd)
-  const cr = gui.GetWindowRect(childHwnd)
-  if (!pr || !cr) return { x: 0, y: 0, width: 0, height: 0 }
+  const pBuf = RECT.alloc(), cBuf = RECT.alloc()
+  if (!GetWindowRect(parentHwnd, pBuf.ptr) || !GetWindowRect(childHwnd, cBuf.ptr))
+    return { x: 0, y: 0, width: 0, height: 0 }
+  const pr = RECT.decode(pBuf), cr = RECT.decode(cBuf)
   return {
     x: cr.left - pr.left,
     y: cr.top - pr.top,
@@ -336,7 +339,7 @@ async function main() {
   checkDynamic(outer4, [175])
 
   tester.summary()
-  gui.PostQuitMessage(0)
+  PostQuitMessage(0)
 }
 
 main()

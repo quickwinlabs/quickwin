@@ -3,7 +3,9 @@ import * as gui from 'gui'
 import * as os from 'os'
 import { useState, useEffect, useRef } from 'react'
 import { render } from '../lib/react-qw/index.js'
-import { GetWindowCmd, WindowStyle, WmMsg } from '../constants'
+import { GetWindow, GetWindowText, GetWindowTextLength, IsWindow, PostQuitMessage, ShowWindow } from '../lib/windows/user32.js'
+import { WCHAR } from '../lib/ffi/bind.js'
+import { GetWindowCmd, ShowWindowCmd, WindowStyle, WmMsg } from '../constants'
 
 // 打印窗口树
 function printWindowTree(hwnd: gui.HWND, indent: number = 0) {
@@ -11,17 +13,20 @@ function printWindowTree(hwnd: gui.HWND, indent: number = 0) {
   const prefix = '  '.repeat(indent)
   let text = '(no text)'
   try {
-    text = gui.GetWindowText(hwnd) || '(no text)'
+    const cap = GetWindowTextLength(hwnd) + 1
+    const buf = WCHAR.alloc(cap)
+    GetWindowText(hwnd, buf, cap)
+    text = WCHAR.decode(buf) || '(no text)'
   } catch (e) {
     text = '(error)'
   }
-  const isWindow = gui.IsWindow(hwnd)
+  const isWindow = IsWindow(hwnd)
   console.log(`${prefix}hwnd=${hwnd}, text="${text}", IsWindow=${isWindow}`)
   
-  let child = gui.GetWindow(hwnd, GetWindowCmd.CHILD)
+  let child = GetWindow(hwnd, GetWindowCmd.CHILD)
   while (child) {
     printWindowTree(child, indent + 1)
-    child = gui.GetWindow(child, GetWindowCmd.NEXT)
+    child = GetWindow(child, GetWindowCmd.NEXT)
   }
 }
 
@@ -36,7 +41,7 @@ function mockSetInterval(func: () => void, delay: number) {
 gui.RegisterClass('ComplexTest', (hwnd, msg, wParam, lParam) => {
   if (!hwnd) return gui.DefWindowProc(hwnd, msg, wParam, lParam)
   if (msg === WmMsg.DESTROY) {
-    gui.PostQuitMessage(0)
+    PostQuitMessage(0)
     return 0
   }
   return gui.DefWindowProc(hwnd, msg, wParam, lParam)
@@ -131,7 +136,10 @@ function InputField() {
           style={{width:60, height:24}}
           onEvent={(e: any) => {
             if (e.msg === WM_LBUTTONUP && editRef.current) {
-              setText(gui.GetWindowText(editRef.current))
+              const cap = GetWindowTextLength(editRef.current) + 1
+              const buf = WCHAR.alloc(cap)
+              GetWindowText(editRef.current, buf, cap)
+              setText(WCHAR.decode(buf))
             }
           }}
         />
@@ -171,7 +179,10 @@ function CounterWithInput() {
         style={{width:60, height:24}}
         onEvent={(e: any) => {
           if (e.msg === WM_LBUTTONUP && inputRef.current) {
-            const val = parseInt(gui.GetWindowText(inputRef.current) || '0', 10)
+            const cap = GetWindowTextLength(inputRef.current) + 1
+            const buf = WCHAR.alloc(cap)
+            GetWindowText(inputRef.current, buf, cap)
+            const val = parseInt(WCHAR.decode(buf) || '0', 10)
             setDisplayValue(val)
             setCount(0)
           }
@@ -226,7 +237,10 @@ function ControlledInput() {
         style={{width:200, height:24}}
         onEvent={(e: any) => {
           if (e.msg === WmMsg.CHAR) {
-            setValue(gui.GetWindowText(e.hwnd))
+            const cap = GetWindowTextLength(e.hwnd) + 1
+            const buf = WCHAR.alloc(cap)
+            GetWindowText(e.hwnd, buf, cap)
+            setValue(WCHAR.decode(buf))
           }
         }}
       />
@@ -296,7 +310,7 @@ const hwnd = gui.CreateWindow(
 )
 
 if (hwnd) {
-  gui.ShowWindow(hwnd)
+  ShowWindow(hwnd, ShowWindowCmd.SHOWNORMAL)
   render(<App />, hwnd)
   
   mockSetInterval(() => {

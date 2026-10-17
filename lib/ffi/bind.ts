@@ -1,7 +1,6 @@
 import * as ffi from 'ffi'
 import * as os from 'os'
 import * as std from 'std'
-import * as win from 'win'
 import '../text-codec.js'
 import { type C_BasicType, C_BasicType_No_Void, C_BasicType_Token, C_BasicType_Token_No_Void, cTokenToType, isCPtrToken, isCValToken, valName, ArgJsTypeOfToken, RetJsTypeOfToken, normToken, PTR_SIZE, ptrName, type Ptr, readScalar, writeSlot, PtrArrayBuffer } from './ctype.js'
 
@@ -47,12 +46,12 @@ function valCodec(name: string, encoders: CodecMap): StructValCodec | undefined 
     return encoders[name] as unknown as StructValCodec | undefined
 }
 
-const _dllCache: Map<string, win.HMODULE> = new Map()
+const _dllCache: Map<string, ffi.HMODULE> = new Map()
 
-function loadDll(dll: string): win.HMODULE {
+function loadDll(dll: string): ffi.HMODULE {
     const cached = _dllCache.get(dll)
     if (cached !== undefined) return cached
-    const loaded = win.LoadLibrary(dll)
+    const loaded = ffi.LoadLibrary(dll)
     if (!loaded) throw new Error(`ffi-bind: LoadLibrary("${dll}") failed`)
     _dllCache.set(dll, loaded)
     return loaded
@@ -105,7 +104,9 @@ function parseSig(sig: string): ParsedSig {
     }
 }
 
-function makeFn(proc: number, sig: string, encoders: CodecMap, decoders: CodecMap): (...a: unknown[]) => unknown {
+/** proc 是 GetProcAddress 拿到的函数地址（<FARPROC>ptr）：调用方已校验非空，故收窄后的
+ *  Ptr 而非 MaybePtr；品牌只在绑定层内部走，落到 ffiCall 的 uintptr 槽（number）时脱落。 */
+function makeFn(proc: Ptr<'FARPROC'>, sig: string, encoders: CodecMap, decoders: CodecMap): (...a: unknown[]) => unknown {
     const ps = parseSig(sig)
     // 按值位的能力校验前移到绑定期（模块加载即炸，不留到首个调用）：布局缺位 / 非结构
     // 布局（无 size）/ 退化 size 都是签名层面的错误，报错指向具体位与可用布局清单。
@@ -134,7 +135,7 @@ const IA32_ARG_SIZE: Record<C_BasicType_No_Void, number> = {
 // x64 桩无条件双读 slots[0..3]，故 argFrame 至少 4 个槽（32 字节）
 const X64_MIN_SLOTS = 4
 
-function callPacked(proc: number, { argTokens, retToken, sig }: ParsedSig, args: any[], encoders: CodecMap, decoders: CodecMap): unknown {
+function callPacked(proc: Ptr<'FARPROC'>, { argTokens, retToken, sig }: ParsedSig, args: any[], encoders: CodecMap, decoders: CodecMap): unknown {
     const is64 = os.arch === 'x64'
 
     const getWidth = (t: C_BasicType_Token_No_Void, is64: boolean): number => {
@@ -381,7 +382,7 @@ export function bind<const S extends string,
     const LE extends CodecMap = {},
     const LD extends CodecMap = LE>(
     dll: string, name: string, sig: S, encoders?: LE, decoders?: LD) {
-    const proc = win.GetProcAddress(loadDll(dll), name)
+    const proc = ffi.GetProcAddress(loadDll(dll), name)
     if (!proc) throw new Error(`ffi-bind: proc "${name}" not found in ${dll}`)
     const effDec = decoders ?? encoders
     return makeFn(proc, sig,
@@ -401,7 +402,7 @@ export function bindLib<const M extends Record<string, string>,
     const encTable = { ...builtinCodecs, ...encoders }
     const decTable = { ...builtinCodecs, ...(effDec ?? {}) }
     for (const [name, sig] of Object.entries(map)) {
-        const proc = win.GetProcAddress(h, name)
+        const proc = ffi.GetProcAddress(h, name)
         if (!proc) throw new Error(`ffi-bind: proc "${name}" not found in ${dll}`)
         out[name] = makeFn(proc, sig, encTable, decTable)
     }

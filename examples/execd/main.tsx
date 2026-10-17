@@ -1,7 +1,6 @@
 import { createServer } from '../../lib/http-server.js'
 import * as os from 'os'
 import * as std from 'std'
-import * as gui from 'gui'
 import { RequestLog, type LogEntry } from '../../lib/exec-log.js'
 import { createRoot, ListBox } from '../../lib/react-qw/index.js'
 import { useEffect, useState } from 'react'
@@ -10,7 +9,7 @@ import { NULL, type Ptr, PtrArrayBuffer } from '../../lib/ffi/ctype.js'
 import {
     ChangeDisplaySettings, ClientToScreen, EnumDisplaySettings, EnumWindows, GetClassName,
     GetClientRect, GetDC, GetSystemMetrics, GetWindowRect, GetWindowText, IsIconic,
-    IsWindowVisible, PrintWindow, ReleaseDC, SendInput,
+    IsWindowVisible, PrintWindow, ReleaseDC, SendInput, ShowWindow,
 } from '../../lib/windows/user32.js'
 import {
     BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, SelectObject,
@@ -18,7 +17,7 @@ import {
 import { BITMAPFILEHEADER, BITMAPINFOHEADER, DEVMODEW, INPUT, POINT, RECT } from '../../lib/windows/structs.js'
 import { GetLastError, MoveFileEx } from '../../lib/windows/kernel32.js'
 import { listTrayIcons, probeTrayIcon } from './tray.js'
-import { ChangeDisplayFlag, DevModeField, DisplayChangeResult, EnumDisplaySetting, MoveFileFlag, ShowWindowCmd, SysMetrics, WindowStyle } from '../../constants'
+import { ChangeDisplayFlag, ColorUse, DevModeField, DisplayChangeResult, EnumDisplaySetting, MoveFileFlag, ShowWindowCmd, SysMetrics, WindowStyle } from '../../constants'
 
 // WORKER_DATA_URL 由 esbuild --define 在 build.ts 中注入（base64 data: URL）
 declare const WORKER_DATA_URL: string
@@ -131,7 +130,7 @@ function initGui(): void {
         })
         root.render(<LogPanel />)
         // run.bat 用 `start /min` 启动，这里显式还原，避免窗口只留一条标题栏
-        gui.ShowWindow(root.hwnd, ShowWindowCmd.RESTORE)
+        ShowWindow(root.hwnd, ShowWindowCmd.RESTORE)
     } catch (ex) {
         // 无桌面/建窗失败时回退 headless，绝不影响服务
         console.error('[execd] gui init failed (fallback headless):', ex)
@@ -339,7 +338,6 @@ function parseShotOpts(params: URLSearchParams): ShotOpts {
 // 行宽：32bpp 下每行 w*4 字节，天然 4 字节对齐，与 BMP 的行填充规则一致，
 // 所以 GetDIBits 拿到的像素可以原样当 BMP 数据体。
 const SRCCOPY = 0x00cc0020
-const DIB_RGB_COLORS = 0
 // 单次捕获像素上限（≈160MB 像素缓冲），挡住畸形 rect 造成的巨量分配
 const MAX_CAPTURE_PX = 40000000
 const WIDE_BUF_CHARS = 512
@@ -384,7 +382,7 @@ function emitDib(hdc: Ptr<'HDC'>, hbm: Ptr<'HGDIOBJ'>, w: number, h: number): Ui
         biSizeImage: w * h * 4,
     })
 
-    const got = GetDIBits(hdc, hbm, 0, h, pxB, bmi.ptr, DIB_RGB_COLORS)
+    const got = GetDIBits(hdc, hbm, 0, h, pxB, bmi.ptr, ColorUse.RGB_COLORS)
     if (got !== h) return null
 
     const out = new Uint8Array(BMP_HEADERS_SIZE + px.byteLength)

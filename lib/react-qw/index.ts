@@ -1,8 +1,8 @@
 import * as gui from 'gui'
 import React from 'react'
-import { DefWindowProc, GetSystemMetrics } from '../windows/user32.js'
+import { DefWindowProc, GetSystemMetrics, ShowWindow, UpdateWindow } from '../windows/user32.js'
 import reconciler, { scaleFactor, instancesByHwnd, forceFlexLayout, type Instance } from './reconciler.js'
-import { CreatePos, WindowStyle, WmMsg } from '../../constants'
+import { CreatePos, ShowWindowCmd, SysMetrics, WindowStyle, WmMsg } from '../../constants'
 
 const noop = () => { }
 
@@ -48,8 +48,7 @@ export function createRoot(container: gui.HWND | RootWindowConfig) {
     const ws = (cfg.ws ?? 0) | WindowStyle.OVERLAPPEDWINDOW
     const w = (cfg.width ?? 800) * scaleFactor
     const h = (cfg.height ?? 600) * scaleFactor
-    // GetScreenSize 等价内联：SM_CXSCREEN=0 / SM_CYSCREEN=1
-    const [sw, sh] = [GetSystemMetrics(0), GetSystemMetrics(1)]
+    const [sw, sh] = [GetSystemMetrics(SysMetrics.CXSCREEN), GetSystemMetrics(SysMetrics.CYSCREEN)]
     const x = cfg.x === undefined ? ((sw - w) / 2) | 0
       : cfg.x === CreatePos.USEDEFAULT ? CreatePos.USEDEFAULT
       : cfg.x * scaleFactor
@@ -59,7 +58,8 @@ export function createRoot(container: gui.HWND | RootWindowConfig) {
     const hwin = gui.CreateWindow(className, cfg.text || '', ws, x, y, w, h, null, null)
     if (!hwin) throw new Error('CreateWindow failed')
     hwnd = hwin
-    if (!cfg.noShowWindow) gui.ShowWindow(hwnd)
+    // 启动首帧：ShowWindow 后立即 WM_PAINT，不留白（原 gui.ShowWindow 复合语义）
+    if (!cfg.noShowWindow) { ShowWindow(hwnd, ShowWindowCmd.SHOWNORMAL); UpdateWindow(hwnd) }
   } else {
     hwnd = container
   }

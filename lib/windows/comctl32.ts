@@ -12,8 +12,9 @@ export const ImageListCreate = /*@__PURE__*/ b('ImageList_Create', 'i32 i32 u32 
 /** 加位图进图像列表
  *  @returns 新索引（-1 失败）
  *  @param args_0 himl 图像列表句柄
- *  @param args_1 hbm 位图句柄（gdi32 <HGDIOBJ>ptr 产物，如 CreateCompatibleBitmap） */
-export const ImageListAdd = /*@__PURE__*/ b('ImageList_Add', '<HIMAGELIST>ptr <HGDIOBJ>ptr -> i32')
+ *  @param args_1 hbmImage 位图句柄（gdi32 <HGDIOBJ>ptr 产物，如 CreateCompatibleBitmap）
+ *  @param args_2 hbmMask 掩码位图；32bpp 图像传 NULL */
+export const ImageListAdd = /*@__PURE__*/ b('ImageList_Add', '<HIMAGELIST>ptr <HGDIOBJ>ptr <HGDIOBJ>ptr -> i32')
 /** 销毁图像列表
  *  @returns 成功 → 非 0 */
 export const ImageListDestroy = /*@__PURE__*/ b('ImageList_Destroy', '<HIMAGELIST>ptr -> i32')
