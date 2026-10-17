@@ -1,8 +1,9 @@
 import * as gui from 'gui'
 import * as std from 'std'
-import { NULL } from '../lib/ffi/ctype.js'
-import { GetCursorPos, CreatePopupMenu, AppendMenu, TrackPopupMenu, DestroyMenu, GetSystemMetrics, PostQuitMessage, SetForegroundWindow, ShowWindow } from '../lib/windows/user32.js'
-import { POINT } from '../lib/windows/structs.js'
+import { NULL, type MaybePtr } from '../lib/ffi/ctype.js'
+import { GetCursorPos, CreatePopupMenu, AppendMenu, TrackPopupMenu, DestroyMenu, GetSystemMetrics, LoadImageOrdinal, PostQuitMessage, SetForegroundWindow, ShowWindow } from '../lib/windows/user32.js'
+import { NOTIFYICONDATAW, POINT } from '../lib/windows/structs.js'
+import { ShellNotifyIcon } from '../lib/windows/shell32.js'
 import { createSystemDpiFont } from '../lib/dpi.js'
 import { EditStyle, IDI, ImageType, LoadImageFlag, MenuFlag, NotifyIconCmd, NotifyIconFlag, ShowWindowCmd, SysMetrics, TrackPopupMenuFlag, WindowStyle, WmMsg } from '../constants'
 
@@ -30,7 +31,7 @@ gui.RegisterClass('TrayApp', (hwnd, msg, wParam, lParam) => {
                 if (cmd === 1) {
                     ShowWindow(hwnd, ShowWindowCmd.SHOW)
                 } else if (cmd === 2) {
-                    gui.ShellNotifyIcon(NotifyIconCmd.DELETE, { hwnd, uID: 1 })
+                    ShellNotifyIcon(NotifyIconCmd.DELETE, { cbSize: NOTIFYICONDATAW.size, hWnd: hwnd, uID: 1 })
                     PostQuitMessage(0)
                 }
             }
@@ -68,13 +69,16 @@ if (text) {
         gui.SendMessage(text, WmMsg.SETFONT, font, 1)
 }
 
-let hIcon = gui.LoadAppIcon()
-if (!hIcon) hIcon = gui.LoadImage(null, IDI.APPLICATION, ImageType.ICON, 0, 0, LoadImageFlag.SHARED)
+// LoadImageW 返回的句柄随 uType 变（HICON/HCURSOR/HBITMAP），绑定只能给裸地址档；
+// LoadAppIcon 的 HICON 是同一档的品牌子型，故变量按裸地址声明
+let hIcon: MaybePtr<''> | null = gui.LoadAppIcon()
+if (!hIcon) hIcon = LoadImageOrdinal(NULL, IDI.APPLICATION, ImageType.ICON, 0, 0, LoadImageFlag.SHARED)
 if (hIcon) {
-    const ok = gui.ShellNotifyIcon(NotifyIconCmd.ADD, {
-        hwnd: hwnd, uID: 1,
-        flags: NotifyIconFlag.MESSAGE | NotifyIconFlag.ICON,
-        callbackMessage: WM_TRAY,
+    const ok = ShellNotifyIcon(NotifyIconCmd.ADD, {
+        cbSize: NOTIFYICONDATAW.size,
+        hWnd: hwnd, uID: 1,
+        uFlags: NotifyIconFlag.MESSAGE | NotifyIconFlag.ICON,
+        uCallbackMessage: WM_TRAY,
         hIcon,
     })
     std.out.printf('tray icon %s\n', ok ? 'added' : 'FAILED')

@@ -435,13 +435,8 @@ declare module "gui" {
     type HWND = number & { readonly ptrBrand: "HWND" };
     type HMENU = number & { readonly ptrBrand: "HMENU" };
     type HICON = number & { readonly ptrBrand: "HICON" };
-    // 枚举唯一定义在 constants.ts（真实 .ts，tsc/esbuild 均内联）；此处别名仅供签名引用，
-    // 使用方请直接 import { WindowStyle } from 'quickwin/constants'。
-    // ImageType 的成员访问（如 ImageType.ICON）需写 import('./constants').ImageType.ICON
-    // ——类型别名不建命名空间，无法穿透取成员。
-    type NotifyIconCmd = import('./constants').NotifyIconCmd;
-    type ImageType = import('./constants').ImageType;
-    type IDI = import('./constants').IDI;
+    // 枚举唯一定义在 constants.ts（真实 .ts，tsc/esbuild 均内联）；本模块不再转出枚举
+    // 别名与 RECT 等结构类型——Win32 直通请走 lib/windows（含常量与结构定义）
 
     function RegisterClass(className: string, wndProc?: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): number;
     function CreateWindow(className: string, title: string, style: number, x: number, y: number, width: number, height: number, parent: HWND | null, menu: HMENU | null): HWND | null;
@@ -451,35 +446,6 @@ declare module "gui" {
     function DefWindowProc(hwnd: HWND, msg: number, wParam: number, lParam: number): number;
     function SendMessage(hwnd: HWND, msg: number, wParam: number, lParam: number | string): number;
     function UnsetWindowProc(hwnd: HWND): boolean;
-    interface NotifyIconData {
-        hwnd: HWND
-        uID?: number
-        flags?: number
-        callbackMessage?: number
-        hIcon?: HICON
-        tip?: string
-    }
-
-    function ShellNotifyIcon(cmd: NotifyIconCmd, nid: NotifyIconData): boolean;
-    /**
-     * Thin wrapper around LoadImageW. Parameter order matches Win32 LoadImageW: (hinst, name, uType?, cx?, cy?, fuLoad?).
-     * hinst: null for system resources/file path, number for module handle;
-     * name: when hinst=null, a system icon IDI or .ico file path; when hinst=module handle, a resource ID (number) or resource name (string);
-     * uType: ImageType constant, default IMAGE_ICON (returns HICON), pass BITMAP/CURSOR for number return;
-     * cx/cy: target size (0 for default, use LoadImageFlag.DEFAULTSIZE for system default size);
-     * fuLoad: LoadImageFlag constants. Note: loading system icons (IDI_*, hinst=null) requires LoadImageFlag.SHARED.
-     * Example: import { IDI, ImageType, LoadImageFlag } from 'quickwin/constants'
-     *          gui.LoadImage(null, "app.ico", ImageType.ICON, 32, 32, LoadImageFlag.LOADFROMFILE)
-     *          gui.LoadImage(null, IDI.APPLICATION, ImageType.ICON, 0, 0, LoadImageFlag.SHARED)
-     */
-    function LoadImage<H extends (import("win").HMODULE) | null, T extends ImageType = import('./constants').ImageType.ICON>(
-        hinst: H,
-        name: H extends null ? string | IDI : string | number,
-        uType?: T,
-        cx?: number,
-        cy?: number,
-        fuLoad?: number
-    ): T extends import('./constants').ImageType.ICON ? HICON | null : number | null;
     /**
      * Loads the first icon group (RT_GROUP_ICON) from this exe, i.e. the custom icon
      * embedded by rcedit. Works with any resource ID including 0. Returns null if the

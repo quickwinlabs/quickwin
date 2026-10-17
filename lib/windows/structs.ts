@@ -775,3 +775,33 @@ export const NOTIFYICONIDENTIFIER_DECL = {
 } satisfies C_Struct
 
 export const NOTIFYICONIDENTIFIER = /* @__PURE__ */ struct('NOTIFYICONIDENTIFIER', NOTIFYICONIDENTIFIER_DECL)
+
+/** NOTIFYICONDATAW（Shell_NotifyIconW；x86 956B / x64 976B——hWnd/hIcon/hBalloonIcon 随
+ *  位宽，GUID 固定 16B；偏移经 mingw 头文件实测对齐）。cbSize 调用前填
+ *  NOTIFYICONDATAW.size（cb 结构惯例，同 NOTIFYICONIDENTIFIER / SCROLLINFO）——
+ *  本声明取 Vista+ 布局（与 mingw sizeof 一致），XP 上同样可注册（实测）。
+ *  szTip/szInfo/szInfoTitle 走宽字符串糖（u16[N]@utf-16le，同 LOGFONTW.lfFaceName）；
+ *  图标句柄用裸 <>ptr：LoadImageW 的返回类型由 uType 决定（HICON/HCURSOR/HBITMAP），
+ *  绑定给不出品牌——裸地址收品牌指针（子型）无障碍；
+ *  uTimeout 与 uVersion 是同址 union，本仓只用前者（恒 0，不走版本协商），
+ *  故按单字段 u32 声明而非 union 布局。 */
+export const NOTIFYICONDATAW_DECL = {
+    '#': 'struct',
+    cbSize: 'u32',
+    hWnd: '<HWND>ptr',
+    uID: 'u32',
+    uFlags: 'u32',
+    uCallbackMessage: 'u32',
+    hIcon: '<>ptr',
+    szTip: 'u16[128]@utf-16le',
+    dwState: 'u32',
+    dwStateMask: 'u32',
+    szInfo: 'u16[256]@utf-16le',
+    uTimeout: 'u32',
+    szInfoTitle: 'u16[64]@utf-16le',
+    dwInfoFlags: 'u32',
+    guidItem: 'u32[4]',
+    hBalloonIcon: '<>ptr',
+} satisfies C_Struct
+
+export const NOTIFYICONDATAW = /* @__PURE__ */ struct('NOTIFYICONDATAW', NOTIFYICONDATAW_DECL)

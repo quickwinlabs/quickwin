@@ -397,93 +397,12 @@ static JSValue js_SendMessage(JSContext *ctx, JSValueConst this_val, int argc, J
 
 /* ─── Tray icon ─────────────────────────────────────────────── */
 
-static JSValue js_shellNotifyIcon(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    GET_INT32(ctx, argv[0], cmd);
-
-    NOTIFYICONDATAW nid = {0};
-    nid.cbSize = sizeof(NOTIFYICONDATAW);
-
-    JSValue obj = argv[1];
-    JSValue prop;
-    int32_t n;
-    int64_t v;
-    const char *s;
-
-    prop = JS_GetPropertyStr(ctx, obj, "hwnd");
-    if (JS_IsNumber(prop)) { JS_ToInt64(ctx, &v, prop); nid.hWnd = (HWND)v; }
-    JS_FreeValue(ctx, prop);
-
-    prop = JS_GetPropertyStr(ctx, obj, "uID");
-    if (JS_IsNumber(prop)) { JS_ToInt32(ctx, &n, prop); nid.uID = n; }
-    JS_FreeValue(ctx, prop);
-
-    prop = JS_GetPropertyStr(ctx, obj, "flags");
-    if (JS_IsNumber(prop)) { JS_ToInt32(ctx, &n, prop); nid.uFlags = n; }
-    JS_FreeValue(ctx, prop);
-
-    prop = JS_GetPropertyStr(ctx, obj, "callbackMessage");
-    if (JS_IsNumber(prop)) { JS_ToInt32(ctx, &n, prop); nid.uCallbackMessage = n; }
-    JS_FreeValue(ctx, prop);
-
-    prop = JS_GetPropertyStr(ctx, obj, "hIcon");
-    if (JS_IsNumber(prop)) { JS_ToInt64(ctx, &v, prop); nid.hIcon = (HICON)v; }
-    JS_FreeValue(ctx, prop);
-
-    prop = JS_GetPropertyStr(ctx, obj, "tip");
-    if (JS_IsString(prop)) {
-        s = JS_ToCString(ctx, prop);
-        MultiByteToWideChar(CP_UTF8, 0, s, -1, nid.szTip, sizeof(nid.szTip)/sizeof(wchar_t));
-        JS_FreeCString(ctx, s);
-    }
-    JS_FreeValue(ctx, prop);
-
-    return JS_NewBool(ctx, Shell_NotifyIconW(cmd, &nid));
-}
-
 /* ─── Icons ─────────────────────────────────────────────────── */
 
 /* Thin wrapper around LoadImageW: (hinst, name, uType?, cx?, cy?, fuLoad?).
    hinst=null for system resources/file path, number for module handle.
    name=string for path/resource name, number for resource ID.
    Returns HICON handle (int64) on success, null on failure. */
-static JSValue js_loadImage(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HINSTANCE hinst = NULL;
-    wchar_t *wname = NULL;
-    LPCWSTR lpName = NULL;
-
-    if (JS_IsNull(argv[0])) {
-        hinst = NULL;
-    } else if (JS_IsNumber(argv[0])) {
-        GET_INT64(ctx, argv[0], hinst64);
-        hinst = (HINSTANCE)hinst64;
-    } else {
-        return JS_ThrowTypeError(ctx, "LoadImage: first argument must be null or a module handle");
-    }
-
-    if (JS_IsString(argv[1])) {
-        const char *name = JS_ToCString(ctx, argv[1]);
-        wname = utf8ToWide(name);
-        lpName = wname;
-        JS_FreeCString(ctx, name);
-    } else if (JS_IsNumber(argv[1])) {
-        GET_INT32(ctx, argv[1], id);
-        lpName = MAKEINTRESOURCEW(id);
-    }
-
-    GET_INT32_OPT(ctx, argv[2], uType, IMAGE_ICON);
-    GET_INT32_OPT(ctx, argv[3], cx, 0);
-    GET_INT32_OPT(ctx, argv[4], cy, 0);
-    GET_INT32_OPT(ctx, argv[5], fuLoad, 0);
-
-    HANDLE h = LoadImageW(hinst, lpName, uType, cx, cy, fuLoad);
-
-    free(wname);
-    if (h && h != INVALID_HANDLE_VALUE) return JS_NewInt64(ctx, (int64_t)h);
-    return JS_NULL;
-}
-
 /* Load the first RT_GROUP_ICON from this exe (custom icon embedded by rcedit).
    Signature: LoadAppIcon(cx?, cy?). Returns HICON handle (int64) or null. */
 static JSValue js_loadAppIcon(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -531,8 +450,6 @@ static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("DefWindowProc", 4, js_DefWindowProc),
     JS_CFUNC_DEF("SendMessage", 4, js_SendMessage),
     JS_CFUNC_DEF("UnsetWindowProc", 1, js_unsetWindowProc),
-    JS_CFUNC_DEF("ShellNotifyIcon", 2, js_shellNotifyIcon),
-    JS_CFUNC_DEF("LoadImage", 6, js_loadImage),
     JS_CFUNC_DEF("LoadAppIcon", 2, js_loadAppIcon),
     JS_CFUNC_DEF("CreateBitmapFromPixels", 3, js_createBitmapFromPixels),
 };

@@ -1,5 +1,5 @@
 import { Tester } from './test_helper.js'
-import { NULL } from '../lib/ffi/ctype.js'
+import { NULL, PTR_SIZE } from '../lib/ffi/ctype.js'
 import {
     GetDesktopWindow, CreatePopupMenu, DestroyMenu, GetDC, ReleaseDC,
     LoadImage, LoadImageOrdinal, SetScrollInfo, GetScrollInfo,
@@ -8,8 +8,9 @@ import {
     GetDeviceCaps, CreateSolidBrush, DeleteObject, CreateFontIndirect, GetObject, SelectObject, CreateCompatibleDC, CreateCompatibleBitmap, DeleteDC,
 } from '../lib/windows/gdi32.js'
 import { ImageListCreate, ImageListAdd, ImageListDestroy } from '../lib/windows/comctl32.js'
-import { LOGFONTW, NONCLIENTMETRICSW, SCROLLINFO } from '../lib/windows/structs.js'
-import { DeviceCap, ImageListFlag } from '../constants'
+import { ShellNotifyIcon } from '../lib/windows/shell32.js'
+import { LOGFONTW, NONCLIENTMETRICSW, NOTIFYICONDATAW, SCROLLINFO } from '../lib/windows/structs.js'
+import { DeviceCap, IDI, ImageListFlag, ImageType, LoadImageFlag, NotifyIconCmd, NotifyIconFlag } from '../constants'
 import { createSystemDpiFont, getScaleFactor } from '../lib/dpi.js'
 
 export const suite = {
@@ -135,5 +136,25 @@ export const suite = {
             t.checkTrue('系统消息字体 lfFaceName 非空（结构确被 SPI 填过）', typeof fo.lfFaceName === 'string' && fo.lfFaceName.length > 0)
             t.checkTrue('DeleteObject(系统字体) 成功', DeleteObject(dpiFont) !== 0)
         }
+
+        t.section('shell32: Shell_NotifyIconW 托盘图标增删（NOTIFYICONDATAW 对象直传）')
+        // 尺寸基准来自 mingw 头文件实测（x86 956 / x64 976，随 hWnd/hIcon/hBalloonIcon 位宽）
+        t.check('NOTIFYICONDATAW.size == mingw sizeof（x86 956 / x64 976）',
+            PTR_SIZE === 4 ? 956 : 976, NOTIFYICONDATAW.size)
+        const nid = NOTIFYICONDATAW.encode({ cbSize: NOTIFYICONDATAW.size, szTip: 'quickwin', szInfoTitle: 'qw' })
+        const nidBack = NOTIFYICONDATAW.decode(nid)
+        t.check('宽字符串糖 szTip 编解码往返', 'quickwin', nidBack.szTip)
+        t.check('宽字符串糖 szInfoTitle 编解码往返', 'qw', nidBack.szInfoTitle)
+
+        const trayIcon = LoadImageOrdinal(NULL, IDI.APPLICATION, ImageType.ICON, 0, 0, LoadImageFlag.SHARED)
+        t.checkTrue('LoadImageOrdinal(IDI.APPLICATION, SHARED) 非 0', trayIcon !== 0)
+        const trayHwnd = GetDesktopWindow()
+        t.checkTrue('ShellNotifyIcon(ADD) 成功（Vista+ 尺寸在 XP/Win7 均被接受）', ShellNotifyIcon(NotifyIconCmd.ADD, {
+            cbSize: NOTIFYICONDATAW.size, hWnd: trayHwnd, uID: 77,
+            uFlags: NotifyIconFlag.MESSAGE | NotifyIconFlag.ICON | NotifyIconFlag.TIP,
+            uCallbackMessage: 0x8001, hIcon: trayIcon, szTip: 'quickwin test',
+        }) !== 0)
+        t.checkTrue('ShellNotifyIcon(DELETE) 成功（只需 hWnd+uID）',
+            ShellNotifyIcon(NotifyIconCmd.DELETE, { cbSize: NOTIFYICONDATAW.size, hWnd: trayHwnd, uID: 77 }) !== 0)
     },
 }

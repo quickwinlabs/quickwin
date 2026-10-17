@@ -565,7 +565,8 @@ export const MessageBox = /*@__PURE__*/ b('MessageBoxW', '<HWND>ptr <WCHAR>ptr <
 
 /** 按名加载图像（string 自动编码；uType/fuLoad 用 Win32 真值——与 ImageType 枚举当前值
  *  不同）
- *  @returns 图像句柄；失败 → 0
+ *  @returns 图像句柄——类型随 uType（IMAGE_ICON→HICON / CURSOR→HCURSOR / BITMAP→HBITMAP），
+ *    绑定侧给不出品牌故为裸地址档；失败 → 0
  *  @param args_0 hinst 模块句柄，NULL = 系统资源或 .ico 文件
  *  @param args_1 name 图像名 string（资源名或文件路径）
  *  @param args_2 uType IMAGE_* 真值（BITMAP=0/CURSOR=1/ICON=2）
