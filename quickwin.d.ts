@@ -434,45 +434,23 @@ declare module "gui" {
      *  gui 模块与 FFI 绑定两体系间互认直传（原 unique symbol 键只有 HWND 打通） */
     type HWND = number & { readonly ptrBrand: "HWND" };
     type HMENU = number & { readonly ptrBrand: "HMENU" };
-    type HFONT = number & { readonly ptrBrand: "HFONT" };
     type HICON = number & { readonly ptrBrand: "HICON" };
-    type WNDPROC = number & { readonly ptrBrand: "WNDPROC" };
     // 枚举唯一定义在 constants.ts（真实 .ts，tsc/esbuild 均内联）；此处别名仅供签名引用，
     // 使用方请直接 import { WindowStyle } from 'quickwin/constants'。
-    // Gwlp/ImageType 的成员访问（如 Gwlp.WNDPROC）需写 import('./constants').Gwlp.WNDPROC
+    // ImageType 的成员访问（如 ImageType.ICON）需写 import('./constants').ImageType.ICON
     // ——类型别名不建命名空间，无法穿透取成员。
-    type GetWindowCmd = import('./constants').GetWindowCmd;
-    type ShowWindowCmd = import('./constants').ShowWindowCmd;
-    type SetWindowPosHwnd = import('./constants').SetWindowPosHwnd;
-    type Gwlp = import('./constants').Gwlp;
     type NotifyIconCmd = import('./constants').NotifyIconCmd;
     type ImageType = import('./constants').ImageType;
     type IDI = import('./constants').IDI;
-    type ScrollBar = import('./constants').ScrollBar;
 
     function RegisterClass(className: string, wndProc?: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): number;
     function CreateWindow(className: string, title: string, style: number, x: number, y: number, width: number, height: number, parent: HWND | null, menu: HMENU | null): HWND | null;
     // 销毁窗口及其所有子窗口，自动清理 WNDPROC 和 JS 引用
     function DestroyWindow(hwnd: HWND): boolean;
-    function GetWindow(hwnd: HWND, cmd: GetWindowCmd): HWND;
-
-    function ShowWindow(hwnd: HWND, nCmdShow?: ShowWindowCmd): void;
     function SetWindowProc(hwnd: HWND, wndProc: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): void;
     function DefWindowProc(hwnd: HWND, msg: number, wParam: number, lParam: number): number;
-    function PostQuitMessage(exitCode: number): void;
     function SendMessage(hwnd: HWND, msg: number, wParam: number, lParam: number | string): number;
-    function SetWindowText(hwnd: HWND, text: string): void;
-    function GetWindowText(hwnd: HWND): string;
-    function GetScaleFactor(): number;
-    function CreateSystemDpiFont(): HFONT | null;
-    type GwlpReturnType<T extends Gwlp> = T extends import('./constants').Gwlp.WNDPROC ? WNDPROC : number;
-    function GetWindowLongPtr<T extends Gwlp>(hwnd: HWND, nIndex: T): GwlpReturnType<T>;
-    function SetWindowLongPtr(hwnd: HWND, nIndex: Gwlp, newLong: number): number;
     function UnsetWindowProc(hwnd: HWND): boolean;
-    function SetWindowPos(hwnd: HWND, insertAfter: SetWindowPosHwnd, x: number, y: number, width: number, height: number, flags: number): void;
-
-
-
     interface NotifyIconData {
         hwnd: HWND
         uID?: number
@@ -512,27 +490,6 @@ declare module "gui" {
     function LoadAppIcon(cx?: number, cy?: number): HICON | null;
     /** 从 BGRA 像素数据创建 32bpp top-down DIB，data 为 length >= width*height*4 的 ArrayBuffer，返回 HBITMAP */
     function CreateBitmapFromPixels(width: number, height: number, data: ArrayBuffer): number | null;
-
-    function SetForegroundWindow(hwnd: HWND): boolean;
-    /** Client-area/mouse rect: { left, top, right, bottom } */
-    type RECT = { left: number; top: number; right: number; bottom: number };
-    /** Returns { left, top, right, bottom } of client area, or null if invalid */
-    function GetClientRect(hwnd: HWND): RECT | null;
-    
-    function GetWindowRect(hwnd: HWND): RECT | null;
-    /** Invalidates client area (rect can be null/undefined for full window) */
-    function InvalidateRect(hwnd: HWND, rect?: RECT | null, erase?: boolean): void;
-    /** Sets scroll info; returns current scroll box position. Signature matches Win32 SetScrollInfo. */
-    function SetScrollInfo(hwnd: HWND, bar: ScrollBar, info: { pos?: number; page?: number; min?: number; max?: number }, redraw?: boolean): number;
-
-    /** Gets scroll info. Signature matches Win32 GetScrollInfo. */
-    function GetScrollInfo(hwnd: HWND, bar: ScrollBar): { pos: number; page: number; min: number; max: number; trackPos: number };
-
-    /** Shows or hides a scroll bar. Signature matches Win32 ShowScrollBar. */
-    function ShowScrollBar(hwnd: HWND, bar: ScrollBar, show: boolean): boolean;
-
-
-
 
 
 

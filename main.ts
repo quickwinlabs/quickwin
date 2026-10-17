@@ -1,14 +1,16 @@
 import {
-    CreateSystemDpiFont, CreateWindow as CreateWindowWithoutScale, DefWindowProc,
-    GetScaleFactor, GetWindowLongPtr, GetWindowText, HWND,
-    RegisterClass, SendMessage, SetWindowProc, ShowWindow,
+    CreateWindow as CreateWindowWithoutScale, DefWindowProc, HWND,
+    RegisterClass, SendMessage, SetWindowProc,
 } from "gui";
-// Win32 直通：CallWindowProc 无引擎状态，已从 gui 模块摘除，走 lib/windows 的 FFI 绑定
-import { CallWindowProc } from "./lib/windows/user32.js";
-import { WmMsg, WindowStyle, ButtonStyle, Gwlp, LbMsg } from "./constants";
+// Win32 直通：CallWindowProc / GetWindowLongPtr / GetWindowText 无引擎状态，
+// 已从 gui 模块摘除，走 lib/windows 的 FFI 绑定
+import { CallWindowProc, GetWindowLongPtr, GetWindowText, GetWindowTextLength, ShowWindow } from "./lib/windows/user32.js";
+import { WCHAR } from "./lib/ffi/bind.js";
+import { createSystemDpiFont, getScaleFactor } from "./lib/dpi.js";
+import { WmMsg, WindowStyle, ButtonStyle, Gwlp, LbMsg, ShowWindowCmd } from "./constants";
 
-const scaleFactor = GetScaleFactor();
-const dpiFont = CreateSystemDpiFont();
+const scaleFactor = getScaleFactor();
+const dpiFont = createSystemDpiFont();
 if (!dpiFont) throw new Error('Failed to create DPI font')
 
 const CreateWindow: typeof CreateWindowWithoutScale = (className, title, style, x, y, cx, cy, parent, id) => {
@@ -32,7 +34,10 @@ function wndProc(hwnd: HWND, msg: number, wParam: number, lParam: number) {
             if (msg == WmMsg.LBUTTONDOWN) {
                 if (!edit) return 0
                 if (!list) return 0
-                const text = GetWindowText(edit);
+                const cap = GetWindowTextLength(edit) + 1;
+                const buf = WCHAR.alloc(cap);
+                GetWindowText(edit, buf, cap);
+                const text = WCHAR.decode(buf);
                 if (text.trim())
                     SendMessage(list, LbMsg.ADDSTRING, 0, text);
                 return 0;
@@ -49,4 +54,4 @@ function wndProc(hwnd: HWND, msg: number, wParam: number, lParam: number) {
 
 RegisterClass("MainWindow", wndProc);
 var hwnd = CreateWindow("MainWindow", "Todo List", WindowStyle.OVERLAPPEDWINDOW, 0, 0, 600, 400, null, null);
-if (hwnd) ShowWindow(hwnd);
+if (hwnd) ShowWindow(hwnd, ShowWindowCmd.SHOWNORMAL);

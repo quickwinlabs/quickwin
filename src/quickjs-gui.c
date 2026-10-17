@@ -280,21 +280,6 @@ static JSValue js_createWindow(JSContext *ctx, JSValueConst this_val, int argc, 
     return JS_NULL;
 }
 
-static JSValue js_showWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HWND hwnd = toHWND(ctx, argv[0]);
-    int nCmdShow = SW_SHOWNORMAL;
-    if (argc > 1)
-    {
-        int64_t cmd;
-        JS_ToInt64(ctx, &cmd, argv[1]);
-        nCmdShow = (int)cmd;
-    }
-    ShowWindow(hwnd, nCmdShow);
-    UpdateWindow(hwnd);
-    return JS_UNDEFINED;
-}
-
 static JSValue js_setWndProc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     HWND hwnd = toHWND(ctx, argv[0]);
@@ -371,37 +356,6 @@ static JSValue js_destroyWindow(JSContext *ctx, JSValueConst this_val, int argc,
     return JS_NewBool(ctx, result);
 }
 
-static JSValue js_getWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HWND hwnd = toHWND(ctx, argv[0]);
-    GET_INT32(ctx, argv[1], cmd);
-    
-    HWND result = GetWindow(hwnd, cmd);
-    return JS_NewInt64(ctx, (int64_t)result);
-}
-
-static JSValue js_setWindowText(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HWND hwnd = toHWND(ctx, argv[0]);
-    const char *text = JS_ToCString(ctx, argv[1]);
-    wchar_t *wtext = utf8ToWide(text);
-    SetWindowTextW(hwnd, wtext);
-    free(wtext);
-    JS_FreeCString(ctx, text);
-    return JS_UNDEFINED;
-}
-
-static JSValue js_getWindowText(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HWND hwnd = toHWND(ctx, argv[0]);
-    wchar_t wtext[256];
-    GetWindowTextW(hwnd, wtext, sizeof(wtext) / sizeof(wtext[0]));
-    char *utf8 = wideToUtf8(wtext);
-    JSValue ret = JS_NewString(ctx, utf8);
-    free(utf8);
-    return ret;
-}
-
 static JSValue js_DefWindowProc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     int64_t hwnd, wParam, lParam;
@@ -411,13 +365,6 @@ static JSValue js_DefWindowProc(JSContext *ctx, JSValueConst this_val, int argc,
     JS_ToInt64(ctx, &lParam, argv[3]);
     LRESULT ret = DefWindowProcW((HWND)hwnd, msg, wParam, lParam);
     return JS_NewInt64(ctx, ret);
-}
-
-static JSValue js_PostQuitMessage(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    GET_INT32(ctx, argv[0], exitCode);
-    PostQuitMessage(exitCode);
-    return JS_UNDEFINED;
 }
 
 static JSValue js_SendMessage(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -445,46 +392,6 @@ static JSValue js_SendMessage(JSContext *ctx, JSValueConst this_val, int argc, J
     {
         return JS_ThrowTypeError(ctx, "SendMessage: lParam must be string or number");
     }
-    return JS_NewInt64(ctx, result);
-}
-
-static JSValue js_getScaleFactor(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HDC hdc = GetDC(NULL);
-    UINT dpi = GetDeviceCaps(hdc, LOGPIXELSX);
-    ReleaseDC(NULL, hdc);
-    float scaleFactor = (float)dpi / 96.0f;
-    return JS_NewFloat64(ctx, scaleFactor);
-}
-
-static JSValue js_createSystemDpiFont(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    NONCLIENTMETRICSW ncm = {sizeof(ncm)};
-    SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0);
-
-    HFONT hFont = CreateFontIndirectW(&ncm.lfMessageFont);
-    if (hFont)
-    {
-        return JS_NewInt64(ctx, (int64_t)hFont);
-    }
-    return JS_NULL;
-}
-
-static JSValue js_GetWindowLongPtr(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HWND hwnd = toHWND(ctx, argv[0]);
-    GET_INT32(ctx, argv[1], nIndex);
-    LONG_PTR result = GetWindowLongPtrW(hwnd, nIndex);
-    return JS_NewInt64(ctx, result);
-}
-
-static JSValue js_SetWindowLongPtr(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HWND hwnd = toHWND(ctx, argv[0]);
-    GET_INT32(ctx, argv[1], nIndex);
-    int64_t newLong;
-    JS_ToInt64(ctx, &newLong, argv[2]);
-    LONG_PTR result = SetWindowLongPtrW(hwnd, nIndex, newLong);
     return JS_NewInt64(ctx, result);
 }
 
@@ -616,191 +523,18 @@ static JSValue js_createBitmapFromPixels(JSContext *ctx, JSValueConst this_val, 
     return JS_NewInt64(ctx, (int64_t)hbm);
 }
 
-static JSValue js_setForegroundWindow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HWND hwnd = toHWND(ctx, argv[0]);
-    return JS_NewBool(ctx, SetForegroundWindow(hwnd));
-}
-
-static JSValue js_getClientRect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HWND hwnd = toHWND(ctx, argv[0]);
-    RECT rect;
-    if (!GetClientRect(hwnd, &rect))
-        return JS_NULL;
-    JSValue obj = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, obj, "left",   JS_NewInt32(ctx, rect.left));
-    JS_SetPropertyStr(ctx, obj, "top",    JS_NewInt32(ctx, rect.top));
-    JS_SetPropertyStr(ctx, obj, "right",  JS_NewInt32(ctx, rect.right));
-    JS_SetPropertyStr(ctx, obj, "bottom", JS_NewInt32(ctx, rect.bottom));
-    return obj;
-}
-
-static JSValue js_getWindowRect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HWND hwnd = toHWND(ctx, argv[0]);
-    RECT rect;
-    if (!GetWindowRect(hwnd, &rect))
-        return JS_NULL;
-    JSValue obj = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, obj, "left",   JS_NewInt32(ctx, rect.left));
-    JS_SetPropertyStr(ctx, obj, "top",    JS_NewInt32(ctx, rect.top));
-    JS_SetPropertyStr(ctx, obj, "right",  JS_NewInt32(ctx, rect.right));
-    JS_SetPropertyStr(ctx, obj, "bottom", JS_NewInt32(ctx, rect.bottom));
-    return obj;
-}
-
-static JSValue js_invalidateRect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HWND hwnd = toHWND(ctx, argv[0]);
-    RECT rect, *pr = NULL;
-    if (argc > 1) {
-        JSValue r = argv[1];
-        if (!JS_IsNull(r) && !JS_IsUndefined(r)) {
-            int32_t tmp;
-            JSValue v;
-            v = JS_GetPropertyStr(ctx, r, "left");   JS_ToInt32(ctx, &tmp, v); rect.left   = tmp; JS_FreeValue(ctx, v);
-            v = JS_GetPropertyStr(ctx, r, "top");    JS_ToInt32(ctx, &tmp, v); rect.top    = tmp; JS_FreeValue(ctx, v);
-            v = JS_GetPropertyStr(ctx, r, "right");  JS_ToInt32(ctx, &tmp, v); rect.right  = tmp; JS_FreeValue(ctx, v);
-            v = JS_GetPropertyStr(ctx, r, "bottom"); JS_ToInt32(ctx, &tmp, v); rect.bottom = tmp; JS_FreeValue(ctx, v);
-            pr = &rect;
-        }
-    }
-    BOOL erase = TRUE;
-    if (argc > 2)
-        erase = JS_ToBool(ctx, argv[2]);
-    InvalidateRect(hwnd, pr, erase);
-    return JS_UNDEFINED;
-}
-
-static JSValue js_setScrollInfo(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HWND hwnd = toHWND(ctx, argv[0]);
-    GET_INT32(ctx, argv[1], bar);
-    JSValue info = argv[2];
-
-    SCROLLINFO si;
-    memset(&si, 0, sizeof(si));
-    si.cbSize = sizeof(SCROLLINFO);
-    uint32_t mask = 0;
-
-    JSValue v;
-    v = JS_GetPropertyStr(ctx, info, "pos");
-    if (!JS_IsUndefined(v)) {
-        int32_t pos;
-        JS_ToInt32(ctx, &pos, v);
-        si.nPos = pos;
-        mask |= SIF_POS;
-    }
-    JS_FreeValue(ctx, v);
-
-    v = JS_GetPropertyStr(ctx, info, "page");
-    if (!JS_IsUndefined(v)) {
-        uint32_t page;
-        JS_ToUint32(ctx, &page, v);
-        si.nPage = page;
-        mask |= SIF_PAGE;
-    }
-    JS_FreeValue(ctx, v);
-
-    v = JS_GetPropertyStr(ctx, info, "min");
-    if (!JS_IsUndefined(v)) {
-        int32_t min;
-        JS_ToInt32(ctx, &min, v);
-        si.nMin = min;
-        mask |= SIF_RANGE;
-    }
-    JS_FreeValue(ctx, v);
-
-    v = JS_GetPropertyStr(ctx, info, "max");
-    if (!JS_IsUndefined(v)) {
-        int32_t max;
-        JS_ToInt32(ctx, &max, v);
-        si.nMax = max;
-        mask |= SIF_RANGE;
-    }
-    JS_FreeValue(ctx, v);
-
-    si.fMask = mask;
-
-    BOOL redraw = TRUE;
-    if (argc > 3)
-        redraw = JS_ToBool(ctx, argv[3]);
-
-    return JS_NewInt32(ctx, SetScrollInfo(hwnd, bar, &si, redraw));
-}
-
-static JSValue js_getScrollInfo(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HWND hwnd = toHWND(ctx, argv[0]);
-    GET_INT32(ctx, argv[1], bar);
-    SCROLLINFO si;
-    memset(&si, 0, sizeof(si));
-    si.cbSize = sizeof(SCROLLINFO);
-    si.fMask = SIF_ALL;
-    GetScrollInfo(hwnd, bar, &si);
-    JSValue obj = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, obj, "pos",      JS_NewInt32(ctx, si.nPos));
-    JS_SetPropertyStr(ctx, obj, "page",     JS_NewInt32(ctx, si.nPage));
-    JS_SetPropertyStr(ctx, obj, "min",      JS_NewInt32(ctx, si.nMin));
-    JS_SetPropertyStr(ctx, obj, "max",      JS_NewInt32(ctx, si.nMax));
-    JS_SetPropertyStr(ctx, obj, "trackPos", JS_NewInt32(ctx, si.nTrackPos));
-    return obj;
-}
-
-static JSValue js_showScrollBar(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HWND hwnd = toHWND(ctx, argv[0]);
-    GET_INT32(ctx, argv[1], bar);
-    BOOL show = JS_ToBool(ctx, argv[2]);
-    return JS_NewBool(ctx, ShowScrollBar(hwnd, bar, show));
-}
-
-/* ─── Win32 parent/position/state ───────────────────────────── */
-
-static JSValue js_setWindowPos(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    HWND hwnd = toHWND(ctx, argv[0]);
-    int64_t insertAfter; JS_ToInt64(ctx, &insertAfter, argv[1]);
-    int32_t x, y, cx, cy, flags;
-    JS_ToInt32(ctx, &x,     argv[2]);
-    JS_ToInt32(ctx, &y,     argv[3]);
-    JS_ToInt32(ctx, &cx,    argv[4]);
-    JS_ToInt32(ctx, &cy,    argv[5]);
-    JS_ToInt32(ctx, &flags, argv[6]);
-    BOOL result = SetWindowPos(hwnd, (HWND)insertAfter, x, y, cx, cy, flags);
-    return JS_NewBool(ctx, result);
-}
-
 static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("RegisterClass", 2, js_registerClass),
     JS_CFUNC_DEF("CreateWindow", 9, js_createWindow),
     JS_CFUNC_DEF("DestroyWindow", 1, js_destroyWindow),
-    JS_CFUNC_DEF("GetWindow", 2, js_getWindow),
-    JS_CFUNC_DEF("ShowWindow", 1, js_showWindow),
     JS_CFUNC_DEF("SetWindowProc", 2, js_setWndProc),
     JS_CFUNC_DEF("DefWindowProc", 4, js_DefWindowProc),
-    JS_CFUNC_DEF("PostQuitMessage", 1, js_PostQuitMessage),
     JS_CFUNC_DEF("SendMessage", 4, js_SendMessage),
-    JS_CFUNC_DEF("SetWindowText", 2, js_setWindowText),
-    JS_CFUNC_DEF("GetWindowText", 1, js_getWindowText),
-    JS_CFUNC_DEF("GetScaleFactor", 0, js_getScaleFactor),
-    JS_CFUNC_DEF("CreateSystemDpiFont", 0, js_createSystemDpiFont),
-    JS_CFUNC_DEF("GetWindowLongPtr", 2, js_GetWindowLongPtr),
-    JS_CFUNC_DEF("SetWindowLongPtr", 3, js_SetWindowLongPtr),
     JS_CFUNC_DEF("UnsetWindowProc", 1, js_unsetWindowProc),
     JS_CFUNC_DEF("ShellNotifyIcon", 2, js_shellNotifyIcon),
     JS_CFUNC_DEF("LoadImage", 6, js_loadImage),
     JS_CFUNC_DEF("LoadAppIcon", 2, js_loadAppIcon),
     JS_CFUNC_DEF("CreateBitmapFromPixels", 3, js_createBitmapFromPixels),
-    JS_CFUNC_DEF("SetForegroundWindow", 1, js_setForegroundWindow),
-    JS_CFUNC_DEF("GetClientRect", 1, js_getClientRect),
-    JS_CFUNC_DEF("GetWindowRect", 1, js_getWindowRect),
-    JS_CFUNC_DEF("InvalidateRect", 3, js_invalidateRect),
-    JS_CFUNC_DEF("SetScrollInfo", 4, js_setScrollInfo),
-    JS_CFUNC_DEF("GetScrollInfo", 2, js_getScrollInfo),
-    JS_CFUNC_DEF("ShowScrollBar", 3, js_showScrollBar),
-    JS_CFUNC_DEF("SetWindowPos", 7, js_setWindowPos),
 };
 
 

@@ -3,8 +3,9 @@ import { createContext } from 'react'
 import { DefaultEventPriority, NoEventPriority } from 'react-reconciler/constants'
 import * as gui from 'gui'
 import * as os from 'os'
-import { GetDC, ReleaseDC, GetWindowLongPtr, CallWindowProc, SetWindowPos, InvalidateRect, SetParent, SetWindowText } from '../windows/user32.js'
-import { GetDeviceCaps } from '../windows/gdi32.js'
+import { GetClientRect, GetWindowLongPtr, CallWindowProc, SetWindowPos, ShowWindow, InvalidateRect, SetParent, SetWindowText } from '../windows/user32.js'
+import { createSystemDpiFont, getScaleFactor } from '../dpi.js'
+import { RECT } from '../windows/structs.js'
 import { NULL } from '../ffi/ctype.js'
 import { applyProps } from './props.js'
 import { calculateFlexLayout, type FlexStyle } from './layout.js'
@@ -15,14 +16,8 @@ import { Gwlp, SetWindowPosFlag, SetWindowPosHwnd, ShowWindowCmd, WindowStyle, W
 // DEBUG 由 esbuild --define 在 bundle 时替换（见 build.ts），生产环境为 false
 declare const DEBUG: boolean
 
-const dpiFont = gui.CreateSystemDpiFont()
-// GetScaleFactor 等价内联：GetDC → GetDeviceCaps(LOGPIXELSX=88) → ReleaseDC 配对
-export const scaleFactor = (() => {
-    const hdc = GetDC(NULL)
-    const dpi = hdc ? GetDeviceCaps(hdc, 88) : 96
-    if (hdc) ReleaseDC(NULL, hdc)
-    return dpi / 96
-})()
+const dpiFont = createSystemDpiFont()
+export const scaleFactor = getScaleFactor()
 
 type Container = gui.HWND
 export type Props = WIntrinsicProps
@@ -83,8 +78,9 @@ function runFlexLayout(inst: Instance) {
   const flex: FlexStyle = s || {}
   const visible = children.filter(c => !c.props.hidden)
   if (visible.length === 0) return
-  const rect = gui.GetClientRect(inst.hwnd!)
-  if (!rect) { console.log('flex: no rect for', inst.hwnd, inst.type); return }
+  const rcBuf = RECT.alloc()
+  if (!GetClientRect(inst.hwnd!, rcBuf.ptr)) { console.log('flex: no rect for', inst.hwnd, inst.type); return }
+  const rect = RECT.decode(rcBuf)
   const pw = (rect.right - rect.left) / scaleFactor
   const ph = (rect.bottom - rect.top) / scaleFactor
   if (pw <= 0 || ph <= 0) { console.log('flex: zero size for', inst.hwnd, inst.type, pw, ph); return }
@@ -284,19 +280,19 @@ const hostConfig: QuickWinHostConfig = {
   },
 
   hideInstance(instance: Instance) {
-    if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, ShowWindowCmd.HIDE)
+    if (instance.hwnd !== null) ShowWindow(instance.hwnd, ShowWindowCmd.HIDE)
   },
 
   hideTextInstance(instance: Instance) {
-    if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, ShowWindowCmd.HIDE)
+    if (instance.hwnd !== null) ShowWindow(instance.hwnd, ShowWindowCmd.HIDE)
   },
 
   unhideInstance(instance: Instance, _props: Props) {
-    if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, ShowWindowCmd.SHOW)
+    if (instance.hwnd !== null) ShowWindow(instance.hwnd, ShowWindowCmd.SHOW)
   },
 
   unhideTextInstance(instance: Instance, _text: string) {
-    if (instance.hwnd !== null) gui.ShowWindow(instance.hwnd, ShowWindowCmd.SHOW)
+    if (instance.hwnd !== null) ShowWindow(instance.hwnd, ShowWindowCmd.SHOW)
   },
 
   shouldSetTextContent(_type: string, props: Props) {

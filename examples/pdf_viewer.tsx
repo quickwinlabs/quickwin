@@ -10,8 +10,8 @@ import { WCHAR } from '../lib/ffi/bind.js'
 import { PdfCanvas } from './PdfCanvas.js'
 import { OPENFILENAMEW } from '../lib/windows/structs.js'
 import { GetOpenFileName } from '../lib/windows/comdlg32.js'
-import { MessageBox } from '../lib/windows/user32.js'
-import { WindowStyle } from '../constants'
+import { MessageBox, ShowWindow } from '../lib/windows/user32.js'
+import { ShowWindowCmd, WindowStyle } from '../constants'
 
 type MuPdf = typeof import('@quickwinlabs/mupdf-wasm')
 
@@ -221,7 +221,7 @@ async function main() {
 
   if (hwnd) {
     render(<App mupdf={mupdf} mainHwnd={hwnd} />, hwnd)
-    setTimeout(() => gui.ShowWindow(hwnd), 0)
+    setTimeout(() => ShowWindow(hwnd, ShowWindowCmd.SHOWNORMAL), 0)
   }
 }
 

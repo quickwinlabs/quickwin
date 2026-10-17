@@ -11,7 +11,7 @@ import { createRoot, ListView, Link, DateTimePicker, Tab, TreeView, type Column 
 import { SendMessage, GetWindow } from '../lib/windows/user32.js'
 import { CreateCompatibleDC, DeleteDC } from '../lib/windows/gdi32.js'
 import { NULL } from '../lib/ffi/ctype.js'
-import { CustomDrawFlag, CustomDrawStage, DtFlag, DtMsg, DtNotifyCode, LvItemState, LvNotifyCode, SysLinkNotifyCode, TcMsg, TcNotifyCode, TvGnRelative, TvMsg, WmMsg } from '../constants'
+import { CustomDrawFlag, CustomDrawStage, DtFlag, DtMsg, DtNotifyCode, GetWindowCmd, LvItemState, LvNotifyCode, SysLinkNotifyCode, TcMsg, TcNotifyCode, TvGnRelative, TvMsg, WmMsg } from '../constants'
 
 const P = os.arch === 'x64' ? 8 : 4
 const align = (n: number, a: number): number => (n + a - 1) & ~(a - 1)
@@ -80,7 +80,7 @@ function App() {
 
 function child(h: gui.HWND | null): gui.HWND {
   if (!h) throw new Error('wrapper hwnd missing')
-  const c = GetWindow(h, 5 /* GW_CHILD */)
+  const c = GetWindow(h, GetWindowCmd.CHILD)
   if (!c) throw new Error('no child window')
   return c
 }
@@ -170,7 +170,7 @@ function runAll(): void {
     // ---- Tab：TCN_SELCHANGING → TCM_GETCURSEL → onChange ----
     // 包装窗口有两个子窗口（标签控件 + 内容 STATIC），GW_CHILD 给 Z 序最上的（后建的内容窗口），
     // 标签控件是最先创建的 = 兄弟里最底层的 GW_HWNDLAST
-    const tabCtl = GetWindow(child(tabW), 1 /* GW_HWNDLAST */)
+    const tabCtl = GetWindow(child(tabW), GetWindowCmd.LAST)
     if (!tabCtl) throw new Error('no tab control')
     SendMessage(tabCtl, TcMsg.SETCURSEL, 1, 0)
     notify(tabW!, nm(HDR + 8, TcNotifyCode.SELCHANGING).b)

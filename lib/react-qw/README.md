@@ -6,7 +6,8 @@ A React reconciler that renders native Win32 controls (buttons, edits, list view
 
 ```ts
 import { render, Button, Input } from '../lib/react-qw/index.js'
-import { WindowStyle } from '../constants'
+import { ShowWindow } from '../lib/windows/user32.js'
+import { ShowWindowCmd, WindowStyle } from '../constants'
 
 gui.RegisterClass('MyApp')
 const hwnd = gui.CreateWindow('MyApp', 'Hello', WindowStyle.OVERLAPPEDWINDOW, 100, 100, 400, 300, null, null)
@@ -19,7 +20,7 @@ render(
   hwnd
 )
 
-gui.ShowWindow(hwnd)
+ShowWindow(hwnd, ShowWindowCmd.SHOWNORMAL)
 ```
 
 ## API

@@ -93,6 +93,31 @@ export const LOGFONTW_DECL = {
 
 export const LOGFONTW = /* @__PURE__ */ struct('LOGFONTW', LOGFONTW_DECL)
 
+/** 非客户区度量（504B，x64/ia32 同布局）：内嵌 4 个 LOGFONTW + iPaddedBorderWidth（Vista+）；
+ *  SystemParametersInfo(SPI_GETNONCLIENTMETRICS) 纯出参位（不注册 encoder：
+ *  encode({cbSize}) 建缓冲带初值 → 传 .ptr → decode 读回 lfMessageFont 等） */
+export const NONCLIENTMETRICSW_DECL = {
+    '#': 'struct',
+    cbSize: 'u32',
+    iBorderWidth: 'i32',
+    iScrollWidth: 'i32',
+    iScrollHeight: 'i32',
+    iCaptionWidth: 'i32',
+    iCaptionHeight: 'i32',
+    lfCaptionFont: LOGFONTW_DECL,
+    iSmCaptionWidth: 'i32',
+    iSmCaptionHeight: 'i32',
+    lfSmCaptionFont: LOGFONTW_DECL,
+    iMenuWidth: 'i32',
+    iMenuHeight: 'i32',
+    lfMenuFont: LOGFONTW_DECL,
+    lfStatusFont: LOGFONTW_DECL,
+    lfMessageFont: LOGFONTW_DECL,
+    iPaddedBorderWidth: 'i32',
+} satisfies C_Struct
+
+export const NONCLIENTMETRICSW = /* @__PURE__ */ struct('NONCLIENTMETRICSW', NONCLIENTMETRICSW_DECL)
+
 /** TEXTMETRICW（60B = 11 LONG + 4 WCHAR + 5 BYTE 尾部补齐，双架构同布局）：
  *  GetTextMetrics 纯出参位（不注册 encoder：TEXTMETRICW.alloc().ptr 进、decode 读回） */
 export const TEXTMETRICW_DECL = {

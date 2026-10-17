@@ -1,5 +1,5 @@
 import * as gui from 'gui'
-import { SetWindowText, EnableWindow } from '../windows/user32.js'
+import { SetWindowText, EnableWindow, ShowWindow } from '../windows/user32.js'
 import type { Instance, Props } from './reconciler.js'
 import { EditMsg, ShowWindowCmd } from '../../constants'
 
@@ -33,9 +33,9 @@ export function applyProps(
     EnableWindow(hwnd, !newProps.disabled ? 1 : 0)
   }
   if ('hidden' in newProps) {
-    gui.ShowWindow(hwnd, newProps.hidden ? ShowWindowCmd.HIDE : ShowWindowCmd.SHOW)
+    ShowWindow(hwnd, newProps.hidden ? ShowWindowCmd.HIDE : ShowWindowCmd.SHOW)
   }
   if ('visible' in newProps) {
-    gui.ShowWindow(hwnd, newProps.visible ? ShowWindowCmd.SHOW : ShowWindowCmd.HIDE)
+    ShowWindow(hwnd, newProps.visible ? ShowWindowCmd.SHOW : ShowWindowCmd.HIDE)
   }
 }

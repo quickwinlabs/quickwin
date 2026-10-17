@@ -1,7 +1,6 @@
 import { createServer } from '../../lib/http-server.js'
 import * as os from 'os'
 import * as std from 'std'
-import * as gui from 'gui'
 import { RequestLog, type LogEntry } from '../../lib/exec-log.js'
 import { createRoot, ListBox } from '../../lib/react-qw/index.js'
 import { useEffect, useState } from 'react'
@@ -10,7 +9,7 @@ import { NULL, type Ptr, PtrArrayBuffer } from '../../lib/ffi/ctype.js'
 import {
     ChangeDisplaySettings, ClientToScreen, EnumDisplaySettings, EnumWindows, GetClassName,
     GetClientRect, GetDC, GetSystemMetrics, GetWindowRect, GetWindowText, IsIconic,
-    IsWindowVisible, PrintWindow, ReleaseDC, SendInput,
+    IsWindowVisible, PrintWindow, ReleaseDC, SendInput, ShowWindow,
 } from '../../lib/windows/user32.js'
 import {
     BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, SelectObject,
@@ -131,7 +130,7 @@ function initGui(): void {
         })
         root.render(<LogPanel />)
         // run.bat 用 `start /min` 启动，这里显式还原，避免窗口只留一条标题栏
-        gui.ShowWindow(root.hwnd, ShowWindowCmd.RESTORE)
+        ShowWindow(root.hwnd, ShowWindowCmd.RESTORE)
     } catch (ex) {
         // 无桌面/建窗失败时回退 headless，绝不影响服务
         console.error('[execd] gui init failed (fallback headless):', ex)

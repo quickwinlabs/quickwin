@@ -54,6 +54,11 @@ export const enum MenuFlag {
     POPUP = 16, // 0x10
 }
 
+export const enum TrackPopupMenuFlag {
+    RETURNCMD = 256, // 0x100
+    RIGHTBUTTON = 2, // 0x2
+}
+
 export const enum WindowStyle {
     OVERLAPPEDWINDOW = 13565952, // 0xCF0000
     CHILD = 1073741824, // 0x40000000
@@ -225,6 +230,10 @@ export const enum SysMetrics {
     CYSCREEN = 1, // 0x1
 }
 
+export const enum Spi {
+    GETNONCLIENTMETRICS = 41, // 0x29
+}
+
 export const enum ButtonStyle {
     PUSHBUTTON = 0, // 0x0
     DEFPUSHBUTTON = 1, // 0x1
@@ -353,6 +362,7 @@ export const enum LvImageList {
 export const enum ImageListFlag {
     MASK = 1, // 0x1
     COLOR = 0, // 0x0
+    COLOR24 = 24, // 0x18
     COLOR32 = 32, // 0x20
     HIGHQUALITYSCALE = 131072, // 0x20000
 }

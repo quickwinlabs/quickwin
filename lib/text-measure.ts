@@ -1,6 +1,6 @@
 import { NULL, type Ptr } from './ffi/ctype.js'
 import * as gui from 'gui'
-import { DrawText, GetDC, ReleaseDC } from './windows/user32.js'
+import { DrawText, GetDC, GetClientRect, GetWindowRect, ReleaseDC } from './windows/user32.js'
 import { SelectObject } from './windows/gdi32.js'
 import { RECT, SIZE } from './windows/structs.js'
 import { ButtonExtMsg, DrawTextFlag, WmMsg } from '../constants'
@@ -31,11 +31,14 @@ export function measureTextForHwnd(hwnd: gui.HWND, text: string): { width: numbe
     const result = measureText(hdc, text, 0)
     if (hFont) SelectObject(hdc, oldFont)
     ReleaseDC(hwnd, hdc)
-    const wr = gui.GetWindowRect(hwnd)
-    const cr = gui.GetClientRect(hwnd)
-    if (wr && cr) {
-        result.width += (wr.right - wr.left) - (cr.right - cr.left)
-        result.height += (wr.bottom - wr.top) - (cr.bottom - cr.top)
+    const wr = RECT.alloc()
+    const cr = RECT.alloc()
+    const okWr = GetWindowRect(hwnd, wr.ptr)
+    const okCr = GetClientRect(hwnd, cr.ptr)
+    if (okWr && okCr) {
+        const w = RECT.decode(wr), c = RECT.decode(cr)
+        result.width += (w.right - w.left) - (c.right - c.left)
+        result.height += (w.bottom - w.top) - (c.bottom - c.top)
     }
     return result
 }

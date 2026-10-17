@@ -2,7 +2,8 @@ import '../lib/polyfill.js'
 import * as gui from 'gui'
 import { useState } from 'react'
 import { render, ListBox } from '../lib/react-qw/index.js'
-import { WindowStyle, WmMsg } from '../constants'
+import { ShowWindowCmd, WindowStyle, WmMsg } from '../constants'
+import { ShowWindow } from '../lib/windows/user32.js'
 
 let itemCounter = 10
 
@@ -69,4 +70,4 @@ gui.RegisterClass('ListBoxDemo', (hwnd, msg, wParam, lParam) => {
 
 const hwnd = gui.CreateWindow('ListBoxDemo', 'ListBox Demo',
   WindowStyle.OVERLAPPEDWINDOW, 200, 100, 400, 500, null, null)
-if (hwnd) gui.ShowWindow(hwnd)
+if (hwnd) ShowWindow(hwnd, ShowWindowCmd.SHOWNORMAL)

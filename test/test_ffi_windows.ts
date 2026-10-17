@@ -8,7 +8,9 @@ import {
     GetDeviceCaps, CreateSolidBrush, DeleteObject, CreateFontIndirect, GetObject, SelectObject, CreateCompatibleDC, CreateCompatibleBitmap, DeleteDC,
 } from '../lib/windows/gdi32.js'
 import { ImageListCreate, ImageListAdd, ImageListDestroy } from '../lib/windows/comctl32.js'
-import { LOGFONTW, SCROLLINFO } from '../lib/windows/structs.js'
+import { LOGFONTW, NONCLIENTMETRICSW, SCROLLINFO } from '../lib/windows/structs.js'
+import { DeviceCap, ImageListFlag } from '../constants'
+import { createSystemDpiFont, getScaleFactor } from '../lib/dpi.js'
 
 export const suite = {
     run(t: Tester) {
@@ -69,7 +71,7 @@ export const suite = {
         t.section('gdi32: GetDeviceCaps（<HDC>ptr 跨 user32 品牌互认）')
         const hdc = GetDC(NULL)
         t.checkTrue('GetDC(NULL) 非 0', hdc !== 0)
-        if (hdc !== 0) t.checkTrue('GetDeviceCaps(hdc, LOGPIXELSX) > 0', GetDeviceCaps(hdc, 88) > 0)
+        if (hdc !== 0) t.checkTrue('GetDeviceCaps(hdc, LOGPIXELSX) > 0', GetDeviceCaps(hdc, DeviceCap.LOGPIXELSX) > 0)
         t.checkTrue('ReleaseDC(NULL, hdc) 成功', hdc !== 0 && ReleaseDC(NULL, hdc) !== 0)
 
         t.section('user32: 弹出菜单往返')
@@ -78,7 +80,7 @@ export const suite = {
         if (pm !== 0) t.checkTrue('DestroyMenu(pm) 成功', DestroyMenu(pm) !== 0)
 
         t.section('comctl32: ImageList 创建-加位图-销毁往返（hbmMask 位传 NULL）')
-        const himl = ImageListCreate(16, 16, 0x18, 0, 0)   // ILC_COLOR24；initial/grow=0 默认
+        const himl = ImageListCreate(16, 16, ImageListFlag.COLOR24, 0, 0)   // initial/grow=0 默认
         t.checkTrue('ImageListCreate(16, 16, ILC_COLOR24) 非 0', himl !== 0)
         if (himl !== 0) {
             const hdcMem = CreateCompatibleDC(NULL)
@@ -117,5 +119,21 @@ export const suite = {
         t.checkTrue('读回字段为 number 形态', typeof info.nMin === 'number' && typeof info.nMax === 'number')
         // CallWindowProc / ShowScrollBar 仅由 import 的模块加载覆盖 proc 名：
         // CallWindowProc 跨线程窗口过程不安全、ShowScrollBar 有副作用
+
+        // NONCLIENTMETRICS 的 cbSize/uiParam 随系统变（Vista+ 504 / XP·2003 500），
+        // 尺寸回退逻辑在 lib/dpi；此处只锁结构布局与端到端效果（见下 section）。
+        t.check('NONCLIENTMETRICSW.size == 504（4 LOGFONTW + 12 DWORD）', 504, NONCLIENTMETRICSW.size)
+
+        t.section('lib/dpi: 下沉到 JS 的 DPI / 系统字体复合逻辑')
+        t.checkTrue('getScaleFactor() ≥ 0.5', getScaleFactor() >= 0.5)
+        const dpiFont = createSystemDpiFont()
+        t.checkTrue('createSystemDpiFont() 非 NULL（SPI 尺寸回退后仍取到系统消息字体）', dpiFont !== 0)
+        if (dpiFont) {
+            const lf = LOGFONTW.alloc()
+            t.checkTrue('GetObject(dpiFont, LOGFONTW.size) 回读成功', GetObject(dpiFont, LOGFONTW.size, lf) === LOGFONTW.size)
+            const fo = LOGFONTW.decode(lf)
+            t.checkTrue('系统消息字体 lfFaceName 非空（结构确被 SPI 填过）', typeof fo.lfFaceName === 'string' && fo.lfFaceName.length > 0)
+            t.checkTrue('DeleteObject(系统字体) 成功', DeleteObject(dpiFont) !== 0)
+        }
     },
 }

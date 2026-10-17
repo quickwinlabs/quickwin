@@ -6,13 +6,16 @@ import {
   ListView, type Column, ListBox, ScrollView, RadioButton, Slider,
   TreeView, type TreeNode, DateTimePicker, Link, Tooltip, PathPicker,
 } from '../lib/react-qw/index.js'
-import { WindowStyle, WmMsg } from '../constants'
+import { ShowWindowCmd, WindowStyle, WmMsg } from '../constants'
+import { GetClientRect, PostQuitMessage, ShowWindow } from '../lib/windows/user32.js'
+import { getScaleFactor } from '../lib/dpi.js'
+import { RECT } from '../lib/windows/structs.js'
 
 
 gui.RegisterClass('Gallery', (hwnd, msg, wParam, lParam) => {
   if (!hwnd) return gui.DefWindowProc(hwnd, msg, wParam, lParam)
   if (msg === WmMsg.DESTROY) {
-    gui.PostQuitMessage(0)
+    PostQuitMessage(0)
     return 0
   }
   return gui.DefWindowProc(hwnd, msg, wParam, lParam)
@@ -275,12 +278,14 @@ const hwnd = gui.CreateWindow(
 )
 
 if (hwnd) {
-  const cr = gui.GetClientRect(hwnd)!
-  const scale = gui.GetScaleFactor()
-  const svW = Math.round((cr.right - cr.left) / scale)
-  const svH = Math.round((cr.bottom - cr.top) / scale)
+  const crBuf = RECT.alloc()
+  if (!GetClientRect(hwnd, crBuf.ptr)) throw new Error('gallery: GetClientRect failed')
+  const { left, top, right, bottom } = RECT.decode(crBuf)
+  const scale = getScaleFactor()
+  const svW = Math.round((right - left) / scale)
+  const svH = Math.round((bottom - top) / scale)
   render(<App svW={svW} svH={svH} />, hwnd)
   setTimeout(() => {
-    gui.ShowWindow(hwnd)
+    ShowWindow(hwnd, ShowWindowCmd.SHOWNORMAL)
   }, 0)
 }
