@@ -41,7 +41,9 @@ export const suite = {
             for (let attempt = 0; attempt < 3 && !workerOk; attempt++) {
                 try {
                     const { data: r3 } = await new Promise<any>((resolve, reject) => {
-                        worker3 = new os.Worker('https://' + host + '/npm/quickwin/test/worker_module.js')
+                        // 钉住 3.0.0：test/ 从 3.0.2 起不再进 npm 包（纯开发件），而已发布版本的
+                        // 内容不可变——这里只是拿它当"公网 https + 真实 CA"的素材，不要跟 latest
+                        worker3 = new os.Worker('https://' + host + '/npm/quickwin@3.0.0/test/worker_module.js')
                         const timer = os.setTimeout(() => reject(new Error('timeout')), 15000)
                         worker3.onmessage = (e: any) => {
                             os.clearTimeout(timer)

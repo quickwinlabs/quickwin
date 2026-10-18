@@ -155,6 +155,8 @@ parent.onmessage = (e) => {
 
 ## 示例
 
+示例脚本在仓库里（**不随 npm 包发布**，包内只有 exe、main.js、lib 与类型声明）：
+
 ```bash
 .\qwin.exe examples/tray_demo.js     # 系统托盘应用
 .\qwin.exe examples/pdf_preview2.js  # 基于 mupdf 的 PDF 阅读器

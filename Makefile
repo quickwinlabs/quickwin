@@ -437,7 +437,10 @@ test: cc64 js wasm
 npm-pkg: js wasm
 	rm -rf $(NPM_PKG_DIR) $(TYPES_DIR)
 	mkdir -p $(NPM_PKG_DIR)
-	cp -r $(BUILD_DIR)/lib $(BUILD_DIR)/test $(BUILD_DIR)/examples $(NPM_PKG_DIR)/
+	# 只发运行时：exe/main.js + lib + 声明。test/ 与 examples/ 是仓库里的开发件
+	# （examples 那 8 个 ~1MB 的 demo bundle 各自内联了一份 React），消费者用不到，
+	# 留着只会让每次 npm install 多下 ~2.7MB
+	cp -r $(BUILD_DIR)/lib $(NPM_PKG_DIR)/
 	# 类型面只发声明：lib 的实现源码（.ts/.tsx）不再进包——留着的话消费者的 tsc 会
 	# 顺着 .js 找到同名 .ts 去检查我们的源码，他们的 strict/lib/依赖和我们不一致时报错
 	# 全落在 node_modules 里，用户改不动（.tsx 组件当初就是这么漏的）
@@ -445,8 +448,6 @@ npm-pkg: js wasm
 	cp -r $(TYPES_DIR)/lib/. $(NPM_PKG_DIR)/lib/
 	# 手写声明不参与 emit，单独拷：react-qw/jsx.d.ts（<w> 元素类型）、vendor 的 ponyfill.d.mts
 	find lib \( -name '*.d.ts' -o -name '*.d.mts' \) -exec cp --parents {} $(NPM_PKG_DIR)/ \;
-	cp test/*.ts $(NPM_PKG_DIR)/test/
-	cp examples/*.ts examples/*.tsx $(NPM_PKG_DIR)/examples/
 	cp quickwin.d.ts constants.ts enum_map.d.ts tsconfig.json package.json README.md README.en.md $(NPM_PKG_DIR)/
 	cp $(BUILD_DIR)/$(TARGET_NAME) $(BUILD_DIR)/$(TARGET_NAME_32) $(BUILD_DIR)/$(TARGET_NOWASM) $(BUILD_DIR)/$(TARGET_NOWASM_32) $(NPM_PKG_DIR)/
 	cp $(BUILD_DIR)/main.js $(NPM_PKG_DIR)/main.js
