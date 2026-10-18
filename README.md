@@ -6,22 +6,18 @@ Windows 平台上的 QuickJS 运行时，支持原生 GUI、网络、WASM、FFI 
 
 支持 Windows XP+（32/64 位），保持最小二进制体积（约 1.5MB）。32 位构建已在 QEMU Windows XP 虚拟机中通过 CI 测试。
 
-项目处于早期，功能待完善，包含已知 bug。
+## 快速开始
 
-安装方式：
+用脚手架新建一个桌面应用（[quickwin-starter](https://github.com/quickwinlabs/quickwin-starter)）：
 
 ```bash
-# 方式一：npm 本地安装（推荐）
-npm install quickwin
-npx quickwin node_modules/quickwin/main.js   # 包自带 main.js 示例；用 npx quickwin script.js 运行你自己的脚本
-
-# 方式二：直接从 GitHub Release 下载
-iwr https://github.com/quickwinlabs/quickwin/releases/latest/download/qwin.exe -OutFile qwin.exe
-iwr https://github.com/quickwinlabs/quickwin/releases/latest/download/main.js -OutFile main.js
-.\qwin.exe main.js
+npm create -y quickwin@latest myapp
+cd myapp
+npm install
+npm run build        # 产出 dist\app.exe
 ```
 
-npm 包自带 4 个可执行文件：`qwin.exe`（64 位）/ `qwin-x86.exe`（32 位，兼容 XP）及其无 WASM 版本 `qwin-nowasm.exe` / `qwin-nowasm-x86.exe`。
+默认 React 模板（JSX + 系统托盘），`-- --template=minimal` 可从更朴素的骨架起步。
 
 ## 特性
 
@@ -36,7 +32,10 @@ npm 包自带 4 个可执行文件：`qwin.exe`（64 位）/ `qwin-x86.exe`（32
 
 ## CLI
 
+运行时本体：`npm install quickwin` 安装，或从 [Releases](https://github.com/quickwinlabs/quickwin/releases) 下载 `qwin.exe` 与 `main.js`。npm 包自带 4 个可执行文件：`qwin.exe`（64 位）/ `qwin-x86.exe`（32 位，兼容 XP）及其无 WASM 版本 `qwin-nowasm.exe` / `qwin-nowasm-x86.exe`。
+
 ```bash
+npx quickwin node_modules/quickwin/main.js   # 跑包自带的示例
 quickwin script.js                  # 运行脚本
 quickwin -o CON script.js           # 带控制台运行（AllocConsole）
 quickwin -o LOG script.js           # 自动生成日志文件运行

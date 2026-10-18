@@ -6,22 +6,18 @@ QuickJS runtime for Windows, with native GUI, networking, WASM, FFI and more.
 
 Supports Windows XP+ (32/64-bit) with a minimal binary size (~1.5MB). The 32-bit build is CI-tested in a QEMU Windows XP VM.
 
-Early-stage project with known bugs.
+## Quick Start
 
-Install:
+Scaffold a desktop app with [quickwin-starter](https://github.com/quickwinlabs/quickwin-starter):
 
 ```bash
-# Option 1: npm local install (recommended)
-npm install quickwin
-npx quickwin node_modules/quickwin/main.js   # bundled main.js demo; use npx quickwin script.js for your own scripts
-
-# Option 2: download directly from GitHub Release
-iwr https://github.com/quickwinlabs/quickwin/releases/latest/download/qwin.exe -OutFile qwin.exe
-iwr https://github.com/quickwinlabs/quickwin/releases/latest/download/main.js -OutFile main.js
-.\qwin.exe main.js
+npm create -y quickwin@latest myapp
+cd myapp
+npm install
+npm run build        # produces dist\app.exe
 ```
 
-The npm package ships 4 executables: `qwin.exe` (64-bit) / `qwin-x86.exe` (32-bit, XP-compatible) plus their no-WASM variants `qwin-nowasm.exe` / `qwin-nowasm-x86.exe`.
+The default template is React (JSX + system tray); `-- --template=minimal` starts from a bare skeleton.
 
 ## Features
 
@@ -36,7 +32,10 @@ The npm package ships 4 executables: `qwin.exe` (64-bit) / `qwin-x86.exe` (32-bi
 
 ## CLI
 
+The runtime itself: install with `npm install quickwin`, or download `qwin.exe` and `main.js` from [Releases](https://github.com/quickwinlabs/quickwin/releases). The npm package ships 4 executables: `qwin.exe` (64-bit) / `qwin-x86.exe` (32-bit, XP-compatible) plus their no-WASM variants `qwin-nowasm.exe` / `qwin-nowasm-x86.exe`.
+
 ```bash
+npx quickwin node_modules/quickwin/main.js   # run the bundled demo to see it working
 quickwin script.js                  # run a script
 quickwin -o CON script.js           # run with console (AllocConsole)
 quickwin -o LOG script.js           # run with auto-generated log file
