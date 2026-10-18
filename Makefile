@@ -134,6 +134,7 @@ TARGET_NAME_32 ?= qwin-x86.exe
 TARGET_NOWASM ?= qwin-nowasm.exe
 TARGET_NOWASM_32 ?= qwin-nowasm-x86.exe
 NPM_PKG_DIR = dist/quickwin
+TYPES_DIR = $(BUILD_DIR)/types
 # nowasm 与 wasm 的 CFLAGS 不同（-DNO_WASM），.o 必须分目录，
 # 否则 cc64 先编出的 main.o 仍引用 js_init_module_wamr，nowasm 链接必挂。
 # deps（wolfssl/brotli/ffi）不依赖 NO_WASM，继续共享 VARIANT 目录。
@@ -434,10 +435,16 @@ test: cc64 js wasm
 	node --experimental-strip-types tools/serve_test.ts 18923 & SERVER_PID=$$!; $(TARGET) $(BUILD_DIR)/test/run.js $(TEST); rc=$$?; kill $$SERVER_PID 2>/dev/null; exit $$rc
 
 npm-pkg: js wasm
-	rm -rf $(NPM_PKG_DIR)
+	rm -rf $(NPM_PKG_DIR) $(TYPES_DIR)
 	mkdir -p $(NPM_PKG_DIR)
 	cp -r $(BUILD_DIR)/lib $(BUILD_DIR)/test $(BUILD_DIR)/examples $(NPM_PKG_DIR)/
-	find lib \( -name '*.ts' -o -name '*.mts' \) -exec cp --parents {} $(NPM_PKG_DIR)/ \;
+	# 类型面只发声明：lib 的实现源码（.ts/.tsx）不再进包——留着的话消费者的 tsc 会
+	# 顺着 .js 找到同名 .ts 去检查我们的源码，他们的 strict/lib/依赖和我们不一致时报错
+	# 全落在 node_modules 里，用户改不动（.tsx 组件当初就是这么漏的）
+	npx tsc --project tsconfig.json --declaration --emitDeclarationOnly --outDir $(TYPES_DIR)
+	cp -r $(TYPES_DIR)/lib/. $(NPM_PKG_DIR)/lib/
+	# 手写声明不参与 emit，单独拷：react-qw/jsx.d.ts（<w> 元素类型）、vendor 的 ponyfill.d.mts
+	find lib \( -name '*.d.ts' -o -name '*.d.mts' \) -exec cp --parents {} $(NPM_PKG_DIR)/ \;
 	cp test/*.ts $(NPM_PKG_DIR)/test/
 	cp examples/*.ts examples/*.tsx $(NPM_PKG_DIR)/examples/
 	cp quickwin.d.ts constants.ts enum_map.d.ts tsconfig.json package.json README.md README.en.md $(NPM_PKG_DIR)/

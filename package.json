@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "quickwin",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "QuickJS Win32 runtime — GUI, networking, WASM, FFI, and more",
   "bin": {
     "quickwin": "qwin.exe",
@@ -34,18 +34,27 @@
     "type": "git",
     "url": "git+https://github.com/quickwinlabs/quickwin.git"
   },
+  "dependencies": {
+    "@types/react-reconciler": "^0.33.0",
+    "react-reconciler": "^0.33.0"
+  },
+  "peerDependencies": {
+    "@types/react": "^19.2.17",
+    "react": "^19.2.7"
+  },
+  "peerDependenciesMeta": {
+    "@types/react": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@quickwinlabs/mupdf-wasm": "^1.28.0",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
-    "@types/react-reconciler": "^0.33.0",
     "@types/ws": "^8.18.1",
     "esbuild": "^0.28.0",
-    "typescript": "^7.0.2"
-  },
-  "dependencies": {
     "react": "^19.2.7",
-    "react-reconciler": "^0.33.0",
+    "typescript": "^7.0.2",
     "web-streams-polyfill": "^4.3.0",
     "ws": "^8.21.0"
   }
