@@ -157,6 +157,9 @@ Both sides must set `onmessage = null` when communication is complete. This rele
 
 ## Examples
 
+The example scripts live in the repository (**not shipped in the npm package**,
+which only carries the exes, main.js, lib and the type declarations):
+
 ```bash
 .\qwin.exe examples/tray_demo.js     # system tray app
 .\qwin.exe examples/pdf_preview2.js  # PDF reader with mupdf

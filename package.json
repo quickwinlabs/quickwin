@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "quickwin",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "description": "QuickJS Win32 runtime — GUI, networking, WASM, FFI, and more",
   "bin": {
     "quickwin": "qwin.exe",
@@ -20,8 +20,6 @@
     "qwin-nowasm-x86.exe",
     "main.js",
     "lib/",
-    "test/",
-    "examples/",
     "quickwin.d.ts",
     "constants.ts",
     "enum_map.d.ts",
