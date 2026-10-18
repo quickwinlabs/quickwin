@@ -1,8 +1,9 @@
 {
   "type": "module",
   "name": "quickwin",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "description": "QuickJS Win32 runtime — GUI, networking, WASM, FFI, and more",
+  "types": "quickwin.d.ts",
   "bin": {
     "quickwin": "qwin.exe",
     "quickwin-nowasm": "qwin-nowasm.exe",
