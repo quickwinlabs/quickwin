@@ -11,7 +11,7 @@
 
 > **禁止自动提交**：须先展示 `git diff` 与拟用 commit message，经用户同意方可执行 `git add` / `commit` / `push`；回复 "continue"、"commit"、"push" 或直接给出 message 视为同意。
 
-> **commit message**：依据 diff 实际内容生成（不得依据文件名推断），以英文表述，风格对齐 `git log`。
+> **commit message**：依据 diff 实际内容生成（不得依据文件名推断），以英文表述，风格对齐 `git log`；**不重要的改动**（文档、注释、微调、小改小修等）从简。
 
 > **使用中文思考和回答**
 
