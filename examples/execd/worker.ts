@@ -21,6 +21,10 @@ const diagFile = (stage: string): void => {
 const HANDLE_FLAG_INHERIT = 0x1
 const STARTF_USESTDHANDLES = 0x100
 const WAIT_INFINITE = 0xffffffff
+// GUI 子系统父进程（qwin）起控制台子进程时，flags=0 会让系统新建一个可见控制台窗口
+// （每次 /exec 在桌面上弹一个 cmd 窗并抢焦点）；CREATE_NO_WINDOW 下孩子仍有隐藏控制台
+// （chcp/控制台 API 正常），stdout 照旧走管道。
+const CREATE_NO_WINDOW = 0x08000000
 // STARTUPINFOW / PROCESS_INFORMATION 的布局随进程位宽（x86 68B / x64 104B），由 struct 按 os.arch 推。
 // os.arch 是编译期的进程指针宽度（src/quickjs-libc.c OS_ARCH），WOW64 下的 32 位进程得 ia32 布局——
 // 本地 win7 VM 上的 execd 就是 32 位进程跑在 64 位系统上。
@@ -69,7 +73,7 @@ function runCmd(id: number, cmd: string): number {
     // /u 在所有 Win 版本行为一致，故不分版本——早期用 RtlGetVersion 判 NT>=10 只对 win11 加 /u，已删。
     // 外部程序（qwin/ping 等）输出仍为各自原生编码，/u 不参与（实测 ping 仍透传 GBK）。见 .agents/CMD_ENCODING_ACP_NLS.md §8。
     const cmdline = `${sysDir}\\cmd.exe /u /c ${cmd}`
-    if (!CreateProcess(NULL, cmdline, NULL, NULL, 1, 0, NULL, NULL,
+    if (!CreateProcess(NULL, cmdline, NULL, NULL, 1, CREATE_NO_WINDOW, NULL, NULL,
         { cb: STARTUPINFOW.size, dwFlags: STARTF_USESTDHANDLES, hStdOutput: hWrite, hStdError: hWrite }, pi.ptr)) {
         CloseHandle(hRead)
         CloseHandle(hWrite)
