@@ -1,6 +1,9 @@
 import * as sock from 'sock'
 import * as wolfssl from 'wolfssl'
 import * as brotli from 'brotli'
+// 裸导入只为声明面：Request/Response 等全局由 http-common 的 declare global 提供，
+// 若不带这条，emit 出的 fetch.d.ts 只剩 declare global、消费者拿不到那些类型
+import './http-common.js'
 import { parseIni, toIni } from '../lib/cache-utils.js'
 import {
     _concat,

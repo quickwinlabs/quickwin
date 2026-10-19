@@ -100,7 +100,7 @@ When run without a script file argument, `qwin.exe` checks for embedded JS at th
 | `ffi` | built-in | foreign function interface (DLL loading: `LoadLibrary`, `GetProcAddress`) |
 | `brotli` | built-in | Brotli decompression |
 | `wamr` | built-in | low-level WAMR API |
-| `fetch` | `import './lib/fetch.js'` | adds `fetch()`, `Response`, `Headers` to globalThis |
+| `fetch` | `import './lib/fetch.js'` | adds `fetch()`, `Request`/`Response`/`Headers` and their type declarations to globalThis |
 | `websocket` | `import './lib/websocket.js'` | adds `WebSocket` to globalThis |
 | `polyfill` | `import './lib/polyfill.js'` | adds `TextEncoder`, `URL`, `btoa`/`atob`, `setTimeout` to globalThis |
 | `react-qw` | `lib/react-qw/` | React Custom Renderer for Win32 GUI ([docs](lib/react-qw/)) |
