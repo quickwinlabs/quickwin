@@ -2,7 +2,7 @@ import * as ffi from 'ffi'
 import * as os from 'os'
 import * as std from 'std'
 import '../text-codec.js'
-import { type C_BasicType, C_BasicType_No_Void, C_BasicType_Token, C_BasicType_Token_No_Void, cTokenToType, isCPtrToken, isCValToken, valName, ArgJsTypeOfToken, RetJsTypeOfToken, normToken, PTR_SIZE, ptrName, type Ptr, readScalar, writeSlot, PtrArrayBuffer } from './ctype.js'
+import { C_BasicType_No_Void, C_BasicType_Token, C_BasicType_Token_No_Void, cTokenToType, isCPtrToken, isCValToken, valName, ArgJsTypeOfToken, RetJsTypeOfToken, normToken, PTR_SIZE, ptrName, type Ptr, PtrArrayBuffer } from './ctype.js'
 
 // 形状刻意是「方法」而非裸函数：ffi-struct 的 struct()/union() 结果（StructDef）
 // 结构上即满足 encode 重载（无 buf 新建带品牌 .ptr 的 PtrArrayBuffer / 带 buf 写入既有
@@ -208,6 +208,26 @@ function mkScalarWriter(tok: C_BasicType_No_Void, off: number): SlotWriter {
         // 这里不再运行时校验；带布局的 <N>ptr 走 mkPtrWriter，那边仍 fail-loud。
         case 'ptr':
             return (dv, v) => { writePtr(dv, off, v) }
+    }
+}
+
+// 标量/指针槽读法按 token 定型（closure 派发用；偏移在创建期固化）。与 ctype.readScalar
+// 的各分支逐条等价，但不再每参跑 token 字符串 switch（实测 ~0.5μs/参）。指针位有符号读
+// （对齐 C 版 JS_NewInt64）：-1 哨兵等负值保真；0 保真返回（NULL 品牌零）。
+function mkScalarReader(tok: C_BasicType_No_Void, off: number): (dv: DataView) => number | bigint {
+    switch (tok) {
+        case 'u8': return dv => dv.getUint8(off)
+        case 'i8': return dv => dv.getInt8(off)
+        case 'u16': return dv => dv.getUint16(off, true)
+        case 'i16': return dv => dv.getInt16(off, true)
+        case 'u32': return dv => dv.getUint32(off, true)
+        case 'i32': return dv => dv.getInt32(off, true)
+        case 'u64': return dv => dv.getBigUint64(off, true)
+        case 'i64': return dv => dv.getBigInt64(off, true)
+        case 'f32': return dv => dv.getFloat32(off, true)
+        case 'f64': return dv => dv.getFloat64(off, true)
+        case 'ptr':
+            return PTR_SIZE === 8 ? dv => Number(dv.getBigInt64(off, true)) : dv => dv.getInt32(off, true)
     }
 }
 
@@ -515,41 +535,37 @@ const leakRegistry: FinalizationRegistry<{ sig: string, ptr: number }> =
             held.sig, held.ptr)
     })
 
-// 共享解码/编码助手：由每个闭包的 wrapper 调用（wrapper 闭包捕获 args/ret/fn）。
-// args/ret 为「底档 + '!' 绑定」的记录（与 ParsedSig 同形态——修饰随 token 走，
-// 消费者要么整体拿到、要么整体拿不到）。'!' 违约（C 传入 0 / fn 返回 0）打印诊断并
-// 中止本次分发（fn 不被调用 / 结果槽保持 0），与 fn-throw 同风格：此处不 throw，
-// 异常通道只留给用户回调（C 桩捕获 wrapper 异常并清零，src/quickjs-ffi-closure.c）。
+/** 一次 closure() 的固定派发计划：每参「读法 + '!' 执法位」、返回写器（void = null）
+ *  全部在创建期定型。原先这些判定每调都在跑：readScalar 的 token 字符串 switch
+ *  （实测 ~0.5μs/参）、writeSlot 的对象字面量 + switch（~1.2μs）、x64 偏移三元、
+ *  每调 os.arch 属性读、void 返回也要建的 DataView。 */
+type ClosurePlan = {
+    readers: ((dv: DataView) => number | bigint)[]
+    nonnull: boolean[]
+    /** 结果槽写器（mkScalarWriter 定型，偏移 0）；void 返回为 null ⇒ 连 DataView 都不建 */
+    writeRet: SlotWriter | null
+    retNonnull: boolean
+}
+
+// 共享解码/编码助手：由每个闭包的 wrapper 调用（wrapper 闭包捕获 plan/fn/sig）。
+// '!' 违约（C 传入 0 / fn 返回 0）打印诊断并中止本次分发（fn 不被调用 / 结果槽保持 0），
+// 与 fn-throw 同风格：此处不 throw，异常通道只留给用户回调
+// （C 桩捕获 wrapper 异常并清零，src/quickjs-ffi-closure.c）。
 function dispatchClosure(
-    args: { tok: C_BasicType_No_Void, nonnull: boolean }[],
-    ret: { tok: C_BasicType, nonnull: boolean },
+    plan: ClosurePlan,
     fn: (...a: unknown[]) => unknown,
     frameBuf: ArrayBuffer, retBuf: ArrayBuffer, sig: string): void {
-    const dv = new DataView(retBuf)
-    const is64 = os.arch === 'x64'
     const fv = new DataView(frameBuf)
+    const { readers, nonnull } = plan
     const a: unknown[] = []
-    let off = 0
-    for (let i = 0; i < args.length; i++) {
-        const spec = args[i]!
-        const k = spec.tok
-        let v: unknown
-        if (is64) {
-            const fp = k === 'f32' || k === 'f64'
-            const base = fp
-                ? (i < 4 ? 128 + i * 8 : 32 + (i - 4) * 8)   // xmm 区（前 4）/ 溢出区
-                : (i < 4 ? i * 8 : 32 + (i - 4) * 8)          // 整数寄存器区 / 溢出区
-            v = readScalar(fv, base, k)
-        } else {
-            v = readScalar(fv, off, k)
-            off += IA32_ARG_SIZE[k]
-        }
+    for (let i = 0; i < readers.length; i++) {
+        const v = readers[i]!(fv)
         // 参数位 '!' = 「C 保证非空」的作者担保，C 传 0 即标错 → 跳过回调。
-        if (spec.nonnull && v === 0) {
+        if (nonnull[i] && v === 0) {
             std.printf('[ffi] closure %s: arg#%d got 0 (! promise violated by caller), skipping callback\n', sig, i + 1)
             return
         }
-        a.push(v)
+        a[i] = v
     }
     let r: any
     try {
@@ -559,13 +575,11 @@ function dispatchClosure(
         return                            // 结果槽保持 0
     }
     // 返回位 '!' = 「JS 保证非零」的作者担保，fn 返回 0 即标错 → 不写结果槽。
-    if (ret.nonnull && r === 0) {
+    if (plan.retNonnull && r === 0) {
         std.printf('[ffi] closure %s: return got 0 (! promise violated by callback), leaving result slot 0\n', sig)
         return
     }
-    if (ret.tok !== 'void') {
-        writeSlot(dv, 0, { k: ret.tok, v: r })
-    }
+    if (plan.writeRet) plan.writeRet(new DataView(retBuf), r)
 }
 
 /** 把 JS 函数变成可传给 Win32 API 的函数指针（同步同线程回调）。
@@ -593,27 +607,48 @@ export function closure<S extends string>(sig: S, fn: BindFn<S, {}, {}>,
                 `(<${valName(t)}>); by-value is bind-only — the C→JS direction has no ` +
                 `struct slot decoding (pass a pointer and decode on the JS side)`)
     // 上方已拒 '<N>' 按值形：此处 tok 恒为标量/指针档（cTokenToType 对 val 形原样返回，
-    // 但那条路径不可达——IA32_ARG_SIZE 索引与 dispatchClosure 只认标量档）。
+    // 但那条路径不可达——IA32_ARG_SIZE 索引与派发计划只认标量档）。
     const argSpecs = argTokens.map(t => ({ tok: cTokenToType(t) as C_BasicType_No_Void, nonnull: t.endsWith('!') }))
     const retSpec = { tok: cTokenToType(retToken), nonnull: retToken.endsWith('!') }
-    const is64 = os.arch === 'x64'
     const stackCapture = argSpecs.reduce((s, x) => s + IA32_ARG_SIZE[x.tok], 0)
     // C 桩捕获窗定长（src/quickjs-ffi-closure.c：x64 栈区 96B=12 槽，第 5 参起在栈上，
     // 即至多 16 参；ia32 16×4B）——超限 dispatch 会读到捕获缓冲之外的垃圾，或
     // RangeError 被吞成返回 0，故创建期 fail-fast。扩容改 C 侧 buf 尺寸并同步放宽。
-    if (is64 ? argSpecs.length > 16 : stackCapture > 64) {
+    if (IS64 ? argSpecs.length > 16 : stackCapture > 64) {
         throw new Error(`ffi-bind: closure signature exceeds capture window ` +
-            `(${is64 ? 'max 16 params' : 'max 64 stack bytes'}): ${sig}`)
+            `(${IS64 ? 'max 16 params' : 'max 64 stack bytes'}): ${sig}`)
     }
-    const argBytes = (opts?.stdcall === false || is64) ? 0 : stackCapture
+    const argBytes = (opts?.stdcall === false || IS64) ? 0 : stackCapture
     const retKind = retSpec.tok === 'f32' ? 1
         : retSpec.tok === 'f64' ? 2
             : (retSpec.tok === 'u64' || retSpec.tok === 'i64') ? 3
                 : 0
-    // per-closure wrapper：闭包捕获 argSpecs/retSpec/fn/sig，C 侧只存它 + ctx；回调
+    // 派发计划：每参读法与槽偏移、'!' 位、返回写器全部在此定型（每调只剩 new DataView）。
+    // x64 槽位约定与 C 桩一致：前 4 整数槽 i*8、前 4 浮点槽在 xmm 区 128+i*8、
+    // 第 5 起溢出到栈区 32+(i-4)*8；ia32 按 IA32_ARG_SIZE 顺序排布。
+    const readers: ((dv: DataView) => number | bigint)[] = []
+    const nonnull: boolean[] = []
+    let off = 0
+    for (let i = 0; i < argSpecs.length; i++) {
+        const spec = argSpecs[i]!
+        const k = spec.tok
+        const slot = !IS64 ? off
+            : (k === 'f32' || k === 'f64')
+                ? (i < 4 ? 128 + i * 8 : 32 + (i - 4) * 8)   // xmm 区（前 4）/ 溢出区
+                : (i < 4 ? i * 8 : 32 + (i - 4) * 8)          // 整数寄存器区 / 溢出区
+        readers.push(mkScalarReader(k, slot))
+        nonnull.push(spec.nonnull)
+        if (!IS64) off += IA32_ARG_SIZE[k]
+    }
+    const plan: ClosurePlan = {
+        readers, nonnull,
+        writeRet: retSpec.tok === 'void' ? null : mkScalarWriter(retSpec.tok, 0),
+        retNonnull: retSpec.nonnull,
+    }
+    // per-closure wrapper：闭包捕获 plan/fn/sig，C 侧只存它 + ctx；回调
     // 永远回到创建它的 context（无跨 context 全局、无 registry）。
     const wrapper = (frameBuf: ArrayBuffer, retBuf: ArrayBuffer): void => {
-        dispatchClosure(argSpecs, retSpec, fn as (...a: unknown[]) => unknown, frameBuf, retBuf, sig)
+        dispatchClosure(plan, fn as (...a: unknown[]) => unknown, frameBuf, retBuf, sig)
     }
     const ptr = ffi.closureNew(argBytes, retKind, wrapper)
     let done = false
