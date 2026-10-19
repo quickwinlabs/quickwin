@@ -256,10 +256,10 @@ $(OBJ_DIR)/%.d: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -MM -MT '$(OBJ_DIR)/$*.o' $< > $@
 
-$(OBJ_DIR)/app.o: src/app.rc
+$(OBJ_DIR)/app.o: src/app.rc src/app.manifest
 	@echo "Compiling resource $<..."
 	mkdir -p $(dir $@)
-	$(WINDRES) $< -o $@
+	$(WINDRES) -I src $< -o $@
 
 # 依赖文件仅在交叉构建子 make（CROSS=1）时引入：
 # 顶层 CROSS=0 的 goal（cc64/gen-const/...）不应在 x64-native 下生成 .d
