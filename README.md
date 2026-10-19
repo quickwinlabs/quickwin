@@ -98,7 +98,7 @@ _build/execd.exe
 | `ffi` | built-in | 外部函数接口（DLL 装载：`LoadLibrary`、`GetProcAddress`） |
 | `brotli` | built-in | Brotli 解压 |
 | `wamr` | built-in | 底层 WAMR API |
-| `fetch` | `import './lib/fetch.js'` | 向 globalThis 添加 `fetch()`、`Response`、`Headers` |
+| `fetch` | `import './lib/fetch.js'` | 向 globalThis 添加 `fetch()`、`Request`/`Response`/`Headers` 及其类型声明 |
 | `websocket` | `import './lib/websocket.js'` | 向 globalThis 添加 `WebSocket` |
 | `polyfill` | `import './lib/polyfill.js'` | 向 globalThis 添加 `TextEncoder`、`URL`、`btoa`/`atob`、`setTimeout` |
 | `react-qw` | `lib/react-qw/` | 面向 Win32 GUI 的 React 自定义渲染器（[文档](lib/react-qw/)） |
