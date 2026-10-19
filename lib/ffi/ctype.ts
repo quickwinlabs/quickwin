@@ -363,15 +363,26 @@ export function writeSlot(dv: DataView, off: number, e: Entry): void {
     writeScalar(dv, off, e)
 }
 
+/** buffer 运行时本体：品牌在类型层以交叉类型叠加，见下方 PtrArrayBuffer。 */
+class PtrBufferBase extends ArrayBuffer {
+    readonly ptr: number
+    constructor(byteLength: number) {
+        super(byteLength)
+        this.ptr = bufferPtr(this)
+    }
+}
+
 /** buffer + 品牌指针合一：一个引用既是 ArrayBuffer（喂 decode / encode(v, buf) 复用）
  *  又带 `.ptr` 直接喂 <N>ptr 形参 —— 替代旧 { buf, ptr } 结构包装。
  *  `ptr` 是构造时快照（与旧 StructAlloc 同性质：底层数据不可 detach/transfer）。
- *  品牌 N 由创建方声明：struct def 的 alloc()/encode() 返回值在类型层带 def 的 N（不可伪造）；
- *  直接 new 属自报品牌，仅限内部/原型场景 —— 生产路径一律走 def.alloc()。 */
-export class PtrArrayBuffer<N extends string> extends ArrayBuffer {
-    readonly ptr: Ptr<N>
-    constructor(byteLength: number) {
-        super(byteLength)
-        this.ptr = bufferPtr(this) as Ptr<N>
-    }
-}
+ *  品牌 N 由创建方声明：struct def 的 alloc()/encode() 返回值带 def 的 N（不可伪造）；
+ *  直接 new 属自报品牌，仅限内部/原型场景 —— 生产路径一律走 def.alloc()。
+ *
+ *  品牌走交叉类型而非类类型参数：类型参数一旦出现在条件类型（`Ptr<N>`）里，tsc 推断不出
+ *  它的方差，只能保守按不变型比较（`out N` 也验不过，TS2636），品牌擦除方向就赋不过去；
+ *  交叉类型按结构比较：`PAB<'X'>` 可赋给 `PAB<string>` / `PAB<''>`，反向不可。 */
+export type PtrArrayBuffer<N extends string = ''> = PtrBufferBase & { readonly ptr: Ptr<N> }
+
+/** 构造面：类型参数只声明品牌（运行时就是 PtrBufferBase），保持 `new PAB<'X'>(n)` 原形。 */
+export const PtrArrayBuffer: new <N extends string = ''>(byteLength: number) => PtrArrayBuffer<N> =
+    PtrBufferBase as unknown as new <N extends string = ''>(byteLength: number) => PtrArrayBuffer<N>

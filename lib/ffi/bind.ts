@@ -378,9 +378,9 @@ type DecodeValue<T> = 'decode' extends keyof T
 
 // 入参布局表：用户 codec 解包成 JS 形，并注入两个内建 codec 的值域，
 // 使 <BYTE>ptr / <WCHAR>ptr 形参在类型层拿到 PtrArrayBuffer / string。
-// BYTE 用 PtrArrayBuffer<any> 收所有品牌：PAB<N> 因 .ptr 里的条件类型是不变型，
-// 写 string/'' 都收不下 struct.encode 的具体品牌——any 双向通，形状（必须是 PAB）
-// 才是硬约束，品牌本就由调用点自行声明。
+// BYTE 收所有品牌：PAB 的品牌在类型层是交叉类型（结构比较），具体品牌可赋给
+// PtrArrayBuffer<string>/<''>；此处仍写 any —— 类型层断言（ParamsOf<'<BYTE>ptr'>）
+// 与既有 codec 表都按 any 记，形状（必须是 PAB）才是硬约束。
 type BindEncoders<M> = {
     [K in keyof M]: EncodeValue<M[K]>
 } & {
