@@ -123,8 +123,8 @@ export interface ListViewProps<D extends object> {
   icons?: ArrayBuffer[]
   /** 图标尺寸，默认 32 */
   iconSize?: number
-  /** 返回记录使用的图标在 icons 中的下标 */
-  getIcon?: (record: D, index: number) => number
+  /** 返回记录使用的图标在 icons 中的下标；返回 undefined 表示该行无图标（0 是合法下标，不是「无」） */
+  getIcon?: (record: D, index: number) => number | undefined
 }
 
 function alignToFmt(align: Align | undefined): number {
