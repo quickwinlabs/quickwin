@@ -179,11 +179,39 @@ cd docker
 # 需要干净 overlay 时: ./run.sh win7 --fresh
 
 ./http_test.sh win7        # POST /exec 跑 test/run.js，解析 Summary，failed≤1 → PASS
-./http_test.sh xp -net     # filter 透传（跳过 net suites 等）
-./http_test.sh xp basic    # 只跑指定 suite
+# ⚠️ filter 尾参目前到不了 guest 的 scriptArgs（2026-10-19 实测：`./http_test.sh win11 ffi`
+#    实跑的是全量 1350/1355）。想要子集请另发脚本，见下方「FFI 子集」与 TODO 条目
 
 ./run.sh win7 --stop       # ACPI 关机，超时 60s 自动 kill
 ./run.sh win7 --restart    # 停再起
+```
+
+只跑 FFI 子集（改 `lib/ffi` 时的快速回归；win11 期望 `ok=610 fail=2 skip=2`，那 2 个失败是
+已知的窗口枚举用例，XP 期望 `ok=608 fail=0 skip=3`）：`_build/ffi_only.js`（临时脚本，放 `_build/`，不进 git）
+顺序 import 7 个 `test_ffi_*.js` 并跑 `suite.run(t)`：
+
+```js
+import * as std from "std"
+import { Tester } from "./test/test_helper.js"
+const names = ["test_ffi_bind", "test_ffi_abi", "test_ffi_struct", "test_ffi_struct_layout",
+               "test_ffi_array", "test_ffi_user32", "test_ffi_windows"]
+let ok = 0, fail = 0, skip = 0
+for (const n of names) {
+    const mod = await import("./test/" + n + ".js")
+    const t = new Tester()
+    try { await mod.suite.run(t) } catch (e) { std.printf("%s: SUITE THREW %s\n", n, String(e)); fail++; continue }
+    std.printf("%-22s ok=%d fail=%d skip=%d\n", n, t.ok, t.fail, t.skip)
+    ok += t.ok; fail += t.fail; skip += t.skip
+}
+std.printf("FFI TOTAL: ok=%d fail=%d skip=%d\n", ok, fail, skip)
+std.exit(fail ? 1 : 0)
+```
+
+`make js` 后直接 POST（XP 换 `qwin-x86.exe`；/exec 串行，带 `timeout` 更稳）：
+
+```bash
+curl -s -X POST http://127.0.0.1:8011/exec -H "Content-Type: application/json" \
+  -d '{"cmd":"qwin.exe ffi_only.js","timeout":600000}'
 ```
 
 流程：`run.sh` 杀旧 QEMU（`--fresh` 时重建 overlay）→ `ln -s` `_build` 到 `ci_share/quickwin` → `unix2dos` run.bat → 启动 → 等 `/`（usage 页 200）。  

@@ -6,14 +6,23 @@
 //   S1 nop1  test/nop.dll 1×i32 —— 单标量封送往返
 //   S2 pid   kernel32 GetCurrentProcessId 0 参 —— 真实系统 DLL
 //   S3 sm    user32 SendMessageW WM_NULL 自有窗口 —— 完整链路 + gui C 直调地板参照
+//   S4 sm    user32 SendMessageW WM_GETTEXT 自有窗口 —— 「真实消息」：wndproc 不是空转，
+//          STATIC 把标题拷进 caller 缓冲（标题 64 WCHAR、wParam=64 ⇒ 128 B 拷贝），
+//          两侧 JS 实参完全相同（纯入口差 + 同一个 C 侧拷贝共模）
+//   S5 sm    user32 SendMessageW WM_SETTEXT 自有窗口 —— 更重的 wndproc（user32 释放旧文本
+//          再拷贝新文本），用来看「native 越重、入口倍数越收敛」
+//   S3/S4/S5 都是自有窗口 + 同轮 gui 地板臂；窗口标题加长只为让 S4 的拷贝有量级
 // 方法学沿用 bench_sendmessage_nonnull：预热 1 + 臂序轮转 + median 主指标/min。
 // Date.now() 1ms 量化 → 批量自校准（探针 ≥20ms 才有 ≤5% 步长，目标 ~400ms/样本）。
 // 全部消息发自有窗口（直调 wndproc）。结束必须 DestroyWindow + std.exit。
 import * as std from 'std'
 import * as gui from 'gui'
 import { bind } from '../lib/ffi/bind.js'
+import { PtrArrayBuffer } from '../lib/ffi/ctype.js'
 
 const WM_NULL = 0x0000
+const WM_SETTEXT = 0x000c
+const WM_GETTEXT = 0x000d
 const ROUNDS = 15
 const TARGET_MS = 400
 
@@ -34,7 +43,9 @@ function step(msg: string): void {
 
 step('stage: imports ok')
 
-const winRaw = gui.CreateWindow('STATIC', 'bench-title', 0, 0, 0, 20, 20, null, null)
+// 标题 64 WCHAR：S4 的 WM_GETTEXT(wParam=64) 正好拷满 63 字符 + NUL = 128 B
+const TITLE = 'bench-title-' + 'x'.repeat(52)
+const winRaw = gui.CreateWindow('STATIC', TITLE, 0, 0, 0, 20, 20, null, null)
 if (!winRaw) throw new Error('CreateWindow(STATIC) failed')
 const win: gui.HWND = winRaw
 step('stage: window created')
@@ -43,6 +54,13 @@ const fNop0 = bind('test/nop.dll', 'nop0', ' -> void')
 const fNop1 = bind('test/nop.dll', 'nop1', 'i32 -> i32')
 const fPid = bind('kernel32.dll', 'GetCurrentProcessId', ' -> u32')
 const fSm = bind('user32.dll', 'SendMessageW', '<HWND>ptr u32 <>ptr <>ptr -> <>ptr')
+
+// S4/S5 共用的 WCHAR 缓冲：先跑一次 WM_GETTEXT 把窗口标题拷进来（兼作 S5 的入参串，
+// 顺便证明这条「真实消息」路径确实在做事——长度应为 64）
+const textBuf = new PtrArrayBuffer<'WCHAR'>(64)
+const textPtr = textBuf.ptr
+const seedLen = gui.SendMessage(win, WM_GETTEXT, 64, textPtr)
+step('stage: WM_GETTEXT seed len=' + String(seedLen) + ' (expect 64)')
 
 // 每臂循环体：函数先取到局部 const（与 node 侧同形态——模块槽访问 vs 局部槽访问的
 // 每迭代差在 ns 级，两边都取局部才对齐）；调用结果不使用（QuickJS 解释器不消除
@@ -75,6 +93,30 @@ const runGuiSm = (n: number): number => {
     const f = gui.SendMessage
     const t0 = Date.now()
     for (let i = 0; i < n; i++) f(win, WM_NULL, 0, 0x1234)
+    return Date.now() - t0
+}
+const runSmGet = (n: number): number => {
+    const f = fSm
+    const t0 = Date.now()
+    for (let i = 0; i < n; i++) f(win, WM_GETTEXT, 64, textPtr)
+    return Date.now() - t0
+}
+const runGuiSmGet = (n: number): number => {
+    const f = gui.SendMessage
+    const t0 = Date.now()
+    for (let i = 0; i < n; i++) f(win, WM_GETTEXT, 64, textPtr)
+    return Date.now() - t0
+}
+const runSmSet = (n: number): number => {
+    const f = fSm
+    const t0 = Date.now()
+    for (let i = 0; i < n; i++) f(win, WM_SETTEXT, 0, textPtr)
+    return Date.now() - t0
+}
+const runGuiSmSet = (n: number): number => {
+    const f = gui.SendMessage
+    const t0 = Date.now()
+    for (let i = 0; i < n; i++) f(win, WM_SETTEXT, 0, textPtr)
     return Date.now() - t0
 }
 
@@ -133,6 +175,14 @@ suite('S2 GetCurrentProcessId  0参真实API', [mkArm('ours', runPid)])
 suite('S3 SendMessageW WM_NULL 自有窗口 (gui=直调地板)', [
     mkArm('ours', runSm),
     mkArm('gui ', runGuiSm),
+])
+suite('S4 SendMessageW WM_GETTEXT 真实 wndproc 128B 拷贝 (gui=直调地板)', [
+    mkArm('ours', runSmGet),
+    mkArm('gui ', runGuiSmGet),
+])
+suite('S5 SendMessageW WM_SETTEXT 真实 wndproc 重活形态 (gui=直调地板)', [
+    mkArm('ours', runSmSet),
+    mkArm('gui ', runGuiSmSet),
 ])
 
 gui.DestroyWindow(win)

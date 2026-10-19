@@ -47,9 +47,22 @@ S3: gui=94 94 93 109 94       ffi=6037 6412 5975 6552 7067
 以上合计 ≈ 10 μs。gui 侧是纯 C 函数入口（argc 检查 + 整数提取）≈ 76 ns，
 差值即 JS 解释 + 堆分配成本。**若未来要优化，方向是 argFrame 复用、writeSlot
 去对象字面量、getWidth 提为模块级**——预估可压到 1~2 μs/次（未实测）。
+→ **2026-10-19 已实测落地**：见 `.agents/FFI_PERF.md`（原语成本表 + bind 期计划表
+改造；同机 4 参 36μs → 5μs、0 参 3.4μs → 1.2μs）。
+→ **2026-10-19 收尾**：每调分配**归零**（参数帧按签名分配一次后复用、返回槽全函数共用
+一个 8 字节缓冲），A/B（bind 全链 ÷ 裸 `ffiCall`）**5.0/3.6/3.9/3.3×**，绝对量级 0 参 void
+min **0.53µs**、4 参 `SendMessageW` **2.08µs**——文初「预估 1~2µs/次」的 0 参目标已达成，
+4 参因槽循环与 native 成本停在 2µs 档。
+→ **2026-10-19 复测 + 真实消息（squash 合入 main 后）**：加测 `WM_GETTEXT`（handler 拷 128 B
+进 caller 缓冲）FFI/gui = **13.0×**（2144 vs 165 ns min）、`WM_SETTEXT`（handler 真重排/
+重画）**1.01×**（74200 vs 72500 ns min）——**与 gui 的差是固定 ~2 µs，不是倍数**；正文
+见 `.agents/FFI_PERF.md` §6。
 
-S2 的 85 μs 反常项：gui 侧 C 的 string lParam 分支每次全量编码（无缓存），
-单次成本远超 FFI 调用本身——**string 场景迁 FFI 是净收益**。
+S2 的 85 μs 反常项：**主要是 `WM_SETTEXT` 消息本身的原生成本**——同轮加测里两侧都传 number
+指针、完全不经任何编码时也是 ~83 µs（FFI/gui = 1.01×），所以 gui 侧 C 内那次全量编码
+（无缓存）只是其中很小的一部分（量级仍在 µs 以下，待同轮 A/B 精确分离）。**string 场景迁
+FFI 仍是净收益**（编码在 JS 侧比 C 侧便宜），但收益该记成「省掉每调的 `JS_ToCString` +
+2×`MultiByteToWideChar` + malloc/free」，而不是「省掉 85 µs」。
 
 ## 对任务 3（SendMessage 61 处迁移）的含义
 

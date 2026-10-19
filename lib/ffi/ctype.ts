@@ -318,28 +318,32 @@ type Entry =
     { [K in C_BasicType_No_Void]: { k: K; v: (C_TypeJsTypeMap & { ptr: number })[K] } }[C_BasicType_No_Void];
 
 /** 内存写：按 sizeof 精确写，供 struct 字段编码用。小整数只占自己的字节，
- *  否则 `{a:u8,b:u8}` 这类紧凑布局会被 setUint32 越界覆盖相邻字段。 */
+ *  否则 `{a:u8,b:u8}` 这类紧凑布局会被 setUint32 越界覆盖相邻字段。
+ *  32 位槽不显式 `>>> 0` / `Number()`：setUint32/setUint8… 内部即 ToUint32/ToNumber，
+ *  逐位等价；只有给这些槽塞 BigInt 会从「静默截断」变成 TypeError（类型层本就禁它）。
+ *  指针槽的取模见下（setBigUint64 内部即 ToBigUint64）。 */
 export function writeScalar(dv: DataView, off: number, { k, v }: Entry): void {
     switch (k) {
-        case 'u8': dv.setUint8(off, Number(v)); break
-        case 'i8': dv.setInt8(off, Number(v)); break
-        case 'u16': dv.setUint16(off, Number(v), true); break
-        case 'i16': dv.setInt16(off, Number(v), true); break
-        case 'u32': dv.setUint32(off, (v) >>> 0, true); break
-        case 'i32': dv.setUint32(off, (v) >>> 0, true); break
+        case 'u8': dv.setUint8(off, v); break
+        case 'i8': dv.setInt8(off, v); break
+        case 'u16': dv.setUint16(off, v, true); break
+        case 'i16': dv.setInt16(off, v, true); break
+        case 'u32': dv.setUint32(off, v, true); break
+        case 'i32': dv.setUint32(off, v, true); break
         case 'u64': dv.setBigUint64(off, v, true); break
         case 'i64': dv.setBigInt64(off, v, true); break
-        case 'f32': dv.setFloat32(off, (v), true); break
-        case 'f64': dv.setFloat64(off, (v), true); break
+        case 'f32': dv.setFloat32(off, v, true); break
+        case 'f64': dv.setFloat64(off, v, true); break
         case 'ptr': {
             // JS null/undefined 不是指针词汇（空位写 NULL）——fail-loud，不做 null→0 转换。
             if ((v as unknown) == null) {
                 throw new Error('ffi: got null/undefined for a ptr slot; pass the imported NULL constant for empty')
             }
-            // 读回的负值（LRESULT/句柄）再作参数回传时按二补位位模式写：asUintN /
-            // >>> 0 取模保真，否则 x64 传负 setBigUint64 直接 RangeError。
-            if (PTR_SIZE === 8) dv.setBigUint64(off, BigInt.asUintN(64, BigInt(v)), true)
-            else dv.setUint32(off, v >>> 0, true)
+            // 读回的负值（LRESULT/句柄）再作参数回传时按二补位位模式写：setBigUint64 /
+            // setUint32 内部即 ToBigUint64 / ToUint32，-1n 与负 number 都自然取模成全 1。
+            // QuickJS 的 setBigUint64 只收 BigInt（传 number 会 TypeError），故仍需 BigInt(v)。
+            if (PTR_SIZE === 8) dv.setBigUint64(off, BigInt(v), true)
+            else dv.setUint32(off, v, true)
             break
         }
     }
@@ -351,7 +355,7 @@ export function writeScalar(dv: DataView, off: number, { k, v }: Entry): void {
 export function writeSlot(dv: DataView, off: number, e: Entry): void {
     const { k, v } = e
     if (k === 'u8' || k === 'i8' || k === 'u16' || k === 'i16') {
-        dv.setUint32(off, Number(v) >>> 0, true)
+        dv.setUint32(off, v, true)
         return
     }
     writeScalar(dv, off, e)
