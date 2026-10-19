@@ -23,7 +23,6 @@
     "lib/",
     "quickwin.d.ts",
     "constants.ts",
-    "enum_map.d.ts",
     "tsconfig.json",
     "README.md",
     "README.en.md"

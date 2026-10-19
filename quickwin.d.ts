@@ -1,4 +1,4 @@
-﻿/// <reference path="enum_map.d.ts" />
+﻿/// <reference path="constants.ts" />
 interface ImportMeta {
     url: string
 }
