@@ -2,7 +2,7 @@ import { createServer } from '../../lib/http-server.js'
 import * as os from 'os'
 import * as std from 'std'
 import { RequestLog, type LogEntry } from '../../lib/exec-log.js'
-import { createRoot, ListBox } from '../../lib/react-qw/index.js'
+import { Button, createRoot, ListBox, Tab } from '../../lib/react-qw/index.js'
 import { useEffect, useState } from 'react'
 import { closure, WCHAR } from '../../lib/ffi/bind.js'
 import { NULL, type Ptr, PtrArrayBuffer } from '../../lib/ffi/ctype.js'
@@ -62,10 +62,21 @@ const cfg = parseArgs()
 // ── GUI 日志状态 ──
 
 const log = new RequestLog(100)
-let activeWorkers = 0
 let boundPort = 0
 
-type GuiUpdater = (lines: string[], info: string) => void
+// 运行中的 worker 登记表（GUI「Worker(n)」页的数据源）：/exec 每请求一条。
+// 登记对象就地更新 pid；投给 GUI 前的快照再浅拷贝一次，React 才看得到新数组。
+interface WorkerRow {
+    id: number
+    cmd: string
+    pid: number | null
+    startedAt: number
+    kill: () => void
+}
+const workers = new Map<number, WorkerRow>()
+let nextWorkerId = 1
+
+type GuiUpdater = (lines: string[], info: string, rows: WorkerRow[]) => void
 let guiUpdater: GuiUpdater | null = null
 let guiTimer: ReturnType<typeof os.setTimeout> | null = null
 
@@ -91,7 +102,7 @@ function formatLine(e: LogEntry): string {
 }
 
 function formatInfo(): string {
-    return 'token: ' + (cfg.token !== null ? 'on' : 'off') + ' · port: ' + (boundPort || 8080) + ' · workers: ' + activeWorkers
+    return 'token: ' + (cfg.token !== null ? 'on' : 'off') + ' · port: ' + (boundPort || 8080) + ' · workers: ' + workers.size
 }
 
 // GUI 重渲必须离开 HTTP / worker 回调栈：react-qw 的 reconciler 是同步 flush，
@@ -102,7 +113,7 @@ function refreshGui(): void {
     guiTimer = os.setTimeout(() => {
         guiTimer = null
         const u = guiUpdater
-        if (u) u(log.list().map(formatLine), formatInfo())
+        if (u) u(log.list().map(formatLine), formatInfo(), [...workers.values()].map((w) => ({ ...w })))
     }, 0)
 }
 
@@ -114,11 +125,6 @@ function appendLog(e: LogEntry): void {
 // 路由统一记日志（收敛各路由手写的 ts/durMs 样板）；exit 只在 /exec 完成时非 null
 function logReq(t0: number, cmd: string, status: number, note?: string, exit: number | null = null): void {
     appendLog({ ts: Date.now() / 1000, cmd, status, exit, durMs: Date.now() - t0, note })
-}
-
-function bumpWorkers(d: number): void {
-    activeWorkers += d
-    refreshGui()
 }
 
 function initGui(): void {
@@ -140,17 +146,54 @@ function initGui(): void {
 function LogPanel() {
     const [lines, setLines] = useState<string[]>([])
     const [info, setInfo] = useState<string>(formatInfo())
+    const [rows, setRows] = useState<WorkerRow[]>([])
 
     useEffect(() => {
-        guiUpdater = (l, i) => { setLines(l); setInfo(i) }
+        guiUpdater = (l, i, w) => { setLines(l); setInfo(i); setRows(w) }
         setLines(log.list().map(formatLine))
         setInfo(formatInfo())
+        setRows([...workers.values()])
     }, [])
 
     return (
         <w type="STATIC" ws={WindowStyle.VISIBLE} style={{ flexDirection: 'column', gap: 4, flexGrow: 1 }}>
             <w type="STATIC" ws={WindowStyle.VISIBLE} text={info} style={{ height: 24 }} />
-            <ListBox items={lines} scrollToBottom style={{ flexGrow: 1 }} />
+            <Tab
+                defaultSelectedIndex={0}
+                style={{ flexGrow: 1 }}
+                tabs={[
+                    {
+                        title: '日志',
+                        content: (
+                            <w type="STATIC" ws={WindowStyle.VISIBLE | WindowStyle.CLIPCHILDREN}
+                                style={{ flexDirection: 'column', flexGrow: 1 }}>
+                                <ListBox items={lines} scrollToBottom style={{ flexGrow: 1 }} />
+                            </w>
+                        ),
+                    },
+                    {
+                        title: 'Worker(' + rows.length + ')',
+                        content: (
+                            <w type="STATIC" ws={WindowStyle.VISIBLE | WindowStyle.CLIPCHILDREN}
+                                style={{ flexDirection: 'column', gap: 4, flexGrow: 1 }}>
+                                {rows.length === 0
+                                    ? <w type="STATIC" ws={WindowStyle.VISIBLE}
+                                        text="没有正在运行的 Worker" style={{ height: 24 }} />
+                                    : rows.map((r) => (
+                                        <w key={r.id} type="STATIC" ws={WindowStyle.VISIBLE}
+                                            style={{ flexDirection: 'row', gap: 6, height: 28 }}>
+                                            <w type="STATIC" ws={WindowStyle.VISIBLE}
+                                                text={fmtTime(r.startedAt / 1000) + ' · ' +
+                                                    (r.pid === null ? 'pid …' : 'pid ' + r.pid) + ' · ' + r.cmd}
+                                                style={{ flexGrow: 1, height: 28 }} />
+                                            <Button onClick={r.kill} style={{ width: 64, height: 28 }}>停止</Button>
+                                        </w>
+                                    ))}
+                            </w>
+                        ),
+                    },
+                ]}
+            />
         </w>
     )
 }
@@ -170,11 +213,12 @@ function runInWorker(cmd: string, signal: AbortSignal | null, timeoutMs: number 
     // 子进程树由 CreateProcessW 返回的 pid 定位，超时/断开时 taskkill /T 递归杀掉。
     const spawnCmd = cmd
     const worker = new os.Worker(WORKER_DATA_URL)
-    bumpWorkers(1)
-    const id = 1
+    // id 兼作 worker 消息 id 与 GUI 行 id（原先是恒为 1 的常量，单请求内自洽）
+    const id = nextWorkerId++
     let innerPid: number | null = null
     let settled = false
     let readySettled = false
+    let stopRequested = false
     let controller: ReadableStreamDefaultController<Uint8Array> | null = null
     let timer: ReturnType<typeof os.setTimeout> | null = null
 
@@ -201,12 +245,15 @@ function runInWorker(cmd: string, signal: AbortSignal | null, timeoutMs: number 
         settled = true
         if (timer !== null) os.clearTimeout(timer)
         worker.onmessage = null
-        bumpWorkers(-1)
+        workers.delete(id)
+        refreshGui()
         fn()
     }
 
     // kill 整棵树：CreateProcessW 返回的 pid 即 cmd.exe 根，taskkill /T 递归。
     // 杀掉后 worker 侧 ReadFile 断管道自动收尾。
+    // 注意 taskkill 收不干净"父进程先退出"的情形（如 `cmd /c start /b ...`：pid 早已消失、
+    // 后代逃逸，停止后进程还活着、/exec 响应也一直挂着）；要彻底收树得用 Job Object，见 .agents/TODO.md。
     const kill = (): void => {
         if (innerPid === null) return
         try {
@@ -225,6 +272,13 @@ function runInWorker(cmd: string, signal: AbortSignal | null, timeoutMs: number 
         signal.addEventListener('abort', killOnAbort)
         if (signal.aborted) killOnAbort()
     }
+
+    // 登记 GUI「Worker(n)」页的一行；pid 尚未回报时点停止只置标记，等 'info' 到了补杀。
+    workers.set(id, {
+        id, cmd: spawnCmd, pid: null, startedAt: Date.now(),
+        kill: (): void => { stopRequested = true; kill() },
+    })
+    refreshGui()
 
     if (timeoutMs != null && timeoutMs > 0) {
         timer = os.setTimeout(() => {
@@ -246,10 +300,14 @@ function runInWorker(cmd: string, signal: AbortSignal | null, timeoutMs: number 
         const msg = e.data as { type: string; id?: number; chunk?: Uint8Array; code?: number; pid?: number; error?: string | null }
         if (msg.id !== undefined && msg.id !== id) return
         switch (msg.type) {
-            case 'info':
+            case 'info': {
                 innerPid = msg.pid ?? null
-                if (innerPid !== null && signal?.aborted) kill()
+                const row = workers.get(id)
+                if (row) row.pid = innerPid
+                if (innerPid !== null && (signal?.aborted || stopRequested)) kill()
+                refreshGui()
                 break
+            }
             case 'data':
                 settleReady({ ok: true })
                 if (controller) controller.enqueue(msg.chunk as Uint8Array)
