@@ -4,7 +4,7 @@
 
 **ABI 只按字节数（宽度）分类参数/返回值；"符号"只是读回时如何解释同一组位。所有符号相关的差异只存在于返回值 read-back 方向。**
 
-对应代码：`lib/ffi/bind.ts`（`ARG_SIZE` 槽宽表、`writeSlot` 打包、`readRet` 读回、kind 与 `'ptr'` 归一、签名 DSL）、`src/quickjs-ffi.c`（`ffiCall` 只做「搬运 + call + 取原始返回」）、`test/test_ffi_bind.ts` + `test/test_ffi_abi.ts`（signedness/边界回归锚点）。
+对应代码：`lib/ffi/bind.ts`（`IA32_ARG_SIZE` 槽宽表、bind 期定型的 `SlotWriter` 打包 / `RET_READER` 读回、kind 与 `'ptr'` 归一、签名 DSL；每调开销的实测归因见 `.agents/FFI_PERF.md`）、`src/quickjs-ffi.c`（`ffiCall` 只做「搬运 + call + 取原始返回」）、`test/test_ffi_bind.ts` + `test/test_ffi_abi.ts`（signedness/边界回归锚点）。
 
 ## 1. 传参方向：只关心宽度，符号无关
 
@@ -89,7 +89,17 @@ QEMU 回归：`docker/http_test.sh <xp|win11> ffi` 应全过（win11 = x64、xp 
 
 ## 4. 不变式 checklist（防止回归）
 
-- [ ] `retBuf` 恒 8 字节且 `new ArrayBuffer(8)` 零初始化——无符号/ptr 读回正确性依赖零初始化
+- [ ] `retBuf` 恒 8 字节、零初始化：现为全部 bind 共用一个缓冲（`bind.ts` 的 `RET_DV`）。
+      桩每调写满 8 字节（ia32 的 EDX 对窄返回是垃圾，读回按声明宽度取低位），零初始化只兜住
+      桩未覆盖的字节
+- [ ] 返回槽的「桩写 → JS 读」之间不得插入用户代码：桩在 `call` **之后**才写 `out`，JS 在
+      `ffiCall` 返回后立刻由 `RET_READER` 读（`decode` 必须在 `raw` 取出之后）。这条是共用
+      返回槽正确性的全部依据
+- [ ] 参数帧按签名分配一次后复用、**不逐调清零**：前提是每个槽写器每调写入的字节区间恒定
+      （新增写器不得条件性少写）；首分配的零填充覆盖 0 参补齐槽、窄参数占的 8 字节槽高位、
+      ia32 结构体对齐填充
+- [ ] 写槽期间不得跑回调：参数帧复用不覆盖"自定义 codec 的 `encode` 回调已 bind 函数"这种
+      重入（会在本层 `ffiCall` 前抹掉已写槽）——见 `bind()` 的 codec 契约
 - [ ] 窄/无符号参数按宽传安全，但**指针宽必须用 `'<>ptr'`**（内部 kind `'ptr'`），勿手选 `u32/u64`
 - [ ] 有符号返回 `readRet` 必须按声明宽度符号扩展
 - [ ] f32/f64 在 64 位寄存器 ABI 必须区分（不能并入整数宽度）

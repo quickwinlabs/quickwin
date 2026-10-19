@@ -121,7 +121,8 @@ function makeFn(proc: Ptr<'FARPROC'>, sig: string, encoders: CodecMap, decoders:
             throw new Error(`ffi-bind: ${sig}: by-value position <${name}> requires a struct ` +
                 `layout with size >= 1 (got ${codec.size}; non-struct codecs expose no size)`)
     }
-    return (...a: unknown[]) => callPacked(proc, ps, a, encoders, decoders)
+    const plan = buildPlan(ps, encoders, decoders)
+    return (...a: unknown[]) => callPlan(proc, plan, a)
 }
 
 // 每个参数在 argFrame 里占的字节数。与 src/quickjs-ffi-type.h 的 qwin_ffi_arg_size[]
@@ -134,151 +135,233 @@ const IA32_ARG_SIZE: Record<C_BasicType_No_Void, number> = {
 }
 // x64 桩无条件双读 slots[0..3]，故 argFrame 至少 4 个槽（32 字节）
 const X64_MIN_SLOTS = 4
+// os.arch 是编译期的进程指针宽度（见 worker.ts 同款说明），全程恒定：提到模块级，
+// 别在每调路径上读属性。
+const IS64 = os.arch === 'x64'
+// 指针槽按二补位位模式写（读回的负值再回传时保真）：setBigUint64/setUint32 内部即
+// ToBigUint64/ToUint32，负值自然取模成全 1；QuickJS 只收 BigInt，故 x64 仍需 BigInt(v)。
+// 宽度分支在模块加载时就定死，call 期零判断。
+const writePtr = PTR_SIZE === 8
+    ? (dv: DataView, off: number, v: number): void => { dv.setBigUint64(off, BigInt(v), true) }
+    : (dv: DataView, off: number, v: number): void => { dv.setUint32(off, v, true) }
+// 返回槽读法：与 ctype.readScalar 的对应分支逐条等价，但按类型定型到闭包——readScalar
+// 每次调用要走 token 字符串 switch，实测 ~0.5μs/call，是 0 参调用里最大的一笔。
+// 指针位有符号读（对齐 C 版 JS_NewInt64）：-1 哨兵等负值保真。
+const RET_READER: Record<C_BasicType_No_Void, (dv: DataView) => number | bigint> = {
+    u8: dv => dv.getUint8(0),
+    i8: dv => dv.getInt8(0),
+    u16: dv => dv.getUint16(0, true),
+    i16: dv => dv.getInt16(0, true),
+    u32: dv => dv.getUint32(0, true),
+    i32: dv => dv.getInt32(0, true),
+    u64: dv => dv.getBigUint64(0, true),
+    i64: dv => dv.getBigInt64(0, true),
+    f32: dv => dv.getFloat32(0, true),
+    f64: dv => dv.getFloat64(0, true),
+    ptr: PTR_SIZE === 8 ? dv => Number(dv.getBigInt64(0, true)) : dv => dv.getInt32(0, true),
+}
 
-function callPacked(proc: Ptr<'FARPROC'>, { argTokens, retToken, sig }: ParsedSig, args: any[], encoders: CodecMap, decoders: CodecMap): unknown {
-    const is64 = os.arch === 'x64'
+/** 返回槽：所有 bind 出来的函数共用一个 8 字节缓冲。不变量：两个桩都在 call **之后**
+ *  才写 out，而 JS 在 ffiCall 返回后立刻由 RET_READER 读出——中间不得插入任何用户代码
+ *  （decode 必须在 raw 取出之后）。故 native 期间的回调重入即使写了同一块缓冲，外层读到的
+ *  仍是本层自己的返回值（每一层自己的桩写都是该层读到前的最后一次写）。 */
+const RET_DV = new DataView(new ArrayBuffer(8))
 
-    const getWidth = (t: C_BasicType_Token_No_Void, is64: boolean): number => {
-        // 按值形由 widthOf 分派（槽宽依赖布局 size），此处只认标量/指针档；守卫同时
-        // 收窄类型（IA32_ARG_SIZE 索引不认 val 形）。
-        if (isCValToken(t))
-            throw new Error(`ffi-bind: getWidth: by-value token "${t}" (dispatched by widthOf)`)
-        if (is64) return 8
-        if (isCPtrToken(t)) return PTR_SIZE
-        return IA32_ARG_SIZE[t]
+/** 绑定期类型分派的结果：每调只做「取值 + 写槽（必要时先编码）」。返回需存活到本次
+ *  调用结束的临时 buffer（codec 编码结果 / x64 按值引用副本），无则直接落到底（隐式 undefined）。
+ *  dv 恒为覆盖整个 argFrame 的视图——写器要往帧里铺字节（按值 struct）就近取 dv.buffer。 */
+type SlotWriter = (dv: DataView<ArrayBuffer>, arg: any) => ArrayBuffer | undefined
+
+/** 一次 bind() 的固定调用计划。原先这些判定散在 callPacked 的每调路径上：getWidth/widthOf
+ *  每调新建闭包、token 正则每调重跑、writeSlot 每参一个对象字面量 + switch、os.arch 每调读
+ *  ——实测 ~19μs/call 的成本主要就在这里（对照 raw 直调地板 0.68μs）。 */
+type CallPlan = {
+    total: number
+    slots: SlotWriter[]
+    retIsFp: boolean
+    read: () => unknown
+    /** 参数帧：首调分配后复用（帧 = `dv.buffer`，长度恰为 total，C 侧 af_size 自动正确）。
+     *  签名固定 ⇒ 每个槽写器每调写入的字节区间恒定，故首分配的零填充——0 参时补齐槽、
+     *  u8/u16/u32 占的 8 字节槽高位、ia32 结构体的 ALIGN(size,4) 填充——永不被踩，
+     *  无需逐调清零。两个桩都在进入 native 前就把帧拷走（x64 装载寄存器/栈、ia32 rep movsb），
+     *  故 native 期间的回调重入覆盖帧也无害（但见 bind() 的 codec 契约，那道窗口不覆盖写槽期）。 */
+    dv: DataView<ArrayBuffer> | null
+}
+
+// 标量/指针标量槽写器按 token 定型（bind 期分派完，call 期只剩一次 DataView 写）。
+// 32 位槽不显式 `>>> 0` / `Number()`：setUint32 内部即 ToUint32/ToNumber，逐位等价。
+function mkScalarWriter(tok: C_BasicType_No_Void, off: number): SlotWriter {
+    switch (tok) {
+        // 所有 ≤4 字节槽一次 setUint32：小整数按 int 提升写（i8 = -1 必须给 0xFFFFFFFF），
+        // u32/i32 槽宽本就是 4 字节——ToUint32 取模让两种情形写法一致，合并成一档。
+        case 'u8': case 'i8': case 'u16': case 'i16': case 'u32': case 'i32':
+            return (dv, v) => { dv.setUint32(off, v, true) }
+        case 'u64':
+            return (dv, v) => { dv.setBigUint64(off, v, true) }
+        case 'i64':
+            return (dv, v) => { dv.setBigInt64(off, v, true) }
+        case 'f32':
+            return (dv, v) => { dv.setFloat32(off, v, true) }
+        case 'f64':
+            return (dv, v) => { dv.setFloat64(off, v, true) }
+        // 指针标量槽只收 number（NULL 品牌零也是 number）：类型层已排除 null/undefined，
+        // 这里不再运行时校验；带布局的 <N>ptr 走 mkPtrWriter，那边仍 fail-loud。
+        case 'ptr':
+            return (dv, v) => { writePtr(dv, off, v) }
     }
+}
 
-    // 按值位的槽宽：x64 恒 8 字节（尺寸 ∈{1,2,4,8} 按「同尺寸整数」进槽，其余尺寸进
-    // 槽的是指向临时副本的指针）；ia32 = ALIGN(size, 4) —— 结构字节原样压栈，无按
-    // 引用一说（libffi ffi.c 的 ia32 分支同规则，桩只做一次 rep movsb 搬运）。
-    const widthOf = (t: C_BasicType_Token_No_Void): number => {
-        if (isCValToken(t)) {
-            if (is64) return 8
-            const layout = valCodec(valName(t), encoders)
-            // 绑定期 makeFn 已校验（存在 + size >= 1）；此处兜动态/无类型路径。
-            if (!layout)
-                throw new Error(`ffi-bind: <${valName(t)}> by-value position has no registered layout`)
-            const size = layout.size
-            return size % 4 === 0 ? size : size + 4 - (size % 4)
+// 指针位写器：number（裸地址 / NULL 品牌零 / 品牌指针）直通不重编码，其余交 codec 编码。
+// 布局存在性保持「懒校验」——未注册布局的 <NOPE>ptr 只在真正调用时 throw，bind 期不炸。
+function mkPtrWriter(
+    name: string, codec: CodecMap[string] | undefined, nonnull: boolean,
+    sig: string, at: string, off: number, encoders: CodecMap,
+): SlotWriter {
+    const encode = codec?.encode
+    return (dv, arg) => {
+        if (typeof arg === 'number') {
+            if (nonnull && arg === 0)
+                throw new Error(`ffi-bind: ${sig}: ${at} <${name}>ptr! got 0 ` +
+                    `(null pointer forbidden here; the token marks this position non-null)`)
+            writePtr(dv, off, arg)
+            return   // number（裸地址 / NULL / 品牌指针）直通，不进下面的 codec 分支
         }
-        // val 形已在上分支 return，此处恒为标量/指针形（类型层收窄，见 C_BasicType_Token）。
-        return getWidth(t, is64)
+        if (arg === null || arg === undefined) {
+            // JS null/undefined 不是指针词汇（空位只写 NULL）——fail-loud，不静默当 0。
+            throw new Error(`ffi-bind: <${name}>ptr got ${String(arg)}; ` +
+                `pass the imported NULL constant for an empty pointer`)
+        }
+        if (!codec) {
+            // 未知布局落到这：只收 NULL / 有效地址 / codec 值，不静默当 0。
+            throw new Error(name === ''
+                ? `ffi-bind: <>ptr expects number (NULL | Ptr), got ${typeof arg}; use <BYTE>ptr with a PtrArrayBuffer (new PtrArrayBuffer(n)), or ffi.bufferPtr(buf) for an address`
+                : `ffi-bind: unknown layout "<${name}>ptr" (available: ${Object.keys(encoders).join(', ') || 'none'})`)
+        }
+        if (!encode)
+            throw new Error(`ffi-bind: <${name}>ptr has no encoder (out-only codec)`)
+        const buf = encode(arg) as PtrArrayBuffer<any>
+        // 类型层已保证 encode 返回 PtrArrayBuffer；这里再 fail-loud 兜一层
+        // （动态传入的无类型 codec 仍可能违反），然后直接取 .ptr——不再重算。
+        const p = buf.ptr
+        if (typeof p !== 'number')
+            throw new Error('ffi-bind: codec.encode must return a PtrArrayBuffer, got plain ArrayBuffer')
+        if (nonnull && p === 0)
+            throw new Error(`ffi-bind: ${sig}: ${at} <${name}>ptr! encode produced 0 ` +
+                `(null pointer forbidden here)`)
+        writePtr(dv, off, p)
+        return buf
     }
+}
 
-    let total = 0
-    for (const t of argTokens) total += widthOf(t)
-    if (is64 && argTokens.length < X64_MIN_SLOTS) total = X64_MIN_SLOTS * 8
+// 按值位写器：x64 尺寸 ∈{1,2,4,8} 按「同尺寸整数」落槽（字节在槽低位，callee 右对齐读；
+// 帧首分配即零填充，槽高位无歧义——复用帧同样成立，写器每调写入的区间恒定），
+// 其余尺寸按引用传 caller 分配的对齐临时副本；ia32 结构字节原样压栈（任意尺寸）。
+// 布局与尺寸已由 makeFn 在 bind 期校验。
+function mkValWriter(name: string, codec: StructValCodec, size: number, off: number): SlotWriter {
+    const encode = codec.encode!
+    const badArg = (arg: any): never => {
+        throw new Error(`ffi-bind: <${name}> value position got ${String(arg)}; ` +
+            `pass a struct object (use <${name}>ptr to pass a pointer)`)
+    }
+    if (!IS64 || (size <= 8 && (size & (size - 1)) === 0))
+        // 帧由 dv 反查（SlotWriter 不再单传 frame）：若将来 argFrame 走池化子视图，
+        // 这里要像 struct.ts 的字节访问那样补上 dv.byteOffset。
+        return (dv, arg) => {
+            if (arg === null || arg === undefined) badArg(arg)
+            encode(arg, dv.buffer, off)
+        }
+    return (dv, arg) => {
+        if (arg === null || arg === undefined) badArg(arg)
+        // 16 字节对齐自算（不依赖分配器的对齐保证）；返回值让调用方 held 到最后
+        const buf = new ArrayBuffer(size + 15)
+        const base = ffi.bufferPtr(buf)
+        const pad = (16 - (base % 16)) % 16
+        encode(arg, buf, pad)
+        writePtr(dv, off, base + pad)
+        return buf
+    }
+}
 
-    const argFrame = new ArrayBuffer(total)
-    const dv = new DataView(argFrame)
-    const held: ArrayBuffer[] = []  // 指针布局编码缓冲需存活到调用结束
-
+// bind 期算一次：槽偏移/写器/返回读法全部固化，call 期只剩搬运。
+function buildPlan(ps: ParsedSig, encoders: CodecMap, decoders: CodecMap): CallPlan {
+    const { argTokens, retToken, sig } = ps
+    const slots: SlotWriter[] = []
     let off = 0
-
     for (let i = 0; i < argTokens.length; i++) {
         const argToken = argTokens[i]!
-        const nonnull = argToken.endsWith('!')   // '!' 留在 token 尾缀上，此处按尾缀执法
-        const arg = args[i]
+        const at = 'arg#' + String(i + 1)
         if (isCPtrToken(argToken)) {
+            // '!' 留在 token 尾缀上（运行时要执法的语义跟着 token 走，无独立 flag）
             const name = ptrName(argToken)   // '' = <>ptr 裸地址档
-            if (typeof arg === 'number') {
-                // 裸地址 / NULL / 品牌指针（都是 number）透传，不重编码。
-                // 合法值形态由类型层约束（MaybePtr | codec 形，如 <BYTE>ptr 另收 ArrayBuffer）。
-                if (nonnull && arg === 0)
-                    throw new Error(`ffi-bind: ${sig}: arg#${i + 1} <${name}>ptr! got 0 ` +
-                        `(null pointer forbidden here; the token marks this position non-null)`)
-                writeSlot(dv, off, { k: 'ptr', v: arg })
-            } else {
-                if (arg === null || arg === undefined) {
-                    // JS null/undefined 不是指针词汇（空位只写 NULL）——fail-loud，不静默当 0。
-                    throw new Error(`ffi-bind: <${name}>ptr got ${String(arg)}; ` +
-                        `pass the imported NULL constant for an empty pointer`)
-                }
-                const codec = encoders[name]
-                if (!codec) {
-                    // 未知布局落到这：只收 NULL / 有效地址 / codec 值，不静默当 0。
-                    throw new Error(name === ''
-                        ? `ffi-bind: <>ptr expects number (NULL | Ptr), got ${typeof arg}; use <BYTE>ptr with a PtrArrayBuffer (new PtrArrayBuffer(n)), or ffi.bufferPtr(buf) for an address`
-                        : `ffi-bind: unknown layout "<${name}>ptr" (available: ${Object.keys(encoders).join(', ') || 'none'})`)
-                }
-                if (!codec.encode) {
-                    // codec 存在但只声明了 decode/alloc（只读出），入参位无序列化可用。
-                    throw new Error(`ffi-bind: <${name}>ptr has no encoder (out-only codec)`)
-                }
-                const buf = codec.encode(arg)
-                held.push(buf)
-                // 类型层已保证 encode 返回 PtrArrayBuffer；这里再 fail-loud 兜一层
-                // （动态传入的无类型 codec 仍可能违反），然后直接取 .ptr——不再重算。
-                const p = (buf as PtrArrayBuffer<any>).ptr
-                if (typeof p !== 'number')
-                    throw new Error('ffi-bind: codec.encode must return a PtrArrayBuffer, got plain ArrayBuffer')
-                if (nonnull && p === 0)
-                    throw new Error(`ffi-bind: ${sig}: arg#${i + 1} <${name}>ptr! encode produced 0 ` +
-                        `(null pointer forbidden here)`)
-                writeSlot(dv, off, { k: 'ptr', v: p })
-            }
+            slots.push(mkPtrWriter(name, encoders[name], argToken.endsWith('!'), sig, at, off, encoders))
+            off += IS64 ? 8 : PTR_SIZE
+            continue
         }
-        else if (isCValToken(argToken)) {
-            // 按值位：对象直传（值域由注册布局推导），无地址词汇 —— NULL / number
-            // 进这里是必然错位（引擎按值语义，指针位请写 <N>ptr），fail-loud。
+        if (isCValToken(argToken)) {
             const name = valName(argToken)
-            const codec = valCodec(name, encoders)
-            if (!codec)
-                throw new Error(`ffi-bind: ${sig}: arg#${i + 1} <${name}> by-value position ` +
-                    `has no registered layout`)
-            if (arg === null || arg === undefined)
-                throw new Error(`ffi-bind: <${name}> value position got ${String(arg)}; ` +
-                    `pass a struct object (use <${name}>ptr to pass a pointer)`)
+            // makeFn 已校验：布局存在、是结构（有 size）且 size >= 1
+            const codec = valCodec(name, encoders)!
             const size = codec.size
-            if (!is64 || (size <= 8 && (size & (size - 1)) === 0)) {
-                // 字节直接落槽：ia32 结构按值压栈（任意尺寸）；x64 尺寸 ∈{1,2,4,8}
-                // 按「同尺寸整数」传值——字节在 8 字节槽低位，callee 右对齐读。
-                // argFrame 构造时即零填充，槽高位为 0（callee 忽略高位，无歧义）。
-                codec.encode(arg, argFrame, off)
-            } else {
-                // x64 其余尺寸（>8 或非 2 的幂）按引用：槽放指针，指向 caller 分配的
-                // 16 字节对齐临时副本（MS x64 官方规则：单参数永不跨多个寄存器；对齐
-                // 偏移自算，不依赖分配器的对齐保证）。held 保持引用直到调用返回。
-                const buf = new ArrayBuffer(size + 15)
-                const base = ffi.bufferPtr(buf)
-                const pad = (16 - (base % 16)) % 16
-                codec.encode(arg, buf, pad)
-                held.push(buf)
-                writeSlot(dv, off, { k: 'ptr', v: base + pad })
-            }
+            slots.push(mkValWriter(name, codec, size, off))
+            // ia32 = ALIGN(size, 4)：结构字节原样压栈（libffi ffi.c 的 ia32 分支同规则）
+            off += IS64 ? 8 : (size % 4 === 0 ? size : size + 4 - (size % 4))
+            continue
         }
-        else {
-            writeSlot(dv, off, { k: argToken, v: arg })
-        }
-        off += widthOf(argToken)
+        slots.push(mkScalarWriter(argToken, off))
+        off += IS64 ? 8 : IA32_ARG_SIZE[argToken]
     }
+    // x64 头 4 槽恒被桩读取，帧不足 4 槽时补零到 32 字节
+    const total = IS64 && argTokens.length < X64_MIN_SLOTS ? X64_MIN_SLOTS * 8 : off
 
-    const retBuf = new ArrayBuffer(8)
+    const ret = cTokenToType(retToken)   // 按值形返回已在 parseSig 拒掉
     const retIsFp = retToken === 'f32' || retToken === 'f64'
-    ffi.ffiCall(proc, argFrame, retBuf, retIsFp ? 1 : 0)
-    const raw = readRet(cTokenToType(retToken), retBuf)
-    // 返回位 '!' = 「C 保证非零」的作者担保，标错由这里当场 throw 兜底（显式崩溃而非静默流窜）。
-    if (retToken.endsWith('!') && raw === 0)
-        throw new Error(`ffi-bind: ${sig}: return ${retToken} got 0 ` +
-            `(the token promises C never returns null here)`)
-    // 返回位自动解码：品牌指针且该键声明了 decode → 交还 JS 值；
-    // 空指针 0 恒原样返回（无可读内容，不进 decode），裸 <>ptr / 无 decode 的键原样返回。
-    if (isCPtrToken(retToken) && raw !== 0) {
+    // 返回位 '!' = 「C 保证非零」的作者担保，标错由这里当场 throw 兜底（显式崩溃而非静默流窜）
+    const zeroMsg = retToken.endsWith('!')
+        ? `ffi-bind: ${sig}: return ${retToken} got 0 (the token promises C never returns null here)`
+        : null
+    // 返回位自动解码：品牌指针且该键声明了 decode → 交还 JS 值；空指针 0 / 裸 <>ptr /
+    // 无 decode 的键原样返回。
+    let decode: ((raw: number) => unknown) | null = null
+    if (isCPtrToken(retToken)) {
         const name = ptrName(retToken)
-        if (name !== '') {
-            const codec = decoders[name]
-            if (codec?.decode) return codec.decode(raw)
+        const dec = name !== '' ? decoders[name]?.decode : undefined
+        if (dec) decode = (raw: number) => dec(raw)
+    }
+    const read = ret === 'void'
+        ? (): unknown => undefined
+        : (): unknown => {
+            // 返槽读法按类型定型（RET_READER），不再走 readScalar 的 token 字符串 switch
+            const raw = RET_READER[ret](RET_DV)
+            if (zeroMsg !== null && raw === 0) throw new Error(zeroMsg)
+            if (decode !== null && raw !== 0) return decode(raw as number)
+            return raw
+        }
+
+    return { total, slots, retIsFp, read, dv: null }
+}
+
+function callPlan(proc: Ptr<'FARPROC'>, plan: CallPlan, args: any[]): unknown {
+    const slots = plan.slots
+    const n = slots.length
+    // 参数帧复用（见 CallPlan.dv）：首调分配，其后原样重用——写入区间恒定，无需清零。
+    let dv = plan.dv
+    if (dv === null) {
+        dv = new DataView(new ArrayBuffer(plan.total))
+        plan.dv = dv
+    }
+    // codec 编码缓冲要活到 read 之后（decode 可能顺着回传的指针读调用方缓冲）：靠这个
+    // 局部变量存活，返回即不可达、交 GC 回收。原先恒分配空数组，无编码参数时这次省掉。
+    let held: ArrayBuffer[] | null = null
+    for (let i = 0; i < n; i++) {
+        const h = slots[i]!(dv, args[i])
+        if (h !== undefined) {
+            if (held === null) held = [h]
+            else held.push(h)
         }
     }
-    return raw
+    ffi.ffiCall(proc, dv.buffer, RET_DV.buffer, plan.retIsFp ? 1 : 0)
+    return plan.read()
 }
-
-// 把标量参数写进 argFrame 槽位。ptr 为裸地址直通；引用型参数见 writePtrSlot。
-function readRet(ret: C_BasicType, retBuf: ArrayBuffer): unknown {
-    if (ret === 'void') return undefined
-    return readScalar(new DataView(retBuf), 0, ret)
-}
-
 type ParseArgStr<S extends string, L, Acc extends unknown[] = []> =
     S extends `${infer F} ${infer R}`
     ? ParseArgStr<R, L, [...Acc, ArgJsTypeOfToken<F, L>]>
@@ -377,7 +460,13 @@ const builtinCodecs: CodecMap = { WCHAR, BYTE }
  *  encoders 喂入参位（encode 值域 → 形参类型），decoders 喂返回位（decode 值域
  *  → 返回 V | null，替代 Ptr | null）。decoders 缺省时回退到 encoders——双向 codec
  *  只需传一次（与运行时 `decoders ?? encoders` 同构：都只在实参缺省时生效，
- *  显式传空对象不 fallback）。内建 WCHAR/BYTE 无条件参与两张表。 */
+ *  显式传空对象不 fallback）。内建 WCHAR/BYTE 无条件参与两张表。
+ *
+ *  codec 契约（参数帧复用的前提，调用方须遵守）：
+ *   1. encode/decode 内不得回调任何已 bind 的函数。参数帧按签名只分配一次并逐调复用，
+ *      回调重入发生在本层 ffiCall 之前，会把本层已写好的槽抹掉（静默错参）。
+ *   2. encode(v, buf, off) 必须写满槽宽：少写会残留上一调的字节。
+ *  输入校验/转码若需要调 Win32 API，请在调用 bind 出的函数**之前**做。 */
 export function bind<const S extends string,
     const LE extends CodecMap = {},
     const LD extends CodecMap = LE>(
