@@ -282,6 +282,7 @@ qwin.exe [options]                # 无参数时加载 main.js 或内嵌 JS
 
 1. 在 `tools/gen_const.c` `print_enums()` 添加 `DEC(TS_NAME, SDK_MACRO)` 行
 2. `make gen-const` 交叉编译 `_build/gen_const.exe`，在 Windows/VM 里运行该 exe 重新生成 `constants.ts`（真实 .ts 平铺单文件，tsc/esbuild 均可内联；enum 名全局唯一，改名前先全局搜）
+   - 文件末尾的 `EnumMap` 预填段（`declare global`，token 标注 `'u32@Name'` 的值域表）也由该 exe 同批输出（`ENUM()` 宏记录枚举名 + `print_enum_map()`），无需后处理；增删枚举后重跑本步即可
 3. 在 TS 代码中通过 `gui.EnumName.MEMBER` 使用
 
 ## 排错索引

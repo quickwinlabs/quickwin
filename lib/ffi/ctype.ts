@@ -204,7 +204,8 @@ export type TokenArgJsTypeMap = C_TypeJsTypeMap
 export type TokenReturnJsTypeMap = C_TypeJsTypeMap & { void: void }
 
 /** token 枚举标注（'u32@Name' / '<>ptr@Name'）的值域表 —— 全局 interface 声明合并：
- *  预填由 tools/gen_enum_map.sh 从 quickwin_const.d.ts 提取（quickwin_enum_map.d.ts），
+ *  预填由 tools/gen_const.c 生成、与 enum 定义同批输出（constants.ts 末尾的 declare global
+ *  段，由本仓声明入口 quickwin.d.ts 顶部的 /// <reference path="constants.ts" /> 带进程序），
  *  用户在自己的 .d.ts 里直接扩展（interface EnumMap { MyEnum: import('...').MyEnum }）——
  *  勿用 declare module：用户 import specifier 形态五花八门，模块匹配不上；全局合并对
  *  「按枚举名索引」的 token 语义才成立。消费点（bind Arg/Ret、struct 字段）统一以
@@ -213,7 +214,8 @@ export type TokenReturnJsTypeMap = C_TypeJsTypeMap & { void: void }
  *  挡在外面：struct 定义点 ∉ SimpleValue，bind 签名落链末 map[never] 塌 never
  *  （参数位）/ unknown（返回位——never 是 bottom 会被任意使用放行，反而危险）。 */
 declare global {
-    // 预填见 quickwin_enum_map.d.ts；此处空声明兜底（预填文件缺省时引用处仍可解析）。
+    // 预填见 constants.ts 末尾（declare global 段）；此处空声明兜底
+    // （预填缺省时引用处仍可解析）。
     interface EnumMap { }
 }
 
