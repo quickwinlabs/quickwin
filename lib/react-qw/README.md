@@ -242,19 +242,28 @@ interface ListBoxProps {
 
 Multi-column data table (report mode).
 
+Row icons are optional: pass `icons` (one `iconSize*iconSize*4` BGRA buffer per icon)
+plus `getIcon` to pick an index per row. `getIcon` must return `undefined` for rows
+without an icon — `0` is a valid index (it selects `icons[0]`), not a "no icon" flag.
+
 ```ts
-interface ListViewProps<D extends Record<string, any>> {
+interface ListViewProps<D extends object> {
   columns: Column<D>[]
   data: D[]
-  selectedIndex?: number       // controlled mode
-  defaultSelectedIndex?: number
-  onChange?: (index: number) => void
   style?: WStyle
+  icons?: ArrayBuffer[]        // each iconSize*iconSize*4 BGRA pixels
+  iconSize?: number            // default 32
+  getIcon?: (record: D, index: number) => number | undefined
 }
 
 interface Column<D> {
   name: string                 // column header
-  dataIndex: keyof D           // key into data row
+  dataIndex?: keyof D
+  width?: number
+  align?: Align
+  render?: (record: D, index: number) => string
+  cellStyle?: CellStyle | ((record: D, index: number) => CellStyle)
+  onCellClick?: (record: D, index: number) => void
 }
 ```
 
