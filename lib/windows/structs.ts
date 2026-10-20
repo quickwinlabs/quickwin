@@ -611,10 +611,11 @@ export const WNDCLASSEXW = /* @__PURE__ */ struct('WNDCLASSEXW', WNDCLASSEXW_DEC
 
 // ── 显示模式（user32 EnumDisplaySettingsW/ChangeDisplaySettingsW）────────────────
 
-/** DEVMODEW（220B，双架构同布局）：显示模式描述。dmFields = DM_* 决定 Change 生效项。
- *  union 的 display 分支平铺（dmPosition/ dmDisplayOrientation/ dmDisplayFixedOutput）——
- *  printer 分支同为 16B，平铺后偏移与 sizeof 均与实测一致；printer 场景不在本库用途内。
- *  dmSize/ dmDriverExtra 入参先置（dmSize = DEVMODEW.size；dmDriverExtra = 0），否则 API 拒绝 */
+/** DEVMODEW（220B，双架构同布局）：设备模式（显示 / 打印机共用）。dmFields = DmField.*
+ *  决定哪些字段生效。union 的 display 分支平铺（dmPosition/ dmDisplayOrientation/
+ *  dmDisplayFixedOutput）—— printer 分支同为 16B，平铺后偏移与 sizeof 均与实测一致。
+ *  dmSize/ dmDriverExtra 入参先置（dmSize = DEVMODEW.size；打印机侧 dmDriverExtra 还要
+ *  留出对应尾部空间），否则 API 拒绝 */
 export const DEVMODEW_DECL = {
     '#': 'struct',
     dmDeviceName: 'u16[32]@utf-16le',
