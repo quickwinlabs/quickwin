@@ -17,7 +17,7 @@ import {
 import { BITMAPFILEHEADER, BITMAPINFOHEADER, DEVMODEW, INPUT, POINT, RECT } from '../../lib/windows/structs.js'
 import { GetLastError, MoveFileEx } from '../../lib/windows/kernel32.js'
 import { listTrayIcons, probeTrayIcon } from './tray.js'
-import { ChangeDisplayFlag, ColorUse, DevModeField, DisplayChangeResult, EnumDisplaySetting, MoveFileFlag, ShowWindowCmd, SysMetrics, WindowStyle } from '../../constants'
+import { ChangeDisplayFlag, ColorUse, DisplayModeField, DisplayChangeResult, EnumDisplaySetting, MoveFileFlag, ShowWindowCmd, SysMetrics, WindowStyle } from '../../constants'
 
 // WORKER_DATA_URL 由 esbuild --define 在 build.ts 中注入（base64 data: URL）
 declare const WORKER_DATA_URL: string
@@ -698,7 +698,7 @@ function applyDisplayMode(w: number, h: number, persist: boolean): DisplayModeCh
 
     // 同一 buffer 原地改三项（encode 缺省字段跳过 = 保留 Enum 填的其余项）
     DEVMODEW.encode({
-        dmFields: cur.dmFields | DevModeField.PELSWIDTH | DevModeField.PELSHEIGHT,
+        dmFields: cur.dmFields | DisplayModeField.PELSWIDTH | DisplayModeField.PELSHEIGHT,
         dmPelsWidth: w,
         dmPelsHeight: h,
     }, dm)

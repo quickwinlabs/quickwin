@@ -47,9 +47,9 @@ export const DeviceCapabilities = /*@__PURE__*/ b('DeviceCapabilitiesW',
 
 /** 取 / 校验 / 合并打印机 DEVMODE（hWnd 传 NULL = 无 UI）
  *  两个 DEVMODEW 位都不注册 encoder（in-out 位只收 def 分配的 .ptr，读回走 decode）：
- *  同一块缓冲分两次调——先 fMode = 2(DM_OUT_BUFFER) 读出当前模式，JS 侧
- *  DEVMODEW.decode(buf) → 改字段 → DEVMODEW.encode(v, buf) 回写**同一块**，再 fMode =
- *  10(DM_IN_BUFFER | DM_OUT_BUFFER) 校验/合并，结果仍在 output 缓冲
+ *  同一块缓冲分两次调——先 fMode = DmModeFlag.OUT_BUFFER 读出当前模式，JS 侧
+ *  DEVMODEW.decode(buf) → 改字段（dmFields 用 DmField.*）→ DEVMODEW.encode(v, buf) 回写
+ *  **同一块**，再 fMode = DmModeFlag.IN_BUFFER | DmModeFlag.OUT_BUFFER 校验/合并
  *  @returns 成功 → 非 0，0 = 失败
  *  @param args_0 hWnd 父窗口（无 UI 传 NULL）
  *  @param args_1 hPrinter OpenPrinter 返回的句柄，NULL = 用 pDeviceName 定位
@@ -58,8 +58,9 @@ export const DeviceCapabilities = /*@__PURE__*/ b('DeviceCapabilitiesW',
  *    块写，常见几 KB）。注意 DEVMODEW.alloc(n) 的 n 是**元素数**（每元素 DEVMODEW.size 字节），
  *    不是字节数；调用前先置 dmSize = DEVMODEW.size
  *  @param args_4 pDevModeInput in-out 缓冲，与 args_3 同一块（NULL = 无输入模式）
- *  @param args_5 fMode 可组合 flags 传裸数：2 = DM_OUT_BUFFER（只读当前）、8 = DM_IN_BUFFER
- *    （校验并合并输入）、10 = 两者组合 */
+ *  @param args_5 fMode 可组合 flags 传裸数（组合位不标枚举）：DmModeFlag.OUT_BUFFER(2) = 只读
+ *    当前、DmModeFlag.IN_BUFFER(8) = 校验并合并输入、两者 OR(10) = 常规改 DEVMODE 流程。
+ *    注意 fMode（DmModeFlag）与 dmFields（DmField）是两套位空间，别混着 OR */
 export const DocumentProperties = /*@__PURE__*/ b('DocumentPropertiesW',
     '<HWND>ptr <>ptr <WCHAR>ptr <DEVMODEW>ptr <DEVMODEW>ptr u32 -> i32')
 

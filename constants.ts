@@ -874,7 +874,7 @@ export const enum DeviceCap {
 }
 
 // Display mode (ChangeDisplaySettings)
-export const enum DevModeField {
+export const enum DisplayModeField {
     PELSWIDTH = 524288, // 0x80000
     PELSHEIGHT = 1048576, // 0x100000
 }
@@ -1014,10 +1014,47 @@ export const enum PowerBroadcast {
     POWERSETTINGCHANGE = 32787, // 0x8013
 }
 
-// DevMode
-export const enum DevMode {
+// DEVMODE.dmFields（设备模式字段选择位；CreateDC / DocumentProperties）
+export const enum DmField {
+    ORIENTATION = 1, // 0x1
+    PAPERSIZE = 2, // 0x2
+    PAPERLENGTH = 4, // 0x4
+    PAPERWIDTH = 8, // 0x8
+    SCALE = 16, // 0x10
+    POSITION = 32, // 0x20
+    NUP = 64, // 0x40
+    DISPLAYORIENTATION = 128, // 0x80
+    COPIES = 256, // 0x100
+    DEFAULTSOURCE = 512, // 0x200
+    PRINTQUALITY = 1024, // 0x400
+    COLOR = 2048, // 0x800
     DUPLEX = 4096, // 0x1000
+    YRESOLUTION = 8192, // 0x2000
+    TTOPTION = 16384, // 0x4000
+    COLLATE = 32768, // 0x8000
+    FORMNAME = 65536, // 0x10000
+    LOGPIXELS = 131072, // 0x20000
+    BITSPERPEL = 262144, // 0x40000
+    PELSWIDTH = 524288, // 0x80000
+    PELSHEIGHT = 1048576, // 0x100000
+    DISPLAYFLAGS = 2097152, // 0x200000
+    DISPLAYFREQUENCY = 4194304, // 0x400000
+    ICMMETHOD = 8388608, // 0x800000
+    ICMINTENT = 16777216, // 0x1000000
+    MEDIATYPE = 33554432, // 0x2000000
+    DITHERTYPE = 67108864, // 0x4000000
+    PANNINGWIDTH = 134217728, // 0x8000000
+    PANNINGHEIGHT = 268435456, // 0x10000000
+    DISPLAYFIXEDOUTPUT = 536870912, // 0x20000000
+}
+
+// DocumentProperties fMode
+export const enum DmModeFlag {
+    IN_BUFFER = 8, // 0x8
+    MODIFY = 8, // 0x8
     OUT_BUFFER = 2, // 0x2
+    IN_PROMPT = 4, // 0x4
+    OUT_DEFAULT = 1, // 0x1
 }
 
 // COM GUIDs
@@ -1185,7 +1222,7 @@ declare global {
         FileSeekFrom: FileSeekFrom
         PrinterEnum: PrinterEnum
         DeviceCap: DeviceCap
-        DevModeField: DevModeField
+        DisplayModeField: DisplayModeField
         ChangeDisplayFlag: ChangeDisplayFlag
         EnumDisplaySetting: EnumDisplaySetting
         DisplayChangeResult: DisplayChangeResult
@@ -1199,7 +1236,8 @@ declare global {
         MoveFileFlag: MoveFileFlag
         ErrorCode: ErrorCode
         PowerBroadcast: PowerBroadcast
-        DevMode: DevMode
+        DmField: DmField
+        DmModeFlag: DmModeFlag
         Guid: Guid
         AddrFamily: AddrFamily
         SockType: SockType
