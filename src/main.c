@@ -255,6 +255,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     js_init_module_gui(ctx);
 
+#if QW_ASYNC_TASK_DEMO
+    js_async_task_demo_install(ctx);
+#endif
+
     js_std_add_helpers(ctx, cmd_argc - i, cmd_argv + i);
 
     size_t fsize;
