@@ -13,6 +13,14 @@
 #include <string.h>
 
 #define DEC(ts, c) printf("    %s = %d, // 0x%X\n", #ts, (int)(c), (unsigned)(c));
+/* 失败哨兵用的两个宏：和 DEC 的唯一差别是值的转换符，而这正是全部意义 ——
+   绑定里 `-> u32` 无符号读回、`-> <>ptr`/`<X>ptr` 有符号读回（-1 保真），
+   所以同一个全 1 位模式在两族的比较值不同：
+     u32 族 → DEC_U32C：印 4294967295
+     ptr 族 → DEC_PTRC：印 -1
+   混用任一方（例如 ptr 族走 %u）会写出和返回值永远不相等的常量。 */
+#define DEC_U32C(ts, c) printf("    %s = %u, // 0x%X\n", #ts, (unsigned)(c), (unsigned)(c));
+#define DEC_PTRC(ts, c) printf("    %s = %d,\n", #ts, (int)(LONG_PTR)(c));
 #define DEC_GUID(name, guid) do { \
     GUID _g = (guid); \
     printf("    %s = '{%08lX-%04hX-%04hX-%02X%02X-%02X%02X%02X%02X%02X%02X}',\n", \
@@ -1207,6 +1215,20 @@ static void print_enums(void) {
     DEC_GUID("IID_IUNKNOWN", IID_IUnknown);
     DEC_GUID("IID_ISHELLLINKW", IID_IShellLinkW);
     DEC_GUID("IID_IPERSISTFILE", IID_IPersistFile);
+    printf("}\n\n");
+
+    /* 失败哨兵：SDK 没有这个"组"，是按"我们已绑的 API 会返回它"聚出来的。
+       两族的差别只在值的转换符（见 DEC_U32C / DEC_PTRC 的注释）。
+       注意别照 INVALID_ 前缀收：bugcodes.h 里的 INVALID_* 是内核 bugcheck 码，无关。 */
+    printf("// ── 失败哨兵 ──\n\n");
+    ENUM(Sentinel);
+    printf("    // 配 `-> u32` 返回位（无符号读回）\n");
+    DEC_U32C(INVALID_FILE_ATTRIBUTES, INVALID_FILE_ATTRIBUTES);
+    DEC_U32C(INVALID_FILE_SIZE, INVALID_FILE_SIZE);
+    DEC_U32C(INVALID_SET_FILE_POINTER, INVALID_SET_FILE_POINTER);
+    printf("    // 配 `-> <>ptr` / `-> <X>ptr` 返回位（有符号读回，-1 保真）；\n");
+    printf("    // 同一全 1 位模式也是 GetCurrentProcess 的伪句柄，别拿它判那个\n");
+    DEC_PTRC(INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE);
     printf("}\n\n");
 
 

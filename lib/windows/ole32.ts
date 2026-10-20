@@ -23,17 +23,18 @@ export const CoUninitialize = /*@__PURE__*/ b('CoUninitialize', ' -> void')
  *  试探，也别在交互路径上调它。
  *  @returns HRESULT
  *  @param args_0 [in] rclsid
- *  @param args_1 [in] riid
+ *  @param args_1 pUnkOuter 聚合创建（ClsCtx.AGGREGATE）时传外层对象指针，普通创建传 NULL
  *  @param args_2 dwClsContext ClsCtx.*
- *  @param args_3 [out] ppv：缓冲地址，成功时写入对象指针 */
-export const CoCreateInstance = /*@__PURE__*/ b('CoCreateInstance', '<CLSID>ptr! <IID>ptr! u32 <>ptr! -> i32', { CLSID, IID })
+ *  @param args_3 [in] riid
+ *  @param args_4 [out] ppv：缓冲地址，成功时写入对象指针 */
+export const CoCreateInstance = /*@__PURE__*/ b('CoCreateInstance', '<CLSID>ptr! <>ptr u32 <IID>ptr! <>ptr! -> i32', { CLSID, IID })
 /** 生成随机 GUID（16 字节写进出参缓冲）
  *  @returns HRESULT
  *  @param args_0 [out] pguid */
 export const CoCreateGuid = /*@__PURE__*/ b('CoCreateGuid', '<GUID>ptr! -> i32', { GUID })
 /** CoTask 堆分配（COM 契约要求的内存管理面；可能返 0 = 失败）
- *  @param args_0 cbSize 字节数 */
-export const CoTaskMemAlloc = /*@__PURE__*/ b('CoTaskMemAlloc', 'u32 -> <>ptr')
+ *  @param args_0 cbSize 字节数（SIZE_T 指针宽度：x64 下可超 4GB，勿缩成 u32） */
+export const CoTaskMemAlloc = /*@__PURE__*/ b('CoTaskMemAlloc', '<>ptr -> <>ptr')
 /** 释放 CoTaskMemAlloc 分配的内存（0/NULL 安全）
  *  @param args_0 pv CoTaskMem 分配的指针 */
 export const CoTaskMemFree = /*@__PURE__*/ b('CoTaskMemFree', '<>ptr -> void')
