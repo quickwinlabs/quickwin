@@ -518,6 +518,27 @@ export function bind<const S extends string,
     ) as unknown as BindFn<S, BindEncoders<LE>, BindDecoders<LD>>
 }
 
+/** 按地址绑定（COM vtable 派发用）：proc 是已解析出的函数地址（vtable 条目、非
+ *  GetProcAddress 可得的导出），不经过 LoadLibrary/GetProcAddress。encoders/decoders
+ *  语义与 bind() 完全一致（内建 WCHAR/BYTE 无条件合并、decoders 缺省回退 encoders）。
+ *  proc === 0 fail-loud——同 bind 的 GetProcAddress 失败分支，不让 0 落进参数槽。
+ *
+ *  刻意不做缓存：每次调用都新建一份 CallPlan（slots 数组 + 首调分配的参数帧）。
+ *  vtable 是每类共享的静态表，热路径上应缓存**本函数的返回值**（同一条目地址只绑一次），
+ *  而不是在循环里调 bindAt。 */
+export function bindAt<const S extends string,
+    const LE extends CodecMap = {},
+    const LD extends CodecMap = LE>(
+    proc: number, sig: S, encoders?: LE, decoders?: LD) {
+    if (proc === 0)
+        throw new Error('ffi-bind: bindAt got 0 (null proc address)')
+    const effDec = decoders ?? encoders
+    return makeFn(proc as Ptr<'FARPROC'>, sig,
+        { ...builtinCodecs, ...encoders },
+        { ...builtinCodecs, ...(effDec ?? {}) }
+    ) as unknown as BindFn<S, BindEncoders<LE>, BindDecoders<LD>>
+}
+
 /** 批量绑定（map = 函数名 → 签名串）。encoders/decoders 语义同 bind()。 */
 export function bindLib<const M extends Record<string, string>,
     const LE extends CodecMap = {},

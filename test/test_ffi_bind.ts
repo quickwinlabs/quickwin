@@ -2,7 +2,7 @@ import * as std from 'std'
 import * as ffi from 'ffi'
 import * as os from 'os'
 import { Tester } from './test_helper.js'
-import { bind, bindLib, closure, WCHAR, BYTE, type CodecMap } from '../lib/ffi/bind.js'
+import { bind, bindAt, bindLib, closure, WCHAR, BYTE, type CodecMap } from '../lib/ffi/bind.js'
 import { struct } from '../lib/ffi/struct.js'
 import { NULL, type C_Struct, type MaybePtr, Ptr, PtrArrayBuffer, readScalar, writeScalar, PTR_SIZE, normToken } from '../lib/ffi/ctype.js'
 import { DrawTextFlag, SetWindowPosFlag, SetWindowPosHwnd, ShowWindowCmd } from '../constants'
@@ -13,6 +13,9 @@ function expectType<T extends true>(_value?: T): void {}
 // 从签名串推导参数元组 / 返回类型（纯类型层，不执行 bind）
 type ParamsOf<S extends string> = Parameters<ReturnType<typeof bind<S, {}>>>
 type RetOf<S extends string> = ReturnType<ReturnType<typeof bind<S, {}>>>
+// bindAt 的同款推导：用于断言两个入口的签名推导逐位一致（不引入第二套类型路径）
+type ParamsOfAt<S extends string> = Parameters<ReturnType<typeof bindAt<S, {}>>>
+type RetOfAt<S extends string> = ReturnType<ReturnType<typeof bindAt<S, {}>>>
 
 // 与 callPacked 相同的槽宽布局，供「ffiCall 直驱 closure」打包
 function packArgs(kinds: string[], vals: (number | bigint)[]): ArrayBuffer {
@@ -109,6 +112,46 @@ export const suite = {
         std.printf('  GetLastError after SetLastError(0x80000000): u32=%s i32=%s\n', String(glU), String(glI))
         t.check('GetLastError u32 keeps big value', 2147483648, glU)
         t.check('GetLastError i32 reads as negative', -2147483648, glI)
+
+        t.section('readPtr + bindAt (address-based binding; vtable dispatch)')
+        // 假 vtable：把真函数地址写进槽 2/3，用 readPtr 按地址取回——覆盖位宽与往返保真。
+        const hK = ffi.LoadLibrary('kernel32.dll')
+        if (!hK) throw new Error('test: LoadLibrary(kernel32.dll) failed')
+        const hM = ffi.LoadLibrary('msvcrt.dll')
+        if (!hM) throw new Error('test: LoadLibrary(msvcrt.dll) failed')
+        const sqrtAddr = ffi.GetProcAddress(hM, 'sqrt')
+        if (!sqrtAddr) throw new Error('test: GetProcAddress(sqrt) failed')
+        const cmpAddr = ffi.GetProcAddress(hK, 'lstrcmpW')
+        if (!cmpAddr) throw new Error('test: GetProcAddress(lstrcmpW) failed')
+        const vt = new PtrArrayBuffer(PTR_SIZE * 4)
+        const vtdv = new DataView(vt)
+        const wAddr = (off: number, v: number): void =>
+            PTR_SIZE === 8 ? vtdv.setBigUint64(off, BigInt(v), true)
+                           : vtdv.setInt32(off, v, true)
+        wAddr(PTR_SIZE, -1)                    // 槽 1：负值保真
+        wAddr(2 * PTR_SIZE, sqrtAddr)          // 槽 2
+        wAddr(3 * PTR_SIZE, cmpAddr)           // 槽 3
+        t.check('readPtr round-trips a proc address', sqrtAddr, ffi.readPtr(vt.ptr + 2 * PTR_SIZE))
+        t.check('readPtr keeps a negative value', -1, ffi.readPtr(vt.ptr + PTR_SIZE))
+        // bindAt 与 bind 同 sig 调同一入口 → 逐位相同（plan 构建 / 槽布局 / codec 合并语义一致）
+        const sqByName = bind('msvcrt.dll', 'sqrt', 'f64 -> f64')
+        const sqByAddr = bindAt(ffi.readPtr(vt.ptr + 2 * PTR_SIZE), 'f64 -> f64')
+        t.check('bindAt == bind (f64 arg + FP ret slot)', sqByName(2.0), sqByAddr(2.0))
+        const cmpByName = bind('kernel32.dll', 'lstrcmpW', '<WCHAR>ptr <WCHAR>ptr -> i32')
+        const cmpByAddr = bindAt(ffi.readPtr(vt.ptr + 3 * PTR_SIZE), '<WCHAR>ptr <WCHAR>ptr -> i32')
+        t.check('bindAt == bind (WCHAR codec merge + i32)', cmpByName('ffi', 'ffi'), cmpByAddr('ffi', 'ffi'))
+        try {
+            ffi.readPtr(0)
+            t.checkTrue('readPtr(0) throws', false)
+        } catch (e) {
+            t.checkTrue('readPtr(0) fail-loud', String(e).includes('null pointer'))
+        }
+        try {
+            bindAt(0, 'f64 -> f64')
+            t.checkTrue('bindAt(0) throws', false)
+        } catch (e) {
+            t.checkTrue('bindAt(0) fail-loud', String(e).includes('0'))
+        }
 
         t.section('f32/f64 floating args (ffi_types[] table regression)')
         // ffi_types[] 曾把 FLOAT/DOUBLE 槽各错位一位（DOUBLE 槽指向 ffi_type_float），
@@ -650,6 +693,10 @@ export const suite = {
         expectType<Equal<RetOf<'<>ptr -> <X>ptr'>, MaybePtr<'X'>>>()
         expectType<Equal<RetOf<'<>ptr -> <X>ptr!'>, Ptr<'X'>>>()
         expectType<Equal<RetOf<'i32 -> i32'>, number>>()
+        // bindAt 与 bind 同 sig 推导逐位一致（同一套 BindFn，不是第二套类型路径）
+        expectType<Equal<ParamsOfAt<'f64 -> f64'>, ParamsOf<'f64 -> f64'>>>()
+        expectType<Equal<RetOfAt<'<X>ptr -> <Y>ptr!'>, RetOf<'<X>ptr -> <Y>ptr!'>>>()
+        expectType<Equal<ParamsOfAt<'<X>ptr! i32 -> i32'>, ParamsOf<'<X>ptr! i32 -> i32'>>>()
         // @Enum 未知枚举名：参数位塌 never（fail-loud），返回位塌 unknown（never 会全放行）
         expectType<Equal<ParamsOf<'i32@NopeEnum -> i32'>[0], never>>()
         expectType<Equal<RetOf<'i32 -> i32@NopeEnum'>, unknown>>()
