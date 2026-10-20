@@ -37,6 +37,7 @@ const suiteDefs = [
     { name: 'ffi-abi',           file: './test_ffi_abi.js',          tags: [] },
     { name: 'ffi-user32',        file: './test_ffi_user32.js',       tags: [] },
     { name: 'ffi-windows',       file: './test_ffi_windows.js',      tags: [] },
+    { name: 'com',               file: './test_com.js',              tags: [] },
     { name: 'gdi-draw',          file: './test_gdi_draw.js',         tags: [] },
     { name: 'registry',          file: './test_registry.js',         tags: [] },
     { name: 'files',             file: './test_files.js',            tags: [] },

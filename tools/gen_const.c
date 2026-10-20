@@ -1161,8 +1161,50 @@ static void print_enums(void) {
     DEC(OUT_DEFAULT, DM_OUT_DEFAULT);
     printf("}\n\n");
 
+        printf("// COM 线程初始化标志（CoInitializeEx / CoInitialize）。XP 世代 mingw 与 MS 文档、\n");
+    printf("// Wine 的 tagCOINIT 三处一致，就这四枚。COINIT_MULTITHREADED 定义成\n");
+    printf("// COINITBASE_MULTITHREADED = 0x0（combaseapi.h），看着像漏值——不是：dwCoInit 全 0\n");
+    printf("// 即按 MTA 初始化（MTA 是默认态），故 CoInitializeEx(NULL, MULTITHREADED) 与不传等价。\n");
+    ENUM(CoInitFlag);
+    DEC(APARTMENTTHREADED, COINIT_APARTMENTTHREADED);
+    DEC(MULTITHREADED, COINIT_MULTITHREADED);
+    DEC(DISABLE_OLE1DDE, COINIT_DISABLE_OLE1DDE);
+    DEC(SPEED_OVER_MEMORY, COINIT_SPEED_OVER_MEMORY);
+    printf("}\n\n");
+
+    printf("// CoCreateInstance 的 dwClsContext\n");
+    ENUM(ClsCtx);
+    DEC(INPROC_SERVER, CLSCTX_INPROC_SERVER);
+    DEC(INPROC_HANDLER, CLSCTX_INPROC_HANDLER);
+    DEC(LOCAL_SERVER, CLSCTX_LOCAL_SERVER);
+    DEC(INPROC_SERVER16, CLSCTX_INPROC_SERVER16);
+    DEC(INPROC_HANDLER16, CLSCTX_INPROC_HANDLER16);
+    DEC(REMOTE_SERVER, CLSCTX_REMOTE_SERVER);
+    printf("}\n\n");
+
+    printf("// HRESULT 常用返回值（完整列表见 winerror.h；判断用 SUCCEEDED/FAILED 而非比符号）。\n");
+    printf("// XP 世代 SDK 缺 CO_E_CLASSNOTREGISTERED / CO_E_INIT_FAILURE / E_NOTSET /\n");
+    printf("// RPC_E_SERVERCALL_RETRYHINT——未注册类这类失败只能按 FAILED(hr) 判、不能比符号\n");
+    ENUM(HResult);
+    DEC(S_OK, S_OK);
+    DEC(S_FALSE, S_FALSE);
+    DEC(E_NOTIMPL, E_NOTIMPL);
+    DEC(E_NOINTERFACE, E_NOINTERFACE);
+    DEC(E_POINTER, E_POINTER);
+    DEC(E_INVALIDARG, E_INVALIDARG);
+    DEC(E_OUTOFMEMORY, E_OUTOFMEMORY);
+    DEC(E_ABORT, E_ABORT);
+    DEC(E_FAIL, E_FAIL);
+    DEC(CO_E_NOTINITIALIZED, CO_E_NOTINITIALIZED);
+    DEC(REGDB_E_CLASSNOTREG, REGDB_E_CLASSNOTREG);
+    DEC(RPC_E_DISCONNECTED, RPC_E_DISCONNECTED);
+    DEC(RPC_S_CALLPENDING, RPC_S_CALLPENDING);
+    DEC(RPC_E_CHANGED_MODE, RPC_E_CHANGED_MODE);
+    printf("}\n\n");
+
     printf("// COM GUIDs\n");
     ENUM(Guid);
+    DEC_GUID("IID_IUNKNOWN", IID_IUnknown);
     DEC_GUID("IID_ISHELLLINKW", IID_IShellLinkW);
     DEC_GUID("IID_IPERSISTFILE", IID_IPersistFile);
     printf("}\n\n");
