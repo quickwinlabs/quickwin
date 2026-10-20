@@ -15,10 +15,14 @@ import { C_BasicType_No_Void, C_BasicType_Token, C_BasicType_Token_No_Void, cTok
 // 字段（doDecode 的 base）承担，顶层再收 offset 只会掩盖"读错位置"这类错误。
 // 内建 WCHAR/BYTE 的 encode/alloc 一律返回 PtrArrayBuffer：既是 decode 的直读 buffer，
 // .ptr 又带品牌直接喂 <N>ptr 形参——不再有 { buf, ptr } 结构包装。
+// encode 两条签名：无 buf 新建、出口品牌 = N；带 buf 原地写、返回 void。
+// 顺序＝带 buf 在前、无 buf 殿后——ReturnType/Parameters/EncodeValue 取末条。
+// buf 位写 PtrArrayBuffer<''>（任意品牌；与 <any> 同型，'' 表意更准）。
 type Codec<N extends string = string, V = unknown, T = unknown> = {
     // encode 顶层不收 offset（与 decode 对齐）：PAB 的 .ptr 恒指向起点，写入位置由
     // buf 自身表达；偏移写入（数组物化原语）由 StructDef.encode(v, buf, offset) 承担。
-    encode?(v: V, buf?: PtrArrayBuffer<any>): PtrArrayBuffer<any>
+    encode?(v: V, buf: PtrArrayBuffer<''>): void
+    encode?(v: V): PtrArrayBuffer<N>
     decode?(p: Ptr<N>| ArrayBuffer): V
     alloc?(a: T): PtrArrayBuffer<N>
 }
@@ -26,10 +30,12 @@ type Codec<N extends string = string, V = unknown, T = unknown> = {
 // 类型层硬约束：encode/alloc 只返回 PtrArrayBuffer —— 裸 ArrayBuffer 出不了
 // codec（callPacked 参数位统一取 .ptr，调用方拿到的也是 .ptr，.buf 词汇从 codec 出口消失）；
 // NULL（0）是引擎层词汇（number 直通世界），不作为 codec 出口形态。
+// 值形位是 any 而非 unknown：strictFunctionTypes 下逆变会把形参具体的 codec 拒之门外。
+// 单签名（不跟 Codec 双形态）：动态注入面，运行时参数位只调无 buf 形态。
 export type CodecMap = Record<string, {
-    encode?(v: any, buf?: PtrArrayBuffer<any>): PtrArrayBuffer<any>
+    encode?(v: any, buf?: PtrArrayBuffer<''>): PtrArrayBuffer<''>
     decode?(p: any): any
-    alloc?(a: any): PtrArrayBuffer<any>
+    alloc?(a: any): PtrArrayBuffer<''>
 }>
 
 // 按值位（'<N>'）消费的布局形态：size（决定槽宽与「传值 / 按引用」分派）+
@@ -259,7 +265,7 @@ function mkPtrWriter(
         }
         if (!encode)
             throw new Error(`ffi-bind: <${name}>ptr has no encoder (out-only codec)`)
-        const buf = encode(arg) as PtrArrayBuffer<any>
+        const buf = encode(arg)
         // 类型层已保证 encode 返回 PtrArrayBuffer；这里再 fail-loud 兜一层
         // （动态传入的无类型 codec 仍可能违反），然后直接取 .ptr——不再重算。
         const p = buf.ptr
@@ -398,14 +404,12 @@ type DecodeValue<T> = 'decode' extends keyof T
 
 // 入参布局表：用户 codec 解包成 JS 形，并注入两个内建 codec 的值域，
 // 使 <BYTE>ptr / <WCHAR>ptr 形参在类型层拿到 PtrArrayBuffer / string。
-// BYTE 收所有品牌：PAB 的品牌在类型层是交叉类型（结构比较），具体品牌可赋给
-// PtrArrayBuffer<string>/<''>；此处仍写 any —— 类型层断言（ParamsOf<'<BYTE>ptr'>）
-// 与既有 codec 表都按 any 记，形状（必须是 PAB）才是硬约束。
+// BYTE 收所有品牌：具体品牌可赋给 PtrArrayBuffer<''>（与 <any> 同型，'' 表意更准）。
 type BindEncoders<M> = {
     [K in keyof M]: EncodeValue<M[K]>
 } & {
     WCHAR: string;
-    BYTE: PtrArrayBuffer<any>;
+    BYTE: PtrArrayBuffer<''>;
 }
 // 返回位布局表：只含 decode 值域。内建 WCHAR 注入与运行时（builtinCodecs.WCHAR
 // 无条件合并进 decoders）对齐——<WCHAR>ptr 返回直接拿 string；BYTE 无 decode，
@@ -417,6 +421,23 @@ type BindFn<S extends string, E, D> =
 
 // 内建 codec：类型校验放在这里，与「用户布局 codec」同一分派点。
 // BYTE/WCHAR 拒绝裸 number（无句柄可 pin），提示改用 <>ptr。
+// WCHAR 的 encode 实现：无 buf 新建、带 buf 原地写（放不下 fail-loud）；编码逻辑只此一处。
+function wcharEncode(v: string): PtrArrayBuffer<'WCHAR'>
+function wcharEncode(v: string, buf: PtrArrayBuffer<''>): void
+function wcharEncode(v: string, buf?: PtrArrayBuffer<''>) {
+    // TextEncoder 没有 encodeInto：先编码再拷入 buffer（单次 memcpy）。
+    const u8 = new TextEncoder('utf-16le').encode(v + '\0')
+    if (buf) {
+        // 含 NUL 的完整字符数落不下就 fail-loud——不截断（静默丢尾字符是最难查的错）。
+        if (u8.byteLength > buf.byteLength)
+            throw new Error(`ffi-bind: WCHAR.encode needs ${u8.byteLength} bytes, buffer has ${buf.byteLength}`)
+        new Uint8Array(buf).set(u8)
+        return
+    }
+    const out = new PtrArrayBuffer<'WCHAR'>(u8.byteLength)
+    new Uint8Array(out).set(u8)
+    return out
+}
 /** 内建 UTF-16 编解码：encode 入参序列化（UTF-16LE + NUL）；decode 双态单参——
  *  品牌指针逐字节读到 NUL（野指针无终止 4MiB 上限 fail-fast）、ArrayBuffer 直读到
  *  NUL 或末尾（out 参数未写 NUL 时按读满处理）；alloc 预分配返回带 .ptr 的
@@ -424,14 +445,7 @@ type BindFn<S extends string, E, D> =
  *  内建三件齐备，调用无需空断言。刻意 Pick 而非 Required<Codec>：只声明消费的
  *  三件（encode/decode/alloc），新增可选能力位不被拉成必填。 */
 export const WCHAR: Required<Pick<Codec<'WCHAR', string, number>, 'encode' | 'decode' | 'alloc'>> = {
-    encode: (v: string) => {
-        // TextEncoder 没有 encodeInto：先编码再拷入带 .ptr 的 buffer（单次 memcpy，
-        // 编码逻辑仍全局唯一——这行是全部 UTF-16 字符串编码的唯一实现）。
-        const u8 = new TextEncoder('utf-16le').encode(v + '\0')
-        const out = new PtrArrayBuffer<'WCHAR'>(u8.byteLength)
-        new Uint8Array(out).set(u8)
-        return out
-    },
+    encode: wcharEncode,
     decode: (p) => {
         // 两分支同构（UTF-16LE code unit、拼接到 NUL 止），唯一差异是读法。
         if (typeof p === 'number') {
@@ -463,8 +477,12 @@ export const WCHAR: Required<Pick<Codec<'WCHAR', string, number>, 'encode' | 'de
 }
 /** 内建字节缓冲：encode identity 直通（收 PtrArrayBuffer、原地存活，native 写回同一
  *  buffer）；alloc 预分配返回带 .ptr 的 PtrArrayBuffer（a = 字节数）。无 decode——
- *  地址不携带长度（无终止符），读回直接在 buffer 上 DataView / TypedArray 取。 */
-export const BYTE: Required<Pick<Codec<'BYTE', PtrArrayBuffer<any>, number>, 'encode' | 'alloc'>> = {
+ *  地址不携带长度（无终止符），读回直接在 buffer 上 DataView / TypedArray 取。
+ *  encode 取泛型 identity：品牌随入参（标成 'BYTE' 是谎报指向物）。 */
+type ByteCodec = Pick<Required<Codec<'BYTE', PtrArrayBuffer<''>, number>>, 'alloc'> & {
+    encode<T extends PtrArrayBuffer<''>>(v: T): T
+}
+export const BYTE: ByteCodec = {
     encode: (v) => {
         // identity 原地直通（native 写回同一 buffer），不能拷贝——只收自带 .ptr 的
         // PtrArrayBuffer；普通 ArrayBuffer 过来 fail-loud，先包一层 new PtrArrayBuffer(n)。

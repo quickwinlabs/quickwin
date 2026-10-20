@@ -171,7 +171,7 @@ export const suite = {
         // 别名机制已移除：typedef 名塌 never（与 'i3z' 同路径，见上）
         expectType<Equal<ParamsOf<'DWORD -> i32'>[0], never>>()
         expectType<Equal<ParamsOf<'u64 -> i32'>[0], bigint>>()
-        expectType<Equal<ParamsOf<'<BYTE>ptr -> i32'>[0], PtrArrayBuffer<any> | MaybePtr<"BYTE">>>()
+        expectType<Equal<ParamsOf<'<BYTE>ptr -> i32'>[0], PtrArrayBuffer<''> | MaybePtr<"BYTE">>>()
         expectType<Equal<ParamsOf<'<WCHAR>ptr -> i32'>[0], string | MaybePtr<"WCHAR">>>()
         // 别名机制已移除：'LPCWSTR' 塌 never（字符串 codec 只挂在 <WCHAR>ptr 品牌位上）
         expectType<Equal<ParamsOf<'LPCWSTR -> i32'>[0], never>>()
@@ -425,6 +425,27 @@ export const suite = {
         t.check('WCHAR.decode(ptr) roundtrip', 'hi', WCHAR.decode(walloc.ptr))
         t.check('WCHAR.decode(ArrayBuffer) roundtrip', 'hi', WCHAR.decode(walloc))
         t.check('BYTE.alloc(12) = 12 bytes', 12, BYTE.alloc(12).byteLength)
+
+        // encode 品牌穿过 codec：无 buf 返回 PAB<'WCHAR'>，.ptr 直接喂 <WCHAR>ptr 字段
+        // （断言按调用点推断写——ReturnType 取重载末条，不能作通用取型手段）
+        const wEnc = WCHAR.encode('hi')
+        expectType<Equal<typeof wEnc, PtrArrayBuffer<'WCHAR'>>>()
+        expectType<Equal<typeof wEnc.ptr, Ptr<'WCHAR'>>>()
+        t.check('WCHAR.encode roundtrip via decode', 'hi', WCHAR.decode(wEnc))
+        // 带 buf：原地写、返回 void；放不下 fail-loud（含 NUL 字节数严格比较，不截断）
+        const wReuse = WCHAR.alloc(8)
+        const wRet = WCHAR.encode('hi', wReuse)
+        expectType<Equal<typeof wRet, void>>()
+        t.checkTrue('WCHAR.encode(v, buf) returns nothing', wRet === undefined)
+        t.check('WCHAR.encode(v, buf) wrote into caller buffer', 'hi', WCHAR.decode(wReuse))
+        let wTooSmall = ''
+        try { WCHAR.encode('hi', WCHAR.alloc(2)) } catch (e) { wTooSmall = String(e) }
+        t.checkTrue('WCHAR.encode(v, buf) too small throws', wTooSmall.includes('needs 6 bytes'))
+        // BYTE identity：品牌随入参，返回同一个对象
+        const bIdent = BYTE.alloc(4)
+        const bEnc = BYTE.encode(bIdent)
+        expectType<Equal<typeof bEnc, typeof bIdent>>()
+        t.checkTrue('BYTE.encode is identity', bEnc === bIdent)
 
         // out-only codec（只声明 decode）走入参位 → 编码期 fail-fast（不触 native 调用）
         const asctimeOutOnly = bind('msvcrt.dll', 'asctime', '<TM>ptr -> <>ptr',
