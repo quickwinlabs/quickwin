@@ -62,3 +62,18 @@ export const RegQueryValueEx = /*@__PURE__*/ b('RegQueryValueExW',
  *  @param args_0 hKey 父键
  *  @param args_1 lpSubKey 要删的子键路径（不可 NULL） */
 export const RegDeleteKey = /*@__PURE__*/ b('RegDeleteKeyW', '<>ptr <WCHAR>ptr -> i32')
+
+/** 只删单个值（不删子键——删子键用 RegDeleteKey）
+ *  **Vista+**：XP 的 advapi32 无此导出，故为**可选绑定**（bind() 模块顶层立即解析，
+ *  缺符号 throw 会拖垮整个脚本启动），老系统上本常量为 null，调用方必须判空
+ *  @returns 0 = ERROR_SUCCESS；2 = ERROR_FILE_NOT_FOUND（子键或值不存在）
+ *  @param args_0 hKey 父键（须 KEY_WRITE 权限，RegAccess.ALL_ACCESS 稳）
+ *  @param args_1 lpSubKey 子键路径，NULL = 对 hKey 自身
+ *  @param args_2 lpValueName 值名，NULL = 键的默认值 */
+export const RegDeleteKeyValue = (() => {
+    try {
+        return b('RegDeleteKeyValueW', '<>ptr <WCHAR>ptr <WCHAR>ptr -> i32')
+    } catch {
+        return null    // XP 等老系统无此导出
+    }
+})()

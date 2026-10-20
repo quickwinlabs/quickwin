@@ -1,7 +1,7 @@
 import * as os from 'os'
 import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import {
-    RegCloseKey, RegCreateKeyEx, RegDeleteKey, RegOpenKeyEx,
+    RegCloseKey, RegCreateKeyEx, RegDeleteKey, RegDeleteKeyValue, RegOpenKeyEx,
     RegQueryValueEx, RegSetValueEx,
 } from '../lib/windows/advapi32.js'
 import { Tester } from './test_helper.js'
@@ -83,6 +83,17 @@ export const suite = {
             RegOpenKeyEx(HKey.CURRENT_USER, KEY + 'X', 0, RegAccess.READ,
                 new PtrArrayBuffer(8)))
         RegCloseKey(hkey2)
+
+        t.section('RegDeleteKeyValue: delete one value, keep the key')
+        if (RegDeleteKeyValue) {
+            // lpSubKey = NULL → 对 hKey 自身；只删值不删子键（RegDeleteKey 会连子键一起删）
+            t.check('delete value = ERROR_SUCCESS', 0,
+                RegDeleteKeyValue(hkey, NULL, 'greeting'))
+            t.check('deleted value → ERROR_FILE_NOT_FOUND', 2,
+                RegQueryValueEx(hkey, 'greeting', NULL, NULL, NULL, NULL))
+            t.check('missing value → ERROR_FILE_NOT_FOUND', 2,
+                RegDeleteKeyValue(hkey, NULL, 'no-such-value'))
+        } else t.skipCase('RegDeleteKeyValue missing')
 
         t.section('RegDeleteKey + RegCloseKey: cleanup')
         t.check('delete key = ERROR_SUCCESS', 0,

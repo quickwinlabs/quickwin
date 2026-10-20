@@ -1,6 +1,6 @@
 // kernel32.dll 绑定（进程 / 管道 / 系统信息子集；品牌约定见 lib/windows/user32.ts 头注释）：
 //   - 内核对象句柄按用途分品牌：管道/文件 <HFILE>ptr、进程 <HPROCESS>ptr、线程
-//     <HTHREAD>ptr、toolhelp 快照 <HSNAPSHOT>ptr（CloseHandle 收宽位直通，与 Process32/
+//     <HTHREAD>ptr、toolhelp 快照 <HSNAPSHOT>ptr、互斥 <HMUTEX>ptr（CloseHandle 收宽位直通，与 Process32/
 //     Module32 专用消费位自产自收，对齐 <HFIND>ptr/FindClose 先例；CreatePipe 的 HANDLE*
 //     出参槽是缓冲地址非句柄值，仍 <>ptr）；
 //     CloseHandle/WaitForSingleObject 全家族位保持 <>ptr 收宽（品牌 number 子类型可
@@ -63,6 +63,18 @@ export const GetExitCodeProcess = /*@__PURE__*/ b('GetExitCodeProcess', '<HPROCE
  *  @returns 成功 → 非 0
  *  @param args_0 hObject 任意内核对象 */
 export const CloseHandle = /*@__PURE__*/ b('CloseHandle', '<>ptr -> i32')
+/** 建互斥（'\\Global\\...' 名可跨进程共享）。同名再调返回**指向同一对象的新句柄值**
+ *  （Windows 句柄不是对象身份，不能拿句柄相等判重）——判「已存在」用
+ *  GetLastError() == ERROR_ALREADY_EXISTS (183)
+ *  @returns 互斥句柄（失败 → 0）
+ *  @param args_0 lpAttributes 安全属性，传 NULL
+ *  @param args_1 bInitiallyOwned 非 0 = 创建即持有
+ *  @param args_2 lpName 对象名，NULL = 匿名 */
+export const CreateMutex = /*@__PURE__*/ b('CreateMutexW', '<>ptr i32 <WCHAR>ptr -> <HMUTEX>ptr')
+/** 释放持有的互斥；配对 WaitForSingleObject（未持有时失败，原因看 GetLastError）
+ *  @returns 成功 → 非 0
+ *  @param args_0 hMutex 互斥句柄 */
+export const ReleaseMutex = /*@__PURE__*/ b('ReleaseMutex', '<HMUTEX>ptr! -> i32')
 
 // ============ 进程快照（toolhelp）============
 

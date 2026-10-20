@@ -5,11 +5,12 @@ import {
     LoadImage, LoadImageOrdinal, SetScrollInfo, GetScrollInfo,
 } from '../lib/windows/user32.js'
 import {
-    GetDeviceCaps, CreateSolidBrush, DeleteObject, CreateFontIndirect, GetObject, SelectObject, CreateCompatibleDC, CreateCompatibleBitmap, DeleteDC, GetDIBits,
+    GetDeviceCaps, CreateSolidBrush, DeleteObject, CreateFontIndirect, GetObject, SelectObject, CreateCompatibleDC, CreateCompatibleBitmap, DeleteDC, GetDIBits, SetBrushOrgEx,
 } from '../lib/windows/gdi32.js'
+import { CloseHandle, CreateMutex, GetLastError, ReleaseMutex } from '../lib/windows/kernel32.js'
 import { ImageListCreate, ImageListAdd, ImageListDestroy } from '../lib/windows/comctl32.js'
 import { ShellNotifyIcon } from '../lib/windows/shell32.js'
-import { BITMAPINFOHEADER, LOGFONTW, NONCLIENTMETRICSW, NOTIFYICONDATAW, SCROLLINFO } from '../lib/windows/structs.js'
+import { BITMAPINFOHEADER, DOCINFOW, LOGFONTW, NONCLIENTMETRICSW, NOTIFYICONDATAW, POINT, SCROLLINFO } from '../lib/windows/structs.js'
 import { ColorUse, DeviceCap, IDI, ImageListFlag, ImageType, LoadImageFlag, NotifyIconCmd, NotifyIconFlag } from '../constants'
 import { createSystemDpiFont, getScaleFactor } from '../lib/dpi.js'
 import { createBitmapFromPixels } from '../lib/bitmap.js'
@@ -183,5 +184,37 @@ export const suite = {
         }
         t.checkTrue('非法入参 → NULL（宽/高 ≤ 0、像素缓冲不足，同旧 C 语义）',
             createBitmapFromPixels(0, nh, px) === NULL && createBitmapFromPixels(nw, nh, new ArrayBuffer(4)) === NULL)
+
+        t.section('kernel32: 命名互斥（同名 → ERROR_ALREADY_EXISTS → Release → Close）')
+        const m1 = CreateMutex(NULL, 1, 'QuickWinTestMutex')
+        t.checkTrue('CreateMutex 非 0', m1 !== 0)
+        if (m1 !== 0) {
+            // 同名再开返回新句柄值（Windows 句柄非对象身份），判据是 last error
+            const m2 = CreateMutex(NULL, 1, 'QuickWinTestMutex')
+            t.check('同名对象已存在 → ERROR_ALREADY_EXISTS', 183, GetLastError())
+            t.checkTrue('ReleaseMutex 成功', ReleaseMutex(m1) !== 0)
+            t.checkTrue('CloseHandle(m1) 成功', CloseHandle(m1) !== 0)
+            t.checkTrue('CloseHandle(m2) 成功', CloseHandle(m2) !== 0)
+        }
+
+        t.section('gdi32: 打印路径（DOCINFOW 布局 / SetBrushOrgEx 旧原点写回）')
+        // 尺寸基准来自 mingw 头文件实测（x86 20 / x64 40）
+        t.check('DOCINFOW.size == mingw sizeof（x86 20 / x64 40）',
+            PTR_SIZE === 4 ? 20 : 40, DOCINFOW.size)
+        // fwType 在 wingdi.h 是 DWORD：按 WORD 收会丢高半字（尾部 padding 让 sizeof 不变，
+        // 尺寸断言抓不到），故按 32 位值往返验证
+        const diProbe = DOCINFOW.encode({ cbSize: DOCINFOW.size, fwType: 0x12345678 })
+        t.check('fwType 按 32 位往返（DWORD）', 0x12345678, DOCINFOW.decode(diProbe).fwType)
+        const bdc = GetDC(NULL)
+        if (bdc) {
+            const org = POINT.alloc()
+            t.checkTrue('SetBrushOrgEx 成功', SetBrushOrgEx(bdc, 17, 23, org.ptr) !== 0)
+            t.check('旧原点写回 x', 0, POINT.decode(org).x)
+            t.check('旧原点写回 y', 0, POINT.decode(org).y)
+            t.checkTrue('SetBrushOrgEx 二次成功', SetBrushOrgEx(bdc, 5, 6, org.ptr) !== 0)
+            t.check('旧原点 = 上一次设定', 17, POINT.decode(org).x)
+            t.checkTrue('SetBrushOrgEx(NULL 出参) 成功', SetBrushOrgEx(bdc, 0, 0, NULL) !== 0)
+            ReleaseDC(NULL, bdc)
+        } else t.skipCase('GetDC(NULL) 失败')
     },
 }

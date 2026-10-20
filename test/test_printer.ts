@@ -3,12 +3,13 @@ import * as os from 'os'
 import { WCHAR } from '../lib/ffi/bind.js'
 import { structArray } from '../lib/ffi/struct.js'
 import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
-import { CloseHandle, CreateFile, DeleteFile, GetLastError, GetTempPath, GetFileSize, ReadFile } from '../lib/windows/kernel32.js'
+import { CloseHandle, CreateFile, DeleteFile, GetLastError, GetTempPath, GetFileSize, ReadFile, Sleep } from '../lib/windows/kernel32.js'
 import {
-    ClosePrinter, DeviceCapabilities, EnumPrinters, EndDocPrinter, EndPagePrinter,
+    ClosePrinter, DeviceCapabilities, DocumentProperties, EnumPrinters, EndDocPrinter, EndPagePrinter,
     GetDefaultPrinter, OpenPrinter, StartDocPrinter, StartPagePrinter, WritePrinter,
 } from '../lib/windows/winspool.js'
-import { PRINTER_INFO_2W } from '../lib/windows/structs.js'
+import { CreateDC, DeleteDC, EndDoc, EndPage, ResetDC, StartDoc, StartPage, TextOut } from '../lib/windows/gdi32.js'
+import { DEVMODEW, DOCINFOW, PRINTER_INFO_2W } from '../lib/windows/structs.js'
 import { Tester } from './test_helper.js'
 import { DeviceCap, FileCreation } from '../constants'
 
@@ -144,5 +145,71 @@ export const suite = {
             CloseHandle(hOut)
         }
         DeleteFile(outPrn)
+
+        t.section('DocumentProperties: in-out 往返（同一块 DEVMODEW 缓冲分两次调）')
+        // hWnd = NULL → 无 UI 通道；spooler 无 DEVMODE 支持时整段跳（环境差异）
+        const pSlot = new PtrArrayBuffer(8)
+        if (!OpenPrinter(defName, pSlot, NULL)) {
+            t.skipCase('DocumentProperties (OpenPrinter 失败)'); return
+        }
+        const hDev = readPtr(new DataView(pSlot), 0)
+        // 缓冲字节数须 ≥ dmSize + dmDriverExtra（驱动私有块常见几 KB）；
+        // alloc(n) 的 n 是元素数（每元素 220B），不是字节数
+        const dm = DEVMODEW.alloc(64)
+        const d0 = DEVMODEW.decode(dm)
+        d0.dmSize = DEVMODEW.size
+        DEVMODEW.encode(d0, dm)
+        const rOut = DocumentProperties(NULL, hDev, defName, dm.ptr, NULL, 2)   // DM_OUT_BUFFER
+        if (rOut === 0) {
+            ClosePrinter(hDev)
+            t.skipCase(`DocumentProperties (lastError=${GetLastError()})`)
+            t.skipCase('GDI 作业链 (无 DEVMODE 可重置)')
+            return
+        }
+        const cur = DEVMODEW.decode(dm)
+        t.checkTrue(`DM_OUT_BUFFER 回填 dmSize (${cur.dmSize})`, cur.dmSize >= DEVMODEW.size)
+        DEVMODEW.encode(cur, dm)                       // 回写同一块缓冲
+        t.checkTrue('DM_IN_BUFFER|DM_OUT_BUFFER 校验/合并',
+            DocumentProperties(NULL, hDev, defName, dm.ptr, dm.ptr, 10) !== 0)
+        ClosePrinter(hDev)
+
+        t.section('gdi32: GDI 作业链（CreateDC → ResetDC → StartDoc → StartPage/EndPage → EndDoc）')
+        const gdiOut = `${WCHAR.decode(tmpW)}qw_gdi.prn`
+        // 端口传 NULL（走打印机自身端口）；重定向到文件是 lpszOutput 的职责，不是 CreateDC 的端口
+        const hdc0 = CreateDC('winspool', defName, NULL, NULL)
+        if (hdc0 === 0) {
+            t.skipCase(`GDI job (CreateDC 失败, lastError=${GetLastError()})`); return
+        }
+        // ResetDC 返回重置后的 DC 句柄（x64 上若按 i32 声明会被截断，续用即失败）
+        const hdc1 = ResetDC(hdc0, dm.ptr)
+        t.checkTrue('ResetDC 返回可用 DC', hdc1 !== 0)
+        const hdc = hdc1 !== 0 ? hdc1 : hdc0
+        const nameW = WCHAR.encode('QuickWin GDI Job')
+        const outW = WCHAR.encode(gdiOut)
+        const doc = StartDoc(hdc, {
+            cbSize: DOCINFOW.size, lpszDocName: nameW.ptr, lpszOutput: outW.ptr,
+        })
+        t.checkTrue(doc !== 0 ? 'StartDoc' : `StartDoc 失败 (lastError=${GetLastError()})`, doc !== 0)
+        t.checkTrue('StartPage', StartPage(hdc) !== 0)
+        TextOut(hdc, 10, 10, 'hello gdi', 9)
+        t.checkTrue('EndPage', EndPage(hdc) !== 0)
+        const end = EndDoc(hdc)
+        t.checkTrue(end !== 0 ? 'EndDoc' : `EndDoc 失败 (lastError=${GetLastError()})`, end !== 0)
+        t.checkTrue('DeleteDC', DeleteDC(hdc) !== 0)
+        // 作业落盘（spooler 异步刷盘：有界重试，超时只 skip 不判失败）
+        let hOutG = CreateFile(gdiOut, 0x80000000 /* GENERIC_READ */, 0, NULL,
+            FileCreation.OPEN_EXISTING, 0, NULL)
+        for (let i = 0; i < 20 && hOutG === -1; i++) {
+            Sleep(100)
+            hOutG = CreateFile(gdiOut, 0x80000000 /* GENERIC_READ */, 0, NULL,
+                FileCreation.OPEN_EXISTING, 0, NULL)
+        }
+        if (hOutG === -1) t.skipCase(`GDI job file (${gdiOut}) 未出现`)
+        else {
+            const gSize = GetFileSize(hOutG, NULL)
+            t.checkTrue(`GDI job file size > 0 (${gSize})`, gSize > 0)
+            CloseHandle(hOutG)
+        }
+        DeleteFile(gdiOut)
     },
 }

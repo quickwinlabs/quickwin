@@ -7,7 +7,7 @@
 //     DeepPartial 对象直传（缺省字段跳过 = 保持 0 合法零值语义）
 import { bind, type CodecMap } from '../ffi/bind.js'
 import { structArray } from '../ffi/struct.js'
-import { LOGFONTW, POINT, RECT } from './structs.js'
+import { LOGFONTW, DEVMODEW, DOCINFOW, POINT, RECT } from './structs.js'
 
 // dll 名部分应用（工厂转调保泛型 infer，见 lib/windows/user32.ts 头注释；第三参透传 encoders）
 const b = <const S extends string, const LE extends CodecMap = {}>(name: string, sig: S, encoders?: LE) =>
@@ -230,6 +230,42 @@ export const SetDIBitsToDevice = /*@__PURE__*/ b('SetDIBitsToDevice',
 export const StretchDIBits = /*@__PURE__*/ b('StretchDIBits',
     '<HDC>ptr! i32 i32 i32 i32 i32 i32 i32 i32 <BYTE>ptr <BYTE>ptr u32@ColorUse u32@RasterOp -> i32')
 
+// ============ 打印 DC（CreateDC("winspool") → StartDoc → StartPage/EndPage → EndDoc）============
+
+/** 建打印机 DC（首参恒 "winspool"）；配对 DeleteDC
+ *  @returns HDC（0 = 失败，看 GetLastError）
+ *  @param args_0 ppszName "winspool"（GDI 对打印机忽略驱动名，照官方示例传最稳）
+ *  @param args_1 ppszDevice 打印机名（GetDefaultPrinter 读回的名字；WINSPOOL 下必需）
+ *  @param args_2 pszPort 端口名（"LPT1:" / "FILE:" / NULL），**不是**输出文件——重定向到
+ *    文件走 StartDoc 的 DOCINFOW.lpszOutput；传 NULL = 用打印机自身端口
+ *  @param args_3 pmode DEVMODE，NULL = 打印机默认；非 NULL 须已置 dmSize（dmDriverExtra
+ *    非 0 时尾部还要留够字节），通常直接用量 DocumentProperties 填好的 dm.ptr */
+export const CreateDC = /*@__PURE__*/ b('CreateDCW',
+    '<WCHAR>ptr <WCHAR>ptr <WCHAR>ptr <DEVMODEW>ptr -> <HDC>ptr', { DEVMODEW })
+/** 按 DEVMODE 重置 DC 的设备模式
+ *  @returns 重置后的 DC 句柄（0 = 失败）——文档口径是「成功即返回该 DC」，可续用
+ *  @param args_0 hdc
+ *  @param args_1 pmode DEVMODE 对象或 DEVMODEW.alloc().ptr（通常来自 DocumentProperties） */
+export const ResetDC = /*@__PURE__*/ b('ResetDCW', '<HDC>ptr! <DEVMODEW>ptr -> <HDC>ptr', { DEVMODEW })
+/** 起打印作业；配对 EndDoc，中间包 StartPage/EndPage
+ *  @returns 成功 → 非 0
+ *  @param args_0 hdc CreateDC 建的打印机 DC
+ *  @param args_1 lpdi DOCINFOW 对象直传（cbSize 填 DOCINFOW.size；lpszDocName/lpszOutput
+ *    收 WCHAR.encode(s).ptr，缓冲须在 EndDoc 返回前保持引用；fwType 0 = 文本） */
+export const StartDoc = /*@__PURE__*/ b('StartDocW', '<HDC>ptr! <DOCINFOW>ptr -> i32', { DOCINFOW })
+/** 结束作业（提交给 spooler）
+ *  @returns 成功 → 非 0
+ *  @param args_0 hdc */
+export const EndDoc = /*@__PURE__*/ b('EndDoc', '<HDC>ptr! -> i32')
+/** 起页；配对 EndPage
+ *  @returns 成功 → 非 0
+ *  @param args_0 hdc */
+export const StartPage = /*@__PURE__*/ b('StartPage', '<HDC>ptr! -> i32')
+/** 结束页
+ *  @returns 成功 → 非 0
+ *  @param args_0 hdc */
+export const EndPage = /*@__PURE__*/ b('EndPage', '<HDC>ptr! -> i32')
+
 // ============ 画图原语（笔 / 线 / 形状 / 文字） ============
 
 /** 取系统共享对象（笔/刷/字体/调色板）；共享句柄不要 DeleteObject——
@@ -273,6 +309,13 @@ export const SetTextColor = /*@__PURE__*/ b('SetTextColor', '<HDC>ptr! u32 -> u3
  *  @param args_0 hdc 目标 DC
  *  @param args_1 color 新背景色 0x00BBGGRR */
 export const SetBkColor = /*@__PURE__*/ b('SetBkColor', '<HDC>ptr! u32 -> u32')
+/** 设画刷图案的 DC 原点（打印 / 图案平铺时对齐基线）
+ *  @returns 成功 → 非 0
+ *  @param args_0 hdc
+ *  @param args_1 x 图案原点 x（DC 坐标系）
+ *  @param args_2 y 图案原点 y
+ *  @param args_3 lppoint 出参，旧原点写回（POINT.alloc().ptr，不回读传 NULL） */
+export const SetBrushOrgEx = /*@__PURE__*/ b('SetBrushOrgEx', '<HDC>ptr! i32 i32 <POINT>ptr -> i32')
 /** 保存 DC 当前绘图状态到 GDI 状态栈（颜色/模式/选中笔刷字体/裁剪区/映射模式…）；
  *  配对 RestoreDC——标准用法：进入绘制块 Save、退出 Restore
  *  @returns 状态 ID（0 = 失败）

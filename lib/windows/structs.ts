@@ -180,6 +180,21 @@ export const DOC_INFO_1W_DECL = {
 
 export const DOC_INFO_1W = /* @__PURE__ */ struct('DOC_INFO_1W', DOC_INFO_1W_DECL)
 
+/** DOCINFOW（x64 40B / ia32 20B，mingw sizeof 实测）：StartDoc 纯入参位（注册 encoder →
+ *  { cbSize: DOCINFOW.size, lpszDocName: WCHAR.encode(s).ptr, ... } 对象直传——指针字段
+ *  收裸地址 number，字符串缓冲须在 EndDoc 返回前保持引用）。fwType 是 DWORD（wingdi.h）
+ *  ——别按 WORD 收：尾部 padding 让两种宽度 sizeof 相同，尺寸断言判不出来 */
+export const DOCINFOW_DECL = {
+    '#': 'struct',
+    cbSize: 'u32',
+    lpszDocName: '<>ptr',
+    lpszOutput: '<>ptr',
+    lpszDatatype: '<>ptr',
+    fwType: 'u32',
+} satisfies C_Struct
+
+export const DOCINFOW = /* @__PURE__ */ struct('DOCINFOW', DOCINFOW_DECL)
+
 /** PRINTER_INFO_2W（13 指针 + 8 DWORD：x64 136B / ia32 84B，双架构已由 test_ffi raw 实测）：
  *  EnumPrinters(Level=2) 出参数组元素。指针字段 decode 出地址 number，字符串须
  *  逐字宽读跟进；数组 = 单缓冲读回（structArray().decode(buf, count)：元素间无空洞，
