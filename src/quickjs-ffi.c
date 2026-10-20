@@ -106,6 +106,26 @@ static JSValue js_ffi_read_bytes(JSContext *ctx, JSValueConst this_val,
     return JS_NewArrayBufferCopy(ctx, (const uint8_t *)(intptr_t)ptr, (size_t)len);
 }
 
+/* readPtr(addr) -> number：按地址读一个指针宽的字。vtable 派发用——*(void**)p 取
+   vtable、*(void**)(vt + i*size) 取条目。与 ctype.readScalar 的 ptr 分支同规则：有符号
+   读，-1 哨兵这类负值保真（QuickJS 的 JS_NewInt64 对超出 int32 的值装箱为堆对象，
+   读回负值即负）。addr=0 fail-loud（读 0 必然访问违例，显式报错优于进程崩溃，与
+   readBytes 同一信任边界）。刻意不复用 readBytes：那会每派发一次分配一个 ArrayBuffer，
+   vtable 调用路径上不可接受。 */
+static JSValue js_ffi_read_ptr(JSContext *ctx, JSValueConst this_val,
+                               int argc, JSValueConst *argv)
+{
+    int64_t p;
+    JS_ToInt64(ctx, &p, argv[0]);
+    if (p == 0)
+        return JS_ThrowRangeError(ctx, "readPtr: null pointer");
+#if defined(__i386__)
+    return JS_NewInt32(ctx, *(int32_t *)(intptr_t)p);
+#else
+    return JS_NewInt64(ctx, *(int64_t *)(intptr_t)p);
+#endif
+}
+
 /* LoadLibrary / GetProcAddress：FFI 的自举入口——拿不到函数地址就无从 ffiCall，
    而 `ffi` 自身只有调用器（无 dlopen），所以这两项必须留在运行时里。原在 win
    模块，win 只剩这两项后并入本模块（名字保留 Win32 原样，是 LoadLibraryW /
@@ -147,6 +167,7 @@ static const JSCFunctionListEntry ffi_funcs[] = {
     JS_CFUNC_DEF("bufferPtr", 1, js_ffi_buffer_ptr),
     JS_CFUNC_DEF("readByte", 1, js_ffi_read_byte),
     JS_CFUNC_DEF("readBytes", 2, js_ffi_read_bytes),
+    JS_CFUNC_DEF("readPtr", 1, js_ffi_read_ptr),
     JS_CFUNC_DEF("writeByte", 2, js_ffi_write_byte),
     JS_CFUNC_DEF("LoadLibrary", 1, js_ffi_load_library),
     JS_CFUNC_DEF("GetProcAddress", 2, js_ffi_get_proc_address),

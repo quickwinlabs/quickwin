@@ -482,6 +482,9 @@ declare module "ffi" {
     function bufferPtr(buf: ArrayBuffer): number;
     function readByte(ptr: number): number;
     function readBytes(ptr: number, len: number): ArrayBuffer;
+    /** 按地址读一个指针宽的字（有符号，负值保真）——vtable 派发的读取侧。addr 为 0 抛
+     *  RangeError。与 readBytes 的区别是不分配：后者每次新建 ArrayBuffer。 */
+    function readPtr(ptr: number): number;
     function writeByte(ptr: number, value: number): void;
     function closureNew(argBytes: number, retKind: number, wrapper: (frame: ArrayBuffer, retBuf: ArrayBuffer) => void): number;
     function closureFree(ptr: number): void;
