@@ -169,27 +169,27 @@ export const WIN32_FIND_DATAW_DECL = {
 export const WIN32_FIND_DATAW = /* @__PURE__ */ struct('WIN32_FIND_DATAW', WIN32_FIND_DATAW_DECL)
 
 /** DOC_INFO_1W（3 指针随位宽：x64 24B / ia32 12B）：StartDocPrinter 纯入参位
- *  （注册 encoder：{ pDocName: WCHAR.encode(s).ptr, ... } 对象直传——指针字段收裸
- *  地址 number，字符串缓冲自行 WCHAR.encode 分配并保持引用） */
+ *  （注册 encoder：{ pDocName: WCHAR.encode(s).ptr, ... } 对象直传——<WCHAR>ptr 字段
+ *  收带品牌的 .ptr 或 NULL，字符串缓冲自行分配并保持引用） */
 export const DOC_INFO_1W_DECL = {
     '#': 'struct',
-    pDocName: '<>ptr',
-    pOutputFile: '<>ptr',
-    pDatatype: '<>ptr',
+    pDocName: '<WCHAR>ptr',
+    pOutputFile: '<WCHAR>ptr',
+    pDatatype: '<WCHAR>ptr',
 } satisfies C_Struct
 
 export const DOC_INFO_1W = /* @__PURE__ */ struct('DOC_INFO_1W', DOC_INFO_1W_DECL)
 
 /** DOCINFOW（x64 40B / ia32 20B，mingw sizeof 实测）：StartDoc 纯入参位（注册 encoder →
- *  { cbSize: DOCINFOW.size, lpszDocName: WCHAR.encode(s).ptr, ... } 对象直传——指针字段
- *  收裸地址 number，字符串缓冲须在 EndDoc 返回前保持引用）。fwType 是 DWORD（wingdi.h）
- *  ——别按 WORD 收：尾部 padding 让两种宽度 sizeof 相同，尺寸断言判不出来 */
+ *  { cbSize: DOCINFOW.size, lpszDocName: WCHAR.encode(s).ptr, ... } 对象直传——<WCHAR>ptr
+ *  字段收带品牌的 .ptr 或 NULL，缓冲须在 EndDoc 返回前保持引用）。fwType 是 DWORD
+ *  （wingdi.h）——别按 WORD 收：尾部 padding 让两种宽度 sizeof 相同，尺寸断言判不出来 */
 export const DOCINFOW_DECL = {
     '#': 'struct',
     cbSize: 'u32',
-    lpszDocName: '<>ptr',
-    lpszOutput: '<>ptr',
-    lpszDatatype: '<>ptr',
+    lpszDocName: '<WCHAR>ptr',
+    lpszOutput: '<WCHAR>ptr',
+    lpszDatatype: '<WCHAR>ptr',
     fwType: 'u32',
 } satisfies C_Struct
 

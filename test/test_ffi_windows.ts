@@ -1,5 +1,6 @@
 import { Tester } from './test_helper.js'
 import { NULL, PTR_SIZE, PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { WCHAR } from '../lib/ffi/bind.js'
 import {
     GetDesktopWindow, CreatePopupMenu, DestroyMenu, GetDC, ReleaseDC,
     LoadImage, LoadImageOrdinal, SetScrollInfo, GetScrollInfo,
@@ -205,6 +206,14 @@ export const suite = {
         // 尺寸断言抓不到），故按 32 位值往返验证
         const diProbe = DOCINFOW.encode({ cbSize: DOCINFOW.size, fwType: 0x12345678 })
         t.check('fwType 按 32 位往返（DWORD）', 0x12345678, DOCINFOW.decode(diProbe).fwType)
+        // 仅类型层反例（不执行）：<WCHAR>ptr 字段只收品牌指针（.ptr）或 NULL，裸地址编译不过
+        const _typeOnly = () => {
+            // 正例：encode 产出的 .ptr 是 Ptr<'WCHAR'>，可直接进字段
+            DOCINFOW.encode({ cbSize: DOCINFOW.size, lpszDocName: WCHAR.encode('x').ptr, lpszOutput: NULL })
+            // @ts-expect-error 裸 number 缺 Ptr<'WCHAR'> 品牌（品牌只能来自 WCHAR.encode / WCHAR.alloc）
+            DOCINFOW.encode({ cbSize: DOCINFOW.size, lpszDocName: 0x1234 })
+        }
+        void _typeOnly
         const bdc = GetDC(NULL)
         if (bdc) {
             const org = POINT.alloc()

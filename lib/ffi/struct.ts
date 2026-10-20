@@ -228,7 +228,7 @@ export type StructDef<T extends { '#': 'struct' | 'union' }, N extends string = 
     // 的 base）。返回值仍是 buf 本身 —— offset 形态下其 .ptr 对不上写入点，写入点地址
     // = buf.ptr + offset（自算术，品牌随算术丢失同 CreatePipe 先例）；越界写由 DataView
     // RangeError 兜底，无需额外校验。
-    encode(v: EncodeIn<T>, buf: PtrArrayBuffer<any>, offset?: number): PtrArrayBuffer<any>
+    encode(v: EncodeIn<T>, buf: PtrArrayBuffer<''>, offset?: number): PtrArrayBuffer<''>
     offsetOf(name: string): number
 }
 
