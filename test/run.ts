@@ -14,6 +14,8 @@ const GREEN = '\x1b[32m'
 const RED   = '\x1b[31m'
 const RESET = '\x1b[0m'
 
+type Result = { name: string, ok: number, fail: number, skip: number, elapsed: number }
+
 const suiteDefs = [
     { name: 'basic',             file: './test_basic.js',            tags: [] },
     { name: 'basic-fetch',       file: './test_basic_fetch.js',       tags: [] },
@@ -58,13 +60,24 @@ const suiteDefs = [
     { name: 'worker-data-url',   file: './test_worker_data_url.js',   tags: [] }
 ]
 
+// A suite that cannot even load (bad import, missing export at bind time) must
+// fail: counting it as "absent" would keep the Summary green.
+function pushLoadFailure(results: Result[], name: string, why: string): void {
+    std.printf('\n%s--- %s ---%s\n  %sSUITE FAILED:%s %s\n', BOLD, name, RESET, RED, RESET, why)
+    results.push({ name, ok: 0, fail: 1, skip: 0, elapsed: 0 })
+}
+
 async function main(): Promise<void> {
-    const filter = scriptArgs.length > 1 ? scriptArgs[1] : ''
+    // scriptArgs[0] is the first argument after the script slot: the runtime
+    // hands over everything past `exe [flags] file` verbatim, so the script
+    // name never occupies a slot (unlike stock qjs). Filter is a suite-name
+    // substring, or `-tag` to exclude a tag.
+    const filter = scriptArgs[0] ?? ''
 
     std.printf('%s====== QuickWin Test Runner ======%s\n', BOLD, RESET)
     if (filter) std.printf('Filter: %s\n', filter)
 
-    const results: { name: string, ok: number, fail: number, skip: number, elapsed: number }[] = []
+    const results: Result[] = []
     let totalOk = 0, totalFail = 0, totalSkip = 0
 
     for (const def of suiteDefs) {
@@ -81,9 +94,15 @@ async function main(): Promise<void> {
         try {
             mod = await import(def.file)
         } catch (e) {
+            pushLoadFailure(results, def.name, 'did not load: ' + String(e))
+            totalFail++
             continue
         }
-        if (!mod.suite) continue
+        if (!mod.suite) {
+            pushLoadFailure(results, def.name, 'exports no suite')
+            totalFail++
+            continue
+        }
 
         const t = new Tester()
         std.printf('\n%s--- %s ---%s\n', BOLD, def.name, RESET)
@@ -102,6 +121,10 @@ async function main(): Promise<void> {
         totalSkip += t.skip
     }
 
+    if (results.length === 0) {
+        std.printf('%sFAIL: no suite matched filter "%s"%s\n', RED, filter, RESET)
+        totalFail++
+    }
     const color = totalFail > 0 ? RED : GREEN
     std.printf('\n%s====== Test Results ======%s\n', BOLD, RESET)
     for (const r of results) {

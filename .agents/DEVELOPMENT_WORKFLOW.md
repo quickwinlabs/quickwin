@@ -179,8 +179,9 @@ cd docker
 # 需要干净 overlay 时: ./run.sh win7 --fresh
 
 ./http_test.sh win7        # POST /exec 跑 test/run.js，解析 Summary，failed≤1 → PASS
-# ⚠️ filter 尾参目前到不了 guest 的 scriptArgs（2026-10-19 实测：`./http_test.sh win11 ffi`
-#    实跑的是全量 1350/1355）。想要子集请另发脚本，见下方「FFI 子集」与 TODO 条目
+./http_test.sh win7 ffi    # 只跑 suite 名含 ffi 的（-net / -wasm 则是排除该 tag）
+#    filter 就是 guest 的 scriptArgs[0]（运行时把脚本槽之后的一切原样透传，脚本名不占位）；
+#    匹配 0 个 suite 会记为失败（Summary 0/1），不会假绿
 
 ./run.sh win7 --stop       # ACPI 关机，超时 60s 自动 kill
 ./run.sh win7 --restart    # 停再起
