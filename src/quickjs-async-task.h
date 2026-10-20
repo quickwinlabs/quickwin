@@ -17,10 +17,19 @@ typedef struct {
     int slots_capacity;    // allocated size
 } AsyncTaskState;
 
+/* Smoke test for the plumbing: build with -DQW_ASYNC_TASK_DEMO=1 (`make
+ * ASYNC_DEMO=1`) to expose globalThis.fibAsync(n) => Promise<number>. */
+#ifndef QW_ASYNC_TASK_DEMO
+#define QW_ASYNC_TASK_DEMO 0
+#endif
+#if QW_ASYNC_TASK_DEMO
+void js_async_task_demo_install(JSContext *ctx);
+#endif
+
 /* state lives in JSThreadState.async_task */
 AsyncTaskState *js_async_task_init(JSRuntime *rt);
 HANDLE            js_async_task_get_event(JSRuntime *rt);
 int               js_async_task_slot_count(JSRuntime *rt);
-AsyncTask        *js_async_task_make_task(JSRuntime *rt);
+AsyncTask        *js_async_task_make_task(JSRuntime *rt);  /* NULL when all 16 slots are busy */
 void              js_async_task_process(JSContext *ctx);
 void              js_async_task_destroy(JSRuntime *rt);
