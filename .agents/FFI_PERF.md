@@ -182,6 +182,13 @@ S0 1162→895（−23%）、S2 2041→1235（−40%，0 参 u32 返回最吃这�
 - **唯一没覆盖的窗口**是"写槽期间的重入"（自定义 codec 的 `encode` 里回调已 bind 的函数，
   会在本层 `ffiCall` 之前抹掉已写槽）→ 按契约处理：`bind()` jsdoc 已写明 codec 的
   encode/decode 内不得回调已 bind 的函数，且 `encode(v, buf, off)` 必须写满槽宽。
+- **编码缓冲的寿命**同理只有"槽写器 return 的那一块"：`callPlan` 的 `held` 每槽只记一个
+  buffer，裸 `.ptr`（number）走 `mkPtrWriter` 快路径 `return undefined` 不进 `held`，内联
+  `X.encode({...}).ptr` / `X.alloc().ptr` 的临时缓冲求值完即不可达，GC 可在 `ffiCall` 期间
+  收掉 → native 读写落进已释放块；嵌套 `A.encode({ f: B.encode(s).ptr })` 也一样（外层只
+  held 自己那块，内层 B 无任何持有）。库级约定：取 `.ptr` 前必须 `const r = X.alloc()` /
+  `X.encode(初值)` 绑住、靠词法作用域持活；有 encoder 的入参位直接传对象。约定定义在
+  `lib/windows/user32.ts` 头部，机制注释在 `lib/ffi/bind.ts` 的 `callPlan`。
 
 同机交错 A/B（A=新形态 n=4、B=stash 回基线 n=2；该组 `gui` 地板 162.0 vs 160.6，机况等同）：
 

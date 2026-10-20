@@ -690,7 +690,7 @@ type StructArrayDecode<D extends StructDef<any, any>> = {
  *  PAB(0)（其 .ptr 是"非 0 的 1 字节堆指针"，会骗过 C 的 NULL 防御；空位语义由
  *  调用方显式传 NULL）。注册进 bind 的 encoders 表（`{ POINT: structArray(POINT) }`）
  *  后，普通 `<POINT>ptr` 位的值域即元素数组（值域由 encoder 推导，token/引擎/类型层
- *  零数组概念）；直接调用 `.encode(els).ptr` 亦可。
+ *  零数组概念）；直接调用 `.encode(els).ptr` 亦可（外层 encode 消费期间缓冲可达）。
  *  decode —— 出参数组读回（与 def.decode 的 ArrayBuffer/地址双态对称）：
  *  - buffer 形（含 PAB）：count? 缺省自算 byteLength/size —— 要求整数倍，% ≠ 0
  *    throw（混合缓冲如 EnumPrinters 的"结构 + 尾部字符串"必须显式 count）；显式

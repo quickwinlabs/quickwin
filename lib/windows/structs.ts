@@ -111,8 +111,7 @@ export const LOGFONTW_DECL = {
 export const LOGFONTW = /* @__PURE__ */ struct('LOGFONTW', LOGFONTW_DECL)
 
 /** 非客户区度量（504B，x64/ia32 同布局）：内嵌 4 个 LOGFONTW + iPaddedBorderWidth（Vista+）；
- *  SystemParametersInfo(SPI_GETNONCLIENTMETRICS) 纯出参位（不注册 encoder：
- *  encode({cbSize}) 建缓冲带初值 → 传 .ptr → decode 读回 lfMessageFont 等） */
+ *  SystemParametersInfo(SPI_GETNONCLIENTMETRICS) 的出参结构 */
 export const NONCLIENTMETRICSW_DECL = {
     '#': 'struct',
     cbSize: 'u32',
@@ -135,8 +134,7 @@ export const NONCLIENTMETRICSW_DECL = {
 
 export const NONCLIENTMETRICSW = /* @__PURE__ */ struct('NONCLIENTMETRICSW', NONCLIENTMETRICSW_DECL)
 
-/** TEXTMETRICW（60B = 11 LONG + 4 WCHAR + 5 BYTE 尾部补齐，双架构同布局）：
- *  GetTextMetrics 纯出参位（不注册 encoder：TEXTMETRICW.alloc().ptr 进、decode 读回） */
+/** TEXTMETRICW（60B = 11 LONG + 4 WCHAR + 5 BYTE 尾部补齐，双架构同布局）：GetTextMetrics 的出参 */
 export const TEXTMETRICW_DECL = {
     '#': 'struct',
     tmHeight: 'i32',
@@ -165,8 +163,7 @@ export const TEXTMETRICW = /* @__PURE__ */ struct('TEXTMETRICW', TEXTMETRICW_DEC
 
 /** WIN32_FIND_DATAW（592B 双架构同布局 = 8 头字段 44B + WCHAR[260] + WCHAR[14]，
  *  mingw wingdi.h 的 cAlternateFileName 为 WCHAR[14] 非 MSDN 的 CHAR[14]）：
- *  FindFirstFile/FindNextFile 纯出参位（不注册 encoder：WIN32_FIND_DATAW.alloc().ptr
- *  进、decode 读回）。FILETIME 是 align 4 的 8B 时间，以 u64 + pack 4 忠实布局
+ *  FindFirstFile/FindNextFile 的出参结构。FILETIME 是 align 4 的 8B 时间，以 u64 + pack 4 忠实布局
  *  （u64 自然 align 8 须 pack 压到 4）；时间值为 1601 起的 100ns 单元（bigint） */
 export const WIN32_FIND_DATAW_DECL = {
     '#': 'struct',
@@ -185,9 +182,8 @@ export const WIN32_FIND_DATAW_DECL = {
 
 export const WIN32_FIND_DATAW = /* @__PURE__ */ struct('WIN32_FIND_DATAW', WIN32_FIND_DATAW_DECL)
 
-/** DOC_INFO_1W（3 指针随位宽：x64 24B / ia32 12B）：StartDocPrinter 纯入参位
- *  （注册 encoder：{ pDocName: WCHAR.encode(s).ptr, ... } 对象直传——<WCHAR>ptr 字段
- *  收带品牌的 .ptr 或 NULL，字符串缓冲自行分配并保持引用） */
+/** DOC_INFO_1W（3 指针随位宽：x64 24B / ia32 12B）：StartDocPrinter 的入参。<WCHAR>ptr 字段
+ *  收带品牌的 .ptr 或 NULL，字符串缓冲自行分配并保持引用 */
 export const DOC_INFO_1W_DECL = {
     '#': 'struct',
     pDocName: '<WCHAR>ptr',
@@ -197,9 +193,8 @@ export const DOC_INFO_1W_DECL = {
 
 export const DOC_INFO_1W = /* @__PURE__ */ struct('DOC_INFO_1W', DOC_INFO_1W_DECL)
 
-/** DOCINFOW（x64 40B / ia32 20B，mingw sizeof 实测）：StartDoc 纯入参位（注册 encoder →
- *  { cbSize: DOCINFOW.size, lpszDocName: WCHAR.encode(s).ptr, ... } 对象直传——<WCHAR>ptr
- *  字段收带品牌的 .ptr 或 NULL，缓冲须在 EndDoc 返回前保持引用）。fwType 是 DWORD
+/** DOCINFOW（x64 40B / ia32 20B，mingw sizeof 实测）：StartDoc 的入参，<WCHAR>ptr 字段
+ *  收带品牌的 .ptr 或 NULL，缓冲须持到 EndDoc 返回。fwType 是 DWORD
  *  （wingdi.h）——别按 WORD 收：尾部 padding 让两种宽度 sizeof 相同，尺寸断言判不出来 */
 export const DOCINFOW_DECL = {
     '#': 'struct',

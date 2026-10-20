@@ -377,6 +377,12 @@ function callPlan(proc: Ptr<'FARPROC'>, plan: CallPlan, args: any[]): unknown {
     }
     // codec 编码缓冲要活到 read 之后（decode 可能顺着回传的指针读调用方缓冲）：靠这个
     // 局部变量存活，返回即不可达、交 GC 回收。原先恒分配空数组，无编码参数时这次省掉。
+    //
+    // held 是唯一的缓冲寿命保证，且每个槽只记槽写器 return 的那一块：裸 `.ptr`（number）
+    // 走 mkPtrWriter 的快路径 return undefined、不进这里；`A.encode({ f: B.encode(s).ptr })`
+    // 里的内层 B 同理——外层只 held 自己那块。所以取 .ptr 前必须 const 绑定（r = X.alloc()
+    // / X.encode(初值)），靠词法作用域持活跨 ffiCall；有 encoder 的入参位别取 .ptr，直接传
+    // 对象（encoder 内部分配、这里 held）。
     let held: ArrayBuffer[] | null = null
     for (let i = 0; i < n; i++) {
         const h = slots[i]!(dv, args[i])

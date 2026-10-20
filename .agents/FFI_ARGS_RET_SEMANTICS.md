@@ -55,17 +55,15 @@
 - **x86**：窄整数返回只有 EAX 有效、EDX 是残留垃圾。`readRet` 只取需要的低 N 字节，故不受高字节垃圾影响；64 位返回则用满 8 字节。
 - **x64**：Win64 ABI 要求被调方扩展 RAX；`readRet` 仍按声明类型显式截断，不依赖被调方扩展。
 
-### 正确读回（`lib/ffi/bind.ts` `readRet`）
+### 正确读回（`lib/ffi/bind.ts` 的 `RET_READER` / `ctype.ts` 的 `readScalar`）
 
 | 返回类型 | 写法 | 说明 |
 |---|---|---|
-| i8 | `getUint8(0)`，`>0x7F` 减 `0x100` | 低字节有符号 |
-| i16 | `getUint16(0,true)`，`>0x7FFF` 减 `0x10000` | 低字有符号 |
-| i32 | `getInt32(0, true)` | 低 4 字节有符号 |
-| u8/u16/u32 | `getUint32(0,true)` 后按位掩码 / 直接 | 零扩展 |
-| u64/i64 | `getBigUint64`/`getBigInt64` → `bigint` | 全宽精确，JS 侧保持 bigint，不降级 Number |
-| f32/f64 | `getFloat32`/`getFloat64` | 按浮点槽位取回 |
-| ptr | 读指针宽，0 → `null` | 地址按无符号解释 |
+| i8 / i16 / i32 | `getInt8` / `getInt16` / `getInt32` | 符号扩展 |
+| u8 / u16 / u32 | `getUint8` / `getUint16` / `getUint32` | 零扩展 |
+| u64 / i64 | `getBigUint64` / `getBigInt64` → `bigint` | 全宽精确，JS 侧保持 bigint，不降级 Number |
+| f32 / f64 | `getFloat32` / `getFloat64` | 按浮点槽位取回 |
+| ptr | 指针宽**有符号**读：x64 `Number(getBigInt64)`、ia32 `getInt32` | 全 1 → `-1`（对齐 C 版 `JS_NewInt64`，`-1` 哨兵保真）；`0` 原样返回，**不转 `null`**。无符号的 `SIZE_T`/`UINT_PTR` 在 ≥2^63 时不是真值，别拿它做大小比较 |
 
 ### 为什么要带符号（i32 vs u32）
 

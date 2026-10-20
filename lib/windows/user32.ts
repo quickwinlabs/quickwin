@@ -5,12 +5,13 @@
 //   - 入参字符串用 <WCHAR>ptr（string 编码为 UTF-16 + NUL，无字符串传 NULL）；文本出参缓冲
 //     用 <BYTE>ptr（宽字符串出参配 WCHAR.alloc(n) 当 buffer、WCHAR.decode(buf) 读回）；
 //     回调参数用 <>ptr 接 closure() 的 ptr
-//   - 结构位按方向分流（结构定义见 ./structs.ts）：
-//       纯入参位 <N>ptr + 注册 encoder → DeepPartial 对象直传（缺省字段 doEncode 跳过）、
-//         alloc().ptr、NULL 三形态；
-//       出参/就地位 <N>ptr 不注册 encoder → 位只收 def 分配的 .ptr（对象 encode 进调用方拿不到
-//         的临时 buffer 会丢结果；ArrayBuffer 由 unknown layout fail-fast 拦下），
-//         读回走 N.decode(buf|ptr)。统一流程：encode → call → decode
+//   - 结构位取值形按方向推导（方向标 [in] / [out] / [inout] 见各 @param；结构定义见
+//     ./structs.ts；缺省字段 doEncode 跳过；ArrayBuffer 由 unknown layout fail-fast 拦下）：
+//       [in] + <N>ptr + 该位注册 encoder（b() 第三参含 N）→ 直接传 DeepPartial 对象
+//       [in] + <>ptr 或该位无 encoder → const b = X.encode({...}) 后传 b.ptr
+//       [out] / [inout] + <N>ptr（不注册 encoder：对象 encode 的临时缓冲调用方拿不到）
+//         → const r = X.alloc()（[inout] 用 X.encode(初值)）后传 r.ptr，X.decode(r) 读回
+//       取 .ptr 前必须 const 绑定：裸内联的缓冲不进 callPlan 的 held，见 lib/ffi/bind.ts
 //   - 签名里的 <WCHAR>ptr 若语义是 MAKEINTRESOURCE 整数（如 LoadCursorW 光标名），该位用 <>ptr
 //   - HDC 借出/归还与消费位统一 <HDC>ptr（品牌指针 Ptr<'HDC'>）：ReleaseDC 等归还位由 tsc
 //     校验配对拦住误传 HWND，DrawText/FillRect 等消费位同收品牌、拦住裸 number 误传
@@ -93,12 +94,12 @@ export const SetWindowPos = /*@__PURE__*/ b('SetWindowPos', '<HWND>ptr <>ptr@Set
 /** 取窗口外框矩形（屏幕坐标）
  *  @returns 成功 → 非 0；失败 → 0（原因见 GetLastError）
  *  @param args_0 hWnd
- *  @param args_1 lpRect 出参槽，传 RECT.alloc().ptr、RECT.decode 读回 */
+ *  @param args_1 [out] lpRect */
 export const GetWindowRect = /*@__PURE__*/ b('GetWindowRect', '<HWND>ptr <RECT>ptr -> i32')
 /** 取窗口客户区矩形
  *  @returns 成功 → 非 0；失败 → 0（原因见 GetLastError）
  *  @param args_0 hWnd
- *  @param args_1 lpRect 出参槽，传 RECT.alloc().ptr、RECT.decode 读回 */
+ *  @param args_1 [out] lpRect */
 export const GetClientRect = /*@__PURE__*/ b('GetClientRect', '<HWND>ptr <RECT>ptr -> i32')
 /** 是否有效窗口句柄
  *  @returns 是 → 非 0
@@ -139,7 +140,7 @@ export const FindWindowEx = /*@__PURE__*/ b('FindWindowExW',
 /** 取窗口标题
  *  @returns 写入字符数，不含 NUL
  *  @param args_0 hWnd
- *  @param args_1 lpString 出参缓冲，传 WCHAR.alloc(n)、WCHAR.decode(buf) 读回
+ *  @param args_1 [out] lpString：WCHAR 缓冲
  *  @param args_2 nMaxCount 缓冲容量（字符数，含 NUL 余量） */
 export const GetWindowText = /*@__PURE__*/ b('GetWindowTextW', '<HWND>ptr <BYTE>ptr i32 -> i32')
 /** 设窗口标题（传 string 或 NULL 清空）
@@ -154,7 +155,7 @@ export const GetWindowTextLength = /*@__PURE__*/ b('GetWindowTextLengthW', '<HWN
 /** 取窗口类名
  *  @returns 写入字符数
  *  @param args_0 hWnd
- *  @param args_1 lpClassName 出参缓冲，传 WCHAR.alloc(n)、WCHAR.decode(buf) 读回
+ *  @param args_1 [out] lpClassName：WCHAR 缓冲
  *  @param args_2 nMaxCount 缓冲容量（字符数） */
 export const GetClassName = /*@__PURE__*/ b('GetClassNameW', '<HWND>ptr <BYTE>ptr i32 -> i32')
 /** 取窗口附加数据（ia32 走 GetWindowLongW）
@@ -171,7 +172,7 @@ export const SetWindowLongPtr = /*@__PURE__*/ b('SetWindowLong' + LONG_PTR_SYM, 
 /** 取窗口所属线程（第二参可传 NULL 不取进程 ID）
  *  @returns 线程 ID
  *  @param args_0 hWnd
- *  @param args_1 lpdwProcessId 出参槽，传 Uint32Array(1).buffer 或 NULL */
+ *  @param args_1 [out] lpdwProcessId：4 字节缓冲或 NULL */
 export const GetWindowThreadProcessId = /*@__PURE__*/ b('GetWindowThreadProcessId', '<HWND>ptr <BYTE>ptr -> u32')
 /** 启用/禁用窗口输入
  *  @returns 先前状态
@@ -194,7 +195,7 @@ export const SetParent = /*@__PURE__*/ b('SetParent', '<HWND>ptr <HWND>ptr -> <H
 export const GetWindow = /*@__PURE__*/ b('GetWindow', '<HWND>ptr u32@GetWindowCmd -> <HWND>ptr')
 /** 注册窗口类
  *  @returns 类 ATOM；失败 → 0
- *  @param args_0 lpwcx WNDCLASSEXW.encode({ cbSize: WNDCLASSEXW.size, ... }).ptr（见 structs.ts） */
+ *  @param args_0 [in] lpwcx */
 export const RegisterClassEx = /*@__PURE__*/ b('RegisterClassExW', '<WNDCLASSEXW>ptr -> u16', { WNDCLASSEXW })
 
 // ============ 焦点 / 激活 ============
@@ -218,14 +219,14 @@ export const SetActiveWindow = /*@__PURE__*/ b('SetActiveWindow', '<HWND>ptr -> 
 
 /** 取消息（阻塞式）；分发前先 TranslateMessage
  *  @returns -1 = 出错、0 = WM_QUIT、>0 = 有消息
- *  @param args_0 lpMsg MSG 出参缓冲（MSG.alloc().ptr，品牌位不收裸 PAB）
+ *  @param args_0 [out] lpMsg
  *  @param args_1 hWndFilter 窗口过滤，可 NULL
  *  @param args_2 wMsgFilterMin 消息下限，0 = 不过滤
  *  @param args_3 wMsgFilterMax 消息上限，0 = 不过滤 */
 export const GetMessage = /*@__PURE__*/ b('GetMessageW', '<MSG>ptr <HWND>ptr u32 u32 -> i32')
 /** 非阻塞查消息
  *  @returns 有消息 → 非 0
- *  @param args_0 lpMsg MSG 出参缓冲
+ *  @param args_0 [out] lpMsg
  *  @param args_1 hWndFilter 窗口过滤，可 NULL
  *  @param args_2 wMsgFilterMin 消息下限，0 = 不过滤
  *  @param args_3 wMsgFilterMax 消息上限，0 = 不过滤
@@ -233,11 +234,11 @@ export const GetMessage = /*@__PURE__*/ b('GetMessageW', '<MSG>ptr <HWND>ptr u32
 export const PeekMessage = /*@__PURE__*/ b('PeekMessageW', '<MSG>ptr <HWND>ptr u32 u32 u32 -> i32')
 /** 把 WM_KEYDOWN/UP 转成字符消息（翻译结果留在队列）
  *  @returns 可翻译 → 非 0
- *  @param args_0 lpMsg 取到的 MSG 缓冲（GetMessage/PeekMessage 的出参） */
+ *  @param args_0 [in] lpMsg */
 export const TranslateMessage = /*@__PURE__*/ b('TranslateMessage', '<MSG>ptr -> i32', { MSG })
 /** 分发 MSG 给窗口过程
  *  @returns 处理结果（0 保真，有符号读）
- *  @param args_0 lpMsg MSG 缓冲（GetMessage/PeekMessage 的出参） */
+ *  @param args_0 [in] lpMsg */
 export const DispatchMessage = /*@__PURE__*/ b('DispatchMessageW', '<MSG>ptr -> <>ptr', { MSG })
 /** 异步投递消息到窗口线程队列
  *  @returns 成功 → 非 0
@@ -301,7 +302,7 @@ export const GetWindowDC = /*@__PURE__*/ b('GetWindowDC', '<HWND>ptr -> <HDC>ptr
 /** 开始重绘；配对 EndPaint
  *  @returns DC
  *  @param args_0 hWnd 重绘窗口
- *  @param args_1 lpPaint 出参槽，PAINTSTRUCT.alloc().ptr（见 structs.ts） */
+ *  @param args_1 [out] lpPaint */
 export const BeginPaint = /*@__PURE__*/ b('BeginPaint', '<HWND>ptr <PAINTSTRUCT>ptr -> <HDC>ptr')
 /** 结束重绘（传 BeginPaint 同一 buffer）
  *  @returns 成功 → 非 0
@@ -313,30 +314,30 @@ export const EndPaint = /*@__PURE__*/ b('EndPaint', '<HWND>ptr <PAINTSTRUCT>ptr 
  *  @param args_0 hdc 目标 DC
  *  @param args_1 lpchText 文本 string（自动 UTF-16 编码）
  *  @param args_2 cchText 字符数（-1 = 自动算到 NUL）
- *  @param args_3 lpRect 矩形（双向不注册 encoder；CALCRECT 就地写回：RECT.encode(初值) 传 .ptr、decode 读回）
+ *  @param args_3 [inout] lpRect
  *  @param args_4 uFormat DT_* 排版标志（DrawTextFlag） */
 export const DrawText = /*@__PURE__*/ b('DrawTextW', '<HDC>ptr! <WCHAR>ptr i32 <RECT>ptr i32 -> i32')
 /** 用画刷填充矩形
  *  @returns 填充高度
  *  @param args_0 hdc 目标 DC
- *  @param args_1 lprc 矩形（DeepPartial RECT 对象或 RECT.alloc().ptr）
+ *  @param args_1 [in] lprc
  *  @param args_2 hbr 画刷句柄（无品牌 <>ptr） */
 export const FillRect = /*@__PURE__*/ b('FillRect', '<HDC>ptr! <RECT>ptr <>ptr -> i32', { RECT })
 
 /** 用画刷画 1px 空心矩形边框（只描边不填充）；成功与否请以像素/后续状态断言
  *  @returns 返回值 Windows 版本间不可靠
- *  @param args_1 lprc 矩形（DeepPartial RECT 对象或 RECT.alloc().ptr）
+ *  @param args_1 [in] lprc
  *  @param args_2 hbr 画刷句柄（CreateSolidBrush 等返回的 <>ptr 族内互传） */
 export const FrameRect = /*@__PURE__*/ b('FrameRect', '<HDC>ptr! <RECT>ptr <>ptr -> i32', { RECT })
 
 /** 矩形区域逐像素按位取反（白→黑、红→青；再反一次可逆还原）
  *  @returns 成功 → 非 0
- *  @param args_1 lprc 矩形（DeepPartial RECT 对象或 RECT.alloc().ptr） */
+ *  @param args_1 [in] lprc */
 export const InvertRect = /*@__PURE__*/ b('InvertRect', '<HDC>ptr! <RECT>ptr -> i32', { RECT })
 /** 标记窗口区域失效（触发重绘）
  *  @returns 成功 → 非 0
  *  @param args_0 hWnd
- *  @param args_1 lpRect 失效区域（DeepPartial RECT / .ptr / NULL = 全窗）
+ *  @param args_1 [in] lpRect：NULL = 全窗
  *  @param args_2 bErase 非 0 先擦背景 */
 export const InvalidateRect = /*@__PURE__*/ b('InvalidateRect', '<HWND>ptr <RECT>ptr i32 -> i32', { RECT })
 /** 立即重绘失效区域
@@ -357,7 +358,7 @@ export const SetCursor = /*@__PURE__*/ b('SetCursor', '<HCURSOR>ptr -> <HCURSOR>
 export const LoadCursor = /*@__PURE__*/ b('LoadCursorW', '<HMODULE>ptr <>ptr -> <HCURSOR>ptr')
 /** 取光标屏幕坐标
  *  @returns 成功 → 非 0
- *  @param args_0 lpPoint 出参槽，传 POINT.alloc().ptr、POINT.decode 读回 */
+ *  @param args_0 [out] lpPoint */
 export const GetCursorPos = /*@__PURE__*/ b('GetCursorPos', '<POINT>ptr -> i32')
 /** 设光标屏幕坐标
  *  @returns 成功 → 非 0
@@ -371,12 +372,12 @@ export const ShowCursor = /*@__PURE__*/ b('ShowCursor', 'i32 -> i32')
 /** 屏幕坐标 → 客户区坐标（就地更新，双向不注册 encoder）
  *  @returns 成功 → 非 0
  *  @param args_0 hWnd 目标窗口
- *  @param args_1 lpPoint 就地更新的 POINT（encode(初值) 传 .ptr、decode 读回） */
+ *  @param args_1 [inout] lpPoint */
 export const ScreenToClient = /*@__PURE__*/ b('ScreenToClient', '<HWND>ptr <POINT>ptr -> i32')
 /** 客户区坐标 → 屏幕坐标（就地更新，同上）
  *  @returns 成功 → 非 0
  *  @param args_0 hWnd 源窗口
- *  @param args_1 lpPoint 就地更新的 POINT（同 ScreenToClient） */
+ *  @param args_1 [inout] lpPoint */
 export const ClientToScreen = /*@__PURE__*/ b('ClientToScreen', '<HWND>ptr <POINT>ptr -> i32')
 /** 批量坐标系转换
  *  @returns 偏移差的低/高 16 位打包值
@@ -408,7 +409,7 @@ export const GetKeyState = /*@__PURE__*/ b('GetKeyState', 'i32 -> i32')
 export const GetAsyncKeyState = /*@__PURE__*/ b('GetAsyncKeyState', 'i32 -> i32')
 /** 取全部 256 键状态
  *  @returns 成功 → 非 0
- *  @param args_0 lpKeyState 出参槽，自备 256 字节 buffer */
+ *  @param args_0 [out] lpKeyState：256 字节 buffer */
 export const GetKeyboardState = /*@__PURE__*/ b('GetKeyboardState', '<BYTE>ptr -> i32')
 /** 字符 → 虚拟键+修饰键
  *  @returns SHORT（低字节 VK、高位 shift/ctrl/alt 掩码），无 → -1
@@ -542,7 +543,7 @@ export const SetScrollInfo = /*@__PURE__*/ b('SetScrollInfo', '<HWND>ptr u32 <SC
  *  @returns 成功 → 非 0
  *  @param args_0 hWnd
  *  @param args_1 nBar 滚动条（SB_*）
- *  @param args_2 lpScrollInfo SCROLLINFO.encode({cbSize, fMask}) 传 .ptr、decode 读回 */
+ *  @param args_2 [inout] lpScrollInfo */
 export const GetScrollInfo = /*@__PURE__*/ b('GetScrollInfo', '<HWND>ptr u32 <SCROLLINFO>ptr -> i32')
 /** 显示/隐藏滚动条
  *  @returns 成功 → 非 0
@@ -609,12 +610,11 @@ export const EnumWindows = /*@__PURE__*/ b('EnumWindows', '<>ptr <>ptr -> i32')
  *  @returns 找到 → 非 0；枚举尽 → 0
  *  @param args_0 lpszDeviceName 设备名，NULL = 主显示设备
  *  @param args_1 iDevNum 模式序号（0 起递增；-1 = 当前设置）
- *  @param args_2 lpDevMode DEVMODEW 出参缓冲（双向不注册 encoder，只收 def 的 .ptr；
- *    encode({ dmSize: DEVMODEW.size }).ptr 传入、decode 读回） */
+ *  @param args_2 [inout] lpDevMode */
 export const EnumDisplaySettings = /*@__PURE__*/ b('EnumDisplaySettingsW', '<WCHAR>ptr u32 <DEVMODEW>ptr -> i32')
 /** 改显示模式
  *  @returns DISP_CHANGE_*（0 = DISP_CHANGE_SUCCESSFUL）
- *  @param args_0 lpDevMode DEVMODEW 缓冲（须先枚举/预置 dmSize+dmFields，
- *    DM_PELSWIDTH|DM_PELSHEIGHT 等决定生效项；收 encode(...).ptr）
+ *  @param args_0 [inout] lpDevMode：须先枚举/预置 dmSize+dmFields；
+ *    DM_PELSWIDTH|DM_PELSHEIGHT 等决定生效项
  *  @param args_1 dwFlags CDS_* 标志（0 = 仅当前会话、CDS_UPDATEREGISTRY = 写注册表持久化） */
 export const ChangeDisplaySettings = /*@__PURE__*/ b('ChangeDisplaySettingsW', '<DEVMODEW>ptr u32 -> i32')

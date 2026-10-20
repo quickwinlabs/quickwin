@@ -14,8 +14,8 @@ const b = <const S extends string>(name: string, sig: S) => bind('advapi32.dll',
  *  @param args_4 dwOptions 保留属性（恒 0）
  *  @param args_5 samDesired 访问掩码 RegAccess.READ / SET_VALUE（标准组合常量按成员收录）
  *  @param args_6 lpSecurityAttributes 安全描述符（一般 NULL）
- *  @param args_7 phkResult 出参：键句柄（PtrArrayBuffer(8)，readPtr 按架构读回）
- *  @param args_8 lpdwDisposition 出参：新建/已存在标记（可 NULL） */
+ *  @param args_7 [out] phkResult：键句柄（8 字节缓冲，readPtr 按架构读回）
+ *  @param args_8 [out] lpdwDisposition：新建/已存在标记（4 字节，可 NULL） */
 export const RegCreateKeyEx = /*@__PURE__*/ b('RegCreateKeyExW',
     '<>ptr <WCHAR>ptr u32 <WCHAR>ptr u32 u32@RegAccess <>ptr <BYTE>ptr <BYTE>ptr -> i32')
 
@@ -25,7 +25,7 @@ export const RegCreateKeyEx = /*@__PURE__*/ b('RegCreateKeyExW',
  *  @param args_1 lpSubKey 子键路径（NULL = 打开 hKey 自身副本）
  *  @param args_2 ulOptions 保留，恒 0
  *  @param args_3 samDesired 访问掩码 RegAccess.READ / SET_VALUE
- *  @param args_4 phkResult 出参：键句柄 */
+ *  @param args_4 [out] phkResult：键句柄（同 RegCreateKeyEx） */
 export const RegOpenKeyEx = /*@__PURE__*/ b('RegOpenKeyExW',
     '<>ptr <WCHAR>ptr u32 u32@RegAccess <BYTE>ptr -> i32')
 
@@ -50,9 +50,9 @@ export const RegSetValueEx = /*@__PURE__*/ b('RegSetValueExW',
  *  @param args_0 hKey 键句柄（须 KEY_QUERY_VALUE 权限，含于 RegAccess.READ）
  *  @param args_1 lpValueName 值名（NULL = 键的默认值）
  *  @param args_2 lpReserved 保留，恒 NULL
- *  @param args_3 lpType 出参：值类型（可 NULL）
- *  @param args_4 lpData 数据缓冲（可 NULL = 只查尺寸）
- *  @param args_5 lpcbData 双向：入 = lpData 缓冲字节数（须预写）、出 = 实际字节数 */
+ *  @param args_3 [out] lpType：值类型（可 NULL）
+ *  @param args_4 [inout] lpData：数据缓冲（NULL = 只查尺寸）
+ *  @param args_5 [inout] lpcbData：入 = lpData 缓冲字节数（须预写）、出 = 实际字节数 */
 export const RegQueryValueEx = /*@__PURE__*/ b('RegQueryValueExW',
     '<>ptr <WCHAR>ptr <>ptr <BYTE>ptr <BYTE>ptr <BYTE>ptr -> i32')
 

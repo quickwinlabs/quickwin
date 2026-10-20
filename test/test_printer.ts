@@ -98,9 +98,13 @@ export const suite = {
         // pDatatype 省略（NULL）→ spooler 用打印机默认 datatype；显式传 RAW/XPS_PASS 反而
         // 可能被驱动拒——1804 = ERROR_INVALID_DATATYPE（官方错误码表；注意 StartDocPrinter
         // 不设置 last error，GetLastError 读到的常是残留值）
+        // <>ptr 字段收裸地址（number 子类型）：缓冲必须先绑 const——内联的临时 PAB 不进
+        // callPlan 的 held（见 lib/ffi/bind.ts）
+        const docNameW = WCHAR.encode('QuickWin Raw Job')
+        const docOutW = WCHAR.encode(outPrn)
         const jobId = StartDocPrinter(hPrinter, 1, {
-            pDocName: WCHAR.encode('QuickWin Raw Job').ptr,   // <>ptr 字段收裸地址（number 子类型）
-            pOutputFile: WCHAR.encode(outPrn).ptr,
+            pDocName: docNameW.ptr,
+            pOutputFile: docOutW.ptr,
         })
         if (jobId === 0) {
             // 失败即暴露（1804 = ERROR_INVALID_DATATYPE——datatype 显式 RAW/XPS_PASS 会被
