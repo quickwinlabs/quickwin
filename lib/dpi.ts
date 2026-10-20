@@ -16,7 +16,6 @@ export function getScaleFactor(): number {
 }
 
 /** 系统消息字体（CreateFontIndirectW(NONCLIENTMETRICS.lfMessageFont)）——界面控件的默认字体；
- *  出参位不注册 encoder：encode({cbSize}) 建缓冲带初值 → 传 .ptr → decode 读回。
  *  cbSize/uiParam 必须与系统认知的结构尺寸一致：Vista+ 为 504（含尾部 iPaddedBorderWidth）、
  *  XP/2003 为 500 —— 先按 504 试，失败退回 500（lfMessageFont 落在前 500 字节内，尾部留 0）；
  *  两次都失败 → NULL，调用方按「无字体」处理（控件回落系统默认字体）。 */

@@ -6,5 +6,5 @@ const b = <const S extends string>(name: string, sig: S) => bind('comdlg32.dll',
 
 /** 打开/保存文件对话框
  *  @returns 用户确认 → 非 0（lpstrFile 缓冲即选中路径），取消/出错 → 0
- *  @param args_0 pOpenfn OPENFILENAMEW.encode(...).ptr（lStructSize 必须 = OPENFILENAMEW.size，见 structs.ts） */
+ *  @param args_0 [inout] pOpenfn：lStructSize 必须 = OPENFILENAMEW.size */
 export const GetOpenFileName = /*@__PURE__*/ b('GetOpenFileNameW', '<OPENFILENAMEW>ptr -> u32')

@@ -99,7 +99,8 @@ const buf = new PtrArrayBuffer<'WCHAR'>(64)
 // C 臂可行性探针：A1 读各场景原始返回值，撞 0 的场景不进 C（'!' 会 throw）。
 // S1 的 WM_NULL 走 DefWindowProc 预期返 0 → C 不进 S1 是预期而非缺测。
 const retS1 = fA1(win, WM_NULL, 0, 0x1234)
-const retS2 = fA1(win, WM_SETTEXT, 0, WCHAR.encode(TEXT).ptr)
+const textW = WCHAR.encode(TEXT)
+const retS2 = fA1(win, WM_SETTEXT, 0, textW.ptr)
 const retS3 = fA1(win, WM_GETTEXT, 64, buf.ptr)
 step('probe ret: S1=' + String(retS1) + ' S2=' + String(retS2) + ' S3=' + String(retS3) +
     '  (C arm only enters nonzero scenes)')

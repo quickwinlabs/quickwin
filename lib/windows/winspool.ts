@@ -21,17 +21,17 @@ const b = <const S extends string, const LE extends CodecMap = {}>(name: string,
  *                已连接，组合 OR 传裸数（可组合 flags 不标枚举）
  *  @param args_1 pName 服务器名（仅 Level=4/5/6 用），本地枚举传 NULL
  *  @param args_2 dwLevel 信息级别，取 2（PRINTER_INFO_2W）
- *  @param args_3 pPrinterInfo 出参缓冲（PtrArrayBuffer(pcbNeeded)）
+ *  @param args_3 [out] pPrinterInfo：PtrArrayBuffer(pcbNeeded)
  *  @param args_4 cbBuf 缓冲字节数
- *  @param args_5 pcbNeeded 出参槽（需求字节数）PtrArrayBuffer(4)
- *  @param args_6 pcReturned 出参槽（返回条数）PtrArrayBuffer(4) */
+ *  @param args_5 [out] pcbNeeded：需求字节数，PtrArrayBuffer(4)
+ *  @param args_6 [out] pcReturned：返回条数，PtrArrayBuffer(4) */
 export const EnumPrinters = /*@__PURE__*/ b('EnumPrintersW',
     'u32 <WCHAR>ptr u32 <BYTE>ptr u32 <BYTE>ptr <BYTE>ptr -> i32')
 
 /** 取默认打印机名
  *  @returns 成功 → 非 0，0 = 失败（缓冲不足时 pcchBuffer 带回所需长度）
- *  @param args_0 pszBuffer 出参缓冲，WCHAR.alloc(n)、WCHAR.decode 读回
- *  @param args_1 pcchBuffer 出入长度槽（入 = 缓冲 WCHAR 容量，出 = 实际长度），PtrArrayBuffer(4) */
+ *  @param args_0 [out] pszBuffer：WCHAR 缓冲
+ *  @param args_1 [inout] pcchBuffer：入 = 缓冲 WCHAR 容量、出 = 实际长度，PtrArrayBuffer(4) */
 export const GetDefaultPrinter = /*@__PURE__*/ b('GetDefaultPrinterW', '<BYTE>ptr <BYTE>ptr -> i32')
 
 /** 查设备能力；nCapability 单选 DeviceCap.*
@@ -46,18 +46,18 @@ export const DeviceCapabilities = /*@__PURE__*/ b('DeviceCapabilitiesW',
     '<WCHAR>ptr! <WCHAR>ptr u32@DeviceCap <BYTE>ptr <>ptr -> i32')
 
 /** 取 / 校验 / 合并打印机 DEVMODE（hWnd 传 NULL = 无 UI）
- *  两个 DEVMODEW 位都不注册 encoder（in-out 位只收 def 分配的 .ptr，读回走 decode）：
- *  同一块缓冲分两次调——先 fMode = DmModeFlag.OUT_BUFFER 读出当前模式，JS 侧
+ *  两个 DEVMODEW 位都不注册 encoder：同一块缓冲分两次调——先 fMode = DmModeFlag.OUT_BUFFER
+ *  读出当前模式，JS 侧
  *  DEVMODEW.decode(buf) → 改字段（dmFields 用 DmField.*）→ DEVMODEW.encode(v, buf) 回写
  *  **同一块**，再 fMode = DmModeFlag.IN_BUFFER | DmModeFlag.OUT_BUFFER 校验/合并
  *  @returns 成功 → 非 0，0 = 失败
  *  @param args_0 hWnd 父窗口（无 UI 传 NULL）
  *  @param args_1 hPrinter OpenPrinter 返回的句柄，NULL = 用 pDeviceName 定位
  *  @param args_2 pDeviceName 打印机名（可 NULL）
- *  @param args_3 pDevModeOutput in-out 缓冲，字节数须 ≥ dmSize + dmDriverExtra（驱动往私有
+ *  @param args_3 [inout] pDevModeOutput：字节数须 ≥ dmSize + dmDriverExtra（驱动往私有
  *    块写，常见几 KB）。注意 DEVMODEW.alloc(n) 的 n 是**元素数**（每元素 DEVMODEW.size 字节），
  *    不是字节数；调用前先置 dmSize = DEVMODEW.size
- *  @param args_4 pDevModeInput in-out 缓冲，与 args_3 同一块（NULL = 无输入模式）
+ *  @param args_4 [inout] pDevModeInput：与 args_3 同一块（NULL = 无输入模式）
  *  @param args_5 fMode 可组合 flags 传裸数（组合位不标枚举）：DmModeFlag.OUT_BUFFER(2) = 只读
  *    当前、DmModeFlag.IN_BUFFER(8) = 校验并合并输入、两者 OR(10) = 常规改 DEVMODE 流程。
  *    注意 fMode（DmModeFlag）与 dmFields（DmField）是两套位空间，别混着 OR */
@@ -67,7 +67,7 @@ export const DocumentProperties = /*@__PURE__*/ b('DocumentPropertiesW',
 /** 打开打印机对象（不产生打印作业）
  *  @returns 成功 → 非 0，hPrinter 写回
  *  @param args_0 pPrinterName 打印机名（禁空）
- *  @param args_1 phPrinter 出参槽（句柄写回），PtrArrayBuffer(8) + readPtr 读回
+ *  @param args_1 [out] phPrinter：句柄写回，PtrArrayBuffer(8) + readPtr 读回
  *  @param args_2 pDefault 默认值（Datatype/DevMode/DesiredAccess），传 NULL 全默认 */
 export const OpenPrinter = /*@__PURE__*/ b('OpenPrinterW', '<WCHAR>ptr! <BYTE>ptr <>ptr -> i32')
 /** 关闭打印机句柄
@@ -77,8 +77,7 @@ export const ClosePrinter = /*@__PURE__*/ b('ClosePrinter', '<>ptr -> i32')
  *  @returns 作业 id（0 = 失败）
  *  @param args_0 hPrinter 打印机句柄
  *  @param args_1 dwLevel 固定 1（DOC_INFO_1W）
- *  @param args_2 pDocInfo DOC_INFO_1W 对象（指针字段收裸地址 number：WCHAR.encode(s).ptr，
- *                PAB 须在调用返回前保持引用） */
+ *  @param args_2 [in] pDocInfo：指针字段的缓冲须持到返回（见 structs.ts 的 DOC_INFO_1W） */
 export const StartDocPrinter = /*@__PURE__*/ b('StartDocPrinterW', '<>ptr u32 <DOC_INFO_1W>ptr -> u32',
     { DOC_INFO_1W })
 /** 结束打印作业（提交）
@@ -93,7 +92,7 @@ export const EndPagePrinter = /*@__PURE__*/ b('EndPagePrinter', '<>ptr -> i32')
 /** 写作业数据（RAW 直写 spooler）
  *  @returns 成功 → 非 0
  *  @param args_0 hPrinter 打印机句柄
- *  @param args_1 lpBuffer 数据缓冲（<BYTE>ptr，PtrArrayBuffer）
+ *  @param args_1 [in] lpBuffer
  *  @param args_2 nNumberOfBytesToWrite 写入字节数
- *  @param args_3 lpNumberOfBytesWritten 出参槽，PtrArrayBuffer(4) 读实际写入字节数 */
+ *  @param args_3 [out] lpNumberOfBytesWritten：PtrArrayBuffer(4) 读实际写入字节数 */
 export const WritePrinter = /*@__PURE__*/ b('WritePrinter', '<>ptr <BYTE>ptr u32 <BYTE>ptr -> i32')

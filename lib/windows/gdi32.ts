@@ -3,8 +3,8 @@
 //   - GDI 对象通用句柄统一 <HGDIOBJ>ptr（HBRUSH/HPEN/HFONT/HBITMAP/HRGN 在 Win32 同为
 //     HGDIOBJ）：创建/选入/取出/删除全链同品牌闭环，拦 DeleteObject(hdc) 类异种误传；
 //     user32 结构里的 HBRUSH 字段仍收裸位——品牌值赋给裸 number 位天然兼容
-//   - 结构位按方向分流：CreateFontIndirect 的 LOGFONTW 是纯入参位，注册 encoder 收
-//     DeepPartial 对象直传（缺省字段跳过 = 保持 0 合法零值语义）
+//   - 结构位的取值形按方向推导，[in] / [out] / [inout] 标在各函数 @param，规则表见
+//     lib/windows/user32.ts 头注释
 import { bind, type CodecMap } from '../ffi/bind.js'
 import { structArray } from '../ffi/struct.js'
 import { LOGFONTW, DEVMODEW, DOCINFOW, POINT, RECT } from './structs.js'
@@ -88,7 +88,7 @@ export const BitBlt = /*@__PURE__*/ b('BitBlt', '<HDC>ptr! i32 i32 i32 i32 <HDC>
  *  @param args_2 uStartScan 起始扫描行
  *  @param args_3 cLines 扫描行数
  *  @param args_4 lpvBits 像素接收缓冲（ArrayBuffer）
- *  @param args_5 lpbmi BITMAPINFO 缓冲（BITMAPINFOHEADER.encode({...}).ptr）
+ *  @param args_5 [in] lpbmi
  *  @param args_6 uUsage ColorUse.RGB_COLORS */
 export const GetDIBits = /*@__PURE__*/ b('GetDIBits', '<HDC>ptr! <HGDIOBJ>ptr u32 u32 <BYTE>ptr <>ptr u32@ColorUse -> i32')
 /** 建 32bpp DIB 段位图（biHeight 负 = 自顶向下，像素内存由系统分配）——像素内容靠
@@ -96,9 +96,9 @@ export const GetDIBits = /*@__PURE__*/ b('GetDIBits', '<HDC>ptr! <HGDIOBJ>ptr u3
  *  才需要非空槽）
  *  @returns 位图句柄；失败 → 0（用完 DeleteObject）
  *  @param args_0 hdc 参考 DC（NULL 即可，只取 DIB 格式）
- *  @param args_1 pbmi BITMAPINFO 缓冲（BITMAPINFOHEADER.encode({...}).ptr，同 GetDIBits）
+ *  @param args_1 [in] pbmi
  *  @param args_2 iUsage ColorUse.RGB_COLORS
- *  @param args_3 ppvBits 收位地址的出参槽（NULL = 不取）
+ *  @param args_3 [out] ppvBits（NULL = 不取）
  *  @param args_4 hSection NULL（无文件映射区）
  *  @param args_5 offset 位数据在映射区内的偏移（无映射区恒 0） */
 export const CreateDIBSection = /*@__PURE__*/ b('CreateDIBSection',
@@ -224,7 +224,7 @@ export const SetDIBitsToDevice = /*@__PURE__*/ b('SetDIBitsToDevice',
  *  @param args_7 SrcWidth 源区宽
  *  @param args_8 SrcHeight 源区高
  *  @param args_9 lpvBits 像素缓冲（ArrayBuffer）
- *  @param args_10 lpbmi BITMAPINFO 缓冲（BITMAPINFOHEADER.encode({...}).ptr）
+ *  @param args_10 [in] lpbmi
  *  @param args_11 iUsage ColorUse.RGB_COLORS
  *  @param args_12 rop RasterOp.SRCCOPY 等互斥单选光栅操作码 */
 export const StretchDIBits = /*@__PURE__*/ b('StretchDIBits',
@@ -245,13 +245,13 @@ export const CreateDC = /*@__PURE__*/ b('CreateDCW',
 /** 按 DEVMODE 重置 DC 的设备模式
  *  @returns 重置后的 DC 句柄（0 = 失败）——文档口径是「成功即返回该 DC」，可续用
  *  @param args_0 hdc
- *  @param args_1 pmode DEVMODE 对象或 DEVMODEW.alloc().ptr（通常来自 DocumentProperties） */
+ *  @param args_1 [in] pmode */
 export const ResetDC = /*@__PURE__*/ b('ResetDCW', '<HDC>ptr! <DEVMODEW>ptr -> <HDC>ptr', { DEVMODEW })
 /** 起打印作业；配对 EndDoc，中间包 StartPage/EndPage
  *  @returns 成功 → 非 0
  *  @param args_0 hdc CreateDC 建的打印机 DC
- *  @param args_1 lpdi DOCINFOW 对象直传（cbSize 填 DOCINFOW.size；lpszDocName/lpszOutput
- *    收 WCHAR.encode(s).ptr，缓冲须在 EndDoc 返回前保持引用；fwType 0 = 文本） */
+ *  @param args_1 [in] lpdi：DOCINFOW 对象直传（cbSize 填 DOCINFOW.size）；
+ *    lpszDocName/lpszOutput 字段的缓冲须持到 EndDoc 返回；fwType 0 = 文本 */
 export const StartDoc = /*@__PURE__*/ b('StartDocW', '<HDC>ptr! <DOCINFOW>ptr -> i32', { DOCINFOW })
 /** 结束作业（提交给 spooler）
  *  @returns 成功 → 非 0
@@ -314,7 +314,7 @@ export const SetBkColor = /*@__PURE__*/ b('SetBkColor', '<HDC>ptr! u32 -> u32')
  *  @param args_0 hdc
  *  @param args_1 x 图案原点 x（DC 坐标系）
  *  @param args_2 y 图案原点 y
- *  @param args_3 lppoint 出参，旧原点写回（POINT.alloc().ptr，不回读传 NULL） */
+ *  @param args_3 [out] lppoint */
 export const SetBrushOrgEx = /*@__PURE__*/ b('SetBrushOrgEx', '<HDC>ptr! i32 i32 <POINT>ptr -> i32')
 /** 保存 DC 当前绘图状态到 GDI 状态栈（颜色/模式/选中笔刷字体/裁剪区/映射模式…）；
  *  配对 RestoreDC——标准用法：进入绘制块 Save、退出 Restore
@@ -352,8 +352,7 @@ export const GetArcDirection = /*@__PURE__*/ b('GetArcDirection', '<HDC>ptr! -> 
  *  @param args_0 hdc 目标 DC
  *  @param args_1 x 新位置 x
  *  @param args_2 y 新位置 y
- *  @param args_3 lppt 出参位：传 POINT.alloc() 的 .ptr 接旧位置，或传 NULL 不要 ——
- *  刻意不注册 encoder（纯出参；对象形物化进引擎持有的缓冲，调用方读不到） */
+ *  @param args_3 [out] lppt */
 export const MoveToEx = /*@__PURE__*/ b('MoveToEx', '<HDC>ptr! i32 i32 <POINT>ptr -> i32')
 /** 从当前位置画线到 (x,y)（不含端点），当前位置随之移动
  *  @returns 成功 → 非 0
@@ -460,14 +459,14 @@ export const SetTextAlign = /*@__PURE__*/ b('SetTextAlign', '<HDC>ptr! u32 -> u3
  *  @param args_0 hdc 目标 DC
  *  @param args_1 str 文本（<WCHAR>ptr 直传 string）
  *  @param args_2 c 字符数（= str.length）
- *  @param args_3 lpSize 出参位：SIZE.alloc().ptr 接 { cx, cy }，SIZE.decode(ptr) 读回
+ *  @param args_3 [out] lpSize
  *  （标 !：没出参此 API 无意义） */
 export const GetTextExtentPoint32 = /*@__PURE__*/ b('GetTextExtentPoint32W',
     '<HDC>ptr! <WCHAR>ptr i32 <SIZE>ptr! -> i32')
 /** 取当前字体完整度量（行高/ascent/descent/字符宽等 20 字段）
  *  @returns 成功 → 非 0
  *  @param args_0 hdc 目标 DC
- *  @param args_1 lptm 出参位：TEXTMETRICW.alloc().ptr 接、TEXTMETRICW.decode(ptr) 读回
+ *  @param args_1 [out] lptm
  *  （标 !：没出参此 API 无意义，同 GetTextExtentPoint32 的 SIZE 位） */
 export const GetTextMetrics = /*@__PURE__*/ b('GetTextMetricsW',
     '<HDC>ptr! <TEXTMETRICW>ptr! -> i32')
@@ -478,8 +477,7 @@ export const GetTextMetrics = /*@__PURE__*/ b('GetTextMetricsW',
  *  @param args_2 y 起点 y
  *  @param args_3 fOptions TextOutOptions.ETO_OPAQUE（矩形填衬底）|
  *  ETO_CLIPPED（矩形裁剪字形）按位或（可 0 = 都不用）
- *  @param args_4 lprc ETO_OPAQUE/ETO_CLIPPED 的作用矩形：DeepPartial 对象直传 /
- *  RECT.alloc().ptr / NULL = 整个当前可裁剪区（有 encoder 的纯入参位三形态）
+ *  @param args_4 [in] lprc：ETO_OPAQUE/ETO_CLIPPED 的作用矩形；NULL = 整个当前可裁剪区
  *  @param args_5 str 文本（<WCHAR>ptr 直传 string）
  *  @param args_6 c 字符数（= str.length）
  *  @param args_7 lpDx 每字符间距数组位：本版仅收 NULL（默认等宽间距），数组形态留后续 */

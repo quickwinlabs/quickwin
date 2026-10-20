@@ -26,7 +26,7 @@ npm run build        # 产出 dist\app.exe
 - **HTTP/HTTPS** —— `fetch()` API、Brotli 解压、chunked 传输、条件缓存
 - **WebSocket** —— 完整的 RFC 6455 实现，支持 ws:// 与 wss://
 - **WebAssembly** —— 基于 WAMR，支持标准 `WebAssembly.*` API
-- **FFI** —— 内置汇编调用桩，用 `bind()` 声明式签名调用任意 DLL 函数（无第三方依赖）
+- **FFI** —— 内置汇编调用桩，用 `bind()` 声明式签名调用任意 DLL 函数（无第三方依赖，[使用文档](docs/usage/ffi.md)）
 - **Polyfills** —— `TextEncoder`、`URL`、`URLSearchParams`、`btoa`/`atob`、`crypto.subtle`、`setTimeout`
 - **动态导入** —— `import('https://esm.sh/...')`，无需安装任何依赖
 
@@ -95,7 +95,8 @@ _build/execd.exe
 | `gui` | built-in | Win32 窗口/控件/消息/托盘 API |
 | `sock` | built-in | Socket 网络（`AddrFamily`、`FdEvent` 等） |
 | `wolfssl` | built-in | TLS/SSL（`VerifyMode`、`ReturnCode` 等） |
-| `ffi` | built-in | 外部函数接口（DLL 装载：`LoadLibrary`、`GetProcAddress`） |
+| `ffi` | built-in | 外部函数接口底层（`LoadLibrary`、`GetProcAddress`、`ffiCall`） |
+| `lib/ffi` | `import './lib/ffi/index.js'` | `bind()` / `bindLib()` / `closure()` / `struct()` 声明式 FFI（[使用文档](docs/usage/ffi.md)） |
 | `brotli` | built-in | Brotli 解压 |
 | `wamr` | built-in | 底层 WAMR API |
 | `fetch` | `import './lib/fetch.js'` | 向 globalThis 添加 `fetch()`、`Request`/`Response`/`Headers` 及其类型声明 |

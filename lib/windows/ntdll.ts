@@ -7,5 +7,5 @@ const b = <const S extends string>(name: string, sig: S) => bind('ntdll.dll', na
 /** 取真实 OS 版本；缓冲必须用 OSVERSIONINFO_148（148B 特制布局，
  *  标准 OSVERSIONINFOW 会越界写坏调用方堆，见 structs.ts）
  *  @returns 0 = 成功
- *  @param args_0 lpVersionInformation OSVERSIONINFO_148.encode(...).ptr 出参缓冲 */
+ *  @param args_0 [out] lpVersionInformation */
 export const RtlGetVersion = /*@__PURE__*/ b('RtlGetVersion', '<OSVERSIONINFO_148>ptr -> i32')

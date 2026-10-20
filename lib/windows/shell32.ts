@@ -9,13 +9,13 @@ const b = <const S extends string, const LE extends CodecMap = {}>(name: string,
 
 /** 文件夹浏览对话框；PIDL 用 ole32.CoTaskMemFree 释放
  *  @returns PIDL，取消 → 0
- *  @param args_0 pbi BROWSEINFOW.encode(...).ptr（见 structs.ts） */
+ *  @param args_0 [inout] pbi */
 export const SHBrowseForFolder = /*@__PURE__*/ b('SHBrowseForFolderW', '<BROWSEINFOW>ptr -> <>ptr')
 
 /** PIDL → 文件系统全路径
  *  @returns PIDL 在文件系统中 → 非 0，否则 0（缓冲内容未定义）
  *  @param args_0 pidl SHBrowseForFolder 等返回的 PIDL
- *  @param args_1 pszPath 出参缓冲，WCHAR.alloc(260)（MAX_PATH=260）、WCHAR.decode 读回 */
+ *  @param args_2 [out] pszPath：WCHAR 缓冲，MAX_PATH=260 */
 export const SHGetPathFromIDList = /*@__PURE__*/ b('SHGetPathFromIDListW', '<>ptr <BYTE>ptr -> u32')
 
 /** 取托盘通知图标的屏幕矩形（Shell_NotifyIconGetRect；**Win7+**——XP 无此导出，
@@ -27,8 +27,7 @@ export const SHGetPathFromIDList = /*@__PURE__*/ b('SHGetPathFromIDListW', '<>pt
  *    = 图标不存在，或该图标未按 {hWnd,uID} 注册（系统 GUID 图标实测 not_found）
  *  @param args_0 identifier NOTIFYICONIDENTIFIER 对象直传（encoder 已注册；cbSize 填
  *    NOTIFYICONIDENTIFIER.size，guidItem 缺省 = GUID_NULL 走 hWnd+uID）
- *  @param args_1 iconLocation 出参槽，RECT.alloc().ptr（出参位不注册，方向约定同
- *    user32），RECT.decode 读回 */
+ *  @param args_1 [out] iconLocation */
 export const Shell_NotifyIconGetRect = (() => {
     try {
         return b('Shell_NotifyIconGetRect',

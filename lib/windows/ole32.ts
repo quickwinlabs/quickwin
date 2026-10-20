@@ -1,7 +1,9 @@
 // ole32 绑定（COM 基础面：线程初始化 / 实例创建 / CoTask 内存管理）。纯绑定，无逻辑：
 // HRESULT 判定见 lib/com.ts 的 SUCCEEDED/FAILED（S_FALSE 也是成功态，别写 hr === 0）。
-// GUID 类缓冲直接用 structs.ts 的 CLSID/IID/GUID 定义（CLSID.encode({...}).ptr），
-// 同布局三种品牌可拦 CoCreateInstance 的 rclsid/riid 互换。
+// GUID 类缓冲用 structs.ts 的 CLSID/IID/GUID 定义，rclsid/riid 传对象形（该位已注册
+// encoder，mkPtrWriter 编码后 return 缓冲、callPlan held 到 ffiCall 之后）。别写
+// CLSID.encode({...}).ptr：裸 number 走 mkPtrWriter 快路径不进 held，临时缓冲只求值期寿命。
+// 代价：对象形不带品牌，rclsid/riid 互换编译期拦不住。
 import { bind, type CodecMap } from '../ffi/bind.js'
 import { CLSID, GUID, IID } from './structs.js'
 
@@ -20,14 +22,14 @@ export const CoUninitialize = /*@__PURE__*/ b('CoUninitialize', ' -> void')
  *  实测坑：未注册 CLSID 在 XP 上阻塞不返回（Win7 立即返 E_INVALIDARG）——别拿无效 CLSID
  *  试探，也别在交互路径上调它。
  *  @returns HRESULT
- *  @param args_0 rclsid 类标识（<CLSID>ptr，CLSID.encode({...}).ptr）
- *  @param args_1 riid 请求的接口标识（<IID>ptr，IID.encode({...}).ptr）
+ *  @param args_0 [in] rclsid
+ *  @param args_1 [in] riid
  *  @param args_2 dwClsContext ClsCtx.*
- *  @param args_3 ppv 出参槽（缓冲地址，成功时写入对象指针） */
+ *  @param args_3 [out] ppv：缓冲地址，成功时写入对象指针 */
 export const CoCreateInstance = /*@__PURE__*/ b('CoCreateInstance', '<CLSID>ptr! <IID>ptr! u32 <>ptr! -> i32', { CLSID, IID })
 /** 生成随机 GUID（16 字节写进出参缓冲）
  *  @returns HRESULT
- *  @param args_0 pguid 出参缓冲（GUID.alloc().ptr） */
+ *  @param args_0 [out] pguid */
 export const CoCreateGuid = /*@__PURE__*/ b('CoCreateGuid', '<GUID>ptr! -> i32', { GUID })
 /** CoTask 堆分配（COM 契约要求的内存管理面；可能返 0 = 失败）
  *  @param args_0 cbSize 字节数 */

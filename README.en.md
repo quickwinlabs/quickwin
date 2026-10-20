@@ -26,7 +26,7 @@ The default template is React (JSX + system tray); `-- --template=minimal` start
 - **HTTP/HTTPS** — `fetch()` API, Brotli decompression, chunked transfer, conditional caching
 - **WebSocket** — full RFC 6455 implementation, ws:// + wss://
 - **WebAssembly** — WAMR-based, supports `WebAssembly.*` standard API
-- **FFI** — call any DLL function via a built-in asm stub and declarative `bind()` signatures (no third-party dependency)
+- **FFI** — call any DLL function via a built-in asm stub and declarative `bind()` signatures (no third-party dependency, [usage guide](docs/usage/ffi.md))
 - **Polyfills** — `TextEncoder`, `URL`, `URLSearchParams`, `btoa`/`atob`, `crypto.subtle`, `setTimeout`
 - **Dynamic import** — `import('https://esm.sh/...')`, no dependency installation needed
 
@@ -97,7 +97,8 @@ When run without a script file argument, `qwin.exe` checks for embedded JS at th
 | `gui` | built-in | Win32 window/control/message/tray API |
 | `sock` | built-in | socket networking (`AddrFamily`, `FdEvent` etc.) |
 | `wolfssl` | built-in | TLS/SSL (`VerifyMode`, `ReturnCode` etc.) |
-| `ffi` | built-in | foreign function interface (DLL loading: `LoadLibrary`, `GetProcAddress`) |
+| `ffi` | built-in | foreign function interface, low level (`LoadLibrary`, `GetProcAddress`, `ffiCall`) |
+| `lib/ffi` | `import './lib/ffi/index.js'` | declarative FFI: `bind()` / `bindLib()` / `closure()` / `struct()` ([usage guide](docs/usage/ffi.md)) |
 | `brotli` | built-in | Brotli decompression |
 | `wamr` | built-in | low-level WAMR API |
 | `fetch` | `import './lib/fetch.js'` | adds `fetch()`, `Request`/`Response`/`Headers` and their type declarations to globalThis |

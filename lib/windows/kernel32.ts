@@ -23,8 +23,8 @@ const b = <const S extends string, const LE extends CodecMap = {}>(name: string,
 
 /** 建匿名管道
  *  @returns 成功 → 非 0
- *  @param args_0 hReadPipe 出参槽（读端句柄写回，<>ptr 缓冲地址）
- *  @param args_1 hWritePipe 出参槽（写端句柄写回，<>ptr 缓冲地址）
+ *  @param args_0 [out] hReadPipe：读端句柄写回
+ *  @param args_1 [out] hWritePipe：写端句柄写回
  *  @param args_2 lpPipeAttributes 安全属性，传 NULL
  *  @param args_3 nSize 管道缓冲字节数，0 = 系统默认 */
 export const CreatePipe = /*@__PURE__*/ b('CreatePipe', '<>ptr <>ptr <>ptr u32 -> i32')
@@ -45,7 +45,7 @@ export const SetHandleInformation = /*@__PURE__*/ b('SetHandleInformation', '<HF
  *  @param args_6 lpEnvironment 环境块，传 NULL 继承当前环境
  *  @param args_7 lpCurrentDirectory 工作目录 string 或 NULL
  *  @param args_8 lpStartupInfo STARTUPINFOW 对象（cb 必填）
- *  @param args_9 lpProcessInformation 出参槽，传 PROCESS_INFORMATION.alloc().ptr */
+ *  @param args_9 [out] lpProcessInformation */
 export const CreateProcess = /*@__PURE__*/ b('CreateProcessW',
     '<WCHAR>ptr <WCHAR>ptr <>ptr <>ptr i32 u32 <>ptr <WCHAR>ptr <STARTUPINFOW>ptr <PROCESS_INFORMATION>ptr -> i32',
     { STARTUPINFOW })
@@ -57,7 +57,7 @@ export const WaitForSingleObject = /*@__PURE__*/ b('WaitForSingleObject', '<>ptr
 /** 取进程退出码（带符号读）
  *  @returns 成功 → 非 0
  *  @param args_0 hProcess 进程句柄
- *  @param args_1 lpExitCode 出参槽，传 Int32Array(1).buffer 读回退出码 */
+ *  @param args_1 [out] lpExitCode：Int32Array(1).buffer 读回退出码 */
 export const GetExitCodeProcess = /*@__PURE__*/ b('GetExitCodeProcess', '<HPROCESS>ptr! <BYTE>ptr -> i32')
 /** 关闭内核对象句柄
  *  @returns 成功 → 非 0
@@ -91,7 +91,7 @@ export const CreateToolhelp32Snapshot = /*@__PURE__*/ b('CreateToolhelp32Snapsho
 /** 取快照第一个进程
  *  @returns 成功 → 非 0，0 = 迭代尽/失败（ERROR_NO_MORE_FILES=18 等，见 GetLastError）
  *  @param args_0 hSnapshot 快照句柄（CreateToolhelp32Snapshot 产物，0 拦截）
- *  @param args_1 lppe 迭代缓冲：alloc() 后预写 offset0 dwSize = size（见结构 JSDoc），
+ *  @param args_1 [inout] lppe：alloc() 后预写 offset0 dwSize = size（见结构 JSDoc），
  *                每轮 PROCESSENTRY32W.decode(buf) 读回，Next 复用同一 buf */
 export const Process32First = /*@__PURE__*/ b('Process32FirstW',
     '<HSNAPSHOT>ptr! <PROCESSENTRY32W>ptr! -> i32')
@@ -162,7 +162,7 @@ export const VirtualFreeEx = /*@__PURE__*/ b('VirtualFreeEx', '<HPROCESS>ptr <>p
  *  @param args_1 lpBaseAddress 远程地址（VirtualAllocEx 返回值等）
  *  @param args_2 lpBuffer 本地接收缓冲，传 BYTE.alloc(n)（DataView/TypedArray 原地读回）
  *  @param args_3 nSize 字节数（SIZE_T → <>ptr ptr 宽）
- *  @param args_4 lpNumberOfBytesRead 实读字节数出参槽 PtrArrayBuffer(8) 可选，或 NULL */
+ *  @param args_4 [out] lpNumberOfBytesRead：PtrArrayBuffer(8)，可选或 NULL */
 export const ReadProcessMemory = /*@__PURE__*/ b('ReadProcessMemory',
     '<HPROCESS>ptr <>ptr <BYTE>ptr <>ptr <>ptr -> i32')
 
@@ -171,9 +171,9 @@ export const ReadProcessMemory = /*@__PURE__*/ b('ReadProcessMemory',
 /** 同步读文件 / 管道
  *  @returns 成功 → 非 0，管道写端全部关闭后读返回 0（EOF）
  *  @param args_0 hFile 文件/管道句柄
- *  @param args_1 lpBuffer 接收缓冲（<BYTE>ptr，PtrArrayBuffer 原地读回）
+ *  @param args_1 [inout] lpBuffer
  *  @param args_2 nNumberOfBytesToRead 请求读取的字节数
- *  @param args_3 lpNumberOfBytesRead 出参槽，传 Uint32Array(1).buffer 读实际字节数
+ *  @param args_3 [out] lpNumberOfBytesRead
  *  @param args_4 lpOverlapped 重叠结构，传 NULL（同步读） */
 export const ReadFile = /*@__PURE__*/ b('ReadFile', '<HFILE>ptr! <BYTE>ptr u32 <BYTE>ptr <>ptr -> i32')
 
@@ -193,9 +193,9 @@ export const CreateFile = /*@__PURE__*/ b('CreateFileW',
 /** 同步写文件 / 管道
  *  @returns 成功 → 非 0（失败原因见 GetLastError）
  *  @param args_0 hFile 文件/管道句柄
- *  @param args_1 lpBuffer 数据缓冲（<BYTE>ptr，PtrArrayBuffer）
+ *  @param args_1 [in] lpBuffer
  *  @param args_2 nNumberOfBytesToWrite 写入字节数
- *  @param args_3 lpNumberOfBytesWritten 出参槽，传 PtrArrayBuffer(4) 读实际写入字节数
+ *  @param args_3 [out] lpNumberOfBytesWritten：PtrArrayBuffer(4) 读实际写入字节数
  *  @param args_4 lpOverlapped 重叠结构，传 NULL（同步写） */
 export const WriteFile = /*@__PURE__*/ b('WriteFile', '<HFILE>ptr! <BYTE>ptr u32 <BYTE>ptr <>ptr -> i32')
 /** 删除文件
@@ -224,17 +224,17 @@ export const MoveFileEx = /*@__PURE__*/ b('MoveFileExW', '<WCHAR>ptr! <WCHAR>ptr
  *  @returns 新偏移（32 位），0xFFFFFFFF = 失败（须 GetLastError 区分
  *  与合法的 0xFFFFFFFF 偏移）
  *  @param args_1 lDistanceToMove 偏移（LONG，可负）
- *  @param args_2 lpDistanceToMoveHigh 64 位偏移高半（出参双向），32 位够用传 NULL
+ *  @param args_2 [inout] lpDistanceToMoveHigh：64 位偏移高半，32 位够用传 NULL
  *  @param args_3 dwMoveMethod 起点 FileSeekFrom.BEGIN / CURRENT / END */
 export const SetFilePointer = /*@__PURE__*/ b('SetFilePointer', '<HFILE>ptr! i32 <BYTE>ptr u32@FileSeekFrom -> u32')
 /** 读文件大小
  *  @returns 文件大小（低 32 位）；0xFFFFFFFF = 失败（INVALID_FILE_SIZE，须 GetLastError 区分）
- *  @param args_1 lpFileSizeHigh 高 32 位出参槽（>4GB 文件），不需要传 NULL */
+ *  @param args_1 [out] lpFileSizeHigh：高 32 位（>4GB 文件），不需要传 NULL */
 export const GetFileSize = /*@__PURE__*/ b('GetFileSize', '<HFILE>ptr! <BYTE>ptr -> u32')
 /** 按通配模式枚举首个匹配（'dir\\*.txt'）；配对 FindClose
  *  @returns 成功 → 查找句柄，失败 → INVALID_HANDLE_VALUE（-1）
  *  @param args_0 lpFileName 路径/通配模式 string（禁空）
- *  @param args_1 lpFindFileData 出参槽，传 WIN32_FIND_DATAW.alloc().ptr、decode 读回 */
+ *  @param args_1 [out] lpFindFileData */
 export const FindFirstFile = /*@__PURE__*/ b('FindFirstFileW',
     '<WCHAR>ptr! <WIN32_FIND_DATAW>ptr! -> <HFIND>ptr!')
 /** 枚举下一匹配
@@ -276,20 +276,19 @@ export const FormatMessage = /*@__PURE__*/ b('FormatMessageW',
 
 /** 高精度计数器读数（LARGE_INTEGER，8 字节）
  *  @returns 成功 → 非 0
- *  @param args_0 lpPerformanceCount 出参缓冲，PtrArrayBuffer(8) + DataView getBigInt64 读回 */
+ *  @param args_0 [out] lpPerformanceCount：8 字节，DataView getBigInt64 读回 */
 export const QueryPerformanceCounter = /*@__PURE__*/ b('QueryPerformanceCounter', '<BYTE>ptr -> i32')
 /** 高精度计数器频率（每秒计数，LARGE_INTEGER 8 字节）
  *  @returns 成功 → 非 0
- *  @param args_0 lpFrequency 出参缓冲，PtrArrayBuffer(8) + DataView getBigInt64 读回 */
+ *  @param args_0 [out] lpFrequency：8 字节，DataView getBigInt64 读回 */
 export const QueryPerformanceFrequency = /*@__PURE__*/ b('QueryPerformanceFrequency', '<BYTE>ptr -> i32')
 /** 挂起当前线程毫秒数（0 = 让出剩余时间片）；无返回值 */
 export const Sleep = /*@__PURE__*/ b('Sleep', 'u32 -> void')
 /** 当前系统时间（UTC FILETIME，8 字节 = 1601 起的 100ns 单元）；无返回值
- *  @param args_0 lpSystemTimeAsFileTime 出参缓冲，PtrArrayBuffer(8) + DataView getBigUint64 读回 */
+ *  @param args_0 [out] lpSystemTimeAsFileTime：8 字节，DataView getBigUint64 读回 */
 export const GetSystemTimeAsFileTime = /*@__PURE__*/ b('GetSystemTimeAsFileTime', '<BYTE>ptr -> void')
-/** 本地时间（SYSTEMTIME 出参位不注册 encoder：SYSTEMTIME.alloc().ptr 进、decode 读回）；
- *  无返回值
- *  @param args_0 lpSystemTime 出参结构缓冲 */
+/** 本地时间；无返回值
+ *  @param args_0 [out] lpSystemTime */
 export const GetLocalTime = /*@__PURE__*/ b('GetLocalTime', '<SYSTEMTIME>ptr -> void')
 /** 取环境变量值
  *  @returns 读取字符数（不含 NUL，0 = 不存在或缓冲不足）
@@ -327,7 +326,7 @@ export const GetCommandLineW = /*@__PURE__*/ b('GetCommandLineW', ' -> <WCHAR>pt
  *  如 x86 qwin 读 explorer 的 TBBUTTON）。32 位 OS 上恒写 0
  *  @returns 成功 → 非 0
  *  @param args_0 hProcess GetCurrentProcess() 伪句柄或真句柄
- *  @param args_1 lpWow64Process 出参 BOOL 槽，PtrArrayBuffer(4)，Uint32Array 读回 */
+ *  @param args_1 [out] lpWow64Process：4 字节 BOOL */
 export const IsWow64Process = /*@__PURE__*/ b('IsWow64Process', '<HPROCESS>ptr <BYTE>ptr -> i32')
 
 // ============ 全局内存（剪贴板数据载体）============
