@@ -2,11 +2,15 @@ import * as std from 'std'
 import * as ffi from 'ffi'
 import { Tester } from './test_helper.js'
 import { bindAt, closure } from '../lib/ffi/bind.js'
-import { NULL, PTR_SIZE, PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { NULL, PTR_SIZE, PtrArrayBuffer, type MaybePtr, type Ptr } from '../lib/ffi/ctype.js'
 import { SUCCEEDED, guidFields } from '../lib/com.js'
-import { CoCreateGuid, CoInitializeEx, CoTaskMemAlloc, CoTaskMemFree, CoUninitialize } from '../lib/windows/ole32.js'
+import { CoCreateGuid, CoCreateInstance, CoInitializeEx, CoTaskMemAlloc, CoTaskMemFree, CoUninitialize } from '../lib/windows/ole32.js'
 import { GUID, IID } from '../lib/windows/structs.js'
 import { CoInitFlag, Guid, HResult } from '../constants'
+
+// 编译期断言工具（仅类型层，运行时无开销）
+type Equal<A, B> = (<G>() => G extends A ? 1 : 2) extends (<G>() => G extends B ? 1 : 2) ? true : false
+function expectType<T extends true>(_value?: T): void {}
 
 // 按架构位宽写一个指针（测试用；库侧读用 ffi.readPtr，写用 ffi.writeByte）
 function setPtrSlot(buf: ArrayBuffer, off: number, v: number): void {
@@ -65,6 +69,16 @@ export const suite = {
         CoInitializeEx(NULL, CoInitFlag.APARTMENTTHREADED)
         t.check('STA 线程上要 MTA → RPC_E_CHANGED_MODE', HResult.RPC_E_CHANGED_MODE,
             CoInitializeEx(NULL, CoInitFlag.MULTITHREADED))
+
+        t.section('CoCreateInstance 签名（对照 combaseapi.h 的 5 参形，只钉类型、不调用）')
+        // 未注册 CLSID 在 XP 上阻塞不返回（Win7 立即返 E_INVALIDARG）→ 无运行时用例。
+        // 钉位序不只钉个数：漏掉 pUnkOuter 会让 riid / ppv 整体错位一档。
+        //   arg0 <CLSID>ptr!   arg1 <>ptr（pUnkOuter，无品牌可传 NULL）   arg2 u32 dwClsContext
+        //   arg3 <IID>ptr!     arg4 <>ptr!（ppv 出参）
+        expectType<Equal<Parameters<typeof CoCreateInstance>['length'], 5>>()
+        expectType<Equal<Parameters<typeof CoCreateInstance>[1], MaybePtr<''>>>()
+        expectType<Equal<Extract<Parameters<typeof CoCreateInstance>[3], Ptr<'IID'>>, Ptr<'IID'>>>()
+        t.checkTrue('CoCreateInstance bound (ole32 exports it)', typeof CoCreateInstance === 'function')
 
         t.section('CoTaskMemAlloc / CoTaskMemFree')
         const p = CoTaskMemAlloc(64)

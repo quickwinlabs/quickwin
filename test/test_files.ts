@@ -7,12 +7,11 @@ import {
 } from '../lib/windows/kernel32.js'
 import { WIN32_FIND_DATAW } from '../lib/windows/structs.js'
 import { Tester } from './test_helper.js'
-import { FileCreation, FileSeekFrom } from '../constants'
+import { FileCreation, FileSeekFrom, Sentinel } from '../constants'
 
 const GENERIC_READ = 0x80000000
 const GENERIC_WRITE = 0x40000000
 const FILE_ATTRIBUTE_DIRECTORY = 0x10
-const INVALID32 = 0xffffffff
 
 // ASCII payload ↔ UTF-16LE 缓冲互转（REG_SZ 同型，测试内联）
 function toWide(s: string): PtrArrayBuffer<string> {
@@ -89,7 +88,7 @@ export const suite = {
         t.checkTrue('CloseHandle (copy reader)', CloseHandle(hC) !== 0)
         t.checkTrue('MoveFileEx replace ok',
             MoveFileEx(pathB, pathC, 0x1 /* MOVEFILE_REPLACE_EXISTING */) !== 0)
-        t.check('moved: source gone', INVALID32, GetFileAttributes(pathB))
+        t.check('moved: source gone', Sentinel.INVALID_FILE_ATTRIBUTES, GetFileAttributes(pathB))
         t.checkTrue('dest is file (not dir)',
             (GetFileAttributes(pathC) & FILE_ATTRIBUTE_DIRECTORY) === 0)
 
@@ -99,13 +98,13 @@ export const suite = {
         CloseHandle(hCn)                                      // 0 字节中文名文件
         const fd = WIN32_FIND_DATAW.alloc()
         const hFind = FindFirstFile(`${dir}\\a.txt`, fd.ptr)
-        t.checkTrue(`FindFirstFile ok (${hFind})`, hFind !== -1)
+        t.checkTrue(`FindFirstFile ok (${hFind})`, hFind !== Sentinel.INVALID_HANDLE_VALUE)
         t.check('found name', 'a.txt', WIN32_FIND_DATAW.decode(fd).cFileName)
         t.checkTrue('FindNextFile exhausted = 0', FindNextFile(hFind, fd.ptr) === 0)
         t.checkTrue('FindClose', FindClose(hFind) !== 0)
         let count = 0
         const hEnum = FindFirstFile(`${dir}\\*.txt`, fd.ptr)
-        if (hEnum !== -1) {
+        if (hEnum !== Sentinel.INVALID_HANDLE_VALUE) {
             count = 1
             while (FindNextFile(hEnum, fd.ptr) !== 0) count++
             FindClose(hEnum)
@@ -116,6 +115,6 @@ export const suite = {
         t.checkTrue('DeleteFile ×3', DeleteFile(pathA) !== 0 && DeleteFile(pathC) !== 0
             && DeleteFile(pathCn) !== 0)
         t.checkTrue('RemoveDirectory', RemoveDirectory(dir) !== 0)
-        t.check('dir gone', INVALID32, GetFileAttributes(dir))
+        t.check('dir gone', Sentinel.INVALID_FILE_ATTRIBUTES, GetFileAttributes(dir))
     },
 }

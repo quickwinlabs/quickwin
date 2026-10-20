@@ -1105,6 +1105,18 @@ export const enum Guid {
     IID_IPERSISTFILE = '{0000010B-0000-0000-C000-000000000046}',
 }
 
+// ── 失败哨兵 ──
+
+export const enum Sentinel {
+    // 配 `-> u32` 返回位（无符号读回）
+    INVALID_FILE_ATTRIBUTES = 4294967295, // 0xFFFFFFFF
+    INVALID_FILE_SIZE = 4294967295, // 0xFFFFFFFF
+    INVALID_SET_FILE_POINTER = 4294967295, // 0xFFFFFFFF
+    // 配 `-> <>ptr` / `-> <X>ptr` 返回位（有符号读回，-1 保真）；
+    // 同一全 1 位模式也是 GetCurrentProcess 的伪句柄，别拿它判那个
+    INVALID_HANDLE_VALUE = -1,
+}
+
 // ── sock ──
 
 export const enum AddrFamily {
@@ -1284,6 +1296,7 @@ declare global {
         ClsCtx: ClsCtx
         HResult: HResult
         Guid: Guid
+        Sentinel: Sentinel
         AddrFamily: AddrFamily
         SockType: SockType
         Protocol: Protocol
