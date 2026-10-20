@@ -1057,8 +1057,50 @@ export const enum DmModeFlag {
     OUT_DEFAULT = 1, // 0x1
 }
 
+// COM 线程初始化标志（CoInitializeEx / CoInitialize）。XP 世代 mingw 与 MS 文档、
+// Wine 的 tagCOINIT 三处一致，就这四枚。COINIT_MULTITHREADED 定义成
+// COINITBASE_MULTITHREADED = 0x0（combaseapi.h），看着像漏值——不是：dwCoInit 全 0
+// 即按 MTA 初始化（MTA 是默认态），故 CoInitializeEx(NULL, MULTITHREADED) 与不传等价。
+export const enum CoInitFlag {
+    APARTMENTTHREADED = 2, // 0x2
+    MULTITHREADED = 0, // 0x0
+    DISABLE_OLE1DDE = 4, // 0x4
+    SPEED_OVER_MEMORY = 8, // 0x8
+}
+
+// CoCreateInstance 的 dwClsContext
+export const enum ClsCtx {
+    INPROC_SERVER = 1, // 0x1
+    INPROC_HANDLER = 2, // 0x2
+    LOCAL_SERVER = 4, // 0x4
+    INPROC_SERVER16 = 8, // 0x8
+    INPROC_HANDLER16 = 32, // 0x20
+    REMOTE_SERVER = 16, // 0x10
+}
+
+// HRESULT 常用返回值（完整列表见 winerror.h；判断用 SUCCEEDED/FAILED 而非比符号）。
+// XP 世代 SDK 缺 CO_E_CLASSNOTREGISTERED / CO_E_INIT_FAILURE / E_NOTSET /
+// RPC_E_SERVERCALL_RETRYHINT——未注册类这类失败只能按 FAILED(hr) 判、不能比符号
+export const enum HResult {
+    S_OK = 0, // 0x0
+    S_FALSE = 1, // 0x1
+    E_NOTIMPL = -2147467263, // 0x80004001
+    E_NOINTERFACE = -2147467262, // 0x80004002
+    E_POINTER = -2147467261, // 0x80004003
+    E_INVALIDARG = -2147024809, // 0x80070057
+    E_OUTOFMEMORY = -2147024882, // 0x8007000E
+    E_ABORT = -2147467260, // 0x80004004
+    E_FAIL = -2147467259, // 0x80004005
+    CO_E_NOTINITIALIZED = -2147221008, // 0x800401F0
+    REGDB_E_CLASSNOTREG = -2147221164, // 0x80040154
+    RPC_E_DISCONNECTED = -2147417848, // 0x80010108
+    RPC_S_CALLPENDING = -2147417835, // 0x80010115
+    RPC_E_CHANGED_MODE = -2147417850, // 0x80010106
+}
+
 // COM GUIDs
 export const enum Guid {
+    IID_IUNKNOWN = '{00000000-0000-0000-C000-000000000046}',
     IID_ISHELLLINKW = '{000214F9-0000-0000-C000-000000000046}',
     IID_IPERSISTFILE = '{0000010B-0000-0000-C000-000000000046}',
 }
@@ -1238,6 +1280,9 @@ declare global {
         PowerBroadcast: PowerBroadcast
         DmField: DmField
         DmModeFlag: DmModeFlag
+        CoInitFlag: CoInitFlag
+        ClsCtx: ClsCtx
+        HResult: HResult
         Guid: Guid
         AddrFamily: AddrFamily
         SockType: SockType

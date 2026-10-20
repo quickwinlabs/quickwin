@@ -41,6 +41,23 @@ export const SIZE_DECL = {
 
 export const SIZE = /* @__PURE__ */ struct('SIZE', SIZE_DECL)
 
+/** GUID（16B，双架构同布局：Data1 u32 + Data2/Data3 u16×2 + Data4 u8[8]，无填充）。
+ *  同一布局按语义给三个品牌实例：<GUID>ptr 通用 GUID 出参（CoCreateGuid）、
+ *  <CLSID>ptr 类标识、<IID>ptr 接口标识——CLSID/IID 互不收，拦
+ *  CoCreateInstance(clsid, iid, …) 两个 REF* 参数互换。字符串形（constants.ts 的
+ *  Guid enum，值由 gen_const.c 从 SDK 头生成）转缓冲见 lib/com.ts 的 toCLSID / toIID */
+export const GUID_DECL = {
+    '#': 'struct',
+    Data1: 'u32',
+    Data2: 'u16',
+    Data3: 'u16',
+    Data4: 'u8[8]',
+} satisfies C_Struct
+
+export const GUID = /* @__PURE__ */ struct('GUID', GUID_DECL)
+export const CLSID = /* @__PURE__ */ struct('CLSID', GUID_DECL)
+export const IID = /* @__PURE__ */ struct('IID', GUID_DECL)
+
 /** 混合函数（4B，双架构同布局）：AlphaBlend 末参**按值**传（bind 的按值位
  *  `<BLENDFUNCTION>`，非 `<BLENDFUNCTION>ptr`）——4B POD 聚合体在 x64 走位置寄存器、
  *  ia32 压 4 字节，字段序须与 windows.h 逐字节一致。BlendOp 仅 AC_SRC_OVER(0)、
