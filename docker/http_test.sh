@@ -6,7 +6,8 @@ cd "$(dirname "$0")"
 #  经常驻 execd 的 HTTP 下发测试（win7 / xp / win11 共用）
 #  前置：run.sh <vm> 已起且健康；host 上 serve_test 在 18923。
 #  用法: ./http_test.sh <win7|xp|win11|win11core> [filter]
-#    filter 透传给 test/run.js，如: -net / basic / wasm
+#    filter 透传给 test/run.js（guest 侧 scriptArgs[0]）：suite 名的子串，
+#    如 basic / wasm / ffi / printer；`-tag` 形式为排除该 tag，如 -net / -wasm
 #  协议:
 #    200 → body = popen 原始字节（cmd 内置=UTF-16LE、外部程序原生如 GBK），退出码在 X-Exit-Code
 #    非 200 → body = JSON {"error":"..."}
