@@ -29,6 +29,16 @@ console.log(GetCurrentProcessId())
 
 标量按 C 的 ABI 提升：`i8 = -1` 写进 4 字节槽是 `0xFFFFFFFF`，不是 `0x000000FF`。
 
+写签名前先对一遍权威元数据：源头是微软的
+[win32metadata](https://github.com/microsoft/win32metadata)（winmd 格式），社区把它转成了按命名空间
+拆分的 JSON —— [marlersoft/win32json](https://github.com/marlersoft/win32json)。每个函数带
+`DllImport`、参数的 `In`/`Out`/`Optional` 和返回类型；`Optional` 缺席的那一位才该加 `!`。
+它没有 JSON schema，字段含义见 win32metadata 的 `docs/projections.md`。
+
+两个坑：`Platform` 字段是「文档最低支持版本」，不是真实引入版本（`Ellipse`、`SetScrollInfo`
+被标成 Vista+，XP 其实就有）——XP 可用性看 mingw 头的 `_WIN32_WINNT` 守卫；
+结构体只给字段顺序、不给字段偏移，对齐自己算。
+
 ### 按地址绑定：`bindAt`
 
 `bind()` 走 `GetProcAddress`，只能绑有导出名的函数。COM 接口方法在 vtable 里、没有导出名，
