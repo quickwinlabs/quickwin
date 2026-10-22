@@ -24,7 +24,7 @@ XP SP3 的根证书库冻结在 2008 年，因此根证书内联在 `lib/certs.t
 密码学错误都压成了这个码：
 
 ```c
-// wolfcrypt/src/asn.c:17732
+// wolfcrypt/src/asn.c（签名错误归并点）
 if (ret < 0) {
     /* treat all errors as ASN_SIG_CONFIRM_E */
     ret = ASN_SIG_CONFIRM_E;   // -155
@@ -33,13 +33,13 @@ if (ret < 0) {
 真正报错的是 RSA 密钥尺寸检查：
 
 ```c
-// wolfssl/wolfcrypt/rsa.h:144
+// wolfssl/wolfcrypt/rsa.h
 #define RSA_MAX_SIZE    WC_BITS_FULL_BYTES(SP_INT_BITS)
 
-// wolfssl/wolfcrypt/settings.h:67
+// wolfssl/wolfcrypt/settings.h
 #define WC_BITS_FULL_BYTES(x) (WC_BITS_TO_BYTES(x) << 3)
 
-// wolfcrypt/src/rsa.c:834 (另有 2870 / 3053 / 3487 三处同样检查)
+// wolfcrypt/src/rsa.c（另有 2870 / 3053 / 3487 三处同样检查）
 if (MP_BITS_OVER_MAX(mp_bitsused(&key->n), RSA_MAX_SIZE)) {
     return WC_KEY_SIZE_E;      // -234
 ```
@@ -47,7 +47,7 @@ if (MP_BITS_OVER_MAX(mp_bitsused(&key->n), RSA_MAX_SIZE)) {
 而 `SP_INT_BITS` 我们没定义，走 wolfSSL 的默认档位：
 
 ```c
-// wolfssl/wolfcrypt/sp_int.h:468
+// wolfssl/wolfcrypt/sp_int.h（SP_INT_BITS 默认定义处）
     #else
         /* Default to max 3072 for general RSA and DH. */
         #define SP_INT_BITS     3072
@@ -59,7 +59,7 @@ if (MP_BITS_OVER_MAX(mp_bitsused(&key->n), RSA_MAX_SIZE)) {
 
 受影响根（均为 RSA 4096）：GlobalSign Root R46、ISRG Root X1、
 Microsoft TLS RSA Root G2。EC 曲线根不受影响——ECC 用独立的
-`SP_INT_BITS_ECC`，且 `ecc.h:413` 把它收敛到 `MAX_ECC_BITS`（P-521，即 521 位），
+`SP_INT_BITS_ECC`，且 `ecc.h` 把它收敛到 `MAX_ECC_BITS`（P-521，即 521 位），
 远低于 3072。所以 github 之前是缺根（-188）而不是尺寸问题。
 
 ## 根因二：缺根（github 的 -188）
@@ -89,11 +89,11 @@ E46 在 Mozilla 根库里有但当时 bundle 里没有。
 +	-DCMAKE_C_FLAGS="-DSP_INT_BITS=4096" \
 ```
 
-wolfSSL 没有对应的 cmake 开关，只能走编译宏；`sp_int.h:446` 是
+wolfSSL 没有对应的 cmake 开关，只能走编译宏；`sp_int.h` 的 `#ifndef SP_INT_BITS` 是
 `#ifndef SP_INT_BITS`，命令行 `-D` 优先。侧效应：`SP_INT_DIGITS` 从 193 变 257
 （ia32，`SP_WORD_SIZE=32`），`sp_int_ctx` 的 `dp[]` 增加 256 字节。
 
-**2. `lib/certs.ts` — 根证书 2 → 7 张**
+**2. `lib/certs.ts` — 根证书 2 → 8 张**（修复后又追加过一张）
 
 新增 USERTRUST_ECC_CA、DIGICERT_GLOBAL_G2、GLOBALSIGN_R46、ISRG_X1、ISRG_X2。
 根证书一律从 `cacert.pem` 切分后用脚本生成 PEM 文本块，不做手抄——手抄漏一个
@@ -138,7 +138,7 @@ make js && make cc32
 
 最初以为 `-155` 来自 GlobalSign 复用了 R3 的 SKID 却换了公钥，进而推断 wolfSSL
 "不会尝试第二个 SKID 冲突的根"。实测证伪：自签 R3 + R1 也能让 baidu 返回 200。
-真正原因是上面的 3072 位上限。教训是 `-155` 覆盖面太宽（`asn.c:17732` 把所有
+真正原因是上面的 3072 位上限。教训是 `-155` 覆盖面太宽（asn.c 把所有
 错误都归到这里），不能拿它当验签失败用，得追到 `WC_KEY_SIZE_E` 这类原始码。
 
 **4. 自签 E46 入 store 仍报 -188**

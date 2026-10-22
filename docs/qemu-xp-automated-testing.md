@@ -82,7 +82,7 @@ qemu-img create -f qcow2 -b xp_ready.qcow2 -F qcow2 xp_test.qcow2
 **解决方案：guestfwd + 自定义 smbd**。用 QEMU 的 `guestfwd` 机制替代 `-smb`，启动一个支持 SMB1 的自定义 smbd：
 
 ```bash
-# run.sh 里替换 -smb（FWD 按 VM：win7=8007，xp=8005 → guest 8080）：
+# run.sh 里替换 -smb（FWD 按 VM：win7=8007，xp=8005，win11=8011 → guest 8080）：
 -netdev user,id=net0,guestfwd=tcp:10.0.2.4:445-cmd:"$(pwd)/smb_wrapper.sh",hostfwd=tcp::"$FWD"-:8080 \
 ```
 
@@ -137,6 +137,7 @@ QEMU 以 `-daemonize` 后台运行、`-display none` 隐藏窗口，测试全程
 |----|----------------|------|
 | Win7 | **8007** → guest 8080 | 800x + 7 = Win7 |
 | XP | **8005** → guest 8080 | 800x + 5 = XP |
+| Win11 | **8011** → guest 8080 | 800x + 11 = Win11 |
 
 ```bash
 # Win7
@@ -154,7 +155,7 @@ curl -X POST http://localhost:8005/exec \
 - **200** → body = 命令原始字节（cmd 内置=UTF-16LE、外部程序原生如 GBK），退出码在 `X-Exit-Code`
 - **非 200** → body = JSON `{"error":"..."}`（500=内部错误，504=exec 超时）
 
-`popen` 在 Worker 线程执行，非 API 路径（usage 页）在长命令期间仍可响应。
+`/exec` 在 Worker 线程执行（`CreateProcess` + `CreatePipe` 读循环，**不是 `popen`**），非 API 路径（usage 页）在长命令期间仍可响应。
 
 ---
 

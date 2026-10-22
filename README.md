@@ -203,7 +203,7 @@ podman exec quickwin-dev bash -lc 'cd /workspace && make js && make cc64 && make
 | `make gen-const` | 重新生成 `constants.ts`（在 VM 里跑 `_build/gen_const.exe`） |
 | `make clean` / `distclean` | 清理（会清掉整个 `_build/`，之后需 `make js wasm`） |
 
-构建与排错细节见 `.agents/DEVELOPMENT_WORKFLOW.md`。
+构建与排错细节见 `.agents/skills/workflow/SKILL.md`。
 
 ## 许可证
 

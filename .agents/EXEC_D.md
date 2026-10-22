@@ -13,12 +13,14 @@
 宿主机/容器  ── POST /exec ──►  execd(.tsx)（VM 内 8080）
    http_test.sh                     └─► os.Worker（每请求一个）
    curl                                └─► CreateProcessW + CreatePipe
-                                         "system32\cmd.exe /c <cmd>"
+                                         "system32\cmd.exe /u /c <cmd>"
 ```
 
-- VM 端口 8080 由 QEMU hostfwd 映射到容器：win7 → `8007`，xp → `8005`
-- **一个 `/exec` 请求 = 一个 worker = 一棵进程树**，天然隔离，互不影响（`/screenshot`、`/window_list`、`/set_resolution` 是内置端点，主进程同步直跑，不起 worker）
-- 命令以 `system32\cmd.exe /c <cmd>` 起，保留 cmd 语义（内部命令、管道、`for`）
+- VM 端口 8080 由 QEMU hostfwd 映射到容器：win7 → `8007`，xp → `8005`，win11 → `8011`
+- **一个 `/exec` 请求 = 一个 worker = 一棵进程树**，天然隔离，互不影响（`/screenshot`、`/window_list`、
+  `/set_resolution`、`/tray_list`、`/input`、`/upload`、`/download` 是内置端点，主进程同步直跑，不起 worker）
+- 命令以 `system32\cmd.exe /u /c <cmd>` 起（**恒加 `/u`**：cmd 内置输出走 UTF-16LE 绕开 ACP 编码有损，
+  决策见 `.agents/CMD_ENCODING_ACP_NLS.md` §8），保留 cmd 语义（内部命令、管道、`for`）
 - cmd.exe 路径由 worker 内 `GetSystemDirectoryW` 拼接——`CreateProcessW` 直接靠 PATH 解析在本环境失败
 - 子进程树由 `CreateProcessW` 返回的 pid 定位，超时/断连时 `taskkill /T` 递归杀掉
 - **不产生独立 session**：worker 跑在调用方进程所在的 session 内，`CreateProcessW` 直接起子进程，
@@ -26,24 +28,18 @@
 
 ### 底座与体积
 
-用 **nowasm 底座**（`qwin-nowasm[-x86].exe`，不含 WAMR）打包：`execd.js` 只 import
-`os` / `sock` / `std`，worker 只 import `os` / `std` / `ffi`，完全不碰 WAMR。`BUILD=small` 实测：
+用 **nowasm 底座**（`qwin-nowasm[-x86].exe`，不含 WAMR）打包：`execd.js` 运行时只依赖
+`os` / `sock` / `std`（GUI 日志窗另引 react-qw，与 WAMR 无关），worker 只 import `os` / `std` / `ffi`。
+`BUILD=small` 时点实测（2026-10 上旬，x64 加 GUI 后未重测，勿沿用旧值）：
 
 | 架构 | wasm 底座 | nowasm 底座 | 节省 |
 |------|-----------|-------------|------|
 | x64  | 1,543,168 | 1,281,536 | 261,632（-16.9%） |
 | x86  | 1,562,126 | 1,265,166 | 296,960（-19.0%） |
 
-内嵌 JS 与最终 `execd.exe`（与上表同一份构建）：
+内嵌 JS 与最终 `execd.exe`（x86，与上表同一份构建）：内嵌 JS（brotli quality 11）143,638 B、
+最终 `execd.exe` **1,408,812 B**。
 
-| 项 | x86 | x64 |
-|----|-----|-----|
-| 内嵌 JS（brotli，quality 11） | 143,638 | 待测 |
-| 最终 `execd.exe` | **1,408,812** | 待测 |
-
-> x64 在 `a4eba0b` 加 GUI 后未重新构建，勿沿用旧值（此前记的是 1,311,886 / 1,295,516，JS 30,342）。
-> 增长主要来自 GUI 日志窗引入的 react-qw。
->
 > ⚠️ flavor 存疑：Makefile 里 `BUILD ?= fast`（默认 fast），而本节沿用旧记的 `BUILD=small` 标签。
 > `_build/obj/` 只有 `ia32-cross` / `x64-cross[-nowasm]` 这类交叉变体名，**不含 flavor 标记**，
 > 无法从产物反推。下次测体积请显式 `BUILD=small make execd` 并记录，避免"flavor 汤"。
@@ -63,12 +59,19 @@
 | （任意非 API 路径） | 免 | usage 文本（`HTTP 200`）——兼就绪探测（`run.sh` 轮询 `/`）；`/health` 已非专用端点 |
 | `POST /exec` | 需 | 跑命令，流式输出 + trailer 退出码 |
 | `POST /set_resolution` | 需 | 改分辨率 `?w=&h=&persist=0\|1`（默认持久），成功/失败恒带 `modes32` 可用列表 |
-| `GET /window_list` | 需 | 列出顶层窗口（`a4eba0b` 由 `/windows` 改名） |
-| `GET /screenshot` | 需 | 截屏 / 抓指定窗口 |
+| `GET /window_list` | 需 | 列出顶层窗口（由 `/windows` 改名而来，旧名已不存在） |
+| `GET /screenshot` | 需 | 截屏 / 抓指定窗口（BMP + `X-Dimensions`，`?hwnd=&area=window\|client&mode=screen\|print`） |
+| `GET /tray_list` | 需 | 跨进程枚举托盘图标（可见区 + 折叠区；`?probe=<hwnd>&uid=<n>` 单图标定位，Win7+） |
+| `POST /input` | 需 | 批量注入鼠标/键盘事件（JSON 数组） |
+| `POST /upload` | 需 | 宿主 → VM 传文件 |
+| `GET /download` | 需 | VM → 宿主取文件 |
+
+> 端点语义的**唯一权威是 usage 自描述**：`curl http://127.0.0.1:8007/`（任意非 API 路径）。
+> 本表只作导览，新增端点先更新 usage（`main.tsx`），此处可滞后。
 
 ### 鉴权
 
-`--token=x` 开启后，`/exec` / `/set_resolution` / `/window_list` / `/screenshot` 需带
+`--token=x` 开启后，**所有 API 路径**（isApi 命中即检查，含上表全部端点）需带
 `Authorization: Bearer x`，否则 `401` + `{"error":"unauthorized"}`。
 API 之外的任意路径（含 `/`、`/health`、拼错路径/方法）统一返回 usage（`HTTP 200`、
 免鉴权、不记日志）——就绪探测即打到这。
@@ -110,7 +113,7 @@ API 之外的任意路径（含 `/`、`/health`、拼错路径/方法）统一�
    "visible": true, "minimized": false }]
 ```
 
-> `a4eba0b` 把原 `GET /windows` 改名为 `/window_list`。旧名已不存在。
+> 原 `GET /windows` 已改名为 `/window_list`，旧名不存在。
 
 ### `GET /screenshot`
 
@@ -126,7 +129,7 @@ API 之外的任意路径（含 `/`、`/health`、拼错路径/方法）统一�
 - 参数非法 → `400`（`area must be ...` / `hwnd must be a positive integer`）
 - 抓取失败（含 0 字节）→ `500`——主进程同步直跑（端到端实测 win7 ~70ms / XP ~300ms），bug 当场暴露，无超时层
 
-这两个端点是**内置端点，主进程同步直跑，不进 worker**：bug 当场 throw → 500（有栈有
+这些内置端点是**主进程同步直跑，不进 worker**：bug 当场 throw → 500（有栈有
 原因），而非 worker 静默挂掉等 timer 兜底成 504。worker 只留给 `/exec`——外部命令不可
 控，popen 读循环阻塞无上界；内置端点耗时有界且低频，主循环阻塞无感。
 
@@ -194,7 +197,7 @@ execd 在这里是通的：worker 在**用户桌面 session 内**起 `cmd.exe`
 纯 kernel32，无 `winpty.dll` / `winpty-agent.exe` 依赖，不经 agent 中转，因此不产生独立 session），
 截图脚本与目标窗口同 session，直接可访问。
 
-> `d1fbed0` 之前这里走的是 winpty（`winpty_spawn` / `winpty_free`）。换成
+> 此前这里走的是 winpty（`winpty_spawn` / `winpty_free`）。换成
 > `CreateProcessW` + `CreatePipe` 的原因：流式粒度更好——探针实测 XP 上逐行实时到达，
 > 而 winpty 攒批约 4s；且少一层 agent 中转。**会话隔离这一层两者等价**，winpty 也不是理由。
 
@@ -248,8 +251,6 @@ trailer 是唯一"既能流式、又能带完成态"的 HTTP 机制——不需�
   - 三道保险：正常 abort 事件；注册时 `signal.aborted` 预检（断连早于请求到达的情况）；worker 回报 `innerPid` 时若已 aborted 再补刀
   - `stream.cancel()` 兜底（断连发生在数据静默期、`reader.read()` 还挂着的场景）
 
-> commit：`f92a6f6`（http 层：AbortSignal + 断连感知）、`b8213ae`（execd：断连 kill + timeout 可选）
-
 ### 5.3 timeout 可选，默认无限
 
 原本有 `EXEC_TIMEOUT_MS = 60_000` 的绝对上限，一刀切——不管命令死活、不管连接在不在，到点就杀。
@@ -263,8 +264,6 @@ trailer 是唯一"既能流式、又能带完成态"的 HTTP 机制——不需�
 
 ### 5.4 GUI 日志窗与进程参数
 
-> commit `a4eba0b`
-
 **日志窗默认开**，用 `react-qw` 的 `ListBox` 渲染：
 
 - 顶部 info 行：`token: on|off · port: N · workers: N`（`workers` 是当前活跃 `/exec` worker 数）
@@ -273,7 +272,7 @@ trailer 是唯一"既能流式、又能带完成态"的 HTTP 机制——不需�
   `unauthorized`
 - `scrollToBottom` 自动跟底
 
-![XP 上的 GUI 日志窗，560x420](../docs/images/execd-xp-gui.png)
+![XP 上的 GUI 日志窗，560x420](../docs/images/exec-server-xp-gui.png)
 
 > 图上覆盖了 §5.4 列出的全部结果取值：`ok` / `exit 0` / `exit 7`（非零退出码）/
 > `timeout`（`ping -t 127.0.0.1 >nul` 带 `timeout:2000`，无输出 → 504）/ `404`（历史版本；
@@ -307,14 +306,12 @@ worker 回调里直接 `setState` 会与 http-server 的状态机**重入，把�
 > `--gui` 等服务自有选项放在槽位后天然透传（早期"裸值被 js_file 探测误当
 > 脚本名"的问题已随槽位制解析修复）。
 
-**`run.bat` 用 `start /min` 启动**，`initGui` 里显式 `ShowWindow(RESTORE)` 还原，
-否则窗口只剩一条标题栏。
+**`run.bat` 用 `start /min` 启动**；`initGui` 里以 `ShowWindow(SHOWMINNOACTIVE)` 启动即最小化、
+不抢焦点（任务栏保留按钮，CI 截图不受干扰）。
 
 ---
 
 ## 6. 关键踩坑：64 位句柄 + JS 位运算 mod 32
-
-> commit `d166400`
 
 **现象**：64 位 execd 下，子进程 stdout 全丢——`exit 0` 但 body 空。32 位一切正常。
 
@@ -359,12 +356,8 @@ worker 回调里直接 `setState` 会与 http-server 的状态机**重入，把�
 
 - `{"cmd":"ping -t 127.0.0.1"}` 保持连接，**62s** 时 tasklist 里 `PING.EXE` 仍在；curl 断开后再查 → 已被清理
 
-**回归**（改动 http-server 后必跑，双端 VM）
-
-| 平台 | 结果 |
-|------|------|
-| win7 | **553/553 PASS** |
-| xp | **547/548 PASS** |
+**回归**（改动 http-server 后必跑，三端 VM：win7 / xp / win11）——**结果以 `http_test.sh` 的
+Summary 为准（failed≤1 即 PASS）**，绝对数字随 suite 增减漂移，勿引用旧值。
 
 改动后构建顺序：`make js` → `make execd`（重新 brotli 内嵌），然后 `./run.sh <vm> --restart` 加载新 exe。
 
@@ -374,7 +367,7 @@ worker 回调里直接 `setState` 会与 http-server 的状态机**重入，把�
 
 ### 已解决
 
-- ~~**无 auth**~~ → `a4eba0b` 实现 `--token=x` Bearer 鉴权。残余风险：token 明文过
+- ~~**无 auth**~~ → `--token=x` Bearer 鉴权已实现。残余风险：token 明文过
   HTTP（仅 VM 内网）、无过期与轮换；`--token=` 空串等于放行，CI 调用方需自行确保传入。
 
 ### 仍然缺
@@ -393,9 +386,9 @@ worker 回调里直接 `setState` 会与 http-server 的状态机**重入，把�
 - **并发上限**：加一个简单的信号量或计数上限，超了直接 `503`
 - **stdin / args**：对标 httpexec / Docker 的接口面
 - **stdout/stderr 分流**：对标 superserve 的双通道 + 时间戳
-- **窗口控制**（移动 / 缩放 / 关闭 / 置前）：`/window_list` 与 `/screenshot` 已落地
-  （`a4eba0b`），"找到某个窗口再抓像素"这条链已通——这正是 SSH 路径下做不到的部分
-  （见第 3 节"会话隔离"）。下一步在这两个端点上扩展控制类操作即可，
+- **窗口控制**（移动 / 缩放 / 关闭 / 置前）：`/window_list`、`/screenshot`、`/tray_list`、`/input`
+  已落地，"找到某个窗口再抓像素/注入输入"这条链已通——这正是 SSH 路径下做不到的部分
+  （见第 3 节"会话隔离"）。控制类操作（移动/缩放/置前）在这套端点上扩展即可，
   `lib/text-measure.ts` 已有 GDI 绑定先例，扩展成本低
 
 ---

@@ -1,10 +1,10 @@
-# qwin 的 stdout/console 初始化机制（GUI 子系统 + GetFileType 决策）
+# qwin 的 stdout/console 初始化机制（GUI 子系统）
 
 ## 一句话原则
 
-**qwin 是 GUI 子系统（`/SUBSYSTEM:WINDOWS`）进程，不会自动关联控制台；stdout 接什么完全取决于启动方式。判断标准是 `GetFileType`——拿到可用句柄就"绝不动"，拿不到才尝试 `AttachConsole` + `freopen("CONOUT$")`。**
+**qwin 是 GUI 子系统（`/SUBSYSTEM:WINDOWS`）进程，不会自动关联控制台；stdout 接什么完全取决于启动方式。最终落地结论：C 侧不做任何初始化**——CRT 启动代码已把继承句柄装到 fd 1（§4.4），"可用句柄绝不动"即正确。本文记录的是排查过程：为什么所有"主动初始化"路线（`AttachConsole`/`_open_osfhandle`/`_dup2`）都被实测否决（§4），以及最终替代 winpty 的 `CreateProcess + CreatePipe` 方案（§7）。
 
-对应代码：`src/main.c`（`WinMain` 开头，当前约 L146-175）。这段代码不能"优化"掉，删掉就是重复历史上三个大坑（见 §4）。
+> 注意：`src/main.c` 里**没有**任何 `GetFileType`/`AttachConsole` 初始化代码，也不该有——这段推演（§3 决策树）从未落地成代码。`-o CON` 的 `AllocConsole`+`freopen` 是显式选项路径，另一回事。
 
 ## 1. 背景
 
@@ -15,20 +15,20 @@ qwin 编译时是 GUI 子系统二进制。Windows 不会给这样的进程自�
 
 xp 上观察到的"控制台能看到输出，但 execd / /exec 拿不到"、“反过来 execd 能拿到但控制台看不到”——根子都在这一层。
 
-## 2. 三种启动场景与 GetFileType 判定
+## 2. 三种启动场景与 GetFileType 判定（排查期分析）
 
 `GetFileType(GetStdHandle(STD_OUTPUT_HANDLE))` 能区分句柄到底可不可用（只认返回值 `1/2/3`）：
 
-| 场景 | `GetFileType` | 含义 | 处理 |
-|---|---|---|---|
-| XP 经 execd / winpty agent 派生 | `3`（pipe） | 句柄可用，CRT 已把它装到 fd 1 | **什么都不做** |
-| 从 cmd 重定向到文件 | `1`（disk） | 句柄可用 | **什么都不做** |
-| Win7 GUI 未附着父控制台 | `0` | 句柄存在但无效 | `AttachConsole` + `freopen("CONOUT$")` |
-| 从 explorer 双击 / 无句柄 | `0xffffffff`（`INVALID_HANDLE_VALUE`） | 压根没有句柄 | `AttachConsole`，失败则保持原样 |
+| 场景 | `GetFileType` | 含义 |
+|---|---|---|
+| 经 execd 管道派生 | `3`（pipe） | 句柄可用，CRT 已把它装到 fd 1 → 不动 |
+| 从 cmd 重定向到文件 | `1`（disk） | 句柄可用 → 不动 |
+| Win7 GUI 未附着父控制台 | `0` | 句柄存在但无效（曾设想 `AttachConsole`） |
+| 从 explorer 双击 / 无句柄 | `0xffffffff`（`INVALID_HANDLE_VALUE`） | 压根没有句柄 |
 
 > 注意 0 和 `0xffffffff` 是两种不同情况：Win7 未附着时 `GetFileType` 返回 **0**（句柄值是继承下来的，但无效），没有句柄时才返回 `-1`。
 
-## 3. 最终代码与决策树
+## 3. 排查期推演的决策树（未落地）
 
 ```c
 DWORD fOut0 = GetFileType(GetStdHandle(STD_OUTPUT_HANDLE));
@@ -42,18 +42,9 @@ setvbuf(stdout, NULL, _IONBF, 0);
 setvbuf(stderr, NULL, _IONBF, 0);
 ```
 
-决策树：
+**这段代码最终没有进仓库**：`AttachConsole` 分支正是 §4.1 实测否决的路线（会打死 XP 继承的 pipe），其余分支被 §4.4 证明多余。保留在此仅作推演记录。
 
-```
-GetFileType(STD_OUTPUT_HANDLE)
- ├─ 1/2/3（disk/char/pipe）→ 句柄可用，不动 stdio（CRT 已装好）→ 直接 printf
- └─ 0（Win7 无效句柄）/ 0xffffffff（无句柄）
-     ├─ AttachConsole 成功 → freopen("CONOUT$")（stderr 同样处理）
-     └─ 失败（父进程非控制台应用，explorer 场景）→ 保持原状，与历史行为一致
-最后无条件 setvbuf(_IONBF) 关缓冲
-```
-
-`-o CON` / `-o 文件` 两个选项仍走它们自己的 `freopen`（`src/main.c` 后面 ~L230-241），这段开机代码只在"C 层 stdio 就绪之前"生效，二者不冲突。
+`-o CON` / `-o 文件` 两个选项走它们自己的 `freopen`（`src/main.c`），与本文主题互不干扰。
 
 ## 4. 为什么"可用句柄绝不能动"
 
@@ -82,13 +73,13 @@ XP 上继承来的是 pipe 句柄，`AttachConsole(ATTACH_PARENT_PROCESS)` 一�
 
 ### 4.5 `freopen` 只换句柄、不更新 `_outband_[]`
 
-`freopen("CONOUT$", ...)` 只替换文件句柄，CRT 内部按 fd 索引的 `_outband_[]`（决定输出模式）并不随 `freopen` 更新。只有 attach 场景走 `freopen`，所以文档开头那段代码在分支**外**统一 `setvbuf(_IONBF, 0)` 关缓冲——否则写向新句柄的输出要等进程退出才 flush。
+`freopen("CONOUT$", ...)` 只替换文件句柄，CRT 内部按 fd 索引的 `_outband_[]`（决定输出模式）并不随 `freopen` 更新。所以任何走 attach + freopen 的方案都必须无条件 `setvbuf(_IONBF, 0)` 关缓冲——否则写向新句柄的输出要等进程退出才 flush。（这也是否决 attach 路线的又一理由：为绕开缓冲还得追加补丁。）
 
 ## 5. 排查弯路记录（防再犯）
 
 - **`GetCommNameA` 不存在**：想用"从句柄反推设备名"来区分 pipe/console，`GetProcAddress("kernel32.dll","GetCommNameA")` 在 XP 和 Win7 都返回 `NULL`；直接 `#pragma comment(lib, kernel32)` 外部引用会让 exe 加载失败（导入表找不到该导出）。放弃。
 - **`SetConsoleActiveScreenBuffer` 在 XP 上用不了**：它要求传入的句柄是 console screen buffer；XP 继承的是 pipe，调用直接失败（`sb0=0`）。Win7 上可成功但对结果无影响。没有它迭代过一轮，白跑。
-- **SMB 缓存导致"旧 exe"陷阱**：编译产物覆盖到共享目录后，VM 仍可能吃到旧映像（且 `qwin-x86.exe`/`qwin.exe` 同名覆盖时奇偶 bug 极难排查）。**换一个新文件名立即生效**；`http_test.sh` 内部多次编译后的 smoke 测试要留意。
+- **SMB 缓存导致"旧 exe"陷阱**：历史上编译产物覆盖到共享目录后，VM 仍可能吃到旧映像（同名覆盖时奇偶 bug 极难排查，当时靠换新文件名绕开）。**2026-10 已根治**：`smb_wrapper.sh` 加 `oplocks = no` + `smb2 leases = no`，覆盖写同路径立即可见（见 workflow skill 故障表）。
 - **VM 实际读 `_build/l.bat`，不是 `docker/ci_share/l.bat`**：`docker/ci_share/quickwin` 是 `_build` 的 symlink，`Z:\quickwin` 经 SMB 映射到 `_build`，VM 里 `cmd /c l.bat` 的工作目录就是 `_build`。探针脚本写错位置会看着"没生效"。
 - **批处理文件记得 `unix2dos`（CRLF）、循环变量写 `%%F`**：LF 行尾的 `.bat` 会被 cmd 异常解析，`for %%F` 写成 `%F` 直接终止脚本。探针 `l.bat` 一律 `printf` 时保持 CRLF 或末尾用 `unix2dos`。
 - **`.agents` 目录下的探针产物不要留在 `_build/`**：`_build/` 是 gitignore 的，但 `docker/ci_share/*.bat` 曾误留过 `j l m` 等探针文件（已清理）。
@@ -106,11 +97,11 @@ XP 上继承来的是 pipe 句柄，`AttachConsole(ATTACH_PARENT_PROCESS)` 一�
 
 worker 一开始用 winpty 是因为它给子进程"真控制台语义"，但当前 `/exec` 从不交互、只捕获输出，winpty 的看家本领（`WriteConsole`/屏幕缓冲/键盘回灌）其实没用到。**已在 `worker.ts` 落地替换：直接 `CreateProcess + CreatePipe`，完全不用动事件循环，XP 流式还优于 winpty（§7.5）。**
 
-验证方式：`make execd` → 容器 `docker/run.sh <vm> --restart`（VM 读 `_build/execd.exe`）→ `docker/http_test.sh`：XP 547/548（failed=1 打印机容忍）、Win7 553/553 全过；冒烟 `print('你好')` 输出 `e4 bd a0 e5 a5 bd`（UTF-8）判定新 worker（旧 winpty 会是 GBK `c4 e3 ba c3`）。
+验证方式：`make execd` → 容器 `docker/run.sh <vm> --restart`（VM 读 `_build/execd.exe`）→ `docker/http_test.sh`（判定以 Summary 的 failed≤1 为准）。冒烟 `print('你好')` 输出 `e4 bd a0 e5 a5 bd`（UTF-8）判定新 worker。
 
 ### 7.1 为什么不需要碰事件循环
 
-worker 的读循环**本来就是同步阻塞的**（`worker.ts` L128-138）：
+worker 的读循环**本来就是同步阻塞的**（`worker.ts`）：
 
 ```ts
 for (;;) {
@@ -182,6 +173,5 @@ EOF 语义变化是入坑点：**管道 EOF = 所有写端句柄都关闭**（�
 
 ## 8. 验证入口
 
-- `docker/http_test.sh xp` → XP（`qwin-x86.exe`，ia32），结果 `547/548 (failed=1)` PASS（该 1 例是 http_test.sh 注释认可的 printer ffi 已知差异）
-- `docker/http_test.sh win7` → Win7（`qwin.exe`，x64），结果 `553/553` PASS
-- 冒烟：宿主机 `curl POST /exec` 到 `http://127.0.0.1:8005`（XP）/ `8007`（Win7），XP 控制台与 `> out.txt` 都应看到输出。
+- `docker/http_test.sh xp` → XP（`qwin-x86.exe`，ia32）；`docker/http_test.sh win7` → Win7（`qwin.exe`，x64）。**结果以 Summary 为准（failed≤1 即 PASS）**
+- 冒烟：容器内 `curl POST /exec` 到 `http://127.0.0.1:8005`（XP）/ `8007`（Win7），XP 控制台与 `> out.txt` 都应看到输出。

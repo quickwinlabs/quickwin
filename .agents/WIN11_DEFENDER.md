@@ -11,7 +11,7 @@
 | `./run.sh win11` | `snapshots/win11_ready.qcow2` | **标准 tiny11 25H2**，自带 Defender、可服务化（WU 可用） |
 | `./run.sh win11core` | `snapshots/win11_ready-core.qcow2` | **tiny11 core**，Defender 已剥离（旧基线） |
 
-端口同为 **8011**（Win11 = 8000+11），同一时刻只跑一台。
+端口同为 **8011**（Win11 = 8000+11），同一时刻只跑一台。core 快照需先 `./setup-win11.sh win11core` 生成（标准盘同理 `./setup-win11.sh win11`）。
 
 > **无 TPM / Secure Boot**（2026-10-17 起）：装机与运行都用普通 4M OVMF（pflash），硬件检查在
 > WinPE 阶段由 `Autounattend.xml` 的 `LabConfig` 绕过。原有配置的 TPM/SB 从未被依赖
@@ -22,7 +22,7 @@
 > 而权威发布源是 assets 仓 `win-isos-tiny11-std`（CI 从 archive.org 的 NTDEV `tiny11_25H2_Nov25.iso`
 > 发布，5.3GB）——**两份是不同字节**。本环境到不了 archive.org，故 Nov25 上未复测；
 > TP/开关/定义库/不干扰回归这些结论预期一致，换盘时值得重跑 §4 冒烟与 §6 全量。
-> 取盘与发布流程见 `.agents/DEVELOPMENT_WORKFLOW.md`「测试镜像（ISO）来源与发布」。
+> 取盘与发布流程见 `.agents/skills/workflow/SKILL.md`「测试镜像（ISO）来源与发布」。
 
 ## 2. 开关：为什么运行期能切实时保护
 
@@ -72,8 +72,9 @@ powershell -NoProfile -Command "[IO.File]::WriteAllBytes('C:\qwtmp\eicar.com',[C
 
 > `-File` 必须给**绝对路径**；相对路径（含先 `cd` 再传裸文件名）实测报 `hr=0x80508023`。
 
-**全开跑回归**：实时保护全开时 `./http_test.sh win11` → `Summary: 1331/1336`，与基线逐条一致
-（窗口枚举×2、printer RAW×2、UNC exe path 为既有失败）→ **Defender 全开不干扰正常 exe 与测试流程**。
+**全开跑回归**：实时保护全开时 `./http_test.sh win11` → 与基线逐条一致（2026-10-16 时点 `1331/1336`；
+suite 集会变，以 `http_test.sh` failed≤1 与基线逐条对照为准：窗口枚举×2、printer RAW×2、
+UNC exe path 为既有失败）→ **Defender 全开不干扰正常 exe 与测试流程**。
 
 ## 5. 坑（都是这轮实测踩到的）
 

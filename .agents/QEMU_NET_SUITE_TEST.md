@@ -9,14 +9,14 @@
 
 ## 环境前置（每次 VM 启动后需就绪）
 
-- host(容器)`serve_test`：`node tools/serve_test.ts 18923`，监听 `::`（dual-stack）
+- host(容器)`serve_test`：`node tools/serve_test.ts 18923`，监听 `::`（dual-stack）——**`http_test.sh` 已自动拉起，手工步骤仅历史排查时需要**
 - guest `portproxy`：`netsh interface portproxy add v4tov4 listenaddress=127.0.0.1 listenport=18923 connectaddress=10.0.2.2 connectport=18923`
 - `iphlpsvc`：快照中已是 RUNNING
 
 > 注意：portproxy 规则保存在 overlay（win7_test.qcow2）中，`run.sh --fresh` 重建 overlay 后会丢失，
 > 需通过 `docker/ci_share/run.bat` 每次启动时重建（已实现）。
 
-## 结果汇总
+## 结果汇总（2026-09 时点；suite 集与绝对数字与当前不同，仅作排查记录）
 
 | suite | tag | 结果 | 备注 |
 |-------|-----|------|------|
@@ -97,7 +97,7 @@
 
 ### 反斜杠传闻复核（2026-09-23，XP 实测）
 
-原记录（L60/L86）称「execd 处理带反斜杠命令后会挂起」，仅有一句话无复现步骤。
+原记录（上文两处划线项）称「execd 处理带反斜杠命令后会挂起」，仅有一句话无复现步骤。
 在常驻模式 XP 上（hostfwd :8005，容器内 curl）四条对照实测：
 
 | 用例 | body | 结果 |
@@ -137,35 +137,23 @@
 - 之前只配 `v4tov4`：guest 的 `::1` IPv6 loopback 无监听，连 `::1:18923` 落入无声黑洞 → 挂起。
 - 加 `v6tov4 listenaddress=:: listenport=18923/18924 connectaddress=10.0.2.2` 后 ipv6 套件 13/13 通过。
 - **结论：portproxy 必须同时配 v4tov4 + v6tov4**（已固化进 docker/ci_share/run.bat，按系统分支执行）。
-- win7 的 run.bat 目前只有 v4tov4，其 ipv6 套件预计同样因缺 v6tov4 而挂。
+  win7 与 XP 的 run.bat 均已补齐（win7 补后 ipv6 套件 13/13，见结果汇总）。
 
 ### 挂起本质解析（重要）
-- **ipv6/无效URL的"挂起"不是进程死锁**：runner（run.ts:65-76）逐 suite `await mod.suite.run(t)`，
+- **ipv6/无效URL的"挂起"不是进程死锁**：runner（`test/run.ts`）逐 suite `await mod.suite.run(t)`，
   **没有 per-suite 超时**，某用例 Promise 永不 resolve → suite 永远不结束 → 后续 suite 全被堵住。
   事件循环仍在跑，只是测试推进不了。
-- ipv6 挂起点是 `connect('::1:18923')` 异步模型（src/quickjs-sock.c:351, `WSAEventSelect`）：
+- ipv6 挂起点是 `connect('::1:18923')` 异步模型（`src/quickjs-sock.c` 的 `WSAEventSelect`）：
   非阻塞 connect 返回 WSAEWOULDBLOCK 后等 FD_CONNECT 事件回调；IPv6 loopback 无监听（黑洞），
-  失败回调未正确触达 JS 层 → `reject()` 永不执行。且 raw socket 用例无超时保护（test_ipv6.ts:30-60），
+  失败回调未正确触达 JS 层 → `reject()` 永不执行。且 raw socket 用例无超时保护（`test/test_ipv6.ts`），
   故 fail 变 hang。v6tov4 转发恢复 = connect 成功回调即走通。
 - net-websocket invalid URL 属**另一种**挂起：纯 JS 解析错误不触网，疑 `os.setTimeout(3000)` 兜底
   timer 在 XP 32 位时钟下未触发。未深入调查（用户要求先只记录）。
 
-### 挂起根因调查（老，保留）
-- net-websocket invalid URL 用例：与 IPv6 转发**无关**（`not-a-websocket` 是纯 JS URL 解析错误，不触网）。
-  `_fireError` 只 console.error + dispatch error，`onclose` 依赖后续 `_setState(CLOSED)` → dispatch close，
-  但日志停在 error 后 → 疑 3s `timer4` 兜底未触发（XP 32 位时钟问题）。未深入调查（用户要求先只记录）。
+## 结论（均已定案）
 
-## 结论待定
-
-- 9 个 net suite 中 **8 个独立跑全部通过**（net-fetch 50/50, net-websocket 15/15, net-event 2/2,
-  http-server 18/18, http-import 6/6, fetch-cache 39/39, worker-http 6/6, worker-fetch 2/2），
-  仅 `ipv6` 单独跑即卡死 execd。
-- **完整 `run.js -skip-ipv6` = 415/415 PASS**：排除 ipv6 后全量（含所有 net 套件）一次通过，
-  execd 不挂。确认整套的唯一断点就是 ipv6 suite。
-- test/run.ts 已给 ipv6 临时加 `skip-ipv6` tag 用于排查（待用户决定去留）。
-- 待办：
-  - 排查 ipv6 卡死根因（sock IPv6 后端问题或 serve_test 对 ::1/WS 的处理）。
-  - ipv6 属 net 标签，CI 走 `-net` 时本身不跑，不影响 CI 全绿。
-  - run.bat 的 portproxy 需涵盖 18923+18924（net-fetch https 依赖 18924），已改。可重启 VM 验证 run.bat 自动建全。
-  - 若让 CI 全量跑（无 -net），需先解决 ipv6 卡死。**已解决**：run.bat 配 v6tov4（win7+XP 均已固化）。
-- **新失败项**：win7 全量时 ffi OOM（EnumPrinters 打印循环读坏指针）。待修 test_ffi.ts（加读到长度上限保护）。
+- 9 个 net suite 中 **8 个独立跑全部通过**，ipv6 挂起根因 = 缺 v6tov4 portproxy（已修复并固化进 run.bat）。
+- 全量 run.js（含 ipv6）不再挂：v6tov4 修复后 win7 427/428，唯一失败是 ffi OOM（**已修**，
+  见 `.agents/TODO.md` 归档「test_ffi 32 位 PRINTER_INFO_2 布局」）。
+- 排查期临时加的 `skip-ipv6` tag 已从 `test/run.ts` 删除。
+- run.bat 的 portproxy 涵盖 18923+18924，已固化，随启动自动重建。

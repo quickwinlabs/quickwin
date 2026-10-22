@@ -1,6 +1,6 @@
 # 把 libffi 移出构建流程，改用手写汇编（Win32/x64 FFI）
 
-> 状态：**已完成** —— S1–S7 全部落地（`223076b` / `403ccfa` + win64 桩与清理若干后续 commit），双平台全绿；S4 边界用例固化为 `ffi-abi` 套件 31 项；§10 JS 侧重构已落地，旧 `ffiCall` 打包路径已删除、`ffiCallRaw` 改名 `ffiCall`
+> 状态：**已完成** —— S1–S7 全部落地（含 win64 桩与后续清理，最终 squash 为一笔合入 main），双平台全绿；S4 边界用例固化为 `ffi-abi` 套件（现 42 项，见 `test/test_ffi_abi.ts`）；§10 JS 侧重构已落地，旧 `ffiCall` 打包路径已删除、`ffiCallRaw` 改名 `ffiCall`
 > 创建：2026-10-01 ｜ 关联：`.agents/TODO.md`「系统性优化 FFI」
 > ⚠️ 术语：本计划说的是「**移出构建流程**」，**不删除 `deps/libffi` submodule 与源码**（保留作 ABI 依据，见 §3.7）
 > 注：本文档 2026-10-11 精简——原约 950 行的完整执行档案（S1–S7 逐步记录、设计期草案与勘误）压缩为结论与教训；过程细节可查 `git log` 与 `deps/libffi` 源码
@@ -24,7 +24,7 @@
 ## 1. 结论
 
 - 构建链中 libffi 引用全部移除：Makefile 9 处（变量、include 路径、`LIBS`、整个 autotools 构建规则）、CI cache 路径与 key、`src/quickjs-ffi.c` 的 `#include <ffi.h>`、`ffi_types[]` / `ffi_args[]` / `arg_types[]` / `ffi_prep_cif` 分支。干净重建后链接行不含 `libffi.a`，`strings qwin.exe` 无 libffi 符号残留
-- `FFI_TYPE_*` 数值的唯一权威来源收窄为 `deps/libffi/include/ffi.h.in:60-82`（源码保留的决定性理由之一）；`src/quickjs-ffi-type.h` 仅存为 ABI 参照
+- `FFI_TYPE_*` 数值的唯一权威来源收窄为 `deps/libffi/include/ffi.h.in` 的 `FFI_TYPE_*` 定义段（源码保留的决定性理由之一）；`src/quickjs-ffi-type.h` 仅存为 ABI 参照
 - TS 表面 API 不依赖数值（branded nominal type），逐字节不变
 - 体积（strip 后）：`qwin.exe`(x64) 2108942 B / `qwin-x86.exe`(ia32) 2008078 B；asm 桩链接体积 < 1KB（libffi 原 ~11KB/8KB）
 
@@ -32,7 +32,7 @@
 
 **x64**：Win64 参数布局是纯线性的 —— 第 i 个参数的寄存器由槽位序号唯一决定（槽 0-3 → RCX/RDX/R8/R9 与 XMM0-3 **同槽双读**，槽 4+ → 栈），与前面参数类型无关，无 SSE/GPR 分类问题（libffi 免分类靠的就是 `win64.S` 的同槽双读）。调用方必须预留 32B 影子空间；`rsp` 在 `call` 处须 16 对齐。`args[]` 连续 8 字节槽与该布局零转换成本吻合。
 
-**ia32**：cdecl 全压栈（右到左），double 按 8 字节整体压入；浮点返回走 x87 ST0。核心机制是**帧基准恢复**（源自 libffi `sysv.S:174` 的 `movl %ebp,%esp`）：`call` 后**无条件** `mov %ebx, %esp` 从自己的帧基准重建栈 —— cdecl 与 stdcall 差异只在退栈责任，被无条件重建完全吸收，故本实现也能安全调 stdcall 导出（cdecl/stdcall 参数布局本身一致）。前提：`%ebx` 必须在三次 callee-saved push **之后**取基准；调用点之后所有出参一律 `%ebp`/`%ebx` 相对寻址，禁止依赖 ESP 相对偏移 —— 否则漏恢复时故障点滞后到后续任意栈访问，排查成本极高。
+**ia32**：cdecl 全压栈（右到左），double 按 8 字节整体压入；浮点返回走 x87 ST0。核心机制是**帧基准恢复**（源自 libffi `sysv.S` 的 `movl %ebp,%esp`）：`call` 后**无条件** `mov %ebx, %esp` 从自己的帧基准重建栈 —— cdecl 与 stdcall 差异只在退栈责任，被无条件重建完全吸收，故本实现也能安全调 stdcall 导出（cdecl/stdcall 参数布局本身一致）。前提：`%ebx` 必须在三次 callee-saved push **之后**取基准；调用点之后所有出参一律 `%ebp`/`%ebx` 相对寻址，禁止依赖 ESP 相对偏移 —— 否则漏恢复时故障点滞后到后续任意栈访问，排查成本极高。
 
 **x87 陷阱**（ia32）：整数返回时 x87 栈为空，无条件 `fstpl` 属栈下溢、置 `FE_INVALID` 污染此后 `fetestexcept()`（默认掩蔽下不崩，极难发现）——故 `ret_fp` 返回类别标志必须传递（libffi 用返回跳转表 `CLASS_X87_RET` 处理同一问题）。
 
@@ -58,13 +58,13 @@ void qwin_ffi_call_win64(void *func, const uint64_t *slots, uint32_t nargs,
 ```
 
 - **ia32** 走「C 侧打包成连续 `argbuf` + asm 整体 `rep movsb`」—— asm 完全不含类型信息；参数区布局（每参数 4 或 8 字节、零填充）是 C 里可读可单测的循环；`nstack_bytes=0` 时 C 侧给长度 1 的合法指针
-- **x64**：内部约定直接用 Win64 ABI 本身（RCX/RDX/R8/R9，第 5 参在栈 `[rsp+0x28]`）—— 注意 mingw C 侧默认 ABI 是 Win64 而非 SysV，写成 rdi/rsi 会与 C 传参完全错位；影子空间由 C 调用方按 ABI 预留，stub 不自己 `sub $32`；`args[]` 尺寸取 `max(length,4)` 并整体清零（桩无条件双读前 4 槽，libffi `ffiw64.c:101-102` 同款）；`call` 目标必须提前存 callee-saved 寄存器（RCX/RDX 已被槽内容覆盖）
+- **x64**：内部约定直接用 Win64 ABI 本身（RCX/RDX/R8/R9，第 5 参在栈 `[rsp+0x28]`）—— 注意 mingw C 侧默认 ABI 是 Win64 而非 SysV，写成 rdi/rsi 会与 C 传参完全错位；影子空间由 C 调用方按 ABI 预留，stub 不自己 `sub $32`；`args[]` 尺寸取 `max(length,4)` 并整体清零（桩无条件双读前 4 槽，libffi `ffiw64.c` 同款）；`call` 目标必须提前存 callee-saved 寄存器（RCX/RDX 已被槽内容覆盖）
 - `out_int` / `out_fp`：取回整数（RAX / EAX:EDX）与浮点（XMM0 / ST0）返回；ia32 asm 固定写满 8 字节，C 侧对 32 位返回补 `ret = (uint32_t)ret` 掩码（x64 指针返回是完整 8 字节，不截断）
 - `ret_fp`（ia32 专有）：返回类别标志，不可省（见 §2 x87 陷阱）
 
 ### 3.7 其他配置改动（submodule 保留决策）
 
-> **`deps/libffi` submodule 保留，只从构建流程中移除。** 理由：手写 stub 的正确性论证大量引用 libffi 源码作 ABI 依据（`sysv.S` 帧基准恢复、`ffi.c` 参数区布局、`ffiw64.c` 影子空间），删除后引用全部失效、后续维护者无从复核；`ffi.h.in:60-82` 是 `FFI_TYPE_*` 数值唯一权威来源；移除动机是去掉 autotools 构建链（§0），而非去掉源码本身。
+> **`deps/libffi` submodule 保留，只从构建流程中移除。** 理由：手写 stub 的正确性论证大量引用 libffi 源码作 ABI 依据（`sysv.S` 帧基准恢复、`ffi.c` 参数区布局、`ffiw64.c` 影子空间），删除后引用全部失效、后续维护者无从复核；`ffi.h.in` 是 `FFI_TYPE_*` 数值唯一权威来源；移除动机是去掉 autotools 构建链（§0），而非去掉源码本身。
 
 已执行：Makefile 全部 libffi 引用删除；CI cache 路径与 `deps/libffi/**` key 移除（保留会掩盖「是否还在编译 libffi」）；README/docs 的 FFI 措辞改为内建汇编调用桩 + `bind()`。`.gitmodules` 与 `deps/libffi/` 内容原样。
 验收：`grep -rn "LIBFFI\|libffi" Makefile` 无结果；干净容器 `make cc64 cc32 && make js` 通过；`git submodule status` 仍可见 `deps/libffi`。
@@ -79,7 +79,7 @@ void qwin_ffi_call_win64(void *func, const uint64_t *slots, uint32_t nargs,
 | 整浮混合、前 4 全整 | ldexp(f64,i32)、frexp/modf(f64,ptr)、AngleArc(f32×2)、GetLocaleInfoA（第 4 参在 R9） |
 | 窄整型负值/大值 | abs(i8 -128)、abs(u8 200)、abs(i16 -300)、abs(u16 60000)（槽内低 N 字节 2 的补码） |
 | 64 位传参/返回 | InterlockedExchange64 传 2^32+1 / -1 回读；InterlockedIncrement64(-2) → -1 |
-| 负数返回符号扩展 | lstrcmpW → i32/i16/i8 均 <0（解码在 `lib/ffi/bind.ts` `readRet()`） |
+| 负数返回符号扩展 | lstrcmpW → i32/i16/i8 均 <0（解码在 `lib/ffi/bind.ts` 的 `RET_READER`） |
 | 指针 NULL | GetDC(null/undefined)、IsWindow(null) = FALSE |
 | 浮点返回 | sqrt(2) = 1.4142135623730951、atan2（f64）；AngleArc 覆盖 f32 相邻槽不污染 |
 
@@ -131,14 +131,14 @@ C 侧 `js_ffi_call` 不做任何类型表/槽宽逻辑，只按架构把 argFram
 
 ### 10.4 struct by-value（2026-10 复核：Win32 C API 场景不构成缺口）
 
-- **传参**：≤8B struct（Win32 仅见 `WindowFromPoint(POINT)` 8B、console `COORD` 4B 系列）在 ABI 上与按位打包的 u32/u64 **等价** —— cdecl 就是把 struct 字节压栈，`writeSlot` 的 LE 内存镜像正是同一段字节，bit-cast 零改动绑定。**by-value 入参已按此落地（bare `<N>` token，`f951cfc`，见 TODO）**
+- **传参**：≤8B struct（Win32 仅见 `WindowFromPoint(POINT)` 8B、console `COORD` 4B 系列）在 ABI 上与按位打包的 u32/u64 **等价** —— cdecl 就是把 struct 字节压栈，槽写器的 LE 内存镜像正是同一段字节，bit-cast 零改动绑定。**by-value 入参已按此落地（bare `<N>` token，见 TODO）**
 - **返回**：≤8B 走 EAX(:EDX)（`GetLargestConsoleWindowSize`），恰落在现有通路；hidden pointer（>16B）场景在 Win32 C API 不存在（多在 C++/COM）
 - 9–16B（MSVC 拆两个寄存器块）需实测确认 mingw caller 与 MSVC callee 分类一致
 - 现有 `lib/ffi/struct.ts` 走纯 TS 布局，不经 `ffiCall`，不受影响；by-value **返回**（sret/隐藏指针）与 varargs 仍按需单独立项（见 TODO「ffi-struct 覆盖缺口」）
 
 ### 10.6 实施结果
 
-- JS 侧 `bind.ts` `makeFn` 改走 `callPacked()`：`ARG_SIZE[]` 宽度表、DataView 打包 argFrame、x64 补齐 ≥4 槽（`X64_MIN_SLOTS`，对应桩无条件双读）、`retBuf` 恒 8 字节、`readRet()` 解码（窄整型符号扩展、ptr NULL → null）
+- JS 侧 `bind.ts` `makeFn` 改走 `callPacked()`（后被 bind 期 `CallPlan` 取代，见 `.agents/FFI_PERF.md`）：槽宽表、DataView 打包 argFrame、x64 补齐 ≥4 槽（`X64_MIN_SLOTS`，对应桩无条件双读）、`retBuf` 恒 8 字节、`RET_READER` 解码（窄整型符号扩展；**ptr 0 保真**，不转 null——与 user32 头注释及 `.agents/FFI_ARGS_RET_SEMANTICS.md` §2 一致）
 - 旧 `js_ffi_call`（C 打包 + 返回解码）整体删除；`FFI_TYPE_*` 数值导出（`ffi_consts[]`）删除，`quickwin.d.ts` 的 `FfiType`/`FFI_TYPE_*` 声明同步移除；`KIND_TO_FFI` 表换成 `KIND_SET`（仅 kind 合法性校验）
-- 全部调用方迁移 `bind()`/`bindLib()`：`test_ffi.ts`、`setres.ts`、`pdf_preview2.ts`、`PdfCanvas.tsx`、`pdf_viewer.tsx`、`ListView.tsx`、`PathPicker.tsx`
+- 全部调用方迁移 `bind()`/`bindLib()`：`test_ffi.ts`、`pdf_preview2.ts`、`PdfCanvas.tsx`、`pdf_viewer.tsx`、`ListView.tsx`、`PathPicker.tsx`
 - 验证：双平台 `ffi` 88/88、全量 557/557；差分探针（0/1/2/3 参 <WCHAR>ptr、5 参 SetRect、f64 sqrt/atan2、f32+i32 混合、6 参 AngleArc、ptr 返回、u32）全过

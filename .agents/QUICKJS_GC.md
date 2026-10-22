@@ -9,13 +9,12 @@ QuickJS 的垃圾回收采用 **引用计数 + 标记清除** 混合策略：
 
 ## GC 对象
 
-所有参与 GC 的对象头部：
+所有参与 GC 的对象头部（**注意随 quickjs 版本演进**；当前版本 `JSGCObjectHeader` 只剩链表指针，
+`ref_count` / `mark` 等字段已移入 malloc 块头，经 `quickjs.c` 的 `js_rc()` 内联宏访问——
+阅读代码时按符号名定位，勿假设字段布局）：
 
 ```c
 typedef struct JSGCObjectHeader {
-    int ref_count;          // 引用计数
-    uint8_t mark;           // GC 过程中的标记位
-    uint8_t gc_obj_type;    // 对象类型枚举
     struct list_head link;  // 链接到某个链表
 } JSGCObjectHeader;
 ```
@@ -31,48 +30,14 @@ typedef struct JSGCObjectHeader {
 
 ## 触发时机
 
-GC 的触发点在 `__JS_FreeValueRT`（`quickjs.c:6071`）：
+**引用计数归零的即时路径**在 `__JS_FreeValueRT`：GC 对象 ref_count 降为 0 时，从 `gc_obj_list`
+摘下挂入 `gc_zero_ref_count_list`——非 GC 期间（`gc_phase == JS_GC_PHASE_NONE`）经
+`free_zero_refcount` 立即释放；GC 执行期间则挂起等待 `gc_free_cycles` 统一处理。
 
-```c
-void __JS_FreeValueRT(JSRuntime *rt, JSValue v)
-{
-    ...
-    case JS_TAG_OBJECT:
-    case JS_TAG_FUNCTION_BYTECODE:
-    case JS_TAG_MODULE:
-        {
-            JSGCObjectHeader *p = JS_VALUE_GET_PTR(v);
-            if (rt->gc_phase != JS_GC_PHASE_REMOVE_CYCLES) {
-                // 从 gc_obj_list 摘下，挂入 gc_zero_ref_count_list
-                list_del(&p->link);
-                list_add(&p->link, &rt->gc_zero_ref_count_list);
-                p->mark = 1;  // 标记为"即将释放"
-                if (rt->gc_phase == JS_GC_PHASE_NONE) {
-                    free_zero_refcount(rt);  // 非 GC 期间：立即释放
-                }
-                // GC 期间：等待 gc_free_cycles 统一处理
-            }
-        }
-        break;
-}
-```
-
-当对象的引用计数降为 0 时：
-1. **不在 GC 执行期间**（`gc_phase == JS_GC_PHASE_NONE`）：直接入 `gc_zero_ref_count_list` 并调用 `free_zero_refcount` 立即释放
-2. **在 GC 执行期间**（`gc_phase != JS_GC_PHASE_NONE`）：入 `gc_zero_ref_count_list` 等待 GC 完成后再处理
-
-GC 的完整触发条件也在 `__JS_FreeValueRT` 附近的逻辑中（`quickjs.c:6071`）：
-
-```c
-// 在 free_zero_refcount 等路径中，会检查：
-if (rt->gc_obj_count <= rt->gc_threshold) {
-    JS_RunGC(rt);
-}
-```
-
-- 每次释放对象时递减 `gc_obj_count`
-- 当 `gc_obj_count <= gc_threshold` 时触发完整的 `JS_RunGC`
-- `gc_phase` 状态机确保 GC 不会递归触发
+**标记清除的触发**是**按 malloc 内存压力**（`js_trigger_gc`）：关键分配路径（如 `JS_NewObject`）
+调用 `js_trigger_gc`，当 `malloc_size + size > malloc_gc_threshold` 时跑一次 `JS_RunGC`，
+GC 后阈值上调为当前 `malloc_size × 1.5`；初始阈值 `256KB`，`JS_SetGCThreshold` 可改。
+旧版的 `gc_obj_count` / `gc_threshold` 对象计数机制已不存在。
 
 ## 核心算法：基于引用计数的循环检测
 
@@ -89,7 +54,7 @@ QuickJS 不用传统的三色标记法。它的算法巧妙地利用引用计数
 
 ## 三个执行阶段详解
 
-`JS_RunGCInternal`（`quickjs.c:6410`）：
+`JS_RunGCInternal`：
 
 ```c
 static void JS_RunGCInternal(JSRuntime *rt, BOOL remove_weak_objects)
@@ -310,7 +275,7 @@ gc_scan   → mark_children(rt, p, gc_scan_incref_child)  // 加引用
 
 ### 调用位置
 
-在 `mark_children` 遍历 **JS_GC_OBJ_TYPE_JS_OBJECT** 时（`quickjs.c:6200-6204`）：
+在 `mark_children` 遍历 **JS_GC_OBJ_TYPE_JS_OBJECT** 时（遍历完标准属性之后）：
 
 ```c
 // 遍历完所有标准属性之后...
@@ -379,14 +344,15 @@ static JSClassDef my_class_def = {
 
 所以在大部分简单场景下不定义 `gc_mark` 也不会立即崩溃。但只要自定义类持有 `JSValue`，就应该始终定义 `gc_mark`。
 
-### 本项目中的使用情况
+### 本项目中的使用情况（`src/quickjs-wamr.c`）
 
 | 类 | `gc_mark` | 持有的 JSValue |
 |---|-----------|----------------|
-| Module | `js_wasm_module_mark`（空） | 无 |
-| Global | `js_wasm_global_mark` | `inst_ref`（引用 Instance） |
-| Memory | `js_wasm_memory_mark` | `inst_ref`（引用 Instance） |
-| Instance | 原缺失 → 已修复 | `import_funcs[i].func` |
+| WebAssembly.Module | 无（只持 native `wasm_module_t`） | 无 |
+| Global / Memory / Table | `js_wasm_global_mark` / `js_wasm_memory_mark` / `js_wasm_table_mark` | `inst_ref`（引用 Instance） |
+| Instance | `js_wasm_instance_mark` | `module_obj` + `import_obj`（互持保活，见 WASM_MODULE_INSTANCE_GC.md） |
+
+自定义 class 注册 `gc_mark` 走 `JS_NewClass`（`JSClassDef.gc_mark` 字段）。
 
 ## `JS_MarkValue` 的执行路径
 
@@ -410,6 +376,8 @@ void JS_MarkValue(JSRuntime *rt, JSValueConst val, JS_MarkFunc *mark_func)
 被调用的 `mark_func`（`gc_decref_child` 或 `gc_scan_incref_child`）会修改引用计数，而 `mark_children` 会递归地遍历子对象的子对象。
 
 ## 完整的例子
+
+（沿用旧版 WASM Instance 的 `import_funcs` 语境作讲解；机制与具体自定义类无关）
 
 假设有：
 
@@ -445,132 +413,22 @@ void JS_MarkValue(JSRuntime *rt, JSValueConst val, JS_MarkFunc *mark_func)
 - func.ref_count-- → func.ref_count 降到 1（仅剩 Instance.import_funcs 的引用）
 - 下次 GC 时 gc_decref 会把它降到 0（如果有 gc_mark）→ gc_scan 无法恢复 → 释放
 
-## 关键代码位置
+## 符号定位（`deps/quickjs/quickjs.c`，按符号名 grep——行号随版本漂移，不记）
 
-| 函数/数据 | 文件:行 |
-|-----------|---------|
-| `JSGCObjectHeader` 定义 | `quickjs.c:254-267` |
-| `JSClassDef.gc_mark` 字段 | `quickjs.h:318` |
-| `js_malloc_rt` / `js_free_rt` | `quickjs.c:1380-1388` |
-| `JS_NewClass`（注册 gc_mark）| `quickjs.c:3483` |
-| `__JS_FreeValueRT`（触发 GC）| `quickjs.c:6027` |
-| `free_zero_refcount` | `quickjs.c:6009` |
-| `free_object`（调用 finalizer）| `quickjs.c:5949` |
-| `gc_remove_weak_objects` | `quickjs.c:6105` |
-| `JS_MarkValue` | `quickjs.c:6148` |
-| `mark_children`（统一遍历入口）| `quickjs.c:6163` |
-| `gc_decref_child` | `quickjs.c:6282` |
-| `gc_decref`（阶段 1）| `quickjs.c:6292` |
-| `gc_scan_incref_child` / `gc_scan_incref_child2` | `quickjs.c:6314-6328` |
-| `gc_scan`（阶段 2）| `quickjs.c:6331` |
-| `gc_free_cycles`（阶段 3）| `quickjs.c:6351` |
-| `JS_RunGCInternal`（入口）| `quickjs.c:6410` |
-| DUMP_LEAKS 泄漏报告 | `quickjs.c:2158-2166` |
+`JSGCObjectHeader`、`js_rc`（malloc 块头 ref_count/mark 访问）、`js_trigger_gc`、
+`__JS_FreeValueRT`、`free_zero_refcount`、`free_object`、`gc_remove_weak_objects`、
+`JS_MarkValue`、`mark_children`、`gc_decref_child`、`gc_decref`、`gc_scan_incref_child(_2)`、
+`gc_scan`、`gc_free_cycles`、`JS_RunGCInternal`、`JS_FreeRuntime`（DUMP_LEAKS 泄漏报告在此开启）。
 
-## 附录：`JS_FreeValueRT` 在 Finalizer 中的必要性研究
+## 附录：finalizer 里要不要 `JS_FreeValueRT`？（结论）
 
-### 问题
+旧版 WASM 实现（`WASMInstance`/`import_funcs` 数组时代）曾专门研究过这个问题，结论是：
+**若类定义了正确的 `gc_mark`、且所有外部引用已正常释放，GC 三阶段足以回收 finalizer 未
+手动释放的 JSValue**——纯引用计数路径会留下 +1 幽灵引用，但下次 GC 必然清理。
 
-WASM Instance 打开数据中通过 `import_funcs` 数组持有 import function 的 `JSValue`：
-
-```c
-typedef struct {
-    JSContext *ctx;
-    JSValue func;              // JS_DupValue 过的 import function
-    wasm_valkind_t *result_kinds;
-    int result_count;
-} WasmImportFunc;
-```
-
-在 Instance finalizer 中，是否需要对 `import_funcs[i].func` 调用 `JS_FreeValueRT`？
-
-### 理论分析
-
-**支持需要的理由：**
-- `import_funcs[i].func = JS_DupValue(ctx, func_val)` 增加了 ref_count
-- 不调用 `JS_FreeValueRT` 则 ref_count 永不恢复 → "幽灵引用"泄漏
-- 在只靠引用计数的路径中（函数返回导致局部变量释放），duck 的引用不会被清理
-
-**生命周期追踪（假设没有 `JS_FreeValueRT`）：**
-
-```
-构造函数内部：
-  func = JS_GetPropertyStr(env, "imported_add")  → ref_count=2
-  import_funcs[i].func = JS_DupValue(func_val)   → ref_count=3
-  JS_FreeValue(func_val)                          → ref_count=2
-  净效果：env.imported_add 持有 1，import_funcs 持有 1
-
-testImport() 返回时：
-  inst 释放 → Instance finalizer 运行 → import_funcs 数组 free() 释放
-  → 但 JS_DupValue 的 ref_count+1 没有恢复 → func.ref_count 仍为 2
-  
-  importObject 释放 → env.imported_add 释放 → func.ref_count-- = 1
-  → func.ref_count = 1，但无人再引用 func
-```
-
-### 实证验证
-
-用带 `DUMP_LEAKS` 的 QuickJS 构建验证：
-
-**验证步骤：**
-1. 在 `quickjs.c` 中启用 `#define DUMP_LEAKS 1`（行 99）
-2. 在 `JS_FreeRuntime` 的 DUMP_LEAKS 块前添加 `gc_obj_list` 计数
-3. 在 `JS_RunGCInternal` 中添加 `gc_decref` / `gc_scan` 各阶段的 tmp_obj_list 计数
-4. 编译并运行含 import 的测试（100 次迭代创建/释放 Instance）
-
-**关键发现：**
-
-```
-BEFORE GC:        gc_obj_list has 454 objects  ← 包括所有运行时对象 + 100 个泄漏的 func
-gc_decref:        454 objects moved to tmp_obj_list
-gc_scan:          454 objects remain in tmp_obj_list, 0 in gc_obj_list
-AFTER GC:         gc_obj_list has 0 objects
-```
-
-无论有没有 `JS_FreeValueRT`，`gc_obj_list` 最终都为 **0**——GC 正确清理了所有对象。
-
-### 结论
-
-**`JS_FreeValueRT` 在 finalizer 中不是必需的。** GC 的 `gc_mark` 钩子和三阶段算法足以处理：
-
-**原因：** `gc_mark` 让 `gc_decref` 阶段能正确识别 `import_funcs[i].func` 的子引用关系。当 Instance 被释放后，GC 在 `gc_decref` 中发现：
-- func 唯一的外部引用来自于已释放的 Instance
-- gc_decref 的 `mark_children`（经 `gc_mark`）递减 func 的 ref_count
-- func.ref_count 降至 0 → 进入 `tmp_obj_list` → gc_free_cycles 释放
-
-**无需 `JS_FreeValueRT`** 的完整条件链：
-1. ✅ 类定义了 `gc_mark`，能正确标记持有的所有 JSValue
-2. ✅ 所有外部引用（importObject、全局变量等）已经被正常释放
-3. ✅ 没有其他 GC 对象引用 func
-
-**实际影响：** 纯引用计数路径（`free_zero_refcount`）中确实会留下 +1 的幽灵引用，但 QuickJS 的下次 GC 运行（`JS_RunGCInternal`）总是能清理它。对于短生命周期脚本，在 `JS_FreeRuntime` 时 GC 会最终清理所有残留。
-
-### 对代码的影响
-
-当前代码（无 `JS_FreeValueRT`）是正确且更简洁的：
-
-```c
-static void js_wasm_instance_finalizer(JSRuntime *rt, JSValue val)
-{
-    WASMInstance *inst = JS_GetOpaque(val, js_webassembly_instance_class_id);
-    if (inst) {
-        if (inst->funcs)
-            js_free_rt(rt, inst->funcs);
-        if (inst->import_funcs) {
-            for (int i = 0; i < inst->import_func_count; i++) {
-                // 不需要 JS_FreeValueRT — GC 会处理
-                if (inst->import_funcs[i].result_kinds)
-                    free(inst->import_funcs[i].result_kinds);
-            }
-            js_free_rt(rt, inst->import_funcs);
-        }
-        wasm_extern_vec_delete(&inst->externs);
-        js_free_rt(rt, inst);
-    }
-}
-```
-
-移除 `JS_FreeValueRT` 不仅有性能优势（减少不必要的 `__JS_FreeValueRT` 调用），还避免了潜在的 re-entrancy 问题（在 `JS_GC_PHASE_REMOVE_CYCLES` 阶段调用 `JS_FreeValueRT` 会被跳过）。
+⚠️ 该结论**绑定当时的数据结构**；现行 `QJWasmInstance` 持有的是 `module_obj`/`import_obj`
+两个 JS 对象互引用（防 Module 提前释放），finalizer 里**显式调用** `JS_FreeValueRT` 释放它们。
+现状与推演详见 `./WASM_MODULE_INSTANCE_GC.md`；Worker 的引用差异见 `./WORKER_GC_BUG.md`。
 
 ## 参考
 

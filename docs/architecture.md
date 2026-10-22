@@ -43,7 +43,7 @@ QuickWin 是一个 Windows 平台的 QuickJS 运行时。它的设计可以概�
 |---|---|
 | **GUI 的 C 侧只有 8 个函数** | `RegisterClass` / `CreateWindow` / `SetWindowProc` / `DefWindowProc` / `SendMessage` / `LoadAppIcon` 等，只做平台原语 |
 | **控件、布局、React 渲染器全在 JS 层** | `lib/` 里的 JS 靠 FFI 调 Win32，不经过任何 C 包装 |
-| **251 / 8256** | 已绑定的 Win32 函数占全部导出的比例（≈3%）。其余留给用户 `bind()` |
+| **252 / 8256** | 已绑定的 Win32 函数占全部导出的比例（≈3%）。其余留给用户 `bind()` |
 
 第三个对比是刻意的取舍：**不追求绑定齐全**。`lib/windows` 只维护高频、以及需要结构体描述的 API；冷门 API 交给用户按签名自己绑。
 

@@ -1,6 +1,6 @@
 # /exec 中文命令 lossy 的根因：cmd 的 ACP + NLS 依赖
 
-相关文档：`examples/execd/worker.ts`（CreateProcessW 链路）、`examples/execd/main.tsx`（POST /exec）、`.agents/TODO.md` L11（旧结论待更正）。
+相关文档：`examples/execd/worker.ts`（CreateProcessW 链路）、`examples/execd/main.tsx`（POST /exec）、`.agents/TODO.md` 归档区（结论已同步）。
 
 ---
 
@@ -23,9 +23,9 @@ win11 CI 镜像（Tiny11 Core 25H2，英文精简版）默认 **ACP=1252 / OEMCP
 >
 > **本文结论照旧成立**（ACP=1252 使中文在输出编码阶段无映射）。唯一变化："缺表"这条在新盘上**只对 32 位路径成立**——execd 正是 32 位（实测 `%PROCESSOR_ARCHITECTURE%`=`x86`），`CreateProcessW("cmd.exe")` 拿到的是 `SysWOW64\cmd.exe`，按 32 位系统目录去找 `c_936.nls` → 找不到。**§6 的两条探针在标准盘上逐字节复现**（`3f 3f 0d 0a` / `60 4f 7d 59 0d 00 0a 00`），故本文所有数字对两种镜像都成立，`/u` 仍是唯一必需手段。
 
-> ⚠️ TODO.md L11 旧结论 "cmd /c echo %* 回显 %* ?? 证明替换发生在进 cmd 之前（输入侧）" **已被推翻**。实测 `cmd /u /c echo 你好` 输出 UTF-16LE 无损，证明输入侧（CreateProcessW 命令行）完好，坏点仅在 cmd 输出编码——**并非**执行前的 ACP 投影。
+> ⚠️ TODO 旧条目曾记 "cmd /c echo %* 回显 %* ?? 证明替换发生在进 cmd 之前（输入侧）"，**已被推翻**。实测 `cmd /u /c echo 你好` 输出 UTF-16LE 无损，证明输入侧（CreateProcessW 命令行）完好，坏点仅在 cmd 输出编码——**并非**执行前的 ACP 投影。
 >
-> ⚠️⚠️ 我此前笔记（§5/§6 旧版）曾推断"md 的执行前也被投影、建出 `????` 目录"，**同样被推翻**：未修复 Tiny11 上 `md 一` 磁盘真名是 UTF-16 `00 4e`（无损），`cd`/`rmdir` 用真正中文名全部成功；`dir /b` 显示 `qw????` 只是**回显层**把名按 1252 编码成 `?`。
+> ⚠️⚠️ 我此前笔记（§5/§6 旧版）曾推断"md 的执行前也被投影、建出 `????` 目录"，**同样被推翻**：未修复 Tiny11 上 `md 一` 磁盘真名是 UTF-16 `00 4e`（无损），`cd`/`rmdir` 用真正中文名全部成功；`dir /b` 显示 `qw????` 只是**回显层**把名按 1252 编码成 `?`（详见 §5）。
 
 ---
 
@@ -58,12 +58,12 @@ Tiny11 同时犯两错（ACP=1252 且删光 nls），表象上"缺表"似为主�
 | 阶段 | 载体 | 字节串 / 说明 |
 |---|---|---|
 | 1. Host curl 请求体 | HTTP body（UTF-8 JSON） | `7b 22 63 6d 64 22 3a 22 ... e4 bd a0 e5 a5 bd ... 22 7d`（「你好」UTF-8 = `e4 bd a0 e5 a5 bd`） |
-| 2. execd 解析 | JS string（内部 UTF-16） | `main.tsx:918` `req.json()`，无损 |
-| 3. worker 拼命令行 | JS string | `worker.ts:147` `sysDir + "\cmd.exe /c " + cmd` |
-| 4. CreateProcessW 传参 | UTF-16LE 内存 | `worker.ts:148`（绑定 `<WCHAR>ptr`）「你好」=`60 4f 7d 59`，**无损** |
+| 2. execd 解析 | JS string（内部 UTF-16） | `main.tsx` `req.json()`，无损 |
+| 3. worker 拼命令行 | JS string | `worker.ts` 拼接 `sysDir + "\cmd.exe /u /c " + cmd` |
+| 4. CreateProcessW 传参 | UTF-16LE 内存 | `worker.ts`（绑定 `<WCHAR>ptr`）「你好」=`60 4f 7d 59`，**无损** |
 | 5. cmd 接收 | cmd 内部 UTF-16 | 同上无损（未修复环境下 `cmd /u /c echo 你好` 探针 → 输出 `60 4f 7d 59 0d 00 0a 00`，即**内部保有 UTF-16**） |
 | 6. cmd 输出编码 | 按目标码页编码成字节 | 写 stdout 时才编码：936 → `c4 e3 ba c3`（GBK）；1252+缺表 → `3f 3f` |
-| 7. readFile 原样回传 | 字节流直通 | `worker.ts:165`，零转换，连流式都不做 |
+| 7. readFile 原样回传 | 字节流直通 | `worker.ts` 读循环，零转换 |
 | 8. Host 收到 body | 原始字节 | 与阶段 6 相同 |
 
 链路上游（1–5）和下游（7–8）都是**字节直通**；丢字只发生在阶段 6 的**输出编码**。注意：`cmd /u` 探针在**未修复**环境（ACP=1252+缺表）也输出 `60 4f 7d 59`，证明 cmd 从未在入参侧投影——`/u` 只是把"输出写成 UTF-16LE"绕开阶段 6，所以 `/u` 能让 echo 无损，而默认输出（按 ACP）中文就变 `??`。
@@ -126,7 +126,7 @@ cmd 收到命令行 ──► UTF-16 内存（无损，CreateProcessW 直通）
 
 即：修复只改变**默认输出**的编码（1252→936 字节可还原），`/u` 与文件系统方向两边本来就一致。
 
-修复操作（运行时验证过）：
+修复操作（运行时验证过；**该路线已废弃、未采纳**——见 §8，探针脚本与 NLS 资产已删，此处仅存档）：
 1. 从 win7 提取 `c_936.nls`（196,642 B，2009 版），拷进 win11 的 `System32` 与 `SysWOW64`
 2. `reg add HKLM\SYSTEM\CurrentControlSet\Control\Nls\CodePage`：`ACP`/`OEMCP`/`MACCP` 均设 `936`
 3. 重启（ACP 生效需要重启）
@@ -147,7 +147,7 @@ cmd 收到命令行 ──► UTF-16 内存（无损，CreateProcessW 直通）
 
 **统一认识**：命令行的"原生"形态是 UTF-16（`RTL_USER_PROCESS_PARAMETERS.CommandLine`）。**A 面路径**（`GetCommandLineA`/`CreateProcessA`/目标进程 ANSI 入口/右键 `%1`）在**入参方向**按 ACP 转换并受 NLS 控制，会真正毁掉参数；**W 面路径**（`GetCommandLineW`/`wWinMain`/`wmain`/`CreateProcessW` 传 `<WCHAR>ptr`/`cmd /u`）入参无损，但 **cmd 的默认输出**仍按代码页编码成字节（execd 场景读到的是编码后的字节）。两条路都受 ACP+NLS 控制，只是作用点不同。
 
-qwin 自身免疫：`src/main.c:164` 弃用 `WinMain` 的 `LPSTR lpCmdLine`，改走 `CommandLineToArgvW(GetCommandLineW())` + `WideCharToMultiByte(CP_UTF8)` → argv 永远 UTF-8 无损（仅 W 面入口，不涉及任何代码页）。
+qwin 自身免疫：`src/main.c` 弃用 `WinMain` 的 `LPSTR lpCmdLine`，改走 `CommandLineToArgvW(GetCommandLineW())` + `WideCharToMultiByte(CP_UTF8)` → argv 永远 UTF-8 无损（仅 W 面入口，不涉及任何代码页）。
 
 ---
 
@@ -162,11 +162,11 @@ qwin 自身免疫：`src/main.c:164` 弃用 `WinMain` 的 `LPSTR lpCmdLine`，�
 - **win7 / XP**：`echo 中文A` 不带 `/u` → GBK `d6 d0 ce c4`；带 `/u` → UTF-16LE `2d 4e 87 65 41 00 0d 00 0a 00`（无损，无 BOM）
 - **外部程序不受影响**：`cmd /u /c ping -n 1 127.0.0.1`（win7）→ 仍 GBK 裸字节 + `X-Exit-Code: 0`
 - **子进程输出不受影响**：`qwin.exe test/run.js` 全量输出 UTF-8 裸字节，CI `grep Summary` 字节无关
-- **双机全量**：win7 1335/1335、XP 1304/1304 PASS；win11 行为零变化（本来就是 `/u`）
+- **双机全量**：win7 1335/1335、XP 1304/1304 PASS（2026-10 时点；以 `http_test.sh` failed≤1 为准）；win11 行为零变化（本来就是 `/u`）
 
 **未走 NLS 固化路线**（补 `c_936.nls` + 注册表 936 + 首启自重启约 +60s CI，曾验证有效但成本高、改系统），相关探针脚本与 win7 提取的 `c_936.nls` 资产已随收尾删除——统一 `/u` 后更没必要：ACP/NLS 只影响"按代码页编码"这一步，`/u` 直接绕过它。
 
 **注意**：`/exec` 的 cmd 内置输出**所有平台**都是 UTF-16LE（ASCII 后带 `00`），调用方如需还原文本需按 UTF-16LE 解码；外部程序（qwin 等）输出仍为其原生编码。
 
-- TODO.md L11 已随之更正（原"影响 mkdir 中文目录"为误判：文件系统操作本就无损；
+- TODO 归档区条目已按此结论更正（原"影响 mkdir 中文目录"为误判：文件系统操作本就无损；
   真正坏点仅 cmd 内置回显，由 `/u` 规避）

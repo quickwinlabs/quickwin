@@ -206,7 +206,7 @@ that build run `make test TEST=-wasm` to skip WASM tests.
 | `make gen-const` | regenerate `constants.ts` (run `_build/gen_const.exe` in the VM) |
 | `make clean` / `distclean` | clean (wipes all of `_build/`; afterwards run `make js wasm`) |
 
-Build and troubleshooting details: `.agents/DEVELOPMENT_WORKFLOW.md`.
+Build and troubleshooting details: `.agents/skills/workflow/SKILL.md`.
 
 ## License
 
