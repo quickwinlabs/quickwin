@@ -135,8 +135,7 @@ function initGui(): void {
             x: 200, y: 200, width: 560, height: 420,
         })
         root.render(<LogPanel />)
-        // run.bat 用 `start /min` 启动，这里显式还原，避免窗口只留一条标题栏
-        ShowWindow(root.hwnd, ShowWindowCmd.RESTORE)
+        ShowWindow(root.hwnd, ShowWindowCmd.SHOWMINNOACTIVE)
     } catch (ex) {
         // 无桌面/建窗失败时回退 headless，绝不影响服务
         console.error('[execd] gui init failed (fallback headless):', ex)
