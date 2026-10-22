@@ -1,9 +1,10 @@
 # libffi 工作原理
 
-> ⚠️ **本文件描述的原理仍成立，但 libffi 已不参与本项目构建**（见
-> `.agents/REMOVE_LIBFFI_PLAN.md`）。`deps/libffi/` 源码仅作为 ABI 论证与对照依据保留，
-> 运行时代码不再 `#include <ffi.h>`、不再链接 `libffi.a`。本仓库的实际实现是手写汇编桩 +
-> JS 侧打包，见文末「手写替代实现」。
+> ⚠️ **libffi 已移出本项目构建**（2026-10，见 `.agents/REMOVE_LIBFFI_PLAN.md`——决策、执行落点与教训都在那边）。
+> `deps/libffi/` 源码仅作 ABI 论证与对照依据保留；运行时不 `#include <ffi.h>`、不链接 `libffi.a`，
+> 构建产物（`_build/deps/*-cross/libffi.a` 与 configure 生成的 `ffi.h`）已不存在。
+> 本仓库实际实现是手写汇编桩 + JS 侧打包（见文末 §5）。本文是 libffi 两阶段设计的原理精读，
+> 行文以 libffi 源码为事实依据（读源码时请以符号名定位，勿找行号）。
 
 ## 一句话原则
 
@@ -13,15 +14,13 @@
 1. `ffi_prep_cif` —— 把"函数签名"算成 ABI 计划（`bytes` + `flags` 两个字段）
 2. `ffi_call` —— 按计划摆参数、跳转汇编、用 `flags` 索引进跳转表收回返回值
 
-对应代码：`deps/libffi/src/x86/`（本仓库 x86 目录合并了 ia32 与 x64 两套实现）、`src/quickjs-ffi.c`。
+对应源码：`deps/libffi/src/x86/`（本仓库 x86 目录合并了 ia32 与 x64 两套实现）。
 
 ---
 
 ## 1. 数据模型：两个结构体
 
 ### `ffi_type` —— 类型的自描述
-
-`_build/deps/x64-cross/libffi-build/include/ffi.h:129-135`
 
 ```c
 typedef struct _ffi_type {
@@ -32,13 +31,11 @@ typedef struct _ffi_type {
 } ffi_type;
 ```
 
-- 基本类型是全局静态实例：`&ffi_type_uint8` ~ `&ffi_type_sint64`、`&ffi_type_float`、`&ffi_type_double`、`&ffi_type_pointer`、`&ffi_type_void`（`ffi.h:213-221`）。
+- 基本类型是全局静态实例：`&ffi_type_uint8` ~ `&ffi_type_sint64`、`&ffi_type_float`、`&ffi_type_double`、`&ffi_type_pointer`、`&ffi_type_void`。
 - 结构体类型手工构造，`elements` 指向成员 `ffi_type*` 数组，以 `NULL` 结尾。
-- **C 的类型系统被压成 `(size, align, tag, members)` 四元组。** 类型代码枚举见 `ffi.h:60-79`（`FFI_TYPE_COMPLEX=15` 是最后一项）。
+- **C 的类型系统被压成 `(size, align, tag, members)` 四元组。**（`FFI_TYPE_COMPLEX=15` 是最后一项。）
 
 ### `ffi_cif` —— 一份完整调用计划
-
-`ffi.h:250-260`
 
 ```c
 typedef struct {
@@ -53,21 +50,21 @@ typedef struct {
 
 **关键**：`bytes` 和 `flags` 不是描述"参数是什么"，而是描述"**怎么办**"。它们是阶段一与阶段二之间传递的计算结果，也是 libffi 整个设计的枢纽。
 
-`ffi_status` 枚举（`ffi.h:243-248`）：`FFI_OK / FFI_BAD_TYPEDEF / FFI_BAD_ABI / FFI_BAD_ARGTYPE`。
+`ffi_status` 枚举：`FFI_OK / FFI_BAD_TYPEDEF / FFI_BAD_ABI / FFI_BAD_ARGTYPE`。
 
 ---
 
 ## 2. 阶段一：`ffi_prep_cif` —— 签名 → ABI 计划
 
 两层：
-- `deps/libffi/src/prep_cif.c:110` `ffi_prep_cif_core` —— 通用层：类型表展开、参数拷贝、变参处理；`:218` 调 `ffi_prep_cif_machdep(cif)` 交给平台。
+- `deps/libffi/src/prep_cif.c` 的 `ffi_prep_cif_core` —— 通用层：类型表展开、参数拷贝、变参处理；末尾调 `ffi_prep_cif_machdep(cif)` 交给平台。
 - machdep 层算出 `cif->flags` 与 `cif->bytes`。
 
-> **本仓库 x64 交叉构建只编译 `ffiw64.c` + `win64.S`，不编译 `ffi64.c`/`unix64.S`。** `ar t _build/deps/x64-cross/libffi.a` = `prep_cif.o types.o raw_api.o java_raw_api.o closures.o tramp.o ffiw64.o win64.o`——**没有 `ffi64.o`**。ia32 对应 `ffi.o sysv.o`。所以 `ffi64.c` 里的 unix64 逻辑在这个构建里根本不存在。
+> **本仓库旧 x64 交叉构建只编译 `ffiw64.c` + `win64.S`，不编译 `ffi64.c`/`unix64.S`**（`ar t` 可列成员验证：没有 `ffi64.o`；ia32 对应 `ffi.o sysv.o`）。所以 `ffi64.c` 里的 unix64 逻辑在这个构建里根本不存在。
 
 ### x64 Windows：几乎不用算
 
-`deps/libffi/src/x86/ffiw64.c:53-109`，核心 15 行：
+`deps/libffi/src/x86/ffiw64.c` 的 `ffi_prep_cif_core` 平台分支，核心就几行：
 
 ```c
 cif->flags = flags;                    // 基本就是 rtype->type
@@ -85,27 +82,7 @@ Windows x64 ABI 极其死板：**每个参数就占一个 8 字节 slot，顺序
 
 ### unix64 对照：同一份抽象，复杂度差一个数量级
 
-`deps/libffi/src/x86/ffi64.c:531-555`（x64 Linux/Unix，本构建未编译）：
-
-```c
-for (bytes = 0, i = 0, avn = cif->nargs; i < avn; i++)
-{
-  if (examine_argument (cif->arg_types[i], classes, 0, &ngpr, &nsse) == 0
-      || gprcount + ngpr > MAX_GPR_REGS     // MAX_GPR_REGS = 6 (ffi64.c:41)
-      || ssecount + nsse > MAX_SSE_REGS)    // MAX_SSE_REGS = 8 (ffi64.c:42)
-    {
-      long align = cif->arg_types[i]->alignment;
-      if (align < 8) align = 8;
-      bytes = FFI_ALIGN (bytes, align);
-      bytes += cif->arg_types[i]->size;
-    }
-  else { gprcount += ngpr; ssecount += nsse; }
-}
-if (ssecount) flags |= UNIX64_FLAG_XMM_ARGS;
-cif->bytes = (unsigned) FFI_ALIGN (bytes, 8);
-```
-
-需要：`classify_argument` 把每个类型拆成寄存器类别（`INTEGER / INTEGERSI / SSE / SSESF / SSEDF / SSEUP / NO_CLASS / X87`）→ `examine_argument`（`ffi64.c:351-391`）数出需要几个 GPR、几个 SSE → 循环分配，超额就转栈并对齐。
+`deps/libffi/src/x86/ffi64.c`（x64 Linux/Unix，本构建未编译）需要：`classify_argument` 把每个类型拆成寄存器类别（`INTEGER / INTEGERSI / SSE / SSESF / SSEDF / SSEUP / NO_CLASS / X87`）→ `examine_argument` 数出需要几个 GPR、几个 SSE → 循环分配，超额（`MAX_GPR_REGS=6` / `MAX_SSE_REGS=8`）就转栈并对齐。
 
 > **libffi 最漂亮的地方**：分类抽象是通用的，但具体平台可以退化到 `nargs * 8`。
 > **反直觉观察**：Windows x64 把 ABI 定得越死板，libffi 就越简单。这也是为什么这个 ABI 常被批评"没有表达力"，但恰恰是 FFI 框架的最爱。
@@ -116,37 +93,25 @@ cif->bytes = (unsigned) FFI_ALIGN (bytes, 8);
 
 ### 3.1 x64 Windows
 
-C 侧构造 `win64_call_frame`（`ffiw64.c:40-48`）：
+C 侧构造 `win64_call_frame`（`ffiw64.c`：参数数组首地址 / 目标函数指针 / 返回值类型 / 返回值存放地址四项）。汇编 `ffi_call_win64`（`deps/libffi/src/x86/win64.S`）做三件事：
 
-```c
-UINT64 stack;    /* 0  */  // 参数数组首地址
-UINT64 fn;       /* 16 */  // 目标函数指针
-UINT64 flags;    /* 24 */  // 返回值类型
-UINT64 rvalue;   /* 32 */  // 返回值存放地址
-```
-
-汇编 `ffi_call_win64`（`deps/libffi/src/x86/win64.S:60-160`）做三件事：
-
-**① 参数分发：同一个 slot 双读**（`win64.S:67-74`）
+**① 参数分发：同一个 slot 双读**
 
 ```asm
 movq  (%rsp), %rcx
 movsd (%rsp), %xmm0      ; 同一个 8 字节 slot，同时当整数和浮点读
 movq  8(%rsp), %rdx
 movsd 8(%rsp), %xmm1
-movq  16(%rsp), %r8
-movsd 16(%rsp), %xmm2
-movq  24(%rsp), %r9
-movsd 24(%rsp), %xmm3
+...（共前 4 槽）
 ```
 
 **libffi 故意不区分整数参数和浮点参数**——C 侧无脑 `memcpy` 8 字节进去，汇编侧两个寄存器各读一遍，多余那个被调用方忽略，无副作用。
 
 这个技巧能成立，**正是因为 Windows x64 参数布局是纯线性的**。unix64 做不到（SSE/GPR 独立计数会错位）。
 
-**② 调用**（`win64.S:76`）：`call *16(%rbp)`
+**② 调用**：`call *16(%rbp)`
 
-**③ 返回值：编译期生成的跳转表**（`win64.S:78-84`）
+**③ 返回值：编译期生成的跳转表**
 
 ```asm
 movl 24(%rbp), %ecx            ; flags
@@ -157,45 +122,32 @@ ja   99f                       ; flags 越界 → abort（兜底）
 jmp  *%r10
 ```
 
-表项（`win64.S:97-160`），每项几字节，由 `E(0b, FLAG)` 宏生成：
-
-```asm
-E(0b, FFI_TYPE_VOID)      epilogue                       ; leaveq; ret
-E(0b, FFI_TYPE_INT)       movslq %eax,%rax; movq %rax,(%r8)
-E(0b, FFI_TYPE_FLOAT)     movss  %xmm0,(%r8)
-E(0b, FFI_TYPE_DOUBLE)    movsd  %xmm0,(%r8)
-E(0b, FFI_TYPE_UINT8)     movzbl %al,%eax; movq %rax,(%r8)
-E(0b, FFI_TYPE_SINT16)    movswq %ax,%rax; jmp 98f        ; 符号扩展
-E(0b, FFI_TYPE_UINT64)
-98:                      movq %rax,(%r8)                  ; 64 位直接落
-E(0b, FFI_TYPE_POINTER)   movq %rax,(%r8)
-E(0b, FFI_TYPE_LONGDOUBLE)  call abort                     ; 不支持
-```
+表项由 `E(0b, FLAG)` 宏生成（VOID 直接 epilogue、FLOAT/DOUBLE 存 XMM0、窄整型做零/符号扩展、LONGDOUBLE 直接 abort）。
 
 **返回值处理不是 if/else 链，是 `flags` 索引的跳转表**——这就是第 1 节 `flags` 字段的真正用途：**ABI 元数据直接变成 CPU 可执行的常量表。**
 
 ### 3.2 ia32（Windows XP / ia32 分支）
 
-`ffi_call_i386`（`deps/libffi/src/x86/sysv.S:92-205`）。同样的模式，但多一个关键技巧：
+`ffi_call_i386`（`deps/libffi/src/x86/sysv.S`）。同样的模式，但多一个关键技巧：
 
 ```asm
 movl (%esp), %eax        ; 保存返回地址
 movl %ebp, (%ecx)
 movl %eax, 4(%ecx)
-movl %ecx, %ebp          ; EBP 变成 call_frame 基址        ; :111
-movl %edx, %esp          ; ESP 指向参数数组                ; :116
-movl 20+R_EAX*4(%ebp), %eax   ; fastcall 寄存器参数       ; :117-119
+movl %ecx, %ebp          ; EBP 变成 call_frame 基址
+movl %edx, %esp          ; ESP 指向参数数组
+movl 20+R_EAX*4(%ebp), %eax   ; fastcall 寄存器参数
 movl 20+R_EDX*4(%ebp), %edx
 movl 20+R_ECX*4(%ebp), %ecx
-call *8(%ebp)            ; :121
+call *8(%ebp)
 ...
-movl 12(%ebp), %ecx      ; 返回类型码                      ; :123
-leal L(store_table)(,%ecx, 8), %ebx      ; 跳转表          ; :134
+movl 12(%ebp), %ecx      ; 返回类型码
+leal L(store_table)(,%ecx, 8), %ebx      ; 跳转表
 movl 16(%ebp), %ecx
-_CET_NOTRACK jmp *%ebx                          ; :137
+_CET_NOTRACK jmp *%ebx
 ```
 
-**关键技巧：栈重平衡**（`sysv.S:174-176`）
+**关键技巧：栈重平衡**
 
 ```asm
 movl 8(%ebp), %ebx      ; 恢复被保存的 ebx
@@ -204,7 +156,7 @@ popl %ebp
 ret
 ```
 
-`call` 指令把返回地址压栈，调用方（callee）如果是 stdcall 会执行 `ret N` 清理自己的参数。**libffi 在 `call` 前把 `esp` 指向了自己构造的参数数组，并在返回后把 `esp` 拉回 `ebp`** —— callee 的 `ret N` 清理被无视，栈由 libffi 自己完全掌控。
+`call` 指令把返回地址压栈，callee 如果是 stdcall 会执行 `ret N` 清理自己的参数。**libffi 在 `call` 前把 `esp` 指向了自己构造的参数数组，并在返回后把 `esp` 拉回 `ebp`** —— callee 的 `ret N` 清理被无视，栈由 libffi 自己完全掌控。
 
 > 这就是"ia32 用 `FFI_MS_CDECL` 调 stdcall 是安全的"的根源：不是 ABI 一致，而是**libffi 根本不依赖 callee 做栈清理**。
 > 注意 ia32 的参数也是纯线性数组（`movl %edx, %esp`），与 win64 的"双读"是同一个设计思想的两代演进。
@@ -217,7 +169,7 @@ ret
 
 难点：C 里没有"通用函数指针"——**指针必须长得像一段真实的机器码**。
 
-libffi 的解法是写一段**打补丁的 trampoline**（`ffiw64.c:232-264`）：
+libffi 的解法是写一段**打补丁的 trampoline**（`ffiw64.c`）：
 
 ```c
 static const unsigned char trampoline[FFI_TRAMPOLINE_SIZE - 8] = {
@@ -230,12 +182,12 @@ memcpy(tramp, trampoline, sizeof(trampoline));
 *(UINT64*)(tramp + sizeof(trampoline)) = (uintptr_t)ffi_closure_win64;
 ```
 
-缓冲区布局（`FFI_TRAMPOLINE_SIZE = 32`，`deps/libffi/src/x86/ffitarget.h:144`，注释写明 "4B ENDBR64 + 7B LEA + 6B JMP + 7B NOP + 8B pointer"）：
+缓冲区布局（`FFI_TRAMPOLINE_SIZE = 32`，`ffitarget.h` 注释写明 "4B ENDBR64 + 7B LEA + 6B JMP + 7B NOP + 8B pointer"）：
 
 ```
 偏移  0..23   机器码（24 字节，永不修改）
 偏移 24..31   jmpq 的间接目标 ← 写成 ffi_closure_win64 的地址
-偏移 32..39   cif 指针        ← FFI_TRAMPOLINE_SIZE
+偏移 32..39   cif 指针
 偏移 40..47   fun 指针
 偏移 48..55   user_data 指针
 ```
@@ -246,186 +198,41 @@ memcpy(tramp, trampoline, sizeof(trampoline));
 - 中间那段 `nopl` 填充就是为了让 jmpq 的操作数能精确落到偏移 24。
 - **代码本身一个字都不用改**，所有元数据都跟在代码后面。
 
-通用 handler `ffi_closure_win64`（`win64.S:199-232`）：
-
-```asm
-movq %rcx, 8(%rsp)                  ; 保存 4 个整数寄存器到栈
-movq %rdx, 16(%rsp)
-movq %r8,  24(%rsp)
-movq %r9,  32(%rsp)
-movq FFI_TRAMPOLINE_SIZE(%r10), %rcx      ; 载入 cif
-movq FFI_TRAMPOLINE_SIZE+8(%r10), %rdx    ; 载入 fun
-movq FFI_TRAMPOLINE_SIZE+16(%r10), %r8    ; 载入 user_data
-movsd %xmm0, ffi_clo_OFF_X(%rsp)          ; 保存 4 个 SSE
-...
-call ffi_closure_win64_inner               ; 把参数还原成 ffi_argument[]，调 fun
-movq  ffi_clo_OFF_R(%rsp), %rax            ; 结果同时写回 rax
-movsd ffi_clo_OFF_R(%rsp), %xmm0           ; 和 xmm0
-ret
-```
-
-最后两行与第 3.1 节的"双读"对称：**结果一个 64 位值同时写 `rax` 和 `xmm0`**，因为调用方不知道回调返回的是整数还是浮点。
+通用 handler `ffi_closure_win64`（`win64.S`）：先保存 4 个整数寄存器与 4 个 SSE 寄存器，从 trampoline 尾部载入 cif/fun/user_data，`call ffi_closure_win64_inner` 把参数还原成 `ffi_argument[]` 调 fun；**结果一个 64 位值同时写回 `rax` 和 `xmm0`**——与 §3.1 的"双读"对称，因为调用方不知道回调返回的是整数还是浮点。
 
 **限制**：closure 回调固定返回 64 位（`ffi_arg`）。
 
-**代价与安全**：trampoline 需要**可写可执行内存**（`ffi_closure_alloc` 用 `mmap`/`VirtualAlloc` 分配 RWX 页）。这是 libffi **唯一真正触碰安全边界**的机制。ia32 同理，`FFI_TRAMPOLINE_SIZE = 16`（`ffitarget.h:149`，"4B ENDBR32 + 5B MOV + 5B JMP + 2B unused"）。
+**代价与安全**：trampoline 需要**可写可执行内存**（`ffi_closure_alloc` 用 `mmap`/`VirtualAlloc` 分配 RWX 页）。这是 libffi **唯一真正触碰安全边界**的机制。ia32 同理，`FFI_TRAMPOLINE_SIZE = 16`。
 
 ---
 
-## 5. 对 quickwin 的影响
+## 5. 手写替代实现（本项目现状）
 
-### 调用点
-
-`src/quickjs-ffi.c:124-126` —— 每次 JS 调用都两阶段连跑：
-
-```c
-status = ffi_prep_cif(&cif, FFI_DEFAULT_ABI, length, ffi_types[ret_type], arg_types);
-if (status != FFI_OK)
-    return JS_ThrowTypeError(ctx, "ffi_prep_cif failed: %d", status);
-ffi_call(&cif, func, &ret, ffi_args);
-```
-
-`status` 已检查：坏类型（如 NULL 槽）会抛 TypeError，而不是把垃圾 `flags` 送进跳表（x64 `ja 99f` abort / ia32 未对齐表项）。
-
-理论上可以把 `ffi_cif` 按 `bind` 声明缓存（`prep_cif` 一次、`ffi_call` N 次），但 win64 的 `prep_cif` 就是几行赋值（`nargs * 8` + `flags = rtype`），**收益极小，不值得**。
-
-### ABI 分派
-
-- `FFI_DEFAULT_ABI = FFI_WIN64`（`ffitarget.h:92`）
-- `FFI_EFI64 = FFI_WIN64`（`ffitarget.h:99`）—— 同一个值
-- 所以 quickwin 的 x64 路径完全在 `ffiw64.c`/`win64.S` 内
-
-### 体积（实测）
-
-实际被拉入链接的只有 4 个对象：
-
-| 对象 | 大小 |
-|---|---|
-| `prep_cif.o` | 3.6K |
-| `types.o` | 1.9K |
-| `ffiw64.o` | 3.7K |
-| `win64.o` | 1.6K |
-| **合计** | **10.8K**（LTO 前） |
-
-`closures.o`(16K) / `tramp.o`(1.2K) / `raw_api.o`(2.9K) / `java_raw_api.o`(3.0K) **因无引用不拉入** —— `strings _build/qwin-nowasm.exe | grep ffi_closure` 为空可证。对比 2.0MB 的 exe，占比约 0.5%。
-
-### 分工
-
-- **libffi** = 机器相关的 ABI 分发（`deps/libffi/src/x86/` 约 5570 行 C/asm，29 个架构共用一套抽象）
-- **`lib/ffi/bind.ts`** = 类型安全（TS 泛型重载）
-- 两层互不污染。类型安全放在 DSL 层是对的，因为 ABI 层不可能做静态检查。
-
-### 相关文档
-
-- `FFI_ARGS_RET_SEMANTICS.md` —— 参数/返回值位宽与符号语义（传参只看宽度、f32/f64 常数宽、变参 promotion）
-- `src/quickjs-ffi.c` 的 `ffi_types[]` 映射表
-
----
-
-## 6. 已验证事实清单（不必重新推导）
-
-**libffi 的 Closure 支持完备但 quickwin 未用 libffi closures**（已自建内建实现，见 quickjs-ffi-closure.{h,c}；下表保留作 libffi 侧能力对照）：
-
-| 符号 | ia32 (`_build/deps/ia32-cross/libffi.a`) | x64 (`_build/deps/x64-cross/libffi.a`) |
-|---|---|---|
-| prep_closure_loc | `ffi.o` (`_ffi_prep_closure_loc`) | `ffiw64.o` (`ffi_prep_closure_loc`) |
-| prep_closure | `prep_cif.o` | `prep_cif.o` |
-| prep_raw_closure | `raw_api.o` | `raw_api.o` |
-| prep_raw_closure_loc | `ffi.o` | `ffiw64.o` |
-| trampoline | `sysv.o`: `_ffi_closure_i386`(cdecl) / `_ffi_closure_STDCALL` / `_ffi_closure_raw_SYSV` / `_ffi_closure_raw_THISCALL` / `_ffi_closure_REGISTER` / `_ffi_go_closure_EAX` / `_ffi_go_closure_ECX` / `_ffi_go_closure_STDCALL` | `win64.o`: `ffi_closure_win64` / `ffi_go_closure_win64`；`ffiw64.o`: `ffi_closure_win64_inner` |
-| closure_alloc / closure_free | `closures.o` / `tramp.o` | 同 |
-
-`FFI_CLOSURES=1`、`FFI_GO_CLOSURES=1`（`ffitarget.h:132-133`）。ia32 的 8 个 closure trampoline 符号全部可解析（`nm --undefined-only -a` 逐个比对无缺失）。
-
-**quickwin 的回调走自建实现**（不依赖 libffi `closure_alloc`）：
-- `quickjs-ffi-closure.{h,c}` 每闭包一个 VirtualAlloc 可执行块（trampoline 绝对跳转 + magic/ret_kind/
-  arg_bytes + 捕获的 wrapper/ctx），C→JS 桥接只调块内 wrapper（闭包捕获签名 + 用户 fn），**无 registry、
-  无跨 context 全局**；`src/quickjs-ffi.c` 把 `closureNew`/`closureFree` 注册进 'ffi' 模块（在 `ffiCall`/
-  `bufferPtr`/`readByte`/`writeByte` 之外）。
-- `lib/ffi/bind.ts` 的 `closure(sig, fn, {stdcall?})` → `{ptr, dispose}`：签名创建时解析、wrapper 闭包捕获
-  args/ret/fn，同步同线程回调；`closureNew(argBytes, retKind, wrapper)` 3 参（无 dispatch 参数）。
-- `listWindows()` 仍用 `FindWindowExW` 链式遍历（先取 next 再查当前防句柄失效，`:475`）；EnumWindows +
-  closure 等价能力已在 test_ffi_bind.ts 闭包用例覆盖（win11/xp 双平台全绿）。
-- `SHBrowseForFolderW` 传 `lpfn: 0`。
-
-**quickwin 没有 64 位标量 FFI 参数**（`bind` DSL 全部类型 token 统计）：
-
-| token | 次数 |
-|---|---|
-| `ptr` | 23 |
-| `i32` | 14 |
-| `u32` | 12 |
-| `<WCHAR>ptr` | 6 |
-| `UINT` / `HDC` / `HBITMAP` / `HWND` | 别名 → ptr / u32 |
-
-`u64` / `i64` = **0**。这使 `feat/ffi-phase0` 分支的 `qw_call`（ia32 上 `intptr_t` wrapper 无法传 64 位整型）的缺陷对 quickwin **不构成约束**，但它仍是 660 行 vs 当前 234 行的手写、每架构维护一份的汇编 —— 不是替代路线，建议保留作参考。
-
-**libffi 是最优解的三个数字依据**：
-1. 体积 ~11KB（见上）
-2. 零 64 位标量参数 → `qw_call` 缺陷不触发
-3. Closure 免费附带 → 将来要回调支持，零汇编工作
-
-**libffi 确实不优的地方（且不影响结论）**：
-| 维度 | 问题 | 为什么无所谓 |
-|---|---|---|
-| 调用开销 | `ffi_call` 走 call_frame + 参数数组间接跳转 | FFI 调用是 GUI 节拍（每秒几千次），纳秒级无关 |
-| 类型安全 | 类型是运行时 int；`ffi_prep_cif` 坏类型已通过返回值检查拦截（`src/quickjs-ffi.c:125`） | 类型安全已上移到 `bind` 的 TS 泛型重载层 |
-| 依赖体积 | deps/ 多 1.7MB 源码 | 已是 submodule，Makefile 每架构自动交叉编译 |
-
-> 未检查 `FFI_OK` 的后果（已修复前的状态）：垃圾 `flags` 进跳转表会被 `ja 99f` 兜底 abort（x64）或落进未对齐的表项（ia32），不会静默出错；仍建议显式检查。
-
-**历史教训：`ffi_types[]` 查找表 float/double 错位**
-
-`src/quickjs-ffi.c` 的 `ffi_types[]` 指针表**下标 = FFI_TYPE_* 宏值**。曾把 FLOAT 槽写成 NULL、DOUBLE 槽写成 `&ffi_type_float`、LONGDOUBLE 槽写成 `&ffi_type_double`（各后移一位）——`f32` 调 `prep_cif` 得 `FFI_BAD_ARGTYPE`、`f64` 被按 4 字节 float 处理。因仓库无真实 f32/f64 调用从未暴露。
-
-- 修复：`[2]=&ffi_type_float`、`[3]=&ffi_type_double`、`[4]=NULL`（注释已写清 NULL 槽语义）。
-- 回归锚点：`test/test_ffi_bind.ts` `f32/f64 floating args` section——`msvcrt!sqrt/atan2` 验 f64（三平台必有）、`gdi32!AngleArc` 的 REAL 参数验 f32。
-- 相关：`f32/f64` 是完整的已实现 API 面（`src/quickjs-ffi.c:92-105` 传参、`:129-140` 返回 read-back），不是影子的映射表。
-
----
-
-## 7. 阅读清单（按顺序，4 处就够）
-
-1. `deps/libffi/include/ffi.h:129` —— `ffi_type`（注意仓库里是 `ffi.h.in` 模板，configure 生成的在 `_build/deps/x64-cross/libffi-build/include/ffi.h`）
-2. `_build/deps/x64-cross/libffi-build/include/ffi.h:250` —— `ffi_cif`
-3. `deps/libffi/src/x86/ffiw64.c:53-109` —— **win64 的 `prep_cif`，全宇宙的 win64 ABI 计算就这 15 行**
-4. `deps/libffi/src/x86/win64.S:60-160` —— 参数双读 + 调用 + 返回值跳转表
-
-往深钻的两处：
-- `deps/libffi/src/x86/sysv.S:92-205` —— ia32 栈重平衡（`:174-175`）
-- `deps/libffi/src/x86/ffiw64.c:232-264` + `win64.S:199-232` —— trampoline 补丁与 closure handler
-
-## 8. 目录结构说明
-
-本仓库的 `deps/libffi/src/x86/` **同时包含 ia32 与 x64 实现**（`ffi.c`/`sysv.S` = ia32；`ffi64.c`/`unix64.S` = x64 Unix；`ffiw64.c`/`win64.S` = x64 Windows），没有独立的 `x86_64` 目录。**历史上**具体编译哪个由 Makefile 的交叉构建目标决定（现已不编译，仅作 ABI 参考）：
-
-| 目标 | 编译 |
-|---|---|
-| x64 Windows (`_build/deps/x64-cross/libffi.a`) | `prep_cif.o types.o raw_api.o java_raw_api.o closures.o tramp.o ffiw64.o win64.o` |
-| ia32 Windows (`_build/deps/ia32-cross/libffi.a`) | `prep_cif.o types.o raw_api.o java_raw_api.o closures.o tramp.o ffi.o sysv.o` |
-
-`raw_api.o` 在 x64 上是 fallback（`FFI_NATIVE_RAW_API = 0`，`ffitarget.h:146`），ia32 有原生 raw API 支持（`:150` = 1）。
-
----
-
-## 9. 手写替代实现（本项目现状）
-
-S1–S6 后，运行时 FFI 由本地汇编桩实现，libffi 已移出构建。文件与职责：
+libffi 移出构建后的运行时 FFI 由本地汇编桩实现（决策与执行档案见 `.agents/REMOVE_LIBFFI_PLAN.md`，性能归因见 `.agents/FFI_PERF.md`）。文件与职责：
 
 | 文件 | 职责 |
 |---|---|
-| `quickjs-ffi-call-ia32.S` | ia32 cdecl/stdcall 调用桩：`qwin_ffi_call_ia32(func, argbuf, nstack, out_int, out_fp, ret_fp)`；从 `%ebx` 恢复栈（stdcall 平衡），`fstpl` 只在浮点返回时碰 x87 |
-| `quickjs-ffi-call-win64.S` | Win64 调用桩：前 4 槽 `movq`+`movsd` 双读进 RCX/RDX/R8/R9 与 XMM0-3，溢出参数置于 32 字节影子空间之后，返回恒写 RAX+XMM0 |
+| `src/quickjs-ffi-call-ia32.S` | ia32 cdecl/stdcall 调用桩：`qwin_ffi_call_ia32(func, argbuf, nstack, out_int, out_fp, ret_fp)`；从 `%ebx` 恢复栈（stdcall 平衡），`fstpl` 只在浮点返回时碰 x87 |
+| `src/quickjs-ffi-call-win64.S` | Win64 调用桩：前 4 槽 `movq`+`movsd` 双读进 RCX/RDX/R8/R9 与 XMM0-3，溢出参数置于 32 字节影子空间之后，返回恒写 RAX+XMM0 |
 | `src/quickjs-ffi-call.h` | `.S` 桩的声明 + `qwin_ffi_arg_size[]` 契约 |
-| `src/quickjs-ffi.c` | 唯一入口 `ffiCall(func, argFrame, retBuf, retIsFp)`：按架构把 JS 预打包的 `argFrame` 喂给桩，取原始返回写进 `retBuf`；另有 `bufferPtr/readByte/writeByte` |
-| `lib/ffi/bind.ts` | `bind()`/`bindLib()` 声明式签名解析、`DataView` 打包 `argFrame`、`readRet()` 按声明宽度截断/符号扩展 |
+| `src/quickjs-ffi.c` | 唯一入口 `ffiCall(func, argFrame, retBuf, retIsFp)`：按架构把 JS 预打包的 `argFrame` 喂给桩，取原始返回写进 `retBuf`；另有 `bufferPtr/readBytes/readByte/writeByte` |
+| `src/quickjs-ffi-closure.{h,c}` | 自建 closure（quickwin 从未用 libffi closures）：每闭包一个 `VirtualAlloc` 可执行块（trampoline 绝对跳转 + magic/ret_kind/arg_bytes + 捕获的 wrapper/ctx），无 registry、无跨 context 全局 |
+| `lib/ffi/bind.ts` | `bind()`/`bindLib()` 声明式签名解析、bind 期 `CallPlan` 打包 `argFrame`、`RET_READER` 按声明宽度截断/符号扩展 |
 
 关键对应关系：
-- libffi 的 `ffi_prep_cif`「算 `bytes`/`flags`」→ JS `ARG_SIZE[]` + 各桩的固定布局。
-- libffi 的返回跳转表（`CLASS_X87_RET` 等）→ ia32 桩的 `ret_fp` 分支 + JS `readRet()`；Win64 桩恒写 RAX/XMM0，由 JS 选一个。
-- libffi 的类型表 `ffi_type`/`arg_types` → `kinds` 字符串（`'<>ptr <WCHAR>ptr i32 <>ptr -> i32'`）。
-- 未支持：struct by-value、varargs（见计划 §10.4）。
+- libffi 的 `ffi_prep_cif`「算 `bytes`/`flags`」→ JS 槽宽表 + 各桩的固定布局（bind 期 `CallPlan`）。
+- libffi 的返回跳转表（`CLASS_X87_RET` 等）→ ia32 桩的 `ret_fp` 分支 + JS `RET_READER`；Win64 桩恒写 RAX/XMM0，由 JS 选一个。
+- libffi 的类型表 `ffi_type`/`arg_types` → 签名字符串 token（`'<>ptr <WCHAR>ptr i32 <>ptr -> i32'`）。
+- 未支持：struct by-value 返回、varargs（见 ffi-dev skill「明确不支持」）。
 
-回归网：`test/test_ffi.ts`、`test/test_ffi_bind.ts`、`test/test_ffi_abi.ts`（ABI 边界 31 项）、
-`test/test_ffi_struct.ts`（纯 TS 布局，不过 asm）。数值锚点 `sqrt(2) = 1.4142135623730951`，
-XP/Win11 全套 588/588。
+**历史教训：`ffi_types[]` 查找表 float/double 错位**（libffi 时代）——`src/quickjs-ffi.c` 曾有以 `FFI_TYPE_*` 宏值为下标的 `ffi_types[]` 指针表，FLOAT/DOUBLE/LONGDOUBLE 槽各后移一位：`f32` 调 `prep_cif` 得 `FFI_BAD_ARGTYPE`、`f64` 被按 4 字节处理，因仓库无真实 f32/f64 调用从未暴露。回归锚点保留在 `test/test_ffi_bind.ts` 的 f32/f64 用例（`msvcrt!sqrt/atan2` 验 f64、`gdi32!AngleArc` 验 f32）。
+
+## 6. 阅读清单（按顺序）
+
+1. `deps/libffi/include/ffi.h.in` —— `ffi_type` / `ffi_cif` / `FFI_TYPE_*` 枚举（模板；configure 生成的 `ffi.h` 随构建移除已不存在）
+2. `deps/libffi/src/x86/ffiw64.c` —— win64 的 `prep_cif` 平台分支，**全宇宙的 win64 ABI 计算就这几行**
+3. `deps/libffi/src/x86/win64.S` —— 参数双读 + 调用 + 返回值跳转表
+4. `deps/libffi/src/x86/sysv.S` —— ia32 栈重平衡
+5. `deps/libffi/src/x86/ffiw64.c` + `win64.S` 的 closure 部分 —— trampoline 补丁与 handler
+
+目录说明：本仓库 `deps/libffi/src/x86/` 同时含 ia32 与 x64 实现（`ffi.c`/`sysv.S` = ia32；`ffi64.c`/`unix64.S` = x64 Unix；`ffiw64.c`/`win64.S` = x64 Windows），没有独立 `x86_64` 目录。旧构建目标映射与成员清单已随构建移除失效，需要时按上面符号名在源码里定位。

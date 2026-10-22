@@ -1,6 +1,6 @@
 # FFI `bind()` 调用开销：归因与「bind 期计划表」改造
 
-日期：2026-10-19（squash 为 1 笔合入 main，基线 `1aac1a5`）
+日期：2026-10-19（squash 为 1 笔合入 main）
 环境：win11/win7/XP QEMU（`qwin.exe`），方法学沿 `.agents/SENDMESSAGE_BENCH.md`
 （每臂自校准 ~400ms/样本、预热 1、15 轮、臂序轮转、`Date.now()`、median 主指标）。
 素材：`test/bench_ffi_overhead.ts`（我方 vs `gui.SendMessage`）、`test/bench_ffi_callraw.ts`
@@ -35,16 +35,16 @@
 `bind()` 本身（`parseSig` + `loadDll` + `GetProcAddress`）是**一次性**成本，与下面的账无关。
 每调（旧 `callPacked`，`lib/ffi/bind.ts` 改前版本）要付：
 
-| # | 操作 | 位置（旧） |
-|---|---|---|
-| 1 | rest 参数数组 `(...a)` 本身 | `makeFn` 返回的箭头函数 |
-| 2 | 每调新建 `getWidth`/`widthOf` 两个闭包 | 旧 `:141`/`:154` |
-| 3 | 每 token 跑正则：`isCPtrToken`（`.test`）、`isCValToken`、`ptrName`/`valName`（`.exec`，每次分配 match 数组）、`endsWith('!')` | 参数循环 |
-| 4 | 槽宽/偏移重算（含 `os.arch` 属性读） | `:168-170` |
-| 5 | `new ArrayBuffer(total)` + `new DataView` + `held = []` | `:172-174` |
-| 6 | 每参数一个 `{ k, v }` 对象字面量喂 `writeSlot`，`writeSlot` 内再按 token 字符串 switch | `:190/:218/:247/:251` |
-| 7 | `new ArrayBuffer(8)` 返回槽 + `readRet` 内再 `new DataView` | `:256/:279` |
-| 8 | 返回位再跑一遍 `isCPtrToken`/`ptrName` + `endsWith('!')` | `:261-267` |
+| # | 操作（旧 `callPacked`） |
+|---|---|
+| 1 | rest 参数数组 `(...a)` 本身（`makeFn` 返回的箭头函数） |
+| 2 | 每调新建 `getWidth`/`widthOf` 两个闭包 |
+| 3 | 每 token 跑正则：`isCPtrToken`（`.test`）、`isCValToken`、`ptrName`/`valName`（`.exec`，每次分配 match 数组）、`endsWith('!')` |
+| 4 | 槽宽/偏移重算（含 `os.arch` 属性读） |
+| 5 | `new ArrayBuffer(total)` + `new DataView` + `held = []` |
+| 6 | 每参数一个 `{ k, v }` 对象字面量喂 `writeSlot`，`writeSlot` 内再按 token 字符串 switch |
+| 7 | `new ArrayBuffer(8)` 返回槽 + `readRet` 内再 `new DataView` |
+| 8 | 返回位再跑一遍 `isCPtrToken`/`ptrName` + `endsWith('!')` |
 
 ## 2. 原语成本表（`test/bench_ffi_prims.ts`，win11 x64，单位 ns，扣 noop 闭包地板 122 ns）
 
@@ -174,7 +174,7 @@ S0 1162→895（−23%）、S2 2041→1235（−40%，0 参 u32 返回最吃这�
   按值结构恒 `size` 字节），所以首分配的零填充——0 参时补齐到 4 槽的整块、`u8/u16/u32` 占的
   8 字节槽高位、ia32 结构体的 `ALIGN(size,4)` 填充——**永不被踩**，被写的字节每调被完整覆盖。
 - **返回槽**：全部函数共用一个 8 字节缓冲 + 一个 `DataView`。依据是"读原子"：两个桩都在
-  `call` **之后**才写 `out`（win64 `quickjs-ffi-call-win64.S:115/118`、ia32 `:96/:104-105`），
+  `call` **之后**才写 `out`（win64/ia32 桩的返回写入段，见 `src/quickjs-ffi-call-*.S`），
   而 JS 在 `ffiCall` 返回后立刻由 `RET_READER` 读——C 侧桩后直接 `return JS_UNDEFINED`，
   JS 侧 `DataView` 构造 + 普通对象取属性 + 内建 getter 全程无 hook，中间插不进用户代码
   （`decode` 在 `raw` 取出之后）。于是每一层"自己的桩写 → 自己的立即读"都是 LIFO 闭合的：
@@ -209,7 +209,7 @@ min）：A/B = **5.0× / 3.6× / 3.9× / 3.3×**（S0..S3，median 同向 5.0/3.
 A−B = 435 ns（S0），而 A−C 只有 **71 ns**（S1 是 217 ns）——全链已贴在「裸调用 + 那 4 次分配」
 之上，其余是槽循环与 wrapper 调用。
 
-**squash 合入 main 后复测**（`50f67cb`，2026-10-19）：S0–S3 median **530.1 / 1051.6 / 774.9 /
+**squash 合入 main 后复测**（2026-10-19）：S0–S3 median **530.1 / 1051.6 / 774.9 /
 2142.2 ns**、min **515.9 / 893.2 / 685.7 / 2060.2 ns**，与上表同档（这轮机况略快 ~5%：`gui`
 地板 166.2 / 153.0，上次 165.0 / 160.9）；同轮 `bench_ffi_callraw` A/B（min）= **5.06× / 3.67× /
 3.81× / 3.39×**，拆分同向：`C−B`（旧形态那 4 次分配）= 414.9 ns、`A−C`（我们这层）= 62.9 ns（S0）。
@@ -223,7 +223,7 @@ A−B = 435 ns（S0），而 A−C 只有 **71 ns**（S1 是 217 ns）——全�
 ## 6. 对调用点的含义（更新 2026-10-07 节）
 
 - 热循环仍然应走 C 直调（`gui.*`）：ListView per-item 全用 `gui.SendMessage`；
-  209 处 `bind()` 绑定集中在 react-qw 非热路径与 PathPicker/PdfCanvas/pdf_preview2，
+  `bind()` 绑定集中在 react-qw 非热路径与 PathPicker/PdfCanvas/pdf_preview2，
   **无 per-pixel/per-item 的 bind 调用**——改造后 4 参 **2.1~2.2 μs**（旧 36 μs），
   相对 10-07 的 10.7 μs 已减到五分之一，`gui` 与 FFI 的差距从 ~85× 降到 **~13×**
   （同轮 median 2142 vs 166 ns）。判据不变：只有 10 万+/秒级同一调用点才需要保留 C 直调。
@@ -302,21 +302,4 @@ podman exec quickwin-dev bash -lc 'cd /workspace && curl -sS -m 900 -X POST \
 
 ## 教训（VM 基准本身的坑，2026-10-19）
 
-- **XP 必须用 32 位 exe**：`qwin.exe` 是 x64，喂给 32 位 XP 会弹
-  「`Z:\quickwin\qwin.exe` 不是有效的 Win32 应用程序」模态框，且**无人点时 exec
-  永久挂起**（queue 堵死，后续所有 /exec 排队超时，看起来像"卡住"）。
-  正确命令是 `qwin-x86.exe`（`make cc32` 产物），`docker/http_test.sh` 已按 VM
-  选 exe，手写 /exec 时要自己选对。
-- **对话框在看不清时先截图**：execd 的 `/screenshot` 是 BMP，容器里没有
-  PIL/ImageMagick——用 `/tmp/opencode/bmp2png.py`（纯 stdlib zlib）转 PNG 后
-  可直接看窗口文字，比猜按钮位置快得多。
-- **别信"窗口在屏幕上的样子"**：`#32770` 那个窗口被 execd 的 GUI 窗口压着，
-  按坐标点击全打在 GUI 上（监控循环空转了 178 次）；`/window_list` 给的 rect
-  是窗口自身矩形，不等于它在屏幕上可见/可点。
-- **容器里没有 `procps`**（`ps`/`pkill` 都没有）：清理挂住的 curl/监控循环要
-  自己扫 `/proc/*/cmdline` 再 `kill`（`kill` 是 bash 内建），匹配模式用
-  `[c]url` 这类方括号写法避免误杀自己。
-- **JSON body 别用 shell heredoc 写**：`\\` 会被上层（工具调用/shell 参数）先解码一次，
-  落盘成了单反斜杠，JSON 再把 `\n` 解成换行——cmd 收到断成两截的命令，只回一句
-  「不是内部或外部命令」（UTF-16LE 乱码）。用编辑器/write 工具直接落文件，写完
-  `python3 -c "import json;print(json.load(open(f))['cmd'])"` 验一遍再发。反斜杠能免就免。
+已并入 workflow skill「常见故障」表：错架构 exe 弹模态框挂死、`/screenshot` 截图辨窗、窗口 rect ≠ 屏幕可见位置、容器无 procps、JSON body 别用 shell heredoc 写。

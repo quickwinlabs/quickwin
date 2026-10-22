@@ -8,13 +8,13 @@
 
 ## 1. 传参方向：只关心宽度，符号无关
 
-- 每个参数在 `argFrame` 里占一个槽；JS `writeSlot` 按 `ARG_SIZE[kind]` 写 N 字节（ia32：≤4B 类型进 4 字节、8B 类型进 8 字节；x64：恒 8 字节）。汇编桩再把槽搬进栈槽/寄存器低位。
+- 每个参数在 `argFrame` 里占一个槽；JS 槽写器（bind 期按 token 定型的 `SlotWriter`，整数走 `mkScalarWriter`）按槽宽写 N 字节（ia32：≤4B 类型进 4 字节、8B 类型进 8 字节；x64：恒 8 字节）。汇编桩再把槽搬进栈槽/寄存器低位。
 - 栈槽/寄存器槽宽度最小 4/8 字节（x86 cdecl/stdcall 栈 4 字节对齐、x64 寄存器/栈 8 字节）；**被调函数只读低 size 字节**。
 - 因此窄类型当宽类型传安全（C 的 integer promotion 同理）：
   - 例：`i8` 参数绑定层写进 4 字节槽，只要低字节位模式正确即可；
   - 越界截断也一致：传 `300` 给 `i8` 槽或 `i32` 槽，低字节都是 `0x2C`(44)；
   - x64 Win64 ABI 要求 8/16 位整参按 signedness 扩展，但被调方 `MOVSX` 读低字节仍正确。
-- 同宽 `iN`/`uN` 传参完全等价，参数侧槽宽理论上可塌成 `{4, 8, ptr}` 档。当前 `ARG_SIZE` 与返回解码 `readRet` 共用同一 kind 表。
+- 同宽 `iN`/`uN` 传参完全等价，参数侧槽宽理论上可塌成 `{4, 8, ptr}` 档。当前槽宽表（ia32）与返回解码 `RET_READER` 共用同一 kind 表。
 
 **例外（必须区分）：** x64 寄存器 ABI 上浮点走 XMM、整数走 GPR，`f64` ≠ `u64`；x86 cdecl/stdcall 纯栈只看宽度（"传参只需 32/64 位两档"的直觉在 32 位栈 ABI 成立）。
 
@@ -38,7 +38,7 @@
 
 ### ffi-struct 字段顺序 = object 字面量顺序（ES [[OwnPropertyKeys]]）
 
-`lib/ffi/struct.ts` 的 `layout()` 用 `Object.keys(def)` 迭代字段并按该顺序算 offset，所以**布局顺序 = 字面量写法顺序**。这不是约定俗成，而是 ECMA-262 `[[OwnPropertyKeys]]`（`OrdinaryOwnPropertyKeys`）的确定顺序：整数索引键先按数值升序，其余字符串键按插入顺序，最后 Symbol。`Object.keys`/`for-in` 均遵循。
+`lib/ffi/struct.ts` 的 `computeStructLayout` 用 `Object.entries(def)` 迭代字段并按该顺序算 offset，所以**布局顺序 = 字面量写法顺序**。这不是约定俗成，而是 ECMA-262 `[[OwnPropertyKeys]]`（`OrdinaryOwnPropertyKeys`）的确定顺序：整数索引键先按数值升序，其余字符串键按插入顺序，最后 Symbol。`Object.keys`/`for-in` 均遵循。
 
 **唯一陷阱**：字段名若是数字类字符串（如 `'0'`、`'1'`），会被规范按数值升序排到最前，破坏写法顺序。struct 字段名避免用数字键即可；布局可加校验拒绝。
 
@@ -75,7 +75,7 @@
 - `SetLastError(0x80000000)` → `GetLastError`：u32 = 2147483648，i32 = −2147483648
 - 窄宽度负数返回 `lstrcmpW -> i8/i16/i32` 均 < 0；`InterlockedIncrement64(-2) -> i64 = -1`
 
-QEMU 回归：`docker/http_test.sh <xp|win11> ffi` 应全过（win11 = x64、xp = x86，两架构都测；本仓库测试环境无 win7）。
+QEMU 回归：`docker/http_test.sh <xp|win7|win11> ffi` 应全过（win7 = x64、xp = x86、win11 = x64 对照，两架构都测）。
 
 ## 3. int128？不需要
 
@@ -99,18 +99,9 @@ QEMU 回归：`docker/http_test.sh <xp|win11> ffi` 应全过（win11 = x64、xp 
 - [ ] 写槽期间不得跑回调：参数帧复用不覆盖"自定义 codec 的 `encode` 回调已 bind 函数"这种
       重入（会在本层 `ffiCall` 前抹掉已写槽）——见 `bind()` 的 codec 契约
 - [ ] 窄/无符号参数按宽传安全，但**指针宽必须用 `'<>ptr'`**（内部 kind `'ptr'`），勿手选 `u32/u64`
-- [ ] 有符号返回 `readRet` 必须按声明宽度符号扩展
+- [ ] 有符号返回必须按声明宽度符号扩展（`RET_READER`）
 - [ ] f32/f64 在 64 位寄存器 ABI 必须区分（不能并入整数宽度）
 - [ ] varargs 暂不支持；若将来支持，float 参数必须按 `f64` 声明（default argument promotion）
 - [ ] f32 返回 read-back 读 4 字节（x86/Win64 只写低 4 字节，高位未定义）
-- [ ] 改过 `qwin*.exe` 后 QEMU 测试前 `./run.sh <vm> --restart`（Windows SMB 按路径缓存 exe）
 
-## 5. 相关提交
-
-- `5ea5fb0` test(ffi): migrate test_ffi to bind(), port examples off ffiCall
-- `3deec20` refactor(ffi): drop legacy ffiCall, rename ffiCallRaw to ffiCall
-- `62ddfee` refactor(ffi): drop redundant byte-count args from ffiCallRaw
-- `211944c` refactor(ffi): drop libffi from the build, keep submodule as ABI reference
-- `d701efe` fix(ffi): 返回值 read-back 按声明类型符号/零扩展（§2 主修复）
-- `7553ded` refactor(ffi): 参数槽 `union{i64,double}` → 纯 `uint64_t` 位宽槽（§1 传参模型）
-- `d25f0fb` fix(ffi): `FFI_TYPE_POINTER` 收 number 句柄、修复 x86 栈错位（§1 教训）
+（历史坑，已根治）：SMB 曾按路径缓存 exe 导致 guest 读旧文件——`smb_wrapper.sh` 已关 oplocks/leases，覆盖写同路径立即可见。

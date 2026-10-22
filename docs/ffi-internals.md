@@ -39,7 +39,7 @@ ffiCall  取出缓冲区、函数地址、返回值类型
 
 **ia32 的“帧基准恢复”**：`call` 之后无条件 `mov %ebp, %esp` 从自己的帧基准重建栈。cdecl 与 stdcall 的唯一差异是退栈责任，被这个无条件重建吸收，所以同一个桩可以安全调用两种约定。
 
-两个实现的布局依据都在 `deps/libffi`（源码保留即为作 ABI 依据）：
+两个实现的布局依据都在 `deps/libffi`（源码保留以作 ABI 依据）：
 
 - **x64**：`src/x86/ffiw64.c` 的 `ffi_call_int` 写入侧；同槽双读与 libffi 的 `win64.S` 一致
 - **ia32**：`src/x86/ffi.c` 的写入侧分支；帧基准恢复的手法源自 `sysv.S`
@@ -92,7 +92,7 @@ by-value 入参把结构体字节直接压进槽位，ia32 按 4 字节对齐（
 
 ## 绑定策略：只绑需要的
 
-当前已绑定 **251 个** Win32 函数，而系统导出总数约 **8256 个**（≈3%）。
+当前已绑定 **252 个** Win32 函数，而系统导出总数约 **8256 个**（≈3%）。
 
 这是刻意的取舍：
 
@@ -100,13 +100,8 @@ by-value 入参把结构体字节直接压进槽位，ia32 按 4 字节对齐（
 - 冷门 API 交给用户按签名自己 `bind()`
 - 因此“绑定不全”是正常状态，不是欠账
 
-写签名前应先对权威元数据，避免手推栈布局：
-
-- **[win32json](https://github.com/marlersoft/win32json)**：win32metadata 的 JSON 投影，权威签名来源
-- 注意它的 `Platform` 字段是“文档最低支持版本”，会把 `Ellipse`、`SetScrollInfo` 之类误标成 Vista+
-- 结构体只给字段顺序，不给偏移，仍需自行核对
-
-详见 [usage/ffi.md](usage/ffi.md)。
+写签名前先对权威元数据（[win32json](https://github.com/marlersoft/win32json) 及其注意
+事项——`Platform` 误标、结构体无偏移），详见 [usage/ffi.md](usage/ffi.md)。
 
 ## 验证
 

@@ -19,11 +19,11 @@ console.log(GetCurrentProcessId())
 
 | Token | 含义 |
 |-------|------|
-| `i8 i16 i32 i64 u8 u16 u32 u64 f32 f64` | 标量；`i64` / `u64` / `f64` 走浮点寄存器 |
+| `i8 i16 i32 i64 u8 u16 u32 u64 f32 f64` | 标量；**`f32` / `f64` 走浮点通路**（x64 寄存器 ABI 下浮点走 XMM、整数走 GPR，返回分类同理）；`i64` / `u64` 是 8 字节整数槽（`bigint`） |
 | `<H>ptr` | 品牌指针，类型 `Ptr<'H'>`——编译期拦误传句柄（`ReleaseDC` 收 `Ptr<'HDC'>`，误传 `HWND` 直接报 tsc 错） |
 | `<>ptr` | 裸指针 / 整数混合值（`WPARAM`、`LPARAM`、句柄混合），类型 `number`；指针宽度**按有符号读回**（全 1 → `-1`） |
 | `<N>ptr` | 结构位 / 字符串位；该位注册 encoder 后可传对象 |
-| `u32@EnumName` | 枚举值域标注（仅提示，值按 `u32` 传） |
+| `u32@EnumName` | 枚举值域标注：类型层收紧为 `EnumMap['EnumName']`（拦异种枚举与域外字面量），运行时仍按 `u32` 传 |
 | `!` 尾缀 | 该位禁 NULL：类型层排 NULL + 运行时传 0 throw。返回位可标 `!` |
 | `-> void` | 无返回值 |
 

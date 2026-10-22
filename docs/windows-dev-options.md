@@ -21,16 +21,6 @@
 
 ## 关于 QuickWin
 
-**[QuickWin](https://github.com/quickwinlabs/quickwin)** 是一个 Windows 平台上的 QuickJS 运行时，用 JS 就能写 Windows 原生程序，**JS 脚本可直接嵌入 exe 实现单文件分发**。
+**[QuickWin](https://github.com/quickwinlabs/quickwin)** 是一个 Windows 平台上的 QuickJS 运行时，用 JS 就能写 Windows 原生程序，**JS 脚本可直接嵌入 exe 实现单文件分发**——单文件约 1.5MB、无运行时依赖、支持 XP+，内置 Win32 GUI / React-JSX / HTTP / WebSocket / WASM / FFI。
 
-- 单文件约 **1.5MB**，无运行时依赖，下载即用
-- 原生 Win32 GUI（窗口/按钮/托盘），也可用 **React/JSX** 声明式界面
-- 内置 **HTTP/HTTPS、WebSocket、WASM（WAMR）、FFI** 等能力
-- 支持 `import('https://esm.sh/...')` 动态导入，无需安装依赖
-- 支持 Windows XP+
-
-```powershell
-iwr https://github.com/quickwinlabs/quickwin/releases/latest/download/qwin.exe -OutFile qwin.exe
-iwr https://github.com/quickwinlabs/quickwin/releases/latest/download/main.js -OutFile main.js
-.\qwin.exe main.js
-```
+介绍、快速体验与特性清单见 [quickwin-intro.md](quickwin-intro.md)。

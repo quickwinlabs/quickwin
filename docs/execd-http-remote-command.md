@@ -20,25 +20,25 @@ execd.exe  (VM 内 8080)
 CreateProcessW + CreatePipe
       │
       ▼
-system32\cmd.exe /c <cmd>
+system32\cmd.exe /u /c <cmd>
 ```
 
 ### 设计要点
 
-**`/exec` 一请求 = 一个 worker = 一棵进程树。** 每请求起一个独立 worker，用 `CreateProcessW` + `CreatePipe` 拉起子进程。互不影响，上一条崩了不拖累下一条。`/screenshot`、`/window_list`、`/set_resolution` 是内置端点，主进程同步直跑，不起 worker。
+**`/exec` 一请求 = 一个 worker = 一棵进程树。** 每请求起一个独立 worker，用 `CreateProcessW` + `CreatePipe` 拉起子进程。互不影响，上一条崩了不拖累下一条。`/screenshot`、`/window_list`、`/set_resolution`、`/tray_list`、`/input`、`/upload`、`/download` 是内置端点，主进程同步直跑，不起 worker。
 
-**用 cmd.exe 而不是 `CreateProcessW` 直接跑目标程序**，是为了保留 cmd 语义——内部命令（`dir`、`ver`）、管道重定向、`for` 循环都能原样用。
+**用 cmd.exe 而不是 `CreateProcessW` 直接跑目标程序**，是为了保留 cmd 语义——内部命令（`dir`、`ver`）、管道重定向、`for` 循环都能原样用。恒加 `/u`：cmd 内置命令的输出直接走 UTF-16LE，绕开按系统代码页（ACP）编码造成的中文丢失（XP/Win7 中文系统 GBK、英文精简镜像 1252 都不再影响输出）。
 
 **不产生独立 session。** worker 跑在调用方进程所在的 session 内，`CreateProcessW` 直接起子进程。这条在下面「为什么不用 SSH」里是关键。
+
+**启动即最小化。** GUI 日志窗默认开着（顶栏 `token: on|off · port: N · workers: N`，下面是最近 100 条请求记录），但以不抢焦点的方式最小化启动，自动化截图与前台窗口不受干扰；headless 场景用 `--nogui`（等价 `--gui=0`）关掉。
 
 ### 进程参数
 
 | 参数 | 作用 |
 |------|------|
-| `--nogui` | 无 GUI 模式，默认会弹出窗口 |
-| `--token=x` | 开启 Bearer 鉴权 |
-
-GUI 日志窗默认开着，顶栏显示 `token: on|off · port: N · workers: N`，下面是最近 100 条请求记录（`HH:MM:SS · <命令> · <结果> (<耗时>ms)`）。headless 环境用 `--nogui` 关掉。
+| `--nogui` / `--gui=0` | 无 GUI 模式（默认开日志窗，最小化启动） |
+| `--token=x` | 开启 Bearer 鉴权（空串 = 未配置，全部放行） |
 
 ## 为什么不用 SSH
 
@@ -61,6 +61,9 @@ GUI 日志窗默认开着，顶栏显示 `token: on|off · port: N · workers: N
 | `POST /set_resolution` | 需 | 改分辨率 `?w=&h=&persist=0\|1`，恒带 `modes32` 可用列表 |
 | `GET /window_list` | 需 | 列出顶层窗口 |
 | `GET /screenshot` | 需 | 截屏 / 抓指定窗口 |
+
+> 完整端点清单（另有 `/tray_list`、`/input`、`/upload`、`/download` 等）以服务自描述为准：
+> `curl http://127.0.0.1:<port>/`（任意非 API 路径）即返回全部端点与参数。
 
 鉴权用 `--token=x` 开启，命令是标准 Bearer：`Authorization: Bearer x`，不带或不对就 `401` + `{"error":"unauthorized"}`。
 

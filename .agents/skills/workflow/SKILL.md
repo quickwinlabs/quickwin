@@ -1,3 +1,8 @@
+---
+name: workflow
+description: 在 quickwin 仓库执行构建（make）、测试、QEMU VM 启停与验证、排错、CI 对照、execd 打包、gen_const、ISO 取盘发布等流程操作时加载。含容器内黄金命令、构建速查、常驻测试模式与常见故障表。
+---
+
 # QuickWin 开发流程
 
 本地宿主只负责**管理代码**（git、编辑、文档）；**编译、测试、QEMU 验证**全部在开发容器内完成。CI 与本地容器环境一致，消除"本地能过、CI 挂"的差异。
@@ -119,7 +124,7 @@ WASM 导出到 JS 的函数用 `JS_NewCFunctionData`（`magic` 传函数 ID）�
 
 ## QEMU VM 验证
 
-原理与实现细节见 [qemu-xp-automated-testing.md](../docs/qemu-xp-automated-testing.md)。日常只需：
+原理与实现细节见 `docs/qemu-xp-automated-testing.md`（仓库根相对路径）。日常只需：
 
 ### 一次性装机
 
@@ -226,6 +231,19 @@ Win7 用 `qwin.exe`（64 位），XP 用 `qwin-x86.exe`（32 位），`http_test
 
 > hostfwd 端口（win7:**8007** / xp:**8005**）只在容器网络里，宿主直连不通；本地须 `podman exec quickwin-dev` 进容器跑上述脚本。CI 在容器内直接跑，无此问题。
 
+### execd（VM 内命令执行面）
+
+接口**自描述**：`curl http://127.0.0.1:8007/`（任意非 API 路径）即返回全部端点与参数
+（/exec、/screenshot、/input、/upload…），用前随手一取，勿凭记忆。宿主侧唯一要记的：
+输出编码 cmd 内置=UTF-16LE、外部程序原生（qwin=UTF-8、中文工具=GBK），按来源 `iconv` 转；
+语义与选型背景见 `.agents/EXEC_D.md`。
+
+### VM 画面验证（视觉回归）
+
+- **execd 端点**（最轻，不用 monitor/noVNC）：`GET /screenshot`（不带 hwnd = 整屏 BitBlt；带 hwnd 默认 `mode=print` 让窗口自绘——遮挡/最小化/超屏也拿完整像素；`?area=window|client&mode=screen|print`，返 BMP + `X-Dimensions`）；`GET /window_list` 顶层窗口 JSON 含 `minimized` 标志，可直接断言"窗口最小化"
+- **monitor socket**（容器内，VM 卡界面时用）：`/tmp/qemu-monitor-<vm>.sock`（win7 / xp / win11…）→ `screendump <ppm>`，PPM 转 PNG（纯 stdlib zlib 脚本或 ImageMagick，可顺带裁剪缩放）
+- **noVNC**（实时看）：容器 `./start-novnc.sh`，宿主浏览器开 XP `:6005` / Win7 `:6007`
+
 ### 常见故障
 
 | 症状 | 原因 / 处理 |
@@ -237,8 +255,13 @@ Win7 用 `qwin.exe`（64 位），XP 用 `qwin-x86.exe`（32 位），`http_test
 | `net use` 成功但不跑 run.bat | `.bat` 必须 CRLF：仓库根 `.gitattributes` 已 `eol=crlf`（checkout 即 CRLF），`run.sh` 每次再 `unix2dos` 作双保险 |
 | 网络测试连不上宿主 | guest `portproxy` 18923/18924 + 容器内 `serve_test` 必须都在；`--fresh` 会丢 overlay 里的 portproxy，由 run.bat 每次重建；`http_test.sh` 会自动拉起 serve_test |
 | `/exec` 超时/不返回 | **无默认上限**：连接活着就一直跑，客户端断连或 body 传 `"timeout"` 毫秒才 kill（代码是 `CreatePipe` + `CreateProcessW` 的读循环，**不是 popen**——唯一 popen 是超时后 `taskkill /T` 那个 helper）。后代进程持有管道写端也会拖住请求，见 `.agents/CONSOLE_STDOUT_MECHANISM.md` §7.6。真挂死用 `./run.sh <vm> --restart` |
+| `/exec` 输出乱码 / 带空字节 | 见上方「execd」小节的编码条：cmd 内置命令=UTF-16LE、外部程序原生（qwin=UTF-8、中文工具=GBK），按来源 `iconv -f UTF-16LE`/`-f GBK` 转；`/u` 决策与有损条件见 `.agents/CMD_ENCODING_ACP_NLS.md` |
+| 手写 `/exec` 喂错架构 exe | XP 只认 32 位 `qwin-x86.exe`：喂 x64 `qwin.exe` 会弹"不是有效的 Win32 应用程序"模态框，**无人点时 queue 堵死、后续所有 /exec 排队超时**（像卡死）。`http_test.sh` 已按 VM 选 exe，手写 curl 要自己选对 |
+| 按窗口坐标点击/判断落空 | `/window_list` 的 rect 是窗口自身矩形，**不等于屏幕上可见/可点位置**（可能被 execd 自己的 GUI 窗口压着）。先 `GET /screenshot` 转 PNG 目检（BMP 用纯 stdlib zlib 脚本或 ImageMagick 转）再操作 |
+| 容器里 `ps`/`pkill` 不存在 | 精简镜像无 procps：清理挂住的 curl/监控循环自己扫 `/proc/*/cmdline` 再 `kill`（bash 内建），匹配模式用 `[c]url` 方括号写法防误杀自己 |
+| `/exec` 的 JSON body 命令被截断 | 别用 shell heredoc 写 body：`\\` 会被上层先解码一次，JSON 再把 `\n` 解成换行，cmd 收到断成两截的命令。body 落文件再 `curl --data @file`，发前 `python3 -c "import json;print(json.load(open(f))['cmd'])"` 验一遍 |
 | 关机/等待死循环 | 不能用 `kill -0` 判 QEMU（容器 PID1 不回收僵尸）；看 pid **文件是否还存在**（QEMU 退出时自行 unlink） |
-| 需要看 VM 画面 | 容器内 `./start-novnc.sh` 后浏览器开 XP `:6005` / Win7 `:6007`（宿主已映射）；或 monitor `screendump` 截图 |
+| 需要看 VM 画面 | 见「VM 画面验证」：execd `/screenshot`（最轻）、monitor `screendump`、noVNC `:6005`/`:6007` |
 | 残留 QEMU | `./run.sh <vm> --stop`；pid 文件残留用 `kill -9 $(cat qemu-<vm>.pid) \|\| true` |
 | 改过 C/`qwin*.exe` 后 guest 仍像旧代码 | 已根治：`smb_wrapper.sh` 加 `oplocks = no` + `smb2 leases = no`，不再授予读缓存，覆盖写同路径立即可见（`--restart` 加载新 conf 后生效）。若仍出现，先 `--restart` 确保 smbd 读了新 conf |
 
@@ -290,10 +313,10 @@ qwin.exe [options]                # 无参数时加载 main.js 或内嵌 JS
 
 | 资料 | 用途 |
 |------|------|
-| 本文档 | 构建/测试命令、CLI、WAMR flag、XP patch、已知问题 |
-| `../docs/qemu-xp-automated-testing.md` | QEMU 无人值守安装 + SMB + bootstrap 原理 |
+| 本 skill | 构建/测试命令、CLI、WAMR flag、XP patch、已知问题 |
+| ffi-dev skill | FFI 绑定开发：签名 token、五条不变式、明确不支持清单、VM 回归期望值 |
+| `docs/qemu-xp-automated-testing.md` | QEMU 无人值守安装 + SMB + bootstrap 原理 |
 | `.agents/QEMU_NET_SUITE_TEST.md` | 逐 suite 网络测试与 ipv6/portproxy 历史 |
 | `.agents/WIN11_DEFENDER.md` | Win11 两套镜像、TP/实时保护开关、定义库更新与 EICAR 冒烟实测 |
 | `docker/run.sh` / `http_test.sh` / `setup-*.sh` | 常驻启停、HTTP 下发测试、装机脚本内注释 |
 | `make debug` + `-o LOG` | bridge 调用日志；release 构建会编译掉 `DEBUG_PRINTF` |
-| monitor `screendump` / noVNC | VM 卡界面时截图或实时查看 |
