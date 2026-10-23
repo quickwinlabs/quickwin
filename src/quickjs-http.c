@@ -155,7 +155,16 @@ static unsigned long long fnv1a_64(const char* str) {
     return hash;
 }
 
+// Cache dir override set via __httpCache__.dir; empty means exe-adjacent _cache.
+static wchar_t g_cache_dir[MAX_PATH] = {0};
+
 static void get_cache_dirW(wchar_t* buf, int buf_size) {
+    if (buf_size <= 0) return;
+    if (g_cache_dir[0]) {
+        wcsncpy(buf, g_cache_dir, buf_size - 1);
+        buf[buf_size - 1] = L'\0';
+        return;
+    }
     DWORD len = GetModuleFileNameW(NULL, buf, buf_size);
     if (len == 0 || len >= (DWORD)buf_size || buf_size <= 0) {
         buf[0] = L'\0';
@@ -432,40 +441,52 @@ static JSValue js_cache_readBody(JSContext *ctx, JSValueConst this_val,
     return js_r;
 }
 
-static JSValue js_cache_writeBodyOnly(JSContext *ctx, JSValueConst this_val,
-                                      int argc, JSValueConst *argv) {
-    const char* url = JS_ToCString(ctx, argv[0]);
-    if (!url) return JS_EXCEPTION;
-    size_t body_len = 0;
-    const void* body = NULL;
-    uint8_t* ab_body = NULL;
-    const char* str_body = NULL;
+static JSValue js_cache_write(JSContext *ctx, JSValueConst this_val,
+                              int argc, JSValueConst *argv) {
+    // ensure the cache dir exists (may be a custom one set via __httpCache__.dir)
+    wchar_t dir[MAX_PATH];
+    get_cache_dirW(dir, MAX_PATH);
+    if (dir[0]) CreateDirectoryW(dir, NULL);
 
-    if (JS_IsString(argv[1])) {
-        str_body = JS_ToCString(ctx, argv[1]);
-        if (!str_body) { JS_FreeCString(ctx, url); return JS_EXCEPTION; }
-        body = str_body;
-        body_len = strlen(str_body);
-    } else {
-        ab_body = JS_GetArrayBuffer(ctx, &body_len, argv[1]);
-        if (!ab_body) { JS_FreeCString(ctx, url); return JS_EXCEPTION; }
-        body = ab_body;
-    }
-
-    write_body_only(url, body, body_len);
-
-    if (str_body) JS_FreeCString(ctx, str_body);
-    JS_FreeCString(ctx, url);
-    return JS_UNDEFINED;
-}
-
-static JSValue js_cache_writeMeta(JSContext *ctx, JSValueConst this_val,
-                                  int argc, JSValueConst *argv) {
     const char* url = JS_ToCString(ctx, argv[0]);
     if (!url) return JS_EXCEPTION;
     const char* ini_str = JS_ToCString(ctx, argv[1]);
     if (!ini_str) { JS_FreeCString(ctx, url); return JS_EXCEPTION; }
-    write_meta_file(url, ini_str);
+
+    // no body: update meta only (revalidation refresh, lastAccess, invalidation)
+    if (argc < 3 || JS_IsUndefined(argv[2])) {
+        write_meta_file(url, ini_str);
+    } else {
+        size_t body_len = 0;
+        const void* body = NULL;
+        uint8_t* ab_body = NULL;
+        const char* str_body = NULL;
+
+        if (JS_IsString(argv[2])) {
+            str_body = JS_ToCString(ctx, argv[2]);
+            if (!str_body) {
+                JS_FreeCString(ctx, url);
+                JS_FreeCString(ctx, ini_str);
+                return JS_EXCEPTION;
+            }
+            body = str_body;
+            body_len = strlen(str_body);
+        } else {
+            ab_body = JS_GetArrayBuffer(ctx, &body_len, argv[2]);
+            if (!ab_body) {
+                JS_FreeCString(ctx, url);
+                JS_FreeCString(ctx, ini_str);
+                return JS_EXCEPTION;
+            }
+            body = ab_body;
+        }
+
+        write_meta_file(url, ini_str);
+        write_body_only(url, body, body_len);
+
+        if (str_body) JS_FreeCString(ctx, str_body);
+    }
+
     JS_FreeCString(ctx, url);
     JS_FreeCString(ctx, ini_str);
     return JS_UNDEFINED;
@@ -482,18 +503,43 @@ static JSValue js_cache_cacheKey(JSContext *ctx, JSValueConst this_val,
     return JS_NewString(ctx, hex);
 }
 
+static JSValue js_cache_get_dir(JSContext *ctx, JSValueConst this_val,
+                                int argc, JSValueConst *argv) {
+    wchar_t dir[MAX_PATH];
+    get_cache_dirW(dir, MAX_PATH);
+    char utf8[MAX_PATH * 4];
+    WideCharToMultiByte(CP_UTF8, 0, dir, -1, utf8, sizeof(utf8), NULL, NULL);
+    return JS_NewString(ctx, utf8);
+}
+
+static JSValue js_cache_set_dir(JSContext *ctx, JSValueConst this_val,
+                                int argc, JSValueConst *argv) {
+    g_cache_dir[0] = L'\0';
+    if (argc >= 1 && !JS_IsNull(argv[0]) && !JS_IsUndefined(argv[0])) {
+        const char* s = JS_ToCString(ctx, argv[0]);
+        if (!s) return JS_EXCEPTION;
+        if (s[0] && MultiByteToWideChar(CP_UTF8, 0, s, -1, g_cache_dir, MAX_PATH) == 0)
+            g_cache_dir[0] = L'\0';
+        JS_FreeCString(ctx, s);
+    }
+    return JS_UNDEFINED;
+}
+
 void js_init_http_cache_api(JSContext *ctx) {
     JSValue obj = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, obj, "readMeta",
         JS_NewCFunction(ctx, js_cache_readMeta, "readMeta", 1));
     JS_SetPropertyStr(ctx, obj, "readBody",
         JS_NewCFunction(ctx, js_cache_readBody, "readBody", 1));
-    JS_SetPropertyStr(ctx, obj, "writeBodyOnly",
-        JS_NewCFunction(ctx, js_cache_writeBodyOnly, "writeBodyOnly", 2));
-    JS_SetPropertyStr(ctx, obj, "writeMeta",
-        JS_NewCFunction(ctx, js_cache_writeMeta, "writeMeta", 2));
+    JS_SetPropertyStr(ctx, obj, "write",
+        JS_NewCFunction(ctx, js_cache_write, "write", 3));
     JS_SetPropertyStr(ctx, obj, "cacheKey",
         JS_NewCFunction(ctx, js_cache_cacheKey, "cacheKey", 1));
+    JSAtom dir_atom = JS_NewAtom(ctx, "dir");
+    JS_DefinePropertyGetSet(ctx, obj, dir_atom,
+        JS_NewCFunction(ctx, js_cache_get_dir, "get dir", 0),
+        JS_NewCFunction(ctx, js_cache_set_dir, "set dir", 1), 0);
+    JS_FreeAtom(ctx, dir_atom);
     JSValue global = JS_GetGlobalObject(ctx);
     JS_SetPropertyStr(ctx, global, "__httpCache__", obj);
     JS_FreeValue(ctx, global);

@@ -1,4 +1,4 @@
-import '../lib/fetch.js'
+import { cleanCache } from '../lib/fetch.js'
 import * as std from 'std'
 import * as os from 'os'
 import { Tester } from './test_helper.js'
@@ -33,16 +33,15 @@ export const suite = {
 
         assert('readMeta is function', typeof __httpCache__.readMeta === 'function')
         assert('readBody is function', typeof __httpCache__.readBody === 'function')
-        assert('writeBodyOnly is function', typeof __httpCache__.writeBodyOnly === 'function')
-        assert('writeMeta is function', typeof __httpCache__.writeMeta === 'function')
+        assert('write is function', typeof __httpCache__.write === 'function')
         assert('cacheKey is function', typeof __httpCache__.cacheKey === 'function')
+        assert('dir is string', typeof __httpCache__.dir === 'string')
 
-        t.section('writeBodyOnly + writeMeta + readMeta + readBody')
+        t.section('write + readMeta + readBody')
         const fakeUrl = 'https://test.local/cache-test'
         trackedUrls.push(fakeUrl)
         const testBody = 'hello cache test!'
-        __httpCache__.writeBodyOnly(fakeUrl, testBody)
-        __httpCache__.writeMeta(fakeUrl, toIni(
+        __httpCache__.write(fakeUrl, toIni(
             {},
             {
                 url: fakeUrl,
@@ -51,7 +50,7 @@ export const suite = {
                 status: '200',
                 statusText: 'OK',
             }
-        ))
+        ), testBody)
 
         const metaStr = __httpCache__.readMeta(fakeUrl)
         assert('meta written', metaStr !== null)
@@ -71,7 +70,7 @@ export const suite = {
                 statusText: 'OK',
             }
         )
-        __httpCache__.writeMeta(fakeUrl, fullMeta)
+        __httpCache__.write(fakeUrl, fullMeta)
 
         const metaStr2 = __httpCache__.readMeta(fakeUrl)
         assert('meta overwritten', metaStr2 !== null)
@@ -94,17 +93,16 @@ export const suite = {
         const key = __httpCache__.cacheKey('https://example.com/test.js')
         assert('cacheKey returns 16 hex chars', /^[0-9a-f]{16}$/.test(key))
 
-        t.section('lastAccess via readMeta/writeMeta')
+        t.section('lastAccess via readMeta/write')
         const laUrl = 'https://test.local/lastaccess-test'
         trackedUrls.push(laUrl)
-        __httpCache__.writeBodyOnly(laUrl, 'test')
-        __httpCache__.writeMeta(laUrl, toIni({}, {
+        __httpCache__.write(laUrl, toIni({}, {
             url: laUrl,
             storedAt: String(Math.floor(Date.now() / 1000)),
             maxAge: '300',
             status: '200',
             statusText: 'OK',
-        }))
+        }), 'test')
         const beforeMeta = __httpCache__.readMeta(laUrl)
         if (beforeMeta) {
             const ini0 = parseIni(beforeMeta)
@@ -113,7 +111,7 @@ export const suite = {
         const now = Math.floor(Date.now() / 1000)
         const laMeta = parseIni(__httpCache__.readMeta(laUrl) || '')
         laMeta.meta.lastAccess = String(now)
-        __httpCache__.writeMeta(laUrl, toIni(laMeta.headers, laMeta.meta))
+        __httpCache__.write(laUrl, toIni(laMeta.headers, laMeta.meta))
         const afterMeta = __httpCache__.readMeta(laUrl)
         if (afterMeta) {
             const ini1 = parseIni(afterMeta)
@@ -176,12 +174,106 @@ export const suite = {
         assert('cache body same length', bodyCache.length === bodyNet.length)
         assert('cache non-negative time (' + timeCache + 'ms)', timeCache >= 0)
 
+        t.section('revalidation: stale entry revalidates (304) and serves cached body')
+        const revalUrl = 'http://localhost:18923/cache/1'
+        trackedUrls.push(revalUrl)
+        const rv1 = await fetch(revalUrl)
+        assert('reval first fetch ok', rv1.ok)
+        const rvBody1 = await rv1.text()
+        assert('reval first body non-empty', rvBody1.length > 0)
+        await os.sleepAsync(1200)
+        const rv2 = await fetch(revalUrl)
+        assert('reval second fetch is 200 (not raw 304)', rv2.ok && rv2.status === 200)
+        const rvBody2 = await rv2.text()
+        assert('reval body served from cache', rvBody2 === rvBody1)
+
+        t.section('304 refreshes maxAge from Cache-Control')
+        const revalMaxUrl = 'http://localhost:18923/cache/1?maxage'
+        trackedUrls.push(revalMaxUrl)
+        const mx1 = await fetch(revalMaxUrl)
+        await mx1.text()
+        await os.sleepAsync(1200)
+        const mx2 = await fetch(revalMaxUrl)
+        assert('reval maxAge fetch ok', mx2.ok && mx2.status === 200)
+        await mx2.text()
+        const mxMeta = __httpCache__.readMeta(revalMaxUrl)
+        assert('maxAge updated from 304', !!mxMeta && parseIni(mxMeta).meta.maxAge === '60')
+
+        t.section('304 with missing body recovers via unconditional refetch')
+        // 制造“meta 在、body 被清”的残缺缓存：fresh 命中失败 → 带条件头再验证 → 304 →
+        // 应回退为无条件重发（否则调用方会直接收到 304）
+        const missUrl = 'http://localhost:18923/cache/60'
+        trackedUrls.push(missUrl)
+        const m1 = await fetch(missUrl)
+        assert('missing-body setup fetch ok', m1.ok)
+        await m1.text()
+        const missKey = __httpCache__.cacheKey(missUrl)
+        os.remove(cacheDir + '/' + missKey + '.body')
+        const m2 = await fetch(missUrl)
+        assert('fetch after body loss is 200 (not 304)', m2.ok && m2.status === 200)
+        const m2Body = await m2.text()
+        assert('recovered body non-empty', m2Body.length > 0)
+        assert('recovered entry re-stored', __httpCache__.readBody(missUrl) !== null)
+
+        t.section('dir is configurable')
+        const origDir = __httpCache__.dir
+        assert('dir is non-empty string', typeof origDir === 'string' && origDir.length > 0)
+        const subDir = origDir + '/sub'
+        os.mkdir(subDir)
+        const dirUrl = 'https://test.local/dir-test'
+        const dirIni = toIni({}, {
+            url: dirUrl, storedAt: String(Math.floor(Date.now() / 1000)),
+            maxAge: '60', lastAccess: String(Math.floor(Date.now() / 1000)),
+            status: '200', statusText: 'OK',
+        })
+        try {
+            __httpCache__.dir = subDir
+            assert('dir reflects custom path', __httpCache__.dir === subDir)
+            __httpCache__.write(dirUrl, dirIni, 'dir-body')
+            assert('entry written under custom dir', __httpCache__.readMeta(dirUrl) !== null)
+        } finally {
+            __httpCache__.dir = ''
+        }
+        assert('dir restored to default', __httpCache__.dir === origDir)
+        assert('entry gone after restoring dir', __httpCache__.readMeta(dirUrl) === null)
+        const dirKey = __httpCache__.cacheKey(dirUrl)
+        os.remove(subDir + '/' + dirKey + '.meta')
+        os.remove(subDir + '/' + dirKey + '.body')
+
+        t.section('cleanCache(seconds): expired and untouched entries')
+        const nowSec = Math.floor(Date.now() / 1000)
+        const expUrl = 'https://test.local/clean-expired'
+        const keepUrl = 'https://test.local/clean-keep'
+        const idleUrl = 'https://test.local/clean-idle'
+        trackedUrls.push(expUrl, keepUrl, idleUrl)
+
+        // 已过期：1 小时前入库，maxAge=60
+        __httpCache__.write(expUrl, toIni({}, {
+            url: expUrl, storedAt: String(nowSec - 3600), maxAge: '60',
+            lastAccess: String(nowSec), status: '200', statusText: 'OK',
+        }), 'expired')
+        // 新鲜且刚访问过：应保留
+        __httpCache__.write(keepUrl, toIni({}, {
+            url: keepUrl, storedAt: String(nowSec), maxAge: '3600',
+            lastAccess: String(nowSec), status: '200', statusText: 'OK',
+        }), 'keep')
+        // 新鲜但约一天没访问：应删除
+        __httpCache__.write(idleUrl, toIni({}, {
+            url: idleUrl, storedAt: String(nowSec), maxAge: '3600',
+            lastAccess: String(nowSec - 100000), status: '200', statusText: 'OK',
+        }), 'idle')
+
+        const evicted = cleanCache(5)
+        assert('cleanCache(seconds) evicted entries', evicted >= 2)
+        assert('expired entry removed', __httpCache__.readMeta(expUrl) === null)
+        assert('untouched entry removed', __httpCache__.readMeta(idleUrl) === null)
+        assert('recently accessed entry kept', __httpCache__.readMeta(keepUrl) !== null)
+
         t.section('cleanup')
+        const allRemoved = cleanCache()
+        assert('clean() removed remaining entries', allRemoved > 0)
         for (const url of trackedUrls) {
-            const key = __httpCache__.cacheKey(url)
-            os.remove(cacheDir + '/' + key + '.meta')
-            os.remove(cacheDir + '/' + key + '.body')
-            assert('no meta leftover for ' + key, __httpCache__.readMeta(url) === null)
+            assert('no meta leftover for ' + __httpCache__.cacheKey(url), __httpCache__.readMeta(url) === null)
         }
     }
 }

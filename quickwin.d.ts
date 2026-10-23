@@ -500,9 +500,11 @@ declare module "ffi" {
 interface HttpCache {
     readMeta(url: string): string | null;
     readBody(url: string): ArrayBuffer | null;
-    writeBodyOnly(url: string, body: string | ArrayBuffer): void;
-    writeMeta(url: string, ini: string): void;
+    /** 写缓存条目：传 body 时同时写 meta 与 body；省略 body 时只更新 meta。 */
+    write(url: string, ini: string, body?: string | ArrayBuffer): void;
     cacheKey(url: string): string;
+    /** 缓存目录，可读写；赋值空串恢复默认（exe 同级 `_cache`）。 */
+    dir: string;
 }
 
 declare var __httpCache__: HttpCache;
