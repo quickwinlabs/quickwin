@@ -102,19 +102,19 @@ jobs:
       matrix:
         include:
           - { id: win7, cc: x86_64, deps: cc64, nowasm: cc64-nowasm,
-              snap_key: win7-ready-v3, snap_file: win7_ready.qcow2, artifact: qwin-x64,
+              snap_key: win7-ready-v4, snap_file: win7_ready.qcow2, artifact: qwin-x64,
               exe: qwin.exe, nowasm_exe: qwin-nowasm.exe }
           - { id: xp,   cc: i686,   deps: cc32, nowasm: cc32-nowasm,
-              snap_key: xp-ready-v3,  snap_file: xp_ready.qcow2,   artifact: qwin-x86,
+              snap_key: xp-ready-v4,  snap_file: xp_ready.qcow2,   artifact: qwin-x86,
               exe: qwin-x86.exe, nowasm_exe: qwin-nowasm-x86.exe, execd: execd-x86 }
           # win11 暂时关闭：x64 ABI 已由 win7 覆盖，win11 仅多覆盖 NT>=10 分支与
           # 新系统 DLL，但 VM 最重且 flaky（8G 内存 + 开机到 execd 的耗时）。需要时取消注释即可。
           # 虚拟机已无 TPM/Secure Boot（普通 OVMF；硬件检查由 Autounattend 的 LabConfig 绕过），
-          # 所以 flaky 只与体量/开机时长有关；重装/重发镜像后记得同步 snap_key。
+          # 所以 flaky 只与体量/开机时长有关；assets 仓重发镜像后记得同步 snap_key。
           # win11_ready.qcow2 = 标准 tiny11(带 Defender，装机期已关 Tamper Protection);
-          # 精简 core 盘(Defender 已剥离)为 win11_ready-core.qcow2
+          # 精简 core 盘(Defender 已剥离)曾自产为 win11_ready-core.qcow2，assets 未发布该变体
           # - { id: win11, cc: x86_64, deps: cc64, nowasm: cc64-nowasm,
-          #     snap_key: win11-ready-v3, snap_file: win11_ready.qcow2, artifact: qwin-x64,
+          #     snap_key: win11-ready-v4, snap_file: win11_ready.qcow2, artifact: qwin-x64,
           #     exe: qwin.exe, nowasm_exe: qwin-nowasm.exe }
     steps:
       - name: Checkout
@@ -142,7 +142,7 @@ jobs:
           path: _build/_cache
           key: mupdf-cdn-v1
 
-      # ── 快照缓存（key 固定 -v1：快照内容不会变，只随安装脚本/流程变化升级）──
+      # ── 快照缓存（key 固定版本：内容不变，只随 assets 仓的镜像 release 重发而升级）──
       - name: Restore ${{ matrix.id }} snapshot cache
         id: cache-snap
         uses: actions/cache@v5
@@ -150,14 +150,12 @@ jobs:
           path: docker/snapshots/${{ matrix.snap_file }}
           key: ${{ matrix.snap_key }}
 
-      # ── cache miss：现场安装系统（下载 ISO + 自动应答安装）──
-      - name: Install ${{ matrix.id }} (cache miss only)
-        id: install-vm
+      # ── cache miss：拉预装盘（assets 仓 win-images-* 的分卷 release，SHA 校验后拼装）──
+      - name: Fetch ${{ matrix.id }} snapshot (cache miss only)
+        id: fetch-snap
         if: steps.cache-snap.outputs.cache-hit != 'true'
-        run: |
-          cd docker
-          bash setup-${{ matrix.id }}.sh
-        timeout-minutes: 40
+        run: bash docker/scripts/fetch-ready.sh ${{ matrix.id }}
+        timeout-minutes: 10
 
       - name: Verify snapshot
         run: |
@@ -245,7 +243,7 @@ jobs:
           cat docker/ci_share/run-${{ matrix.id }}.log 2>&1 || true
 
       - name: Save ${{ matrix.id }} snapshot cache
-        if: always() && steps.cache-snap.outputs.cache-hit != 'true' && steps.install-vm.outcome == 'success'
+        if: always() && steps.cache-snap.outputs.cache-hit != 'true' && steps.fetch-snap.outcome == 'success'
         uses: actions/cache/save@v5
         with:
           path: docker/snapshots/${{ matrix.snap_file }}

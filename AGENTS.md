@@ -2,18 +2,24 @@
 
 ## 重要规则
 
-> **优先检索**：实施前检索官方文档 / API 参考、GitHub issues、Stack Overflow 及开源项目源码。
+> **优先检索**：实施前检索官方文档 / API 参考、GitHub issues、Stack Overflow 及开源项目源码
 
-> **构建、测试与 VM 服务访问须在容器 `quickwin-dev` 内执行**（宿主无交叉工具链；hostfwd 端口仅容器网络可达）：
-> `podman exec quickwin-dev bash -lc 'cd /workspace && <命令>'`
-> - 宿主仅负责 git、文件编辑与文档；容器执行 `make js/cc64/cc32/execd/test`、`docker/*.sh` 及 VM 端口 curl
-> - 遗漏 `cd /workspace` 将找不到 Makefile；宿主运行 `make` 报错或 curl 端口被拒即属违反本规则
+> **优先用 `rg`，没有再用 `grep`**
 
-> **禁止自动提交**：须先展示 `git diff` 与拟用 commit message，经用户同意方可执行 `git add` / `commit` / `push`；回复 "continue"、"commit"、"push" 或直接给出 message 视为同意。
+> **构建、测试与 VM 服务访问须在容器 `quickwin-dev` 内执行**（宿主无交叉工具链；hostfwd 端口仅容器网络可达）
+> 宿主发起的命令一律用 `docker/qc` 包一层：
+> `./docker/qc <命令>`（= `podman exec -w /workspace`；命令按 argv 直传、不起 shell、退出码透传；复合命令写 `./docker/qc bash -c '...'`）
+> - 宿主仅负责 git、文件编辑与文档；容器执行 `make js/cc64/cc32/execd/test`、`bash docker/scripts/fetch-ready.sh` 及 VM 端口 curl
+> - 直接跑 `./docker/run.sh`（不经 qc）会在宿主建出宿主路径的 overlay，事后难以区分是污染还是损坏
+> - **CI 不用 qc**：CI 本身在容器内，直接调 `make` / `run.sh`
 
-> **commit message**：依据 diff 实际内容生成（不得依据文件名推断），以英文表述，风格对齐 `git log`；**不重要的改动**（文档、注释、微调、小改小修等）从简。
+> **禁止自动提交**：须先展示 `git diff` 与拟用 commit message，经用户同意方可执行 `git add` / `commit` / `push`；回复 "continue"、"commit"、"push" 或直接给出 message 视为同意
 
-> **文档不写易漂移信息**：文档中禁止出现 commit id（哈希）与源码行号（`file.c:123`、`L123`）等易漂移信息。
+> **commit message**：依据 diff 实际内容生成（不得依据文件名推断），以英文表述，风格对齐 `git log`；**不重要的改动**（文档、注释、微调、小改小修等）从简
+
+> 环境变量中可能有 GH_TOKEN
+
+> **文档不写易漂移信息**：文档中禁止出现 commit id（哈希）与源码行号（`file.c:123`、`L123`）等易漂移信息
 
 > **使用中文思考和回答**
 
@@ -22,10 +28,10 @@
 双机验证流程（容器内执行；C/execd 变更后加 `--restart`）：
 
 ```bash
-podman exec quickwin-dev bash -lc 'cd /workspace && make js && cd docker && ./run.sh win7 && ./http_test.sh win7 && ./run.sh xp && ./http_test.sh xp'
+./docker/qc bash -c 'make js && cd docker && ./run.sh win7 && ./http_test.sh win7 && ./run.sh xp && ./http_test.sh xp'
 ```
 
-完整 make 目标、CLI、gen_const 及故障排查，见 skill `workflow`（`.agents/skills/workflow/SKILL.md`）。
+完整 make 目标、CLI、gen_const 及故障排查，见 skill `workflow`（`.agents/skills/workflow/SKILL.md`）
 
 ## 进行中计划
 

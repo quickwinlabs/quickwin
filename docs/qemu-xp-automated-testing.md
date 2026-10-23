@@ -6,64 +6,13 @@
 
 总体流程：
 
-1. 安装 Windows
-2. 设置开机自启动脚本 `bootstrap.bat` —— 用来映射 SMB 共享目录，并运行共享目录里的一个脚本文件 `run.bat`
-3. 给 `qcow2` 硬盘打上快照
-4. 修改 `run.bat`
-5. 从快照启动 Windows
+1. 装机 → 注入 `bootstrap.bat` → 打快照：在 `quickwinlabs/assets` 仓做一次，产出预装盘（本仓不含安装脚本）
+2. 改 `run.bat`（`docker/ci_share/`）
+3. 从快照启动 Windows
 
-这样，每次编译出可执行文件后，从快照启动 Windows 就能自动测试了（每次启动+测试用时约 30s）。
+每次编译出可执行文件后，从快照启动 Windows 就能自动测试（启动 + 测试约 30s）。
 
 ---
-
-## 安装 XP 系统
-
-正常安装 Windows 需要人工操作安装向导，而自动化测试不可能每次都人工操作，所以安装环节也必须全自动。
-Windows 安装器本身就支持无人值守应答文件 `WINNT.SIF`，把安装向导要问的问题预先写好答案即可。
-
-### 原理
-
-XP 安装器会从系统镜像中读取应答文件 `WINNT.SIF`，并把镜像内的 `$OEM$` 目录复制到 `C:\OEM`。所以需要把我们的文件注入 ISO 再重建：
-
-1. 用 `7z x` 提取原始 ISO
-2. 注入 `WINNT.SIF` 到 `I386/` 目录
-3. 注入 `$OEM$` 目录（含 `install.bat` / `bootstrap.bat`）
-4. 用 `genisoimage` 重建 ISO（需从原 ISO sector 19 提取 boot catalog，`-boot-load-size` 从 catalog offset 39 读取，不能用经验值 4）
-
-```bash
-# setup.sh 核心步骤
-7z x -o_iso_extract "$ISO" -y
-unix2dos < floppy/WINNT.SIF   > _iso_extract/I386/WINNT.SIF
-unix2dos < floppy/install.bat > "$OEM_DIR/install.bat"
-unix2dos < floppy/bootstrap.bat > "$OEM_DIR/bootstrap.bat"
-genisoimage -o xp_modified.iso -b "[BOOT]/Boot-NoEmul.img" \
-    -c boot.cat -no-emul-boot -boot-load-size "$BOOT_LOAD_SIZE" \
-    -boot-load-seg 0 -iso-level 2 -J -l -D -N -joliet-long -relaxed-filenames .
-```
-
-> **注意**：`WINNT.SIF` 必须 `unix2dos`（LF→CRLF），否则 setup 解析失败。
-
-### 流程
-
-挂载安装盘和修改后的镜像即可开始安装。XP 安装要经历 4 次启动：
-
-```
-Boot 1 (CD): 文本模式 -> 分区/格式化 -> 复制文件到硬盘 -> 自动重启  (~2min)
-Boot 2 (CD): GUI 模式 -> 安装设备 -> 重启 (~3min)
-Boot 3 (CD): setup 检测已完整安装 -> 跳转到硬盘
-Boot 4 (HD): Windows 首次启动 -> [GuiRunOnce] install.bat -> shutdown -> QEMU 退出
-```
-
-### 注册开机自启动并关机
-
-自动化的关键钩子是 `WINNT.SIF` 的 `[GuiRunOnce]`，把它设置为 `C:\OEM\install.bat`。
-`[GuiRunOnce]` 段在**首次登录**执行，在 `install.bat` 中把 `C:\OEM\bootstrap.bat` 设置为开机自启动，然后运行 `shutdown` 关机。关机之后 QEMU 会自动退出，从而把"安装"和"测试"两个阶段干净隔开。
-
-安装完成后保存安装盘为 `xp_ready.qcow2`，作为后续测试的干净起点：
-
-```bash
-mv xp_install.qcow2 xp_ready.qcow2
-```
 
 ## 测试运行
 
