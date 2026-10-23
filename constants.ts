@@ -69,6 +69,8 @@ export const enum WindowStyle {
     CLIPCHILDREN = 33554432, // 0x2000000
     TABSTOP = 65536, // 0x10000
     GROUP = 131072, // 0x20000
+    LAYERED = 524288, // 0x80000
+    TOOLWINDOW = 128, // 0x80
 }
 
 export const enum WmMsg {
@@ -142,6 +144,7 @@ export const enum WmMsg {
     NCHITTEST = 132, // 0x84
     NCPAINT = 133, // 0x85
     NCACTIVATE = 134, // 0x86
+    COPYDATA = 74, // 0x4A
     NCMOUSEMOVE = 160, // 0xA0
     NCLBUTTONDOWN = 161, // 0xA1
     NCLBUTTONUP = 162, // 0xA2
@@ -231,6 +234,7 @@ export const enum SysMetrics {
 
 export const enum Spi {
     GETNONCLIENTMETRICS = 41, // 0x29
+    GETWORKAREA = 48, // 0x30
 }
 
 export const enum ButtonStyle {
@@ -368,6 +372,7 @@ export const enum ImageListFlag {
 
 export const enum HitTest {
     CLIENT = 1, // 0x1
+    CAPTION = 2, // 0x2
 }
 
 export const enum StandardCursor {
@@ -553,6 +558,9 @@ export const enum DtNotifyCode {
 export const enum DtFlag {
     GDT_VALID = 0, // 0x0
     GDT_NONE = 1, // 0x1
+    SINGLELINE = 32, // 0x20
+    VCENTER = 4, // 0x4
+    NOPREFIX = 2048, // 0x800
 }
 
 export const enum TreeViewStyle {
@@ -633,6 +641,7 @@ export const enum Gwlp {
     USERDATA = -21, // 0xFFFFFFEB
     ID = -12, // 0xFFFFFFF4
     STYLE = -16, // 0xFFFFFFF0
+    EXSTYLE = -20, // 0xFFFFFFEC
 }
 
 export const enum SysLinkMsg {
@@ -1105,6 +1114,27 @@ export const enum Guid {
     IID_IPERSISTFILE = '{0000010B-0000-0000-C000-000000000046}',
 }
 
+// ── file ──
+
+export const enum FileAccess {
+    GENERIC_READ = -2147483648, // 0x80000000
+    GENERIC_WRITE = 1073741824, // 0x40000000
+}
+
+export const enum FileShare {
+    READ = 1, // 0x1
+    WRITE = 2, // 0x2
+}
+
+export const enum FileAttribute {
+    NORMAL = 128, // 0x80
+    DIRECTORY = 16, // 0x10
+}
+
+export const enum IfType {
+    SOFTWARE_LOOPBACK = 24, // 0x18
+}
+
 // ── 失败哨兵 ──
 
 export const enum Sentinel {
@@ -1296,6 +1326,10 @@ declare global {
         ClsCtx: ClsCtx
         HResult: HResult
         Guid: Guid
+        FileAccess: FileAccess
+        FileShare: FileShare
+        FileAttribute: FileAttribute
+        IfType: IfType
         Sentinel: Sentinel
         AddrFamily: AddrFamily
         SockType: SockType
