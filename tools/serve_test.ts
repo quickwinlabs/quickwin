@@ -76,13 +76,26 @@ const server = http.createServer(async (req, res) => {
         return
     }
 
-    if (req.method === 'GET' && pathname === '/cache/60') {
-        res.writeHead(200, {
-            'Content-Type': 'text/plain',
-            'Cache-Control': 'public, max-age=60'
-        })
-        res.end('cached response')
-        return
+    {
+        const m = pathname.match(/^\/cache\/(\d+)$/)
+        if (req.method === 'GET' && m) {
+            if (req.headers['if-none-match']) {
+                res.writeHead(304, {
+                    'ETag': '"cache-v1"',
+                    // refresh the lifetime on revalidation so tests can observe it
+                    'Cache-Control': 'public, max-age=60'
+                })
+                res.end()
+                return
+            }
+            res.writeHead(200, {
+                'Content-Type': 'text/plain',
+                'Cache-Control': 'public, max-age=' + m[1],
+                'ETag': '"cache-v1"'
+            })
+            res.end('cached response')
+            return
+        }
     }
 
     if (req.method === 'GET' && pathname === '/trailer') {
@@ -181,13 +194,26 @@ const httpsServer = https.createServer(httpsOpts, async (req, res) => {
         return
     }
 
-    if (req.method === 'GET' && pathname === '/cache/60') {
-        res.writeHead(200, {
-            'Content-Type': 'text/plain',
-            'Cache-Control': 'public, max-age=60'
-        })
-        res.end('cached response')
-        return
+    {
+        const m = pathname.match(/^\/cache\/(\d+)$/)
+        if (req.method === 'GET' && m) {
+            if (req.headers['if-none-match']) {
+                res.writeHead(304, {
+                    'ETag': '"cache-v1"',
+                    // refresh the lifetime on revalidation so tests can observe it
+                    'Cache-Control': 'public, max-age=60'
+                })
+                res.end()
+                return
+            }
+            res.writeHead(200, {
+                'Content-Type': 'text/plain',
+                'Cache-Control': 'public, max-age=' + m[1],
+                'ETag': '"cache-v1"'
+            })
+            res.end('cached response')
+            return
+        }
     }
 
     if (req.method === 'GET' && pathname === '/trailer') {

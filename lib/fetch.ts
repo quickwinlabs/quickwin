@@ -1,6 +1,8 @@
 import * as sock from 'sock'
 import * as wolfssl from 'wolfssl'
 import * as brotli from 'brotli'
+import * as os from 'os'
+import * as std from 'std'
 // 裸导入只为声明面：Request/Response 等全局由 http-common 的 declare global 提供，
 // 若不带这条，emit 出的 fetch.d.ts 只剩 declare global、消费者拿不到那些类型
 import './http-common.js'
@@ -426,6 +428,23 @@ interface CacheMeta {
     lastModified?: string;
 }
 
+// Decompress brotli Content-Encoding in place: buffer body, swap headers
+// (drop content-encoding, fix content-length) and replace the stream.
+async function decompressBrotliIfNeeded(response: ResponseImpl): Promise<void> {
+    // 304 has no body; even if a proxy forwards Content-Encoding, there is nothing to decode
+    if (response.status === 304) return
+    const contentEncoding = response.headers.get('content-encoding') || ''
+    if (!contentEncoding.includes('br')) return
+    const compressedBody = await response.arrayBuffer()
+    const decompressedBody = brotli.decompress(compressedBody)
+    const newHeaders = new HeadersImpl()
+    response.headers.forEach((v: string, k: string) => {
+        if (k !== 'content-encoding') newHeaders.set(k, v)
+    })
+    newHeaders.set('content-length', String(decompressedBody.byteLength))
+    response._applyDecompressedBody(_toReadableStream(new Uint8Array(decompressedBody)), decompressedBody, newHeaders)
+}
+
 async function doFetch(url: string | Request, init: RequestInit, redirectCount: number): Promise<ResponseImpl> {
     let req = new RequestImpl(url, init)
     const redirectMode = req.redirect || 'follow'
@@ -455,7 +474,7 @@ async function doFetch(url: string | Request, init: RequestInit, redirectCount: 
                 const body = cache.readBody(currentUrl)
                 if (body) {
                     ini.meta.lastAccess = String(Math.floor(Date.now() / 1000))
-                    cache.writeMeta(currentUrl, toIni(ini.headers, ini.meta))
+                    cache.write(currentUrl, toIni(ini.headers, ini.meta))
                     const resp = new ResponseImpl(
                         _toReadableStream(new Uint8Array(body)), { status: cachedMeta.status, statusText: cachedMeta.statusText, headers: new HeadersImpl(cachedMeta.headers || {}) }
                     )
@@ -468,23 +487,12 @@ async function doFetch(url: string | Request, init: RequestInit, redirectCount: 
         }
     }
 
-    const response = await fetchRequest(req)
+    let response = await fetchRequest(req)
 
     response._url = currentUrl
 
     // ── Handle brotli Content-Encoding ──
-    const contentEncoding = response.headers.get('content-encoding') || ''
-    if (contentEncoding.includes('br')) {
-        const compressedBody = await response.arrayBuffer()
-        const decompressedBody = brotli.decompress(compressedBody)
-        const newHeaders = new HeadersImpl()
-        response.headers.forEach((v: string, k: string) => {
-            if (k !== 'content-encoding') newHeaders.set(k, v)
-        })
-        newHeaders.set('content-length', String(decompressedBody.byteLength))
-        const stream = _toReadableStream(new Uint8Array(decompressedBody))
-        response._applyDecompressedBody(stream, decompressedBody, newHeaders)
-    }
+    await decompressBrotliIfNeeded(response)
 
     // ── Handle 304 Not Modified ──
     if (response.status === 304 && cachedMeta && cache) {
@@ -492,8 +500,15 @@ async function doFetch(url: string | Request, init: RequestInit, redirectCount: 
         if (body) {
             cachedMeta.storedAt = Math.floor(Date.now() / 1000)
             response.headers.forEach((value: string, name: string) => {
+                const lower = name.toLowerCase()
+                // 304 carries no body: these describe the entity, not the cached body
+                if (lower === 'content-length' || lower === 'content-encoding') return
                 cachedMeta.headers[name] = value
             })
+            // a 304 may carry an updated Cache-Control (server changing the lifetime)
+            const newCc = response.headers.get('cache-control')
+            const newMaxAge = newCc ? parseMaxAge(newCc) : -1
+            if (newMaxAge >= 0) cachedMeta.maxAge = newMaxAge
             const now = String(Math.floor(Date.now() / 1000))
             const iniMeta: Record<string, string> = {
                 url: currentUrl,
@@ -503,21 +518,31 @@ async function doFetch(url: string | Request, init: RequestInit, redirectCount: 
                 status: String(cachedMeta.status),
                 statusText: cachedMeta.statusText,
             }
-            cache.writeMeta(currentUrl, toIni(cachedMeta.headers, iniMeta))
+            cache.write(currentUrl, toIni(cachedMeta.headers, iniMeta))
             const resp = new ResponseImpl(
                 _toReadableStream(new Uint8Array(body)), { status: cachedMeta.status, statusText: cachedMeta.statusText, headers: new HeadersImpl(cachedMeta.headers) }
             )
             resp._url = currentUrl
             return resp
         }
+        // meta 残留但 body 缺失（缓存文件被外部清理/损坏）：作废 meta、去掉条件头无条件重发。
+        // 304 是缓存协商的内部状态，不应暴露给调用方；重发响应继续走下方 200/redirect 常规路径。
+        cache.write(currentUrl, '')
+        req.headers.delete('if-none-match')
+        req.headers.delete('if-modified-since')
+        response = await fetchRequest(req)
+        response._url = currentUrl
+        await decompressBrotliIfNeeded(response)
     }
 
     // ── Cache 200 GET responses ──
     if (cache && method === 'GET' && response.status === 200) {
-        const body = await response.arrayBuffer()
         const cc = response.headers.get('cache-control') || ''
+        // 已知现状：`no-store` 与 `max-age>0` 共存时仍会入库（RFC 9111 要求 no-store 优先）。
+        // 单独的 no-store 无 max-age，因 maxAge=0 天然不缓存；共存组合现实中仅见于叠头/误配置，暂不特判。
         const maxAge = parseMaxAge(cc)
         if (maxAge > 0) {
+            const body = await response.arrayBuffer()
             const resHeaders = Object.fromEntries(response.headers)
             const now = String(Math.floor(Date.now() / 1000))
             const iniMeta: Record<string, string> = {
@@ -528,14 +553,15 @@ async function doFetch(url: string | Request, init: RequestInit, redirectCount: 
                 status: String(response.status),
                 statusText: response.statusText,
             }
-            cache.writeBodyOnly(currentUrl, body)
-            cache.writeMeta(currentUrl, toIni(resHeaders, iniMeta))
+            cache.write(currentUrl, toIni(resHeaders, iniMeta), body)
+            const resp = new ResponseImpl(
+                _toReadableStream(new Uint8Array(body)), { status: response.status, statusText: response.statusText, headers: response.headers }
+            )
+            resp._url = currentUrl
+            return resp
         }
-        const resp = new ResponseImpl(
-            _toReadableStream(new Uint8Array(body)), { status: response.status, statusText: response.statusText, headers: response.headers }
-        )
-        resp._url = currentUrl
-        return resp
+        // 不可缓存（maxAge<=0）：原样返回，保留流式，不做全量缓冲
+        return response
     }
 
     // ── Redirect handling ──
@@ -590,3 +616,55 @@ declare global {
 // ── Register globals ──
 
 globalThis.fetch = fetch
+
+// ── Cache maintenance ──
+
+/**
+ * 清理 HTTP 缓存条目。
+ * - 不传参数：删除全部条目
+ * - 传秒数（seconds）：删除「已过期」（now - storedAt >= maxAge）
+ *   或「超过该时长未访问」的条目
+ * 返回删除的条目数。
+ */
+export function cleanCache(seconds?: number): number {
+    const dir = __httpCache__.dir
+    if (!dir) return 0
+    const [names, err] = os.readdir(dir)
+    if (err !== 0) return 0
+
+    const now = Math.floor(Date.now() / 1000)
+    const selective = seconds !== undefined
+    const cutoff = now - (seconds === undefined ? 0 : seconds)
+    let removed = 0
+
+    for (const name of names) {
+        // readdir yields "." and ".." as well; removing either always fails
+        if (name === '.' || name === '..') continue
+        const isMeta = name.endsWith('.meta')
+        // selective mode judges .meta entries only (a .body without .meta is an
+        // orphan from a crashed write; a full clean removes it too)
+        if (selective && !isMeta) continue
+
+        const path = dir + '/' + name
+        if (selective) {
+            const text = std.loadFile(path)
+            if (text) {
+                const ini = parseIni(text)
+                const storedAt = parseInt(ini.meta.storedAt || '0', 10)
+                const maxAge = parseInt(ini.meta.maxAge || '0', 10)
+                const lastAccess = parseInt(ini.meta.lastAccess || '0', 10)
+                const invalid = !storedAt || !lastAccess
+                const expired = maxAge > 0 && now - storedAt >= maxAge
+                const untouched = lastAccess > 0 && lastAccess < cutoff
+                if (!(invalid || expired || untouched)) continue
+            }
+        }
+
+        os.remove(path)
+        if (isMeta) {
+            os.remove(path.slice(0, -5) + '.body')
+            removed++
+        }
+    }
+    return removed
+}
