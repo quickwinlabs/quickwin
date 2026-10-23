@@ -6,6 +6,7 @@
 #include <commdlg.h>
 #include <winspool.h>
 #include <shobjidl.h>
+#include <iphlpapi.h>
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
 #include <stdio.h>
@@ -181,6 +182,8 @@ static void print_enums(void) {
     DEC(CLIPCHILDREN, WS_CLIPCHILDREN);
     DEC(TABSTOP, WS_TABSTOP);
     DEC(GROUP, WS_GROUP);
+    DEC(LAYERED, WS_EX_LAYERED);
+    DEC(TOOLWINDOW, WS_EX_TOOLWINDOW);
     printf("}\n\n");
 
     ENUM(WmMsg);
@@ -254,6 +257,7 @@ static void print_enums(void) {
     DEC(NCHITTEST, WM_NCHITTEST);
     DEC(NCPAINT, WM_NCPAINT);
     DEC(NCACTIVATE, WM_NCACTIVATE);
+    DEC(COPYDATA, WM_COPYDATA);
     DEC(NCMOUSEMOVE, WM_NCMOUSEMOVE);
     DEC(NCLBUTTONDOWN, WM_NCLBUTTONDOWN);
     DEC(NCLBUTTONUP, WM_NCLBUTTONUP);
@@ -343,6 +347,7 @@ static void print_enums(void) {
 
     ENUM(Spi);
     DEC(GETNONCLIENTMETRICS, SPI_GETNONCLIENTMETRICS);
+    DEC(GETWORKAREA, SPI_GETWORKAREA);
     printf("}\n\n");
 
     ENUM(ButtonStyle);
@@ -480,6 +485,7 @@ static void print_enums(void) {
 
     ENUM(HitTest);
     DEC(CLIENT, HTCLIENT);
+    DEC(CAPTION, HTCAPTION);
     printf("}\n\n");
 
     ENUM(StandardCursor);
@@ -665,6 +671,9 @@ static void print_enums(void) {
     ENUM(DtFlag);
     DEC(GDT_VALID, GDT_VALID);
     DEC(GDT_NONE, GDT_NONE);
+    DEC(SINGLELINE, DT_SINGLELINE);
+    DEC(VCENTER, DT_VCENTER);
+    DEC(NOPREFIX, DT_NOPREFIX);
     printf("}\n\n");
 
     ENUM(TreeViewStyle);
@@ -745,6 +754,7 @@ static void print_enums(void) {
     DEC(USERDATA, GWLP_USERDATA);
     DEC(ID, GWLP_ID);
     DEC(STYLE, GWL_STYLE);
+    DEC(EXSTYLE, GWL_EXSTYLE);
     printf("}\n\n");
 
     ENUM(SysLinkMsg);
@@ -1215,6 +1225,27 @@ static void print_enums(void) {
     DEC_GUID("IID_IUNKNOWN", IID_IUnknown);
     DEC_GUID("IID_ISHELLLINKW", IID_IShellLinkW);
     DEC_GUID("IID_IPERSISTFILE", IID_IPersistFile);
+    printf("}\n\n");
+
+    /* file — CreateFile / 网络接口 */
+    printf("// ── file ──\n\n");
+    ENUM(FileAccess);
+    DEC(GENERIC_READ, GENERIC_READ);
+    DEC(GENERIC_WRITE, GENERIC_WRITE);
+    printf("}\n\n");
+
+    ENUM(FileShare);
+    DEC(READ, FILE_SHARE_READ);
+    DEC(WRITE, FILE_SHARE_WRITE);
+    printf("}\n\n");
+
+    ENUM(FileAttribute);
+    DEC(NORMAL, FILE_ATTRIBUTE_NORMAL);
+    DEC(DIRECTORY, FILE_ATTRIBUTE_DIRECTORY);
+    printf("}\n\n");
+
+    ENUM(IfType);
+    DEC(SOFTWARE_LOOPBACK, IF_TYPE_SOFTWARE_LOOPBACK);
     printf("}\n\n");
 
     /* 失败哨兵：SDK 没有这个"组"，是按"我们已绑的 API 会返回它"聚出来的。
