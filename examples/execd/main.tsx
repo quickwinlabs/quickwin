@@ -391,9 +391,17 @@ function parseShotOpts(params: URLSearchParams): ShotOpts {
 // 主循环阻塞可接受。/exec 才进 worker——外部命令不可控，popen 读循环阻塞无上界。
 // 像素不走分块消息（原 SCREENSHOT_CHUNK 已删）：整块 BMP 在手直接当 Response body。
 
-// —— 截屏：BitBlt → 32bpp 顶向下 → BMP 包装（无压缩）——
-// 行宽：32bpp 下每行 w*4 字节，天然 4 字节对齐，与 BMP 的行填充规则一致，
-// 所以 GetDIBits 拿到的像素可以原样当 BMP 数据体。
+// —— 截屏：BitBlt → 24bpp 顶向下 → BMP 包装（无压缩）——
+// 为什么 24 而不是 32：截图是不透明内容，但 CreateCompatibleBitmap(hdcScreen) 建出的
+// 位图与桌面同宽（常见 32bpp），而 BitBlt/SRCCOPY 对 alpha 通道是未定义行为——实践中
+// 不动它，GetDIBits 就把一段恒 0 的垃圾 alpha 原样带出来。文件里多一个无语义通道，
+// 任何尊重 alpha 的消费方（ImageMagick、PIL、浏览器）都会把它渲成整幅透明（看起来像黑屏；
+// 更坑的是 ImageMagick 的 -alpha remove 把它当预乘处理、除 alpha 除出白噪声）。
+// 改向 GetDIBits 要 24bpp：GDI 自己做 32→24 的剥离（原生，JS 端零开销），文件里根本不存在
+// alpha。代价是要补 24bpp 的行填充计算——32bpp 的 w*4 天然 4 字节对齐，24bpp 的 w*3 不是
+// （如 w=100 → 304），padding 字节由 GDI 一并写进缓冲区，原样落盘正好符合 BMP 规格。
+// 注意：截图是 24bpp，而 lib/bitmap.ts 的 createBitmapFromPixels 是 32bpp（喂 ImageList 的
+// 图标真需要 alpha），两条路径位深不同是有意的。
 const SRCCOPY = 0x00cc0020
 // 单次捕获像素上限（≈160MB 像素缓冲），挡住畸形 rect 造成的巨量分配
 const MAX_CAPTURE_PX = 40000000
@@ -403,20 +411,25 @@ const MAX_WINDOWS = 20000
 // BMP 文件 = 文件头(14B, pack 2) + 信息头(40B) + 像素
 const BMP_HEADERS_SIZE = BITMAPFILEHEADER.size + BITMAPINFOHEADER.size
 
-function bmpHeader(size: number, w: number, h: number): Uint8Array {
+// BMP 行填充：每行 (w*3+3) 取整到 4 的倍数。MSDN 的公式即为此式。
+function biStride(w: number): number {
+    return (w * 3 + 3) & ~3
+}
+
+function bmpHeader(pxBytes: number, w: number, h: number): Uint8Array {
     const fileHdr = BITMAPFILEHEADER.encode({
         bfType: 0x4d42,                              // 'BM'
-        bfSize: BMP_HEADERS_SIZE + size,             // 文件总长 = 头 + 像素
-        bfOffBits: BMP_HEADERS_SIZE,                 // 像素数据偏移
+        bfSize: BMP_HEADERS_SIZE + pxBytes,           // 文件总长 = 头 + 像素（含行填充）
+        bfOffBits: BMP_HEADERS_SIZE,                  // 像素数据偏移
     })
     const infoHdr = BITMAPINFOHEADER.encode({
         biSize: BITMAPINFOHEADER.size,
         biWidth: w,
         biHeight: -h,                                // 负 = 顶向下
         biPlanes: 1,
-        biBitCount: 32,
+        biBitCount: 24,                              // 无 alpha，见上方注释
         biCompression: 0,                            // BI_RGB
-        biSizeImage: size,
+        biSizeImage: biStride(w) * h,
         biXPelsPerMeter: 2835,                       // 72dpi
         biYPelsPerMeter: 2835,
     })
@@ -428,22 +441,24 @@ function bmpHeader(size: number, w: number, h: number): Uint8Array {
 
 /** 取 hdc 当前选中位图的全部像素，拼成完整 BMP。GetDIBits 短读返回 null。 */
 function emitDib(hdc: Ptr<'HDC'>, hbm: Ptr<'HGDIOBJ'>, w: number, h: number): Uint8Array | null {
-    const pxB = new PtrArrayBuffer(w * h * 4)
+    const row = biStride(w)
+    const pxBytes = row * h
+    const pxB = new PtrArrayBuffer(pxBytes)
     const px = new Uint8Array(pxB)
     const bmi = BITMAPINFOHEADER.encode({
         biSize: BITMAPINFOHEADER.size,
         biWidth: w,
         biHeight: -h,           // 负 = 顶向下
         biPlanes: 1,
-        biBitCount: 32,         // biCompression 缺省 0 = BI_RGB
-        biSizeImage: w * h * 4,
+        biBitCount: 24,         // GDI 把桌面 32bpp 位图转成 24bpp（剥 alpha）；biCompression 缺省 0 = BI_RGB
+        biSizeImage: pxBytes,
     })
 
     const got = GetDIBits(hdc, hbm, 0, h, pxB, bmi.ptr, ColorUse.RGB_COLORS)
     if (got !== h) return null
 
-    const out = new Uint8Array(BMP_HEADERS_SIZE + px.byteLength)
-    out.set(bmpHeader(px.byteLength, w, h), 0)
+    const out = new Uint8Array(BMP_HEADERS_SIZE + pxBytes)
+    out.set(bmpHeader(pxBytes, w, h), 0)
     out.set(px, BMP_HEADERS_SIZE)
     return out
 }
