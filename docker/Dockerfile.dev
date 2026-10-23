@@ -1,11 +1,6 @@
 FROM fedora:44
 
-# 阿里云镜像加速（路径: download.example/pub/fedora/linux → mirrors.aliyun.com/fedora，注意无 /linux/ 层级）
-RUN sed -e 's|^metalink=|#metalink=|g' \
-        -e 's|^#baseurl=http://download.example/pub/fedora/linux|baseurl=https://mirrors.aliyun.com/fedora|g' \
-        -i.bak \
-        /etc/yum.repos.d/fedora*.repo && \
-    sed -e 's|^enabled=1|enabled=0|g' \
+RUN sed -e 's|^enabled=1|enabled=0|g' \
         -i /etc/yum.repos.d/fedora-cisco-openh264.repo
 
 RUN dnf install -y \
@@ -25,10 +20,12 @@ RUN dnf install -y \
     qemu-img \
     # QEMU CI tools
     mtools dosfstools genisoimage socat \
-    # Samba (smbd) for QEMU -netdev user,smb=
+    # Samba: run.sh runs its own SMB1 smbd over guestfwd (QEMU's -smb is SMB2/3 only, XP can't connect)
     samba \
     # noVNC for browser-based VNC access to QEMU VMs
     novnc python3-websockify \
+    # ImageMagick: VM 截图 BMP → PNG（/screenshot 端点产物）与裁剪
+    ImageMagick \
     # Utilities
     curl wget zip unzip 7zip python3 dos2unix && \
     dnf clean all

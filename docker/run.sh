@@ -11,7 +11,7 @@ cd "$(dirname "$0")"
 #
 #  用法: ./run.sh <win7|xp|win11|win11core> [--restart] [--stop]
 #    win11     = 标准 tiny11(带 Defender)，默认盘 win11_ready.qcow2;
-#    win11core = 精简 tiny11 core，win11_ready-core.qcow2（先 ./setup-win11.sh core）
+#    win11core = 精简 tiny11 core，win11_ready-core.qcow2（本仓曾自产，assets 未发布该变体）
 #    两者都是 UEFI 引导：普通 OVMF（非 Secure Boot、无 TPM）；盘为 GPT 装的，故必须 pflash。
 #    默认：已在跑则只做健康检查后退出（真常驻）；实际启动时无条件重建
 #          overlay 与 OVMF VARS（不吃旧脏状态，跨 job/会话不残留）
@@ -82,7 +82,7 @@ done
 for c in qemu-system-x86_64 qemu-img socat unix2dos; do
     command -v "$c" >/dev/null || { echo "需要安装: $c"; exit 1; }
 done
-[ -f "$SNAPSHOT" ] || { echo "找不到 snapshot: $SNAPSHOT，请先运行 ./setup-${VM}.sh${SFX:+ ${SFX#-}}"; exit 1; }
+[ -f "$SNAPSHOT" ] || { echo "找不到 snapshot: $SNAPSHOT，请先运行 docker/scripts/fetch-ready.sh ${VM}"; exit 1; }
 [ -e /dev/kvm ] && KVM="-accel kvm"
 
 health() {
@@ -134,9 +134,11 @@ fi
 rm -f $PIDFILE "$LOGFILE"
 
 # ── 创建 overlay（无条件重建：不吃旧脏状态）──
+# -b 用 basename 而非绝对路径：qcow2 按"相对 overlay 所在目录"存 backing 名，
+# 这样宿主建的 overlay 容器内也能打开（反之亦然），qemu-img check 两侧都可用。
 rm -f "$OVERLAY"
 echo "创建 overlay..."
-qemu-img create -f qcow2 -b "$SNAPSHOT" -F qcow2 "$OVERLAY" >/dev/null
+qemu-img create -f qcow2 -b "$(basename "$SNAPSHOT")" -F qcow2 "$OVERLAY" >/dev/null
 
 # ── OVMF VARS（win11，恒重置：不吃旧脏状态）──
 # 4M 固件是 code/vars 分离，必须有可写 VARS；模板本身不带 Secure Boot 密钥。

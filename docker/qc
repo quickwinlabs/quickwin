@@ -1,0 +1,13 @@
+#!/bin/sh
+# qc — QuickWin (C)ontainer：在容器内执行命令（不是 quality check）
+# 宿主只做 git / 编辑 / 文档；构建、测试、QEMU 验证一律经 qc 进容器。
+# 例: ./docker/qc make js
+#     ./docker/qc ./docker/run.sh win7
+#     ./docker/qc ./docker/http_test.sh win7
+#     ./docker/qc bash -c 'make js && cd docker && ./run.sh win7'   # 复合命令包在 -c 里
+# 命令按 argv 原样传给容器内的程序，不走 eval，引号与管道无需转义。
+# 退出码原样透传（容器内 exit 7 → 这里 exit 7）。
+# CI 不用 qc：CI 本身在容器内，直接调 make / run.sh。
+set -eu
+[ "$#" -ge 1 ] || { echo "用法: ./docker/qc <命令...>  例: ./docker/qc make js" >&2; exit 1; }
+podman exec -w /workspace quickwin-dev "$@"
