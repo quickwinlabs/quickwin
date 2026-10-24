@@ -607,8 +607,9 @@ function captureWindow(hwnd: Ptr<'HWND'>, area: 'window' | 'client', mode: 'scre
  *  那样，在「下一个窗口恰好被销毁」时拿到失效句柄，下一轮返回 NULL 把列表悄悄截断。
  *  回调只收集句柄：回调内抛异常会被 closure 吞成返回 0（枚举静默提前结束），所以不在回调里查属性。
  *  快照里的窗口在逐个查询时可能已销毁，GetWindowRect 返回 0 即跳过。
- *  输出顺序是 EnumWindows 的顺序（与 FindWindowEx 链的顺序不同，集合相同；API 未承诺顺序）。 */
-function listWindows(): WindowEntry[] {
+ *  输出顺序是 EnumWindows 的顺序（与 FindWindowEx 链的顺序不同，集合相同；API 未承诺顺序）。
+ *  可选过滤：titleQuery 按标题模糊搜索（不区分大小写），classQuery 按类名精确匹配（区分大小写）。 */
+function listWindows(titleQuery?: string, classQuery?: string): WindowEntry[] {
     const handles: Ptr<'HWND'>[] = []
     const collect = closure('<HWND>ptr <>ptr -> i32', (h) => {
         if (h) handles.push(h)
@@ -636,6 +637,15 @@ function listWindows(): WindowEntry[] {
                 minimized: IsIconic(hwnd) !== 0
             })
         }
+    }
+
+    // 过滤：title 模糊搜索（不区分大小写），class 精确匹配（区分大小写）
+    if (titleQuery) {
+        const q = titleQuery.toLowerCase()
+        return out.filter(w => w.title.toLowerCase().includes(q))
+    }
+    if (classQuery) {
+        return out.filter(w => w.className === classQuery)
     }
     return out
 }
@@ -745,7 +755,8 @@ API（配置 token 后需 Authorization: Bearer <token>，未配置则放行）�
   GET  /screenshot   ?hwnd=<十进制>&area=window|client&mode=screen|print → image/bmp
                      （X-Dimensions；不带 hwnd = 整屏 BitBlt；带 hwnd 默认 mode=print
                      让窗口自绘——遮挡/最小化/超屏也拿完整像素，screen 只截可见部分）
-  GET  /window_list  → JSON 窗口列表 [{hwnd,title,className,...}]
+  GET  /window_list  ?title=<模糊>&class=<精确> → JSON 窗口列表 [{hwnd,title,className,...}]
+                      （title 模糊搜索不区分大小写，class 精确匹配区分大小写）
   GET  /tray_list    → JSON {icons:[{area,index,hWnd,uID,tooltip,rect}]}（跨进程枚举
                       explorer toolbar：可见区 Shell_TrayWnd + 折叠区 NotifyIconOverflowWindow；
                       rect 屏幕物理像素，全 0 → null；折叠面板未展开时 overflow 区 rect
@@ -832,7 +843,10 @@ const server = createServer(async (req) => {
     }
     if (req.method === 'GET' && path === '/window_list') {
         try {
-            const wins = listWindows()
+            const params = new URL(req.url).searchParams
+            const title = params.get('title') ?? undefined
+            const cls = params.get('class') ?? undefined
+            const wins = listWindows(title, cls)
             const resp = new Response(JSON.stringify(wins), { headers: { 'Content-Type': 'application/json' } })
             logReq(t0, 'GET /window_list', 200)
             return resp
