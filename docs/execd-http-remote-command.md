@@ -59,7 +59,7 @@ system32\cmd.exe /u /c <cmd>
 | （任意非 API 路径） | 免 | usage 文本（`HTTP 200`），VM 就绪探测用（`/health` 已非专用端点） |
 | `POST /exec` | 需 | 跑命令，流式输出 + trailer 退出码 |
 | `POST /set_resolution` | 需 | 改分辨率 `?w=&h=&persist=0\|1`，恒带 `modes32` 可用列表 |
-| `GET /window_list` | 需 | 列出顶层窗口 |
+| `GET /window_list` | 需 | 列出顶层窗口 `?title=<模糊>&class=<精确>` |
 | `GET /screenshot` | 需 | 截屏 / 抓指定窗口 |
 
 > 完整端点清单（另有 `/tray_list`、`/input`、`/upload`、`/download` 等）以服务自描述为准：
@@ -105,6 +105,18 @@ curl http://127.0.0.1:8005/window_list \
 [{ "hwnd": 32768, "title": "execd", "className": "QWindow",
    "rect": { "left": 0, "top": 0, "right": 560, "bottom": 420 },
    "visible": true, "minimized": false }]
+```
+
+可选过滤参数：`title=<模糊>` 按标题模糊搜索（不区分大小写），`class=<精确>` 按类名精确匹配（区分大小写）。两者可同时使用，均返回包含匹配项的窗口子集。
+
+```bash
+# 搜索标题包含 "execd" 的窗口
+curl "http://127.0.0.1:8005/window_list?title=execd" \
+  -H 'Authorization: Bearer s3cret'
+
+# 精确匹配类名 "QWindow"
+curl "http://127.0.0.1:8005/window_list?class=QWindow" \
+  -H 'Authorization: Bearer s3cret'
 ```
 
 ### 截图

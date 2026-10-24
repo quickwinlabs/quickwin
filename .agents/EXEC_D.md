@@ -59,7 +59,7 @@
 | （任意非 API 路径） | 免 | usage 文本（`HTTP 200`）——兼就绪探测（`run.sh` 轮询 `/`）；`/health` 已非专用端点 |
 | `POST /exec` | 需 | 跑命令，流式输出 + trailer 退出码 |
 | `POST /set_resolution` | 需 | 改分辨率 `?w=&h=&persist=0\|1`（默认持久），成功/失败恒带 `modes32` 可用列表 |
-| `GET /window_list` | 需 | 列出顶层窗口（由 `/windows` 改名而来，旧名已不存在） |
+| `GET /window_list` | 需 | 列出顶层窗口 `?title=<模糊>&class=<精确>`（由 `/windows` 改名而来，旧名已不存在） |
 | `GET /screenshot` | 需 | 截屏 / 抓指定窗口（BMP + `X-Dimensions`，`?hwnd=&area=window\|client&mode=screen\|print`） |
 | `GET /tray_list` | 需 | 跨进程枚举托盘图标（可见区 + 折叠区；`?probe=<hwnd>&uid=<n>` 单图标定位，Win7+） |
 | `POST /input` | 需 | 批量注入鼠标/键盘事件（JSON 数组） |
