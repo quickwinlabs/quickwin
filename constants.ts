@@ -58,6 +58,34 @@ export const enum TrackPopupMenuFlag {
     RIGHTBUTTON = 2, // 0x2
 }
 
+export const enum MbFlag {
+    OK = 0, // 0x0
+    OKCANCEL = 1, // 0x1
+    ABORTRETRYIGNORE = 2, // 0x2
+    YESNOCANCEL = 3, // 0x3
+    YESNO = 4, // 0x4
+    RETRYCANCEL = 5, // 0x5
+    ICONHAND = 16, // 0x10
+    ICONERROR = 16, // 0x10
+    ICONQUESTION = 32, // 0x20
+    ICONEXCLAMATION = 48, // 0x30
+    ICONWARNING = 48, // 0x30
+    ICONASTERISK = 64, // 0x40
+    ICONINFORMATION = 64, // 0x40
+    TOPMOST = 262144, // 0x40000
+    SETFOREGROUND = 65536, // 0x10000
+}
+
+export const enum MbResult {
+    OK = 1, // 0x1
+    CANCEL = 2, // 0x2
+    ABORT = 3, // 0x3
+    RETRY = 4, // 0x4
+    IGNORE = 5, // 0x5
+    YES = 6, // 0x6
+    NO = 7, // 0x7
+}
+
 export const enum WindowStyle {
     OVERLAPPEDWINDOW = 13565952, // 0xCF0000
     CHILD = 1073741824, // 0x40000000
@@ -1241,6 +1269,8 @@ declare global {
         NotifyIconFlag: NotifyIconFlag
         MenuFlag: MenuFlag
         TrackPopupMenuFlag: TrackPopupMenuFlag
+        MbFlag: MbFlag
+        MbResult: MbResult
         WindowStyle: WindowStyle
         WmMsg: WmMsg
         ScrollBar: ScrollBar

@@ -172,6 +172,37 @@ static void print_enums(void) {
     DEC(RIGHTBUTTON, TPM_RIGHTBUTTON);
     printf("}\n\n");
 
+    /* MessageBox 的 flags 是位掩码（按钮组 | 图标 | TOPMOST…），按 flag 枚举惯例只命名、
+       不标 u32@MbFlag —— 同 CreateWindowExW 的 dwStyle 留裸 u32，让 | 组合可用 */
+    ENUM(MbFlag);
+    DEC(OK, MB_OK);
+    DEC(OKCANCEL, MB_OKCANCEL);
+    DEC(ABORTRETRYIGNORE, MB_ABORTRETRYIGNORE);
+    DEC(YESNOCANCEL, MB_YESNOCANCEL);
+    DEC(YESNO, MB_YESNO);
+    DEC(RETRYCANCEL, MB_RETRYCANCEL);
+    DEC(ICONHAND, MB_ICONHAND);
+    DEC(ICONERROR, MB_ICONERROR);
+    DEC(ICONQUESTION, MB_ICONQUESTION);
+    DEC(ICONEXCLAMATION, MB_ICONEXCLAMATION);
+    DEC(ICONWARNING, MB_ICONWARNING);
+    DEC(ICONASTERISK, MB_ICONASTERISK);
+    DEC(ICONINFORMATION, MB_ICONINFORMATION);
+    DEC(TOPMOST, MB_TOPMOST);
+    DEC(SETFOREGROUND, MB_SETFOREGROUND);
+    printf("}\n\n");
+
+    /* MessageBox 返回值（IDOK..IDNO）：封闭集，命名后调用方不用再手抄 1..7 */
+    ENUM(MbResult);
+    DEC(OK, IDOK);
+    DEC(CANCEL, IDCANCEL);
+    DEC(ABORT, IDABORT);
+    DEC(RETRY, IDRETRY);
+    DEC(IGNORE, IDIGNORE);
+    DEC(YES, IDYES);
+    DEC(NO, IDNO);
+    printf("}\n\n");
+
     ENUM(WindowStyle);
     DEC(OVERLAPPEDWINDOW, WS_OVERLAPPEDWINDOW);
     DEC(CHILD, WS_CHILD);
