@@ -554,13 +554,14 @@ export const ShowScrollBar = /*@__PURE__*/ b('ShowScrollBar', '<HWND>ptr u32 i32
 
 // ============ 对话框 ============
 
-/** 消息框（仅在确实要弹窗时调用；MB_* 常量见 MSDN）
- *  @returns 按钮 ID
+/** 消息框（仅在确实要弹窗时调用）
+ *  @returns 按钮 ID（MbResult）
  *  @param args_0 hWnd 父窗口，可 NULL
  *  @param args_1 lpText 正文 string
  *  @param args_2 lpCaption 标题 string
- *  @param args_3 uType MB_* 样式（MB_OK/MB_YESNO 等） */
-export const MessageBox = /*@__PURE__*/ b('MessageBoxW', '<HWND>ptr <WCHAR>ptr <WCHAR>ptr u32 -> i32')
+ *  @param args_3 uType MbFlag.* 位掩码（按钮组 | 图标 | TOPMOST…）；留裸 u32
+ *                让 | 组合可用，同 CreateWindowExW 的 dwStyle */
+export const MessageBox = /*@__PURE__*/ b('MessageBoxW', '<HWND>ptr <WCHAR>ptr <WCHAR>ptr u32 -> i32@MbResult')
 
 // ============ 图像 ============
 
