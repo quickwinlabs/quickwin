@@ -47,3 +47,14 @@ export const Shell_NotifyIconGetRect = (() => {
  *    szTip 直接给 string（宽字符串糖，最长 127 字符） */
 export const ShellNotifyIcon = /*@__PURE__*/ b('Shell_NotifyIconW',
     'u32 <NOTIFYICONDATAW>ptr -> i32', { NOTIFYICONDATAW })
+
+/** 启动外部程序 / 以管理员身份重开自身（runas 动词会弹 UAC）
+ *  @returns >32 成功；<=32 错误码（0 = OOM，5 = 拒绝访问，SE_ERR_* 等）
+ *  @param args_0 hwnd 父窗口（UAC 弹窗归属；0 = 无父）
+ *  @param args_1 lpOperation 动词："open" / "runas"（提权）/ "print"
+ *  @param args_2 lpFile 可执行文件或文档
+ *  @param args_3 lpParameters 命令行参数（可为 NULL）
+ *  @param args_4 lpDirectory 工作目录（可为 NULL）
+ *  @param args_5 nShowCmd ShowWindowCmd（SW_SHOWNORMAL 等） */
+export const ShellExecute = /*@__PURE__*/ b('ShellExecuteW',
+    '<>ptr <WCHAR>ptr <WCHAR>ptr <WCHAR>ptr <WCHAR>ptr i32 -> <>ptr')
