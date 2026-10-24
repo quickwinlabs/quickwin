@@ -7,6 +7,7 @@
 #include <winspool.h>
 #include <shobjidl.h>
 #include <iphlpapi.h>
+#include <netfw.h>
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
 #include <stdio.h>
@@ -1225,6 +1226,11 @@ static void print_enums(void) {
     DEC_GUID("IID_IUNKNOWN", IID_IUnknown);
     DEC_GUID("IID_ISHELLLINKW", IID_IShellLinkW);
     DEC_GUID("IID_IPERSISTFILE", IID_IPersistFile);
+    DEC_GUID("CLSID_NETFWPOLICY2", CLSID_NetFwPolicy2);
+    DEC_GUID("IID_INETFWPOLICY2", IID_INetFwPolicy2);
+    DEC_GUID("IID_INETFWRULES", IID_INetFwRules);
+    DEC_GUID("IID_INETFWRULE", IID_INetFwRule);
+    DEC_GUID("IID_IENUMVARIANT", IID_IEnumVARIANT);
     printf("}\n\n");
 
     /* file — CreateFile / 网络接口 */
@@ -1246,6 +1252,25 @@ static void print_enums(void) {
 
     ENUM(IfType);
     DEC(SOFTWARE_LOOPBACK, IF_TYPE_SOFTWARE_LOOPBACK);
+    printf("}\n\n");
+
+    /* netfw — Windows 防火墙 COM（INetFwPolicy2）用的 profile / 规则方向 / 动作 */
+    printf("// ── netfw ──\n\n");
+    ENUM(NetFwProfile);
+    DEC(DOMAIN, NET_FW_PROFILE2_DOMAIN);
+    DEC(PRIVATE, NET_FW_PROFILE2_PRIVATE);
+    DEC(PUBLIC, NET_FW_PROFILE2_PUBLIC);
+    DEC(ALL, NET_FW_PROFILE2_ALL);
+    printf("}\n\n");
+
+    ENUM(NetFwRuleDir);
+    DEC(IN, NET_FW_RULE_DIR_IN);
+    DEC(OUT, NET_FW_RULE_DIR_OUT);
+    printf("}\n\n");
+
+    ENUM(NetFwAction);
+    DEC(BLOCK, NET_FW_ACTION_BLOCK);
+    DEC(ALLOW, NET_FW_ACTION_ALLOW);
     printf("}\n\n");
 
     /* 失败哨兵：SDK 没有这个"组"，是按"我们已绑的 API 会返回它"聚出来的。

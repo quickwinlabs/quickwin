@@ -1112,6 +1112,11 @@ export const enum Guid {
     IID_IUNKNOWN = '{00000000-0000-0000-C000-000000000046}',
     IID_ISHELLLINKW = '{000214F9-0000-0000-C000-000000000046}',
     IID_IPERSISTFILE = '{0000010B-0000-0000-C000-000000000046}',
+    CLSID_NETFWPOLICY2 = '{E2B3C97F-6AE1-41AC-817A-F6F92166D7DD}',
+    IID_INETFWPOLICY2 = '{98325047-C671-4174-8D81-DEFCD3F03186}',
+    IID_INETFWRULES = '{9C4C6277-5027-441E-AFAE-CA1F542DA009}',
+    IID_INETFWRULE = '{AF230D27-BABA-4E42-ACED-F524F22CFCE2}',
+    IID_IENUMVARIANT = '{00020404-0000-0000-C000-000000000046}',
 }
 
 // ── file ──
@@ -1133,6 +1138,25 @@ export const enum FileAttribute {
 
 export const enum IfType {
     SOFTWARE_LOOPBACK = 24, // 0x18
+}
+
+// ── netfw ──
+
+export const enum NetFwProfile {
+    DOMAIN = 1, // 0x1
+    PRIVATE = 2, // 0x2
+    PUBLIC = 4, // 0x4
+    ALL = 2147483647, // 0x7FFFFFFF
+}
+
+export const enum NetFwRuleDir {
+    IN = 1, // 0x1
+    OUT = 2, // 0x2
+}
+
+export const enum NetFwAction {
+    BLOCK = 0, // 0x0
+    ALLOW = 1, // 0x1
 }
 
 // ── 失败哨兵 ──
@@ -1330,6 +1354,9 @@ declare global {
         FileShare: FileShare
         FileAttribute: FileAttribute
         IfType: IfType
+        NetFwProfile: NetFwProfile
+        NetFwRuleDir: NetFwRuleDir
+        NetFwAction: NetFwAction
         Sentinel: Sentinel
         AddrFamily: AddrFamily
         SockType: SockType
