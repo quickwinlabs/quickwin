@@ -69,7 +69,7 @@ make test              # 全量（含外网，慢）
 
 ```
 _build/
-  obj/{x64,ia32}-{cross,native}/    # .o .d libquickjs.a
+  obj/{x64,ia32}-{cross,native}-{fast,small,debug}[-nowasm]/  # .o .d libquickjs.a
   deps/{x64,ia32}-{cross,native}/   # libiwasm.a libwolfssl.a libbrotli*.a + cmake build/
   version.h                         # 由 package.json 生成
   gen_const.exe · *.exe

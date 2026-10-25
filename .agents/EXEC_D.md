@@ -40,13 +40,9 @@
 内嵌 JS 与最终 `execd.exe`（x86，与上表同一份构建）：内嵌 JS（brotli quality 11）143,638 B、
 最终 `execd.exe` **1,408,812 B**。
 
-> ⚠️ flavor 存疑：Makefile 里 `BUILD ?= fast`（默认 fast），而本节沿用旧记的 `BUILD=small` 标签。
-> `_build/obj/` 只有 `ia32-cross` / `x64-cross[-nowasm]` 这类交叉变体名，**不含 flavor 标记**，
-> 无法从产物反推。下次测体积请显式 `BUILD=small make execd` 并记录，避免"flavor 汤"。
-
-> 对比必须在**同一 BUILD flavor** 下做。make 只按源码时间戳判断 `.o` 是否过期，**换 BUILD 不会重编**，
-> 本地 `_build/obj/*` 很容易混着不同 flavor 的对象（"flavor 汤"），拿它比体积会得出**相反**结论。
-> 跨 flavor 时先 `rm -rf _build/obj/<variant>` 再编。
+> 体积对比必须在**同一 BUILD flavor** 下做。`OBJ_DIR` 现在带 flavor 标记
+> （`_build/obj/x64-cross-small[-nowasm]` 之类），换 BUILD 不会再静默复用旧 `.o`；
+> 但产物文件名不带 flavor，记录数据时请注明用的是哪一个。
 
 ---
 

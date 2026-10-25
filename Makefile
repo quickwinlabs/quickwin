@@ -137,8 +137,10 @@ NPM_PKG_DIR = dist/quickwin
 TYPES_DIR = $(BUILD_DIR)/types
 # nowasm 与 wasm 的 CFLAGS 不同（-DNO_WASM），.o 必须分目录，
 # 否则 cc64 先编出的 main.o 仍引用 js_init_module_wamr，nowasm 链接必挂。
-# deps（wolfssl/brotli/ffi）不依赖 NO_WASM，继续共享 VARIANT 目录。
-OBJ_DIR = $(BUILD_DIR)/obj/$(VARIANT)$(if $(filter 1,$(NO_WASM)),-nowasm)
+# BUILD flavor 同样改 CFLAGS（-Os/-flto、-g/-O0/-DDEBUG），而 .o 规则只看源文件
+# 时间戳——不分目录时换 flavor 会静默复用旧 .o，发行版就可能不是 LTO 构建。
+# deps（wolfssl/brotli/ffi）不依赖 NO_WASM 与 BUILD，继续共享 VARIANT 目录。
+OBJ_DIR = $(BUILD_DIR)/obj/$(VARIANT)-$(BUILD)$(if $(filter 1,$(NO_WASM)),-nowasm)
 QUICKJS_LIB = $(OBJ_DIR)/libquickjs.a
 VERSION_H = $(BUILD_DIR)/version.h
 
@@ -497,7 +499,7 @@ help:
 	@echo "  make cc32                     - cross ia32 -> $(BUILD_DIR)/$(TARGET_NAME_32)"
 	@echo "  make cc64-nowasm / cc32-nowasm - 同上但无 WASM/WAMR"
 	@echo "  中间产物全部在 $(BUILD_DIR)/ 下，按 arch 隔离："
-	@echo "    $(BUILD_DIR)/obj/{x64,ia32}-{cross,native}[-nowasm]/   .o .d libquickjs.a"
+	@echo "    $(BUILD_DIR)/obj/{x64,ia32}-{cross,native}-{fast,small,debug}[-nowasm]/   .o .d libquickjs.a"
 	@echo "    $(BUILD_DIR)/deps/{x64,ia32}-{cross,native}/  静态库 + cmake build（nowasm 共享）"
 	@echo "    切 32/64 无需手动清 deps；make clean 清掉全部中间产物"
 	@echo "  test      - Run suites: make test / make test TEST=wasm / make test TEST=-net"
