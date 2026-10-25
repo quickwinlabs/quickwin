@@ -1,6 +1,6 @@
 # 事件循环
 
-QuickWin 的所有异步事件——GUI 消息、socket、stdin、worker 消息、async task、定时器——全部由**一个函数**等待和派发：
+QuickWin 的所有异步事件——GUI 消息、socket、stdin、worker 消息、定时器——全部由**一个函数**等待和派发：
 
 ```
 src/quickjs-libc.c   js_os_poll()
@@ -18,7 +18,6 @@ JS runtime 每次回到这个函数，做一次等待，派发**一个**事件�
 | socket | 每个 socket 一个 `WSAEVENT`，由 `js_sock_collect_handles` 收集 |
 | stdin | `fd == 0` 的 rw handler，`_get_osfhandle(0)` |
 | worker 消息 | 每个端口一个事件，`port->recv_pipe->waker.handle` |
-| async task | 全局单个事件，`js_async_task_get_event()` |
 | 定时器 | 折算成 `timeout` 传给等待调用 |
 
 等待调用：
@@ -54,7 +53,7 @@ ret = MsgWaitForMultipleObjects(count, handles, FALSE, timeout,
 
 ```text
 if (os_rw_handlers 空 && os_timers 空 && port_list 空
-    && socket 槽数 == 0 && async task 槽数 == 0)
+    && socket 槽数 == 0)
 ```
 
 （实际源码是一条 `list_empty(...)` 连写，此处为伪代码便于阅读。）
@@ -78,8 +77,7 @@ HANDLE handles[MAXIMUM_WAIT_OBJECTS];   // 64
 1  socket          js_sock_collect_handles 先跑，一次把所有连着的 socket 收进来
 2  stdin           fd == 0
 3  worker 端口     每个端口一个
-4  async task      全局一个
-5  GUI 消息        0（走 QS_ALLINPUT，不占槽位）
+4  GUI 消息        0（走 QS_ALLINPUT，不占槽位）
 ```
 
 **超出不会报错，而且先收集的会占满后来的**。计数处的写法是：
@@ -94,7 +92,7 @@ if (s->fd >= 0 && *count < max) {
 `*count == max` 时直接跳过，后面几个 `list_for_each` 也会在满员时 break。两个方向的后果：
 
 - **socket 侧**：槽位耗尽后，后续连接不进等待集——请求不被处理、零日志，客户端表现为超时，服务端看起来一切正常
-- **反方向更隐蔽**：socket 先收集，所以当开放连接接近上限时，**stdin、worker 消息、async task 一个都进不了等待集**——控制台读不到输入，worker 之间不再通信，只剩定时器还能唤醒
+- **反方向更隐蔽**：socket 先收集，所以当开放连接接近上限时，**stdin、worker 消息一个都进不了等待集**——控制台读不到输入，worker 之间不再通信，只剩定时器还能唤醒
 
 需要更多并发时，限制连接数或用 worker 分担（每个 worker 有自己的循环和 64 槽位）。
 
@@ -104,7 +102,7 @@ if (s->fd >= 0 && *count < max) {
 
 | 路径 | 异常处理 |
 |---|---|
-| 定时器、stdin、worker 消息、async task | 经 `call_handler` → `js_std_dump_error` 打印 |
+| 定时器、stdin、worker 消息 | 经 `call_handler` → `js_std_dump_error` 打印 |
 | 窗口过程 | `showError` 打印 |
 | **socket** | `JS_GetException` 后直接 `JS_FreeValue` **丢弃** |
 

@@ -4,7 +4,6 @@
 #include "quickjs.h"
 #include "list.h"
 #include "quickjs-sock.h"
-#include "quickjs-async-task.h"
 
 typedef struct JSWorkerMessagePipe JSWorkerMessagePipe;
 
@@ -19,7 +18,6 @@ typedef struct JSThreadState {
     /* not used in the main thread */
     JSWorkerMessagePipe *recv_pipe, *send_pipe;
     SockState sock;       /* per-runtime sock slots (no global table) */
-    AsyncTaskState async_task; /* per-runtime async task slots */
 } JSThreadState;
 
 #endif

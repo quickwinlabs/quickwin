@@ -44,7 +44,6 @@
 #include <utime.h>
 #include "quickjs-http.h"
 #include "quickjs-sock.h"
-#include "quickjs-async-task.h"
 #include "version.h"
 
 int loop_debug = 0;
@@ -2498,15 +2497,14 @@ static int js_os_poll(JSContext *ctx)
 
     /* XXX: handle signals if useful */
 
-    loop_log("[loop] enter: rw=%d timers=%d ports=%d socks=%d async=%d main=%d",
+    loop_log("[loop] enter: rw=%d timers=%d ports=%d socks=%d main=%d",
              !list_empty(&ts->os_rw_handlers), !list_empty(&ts->os_timers),
              !list_empty(&ts->port_list), js_sock_slot_count(rt),
-             js_async_task_slot_count(rt), main_thread);
+             main_thread);
 
     /* check if there are any events to wait for */
     if (list_empty(&ts->os_rw_handlers) && list_empty(&ts->os_timers) &&
-        list_empty(&ts->port_list) && js_sock_slot_count(rt) == 0 &&
-        js_async_task_slot_count(rt) == 0) {
+        list_empty(&ts->port_list) && js_sock_slot_count(rt) == 0) {
         if (!main_thread) {
             loop_log("[loop] no events — worker exiting");
             return -1; /* worker thread: no more events */
@@ -2562,13 +2560,6 @@ static int js_os_poll(JSContext *ctx)
         handles[count++] = port->recv_pipe->waker.handle;
         if (count == (int)countof(handles))
             break;
-    }
-
-    /* async task event */
-    if (js_async_task_slot_count(rt) > 0) {
-        HANDLE async_ev = js_async_task_get_event(rt);
-        if (async_ev && count < (int)countof(handles))
-            handles[count++] = async_ev;
     }
 
     /* wait for events */
@@ -2629,15 +2620,6 @@ static int js_os_poll(JSContext *ctx)
                     handle_posted_message(rt, ctx, port);
                     return 0;
                 }
-            }
-        }
-        /* async task completion */
-        {
-            HANDLE async_ev = js_async_task_get_event(rt);
-            if (async_ev && triggered_handle == async_ev) {
-                loop_log("[loop] async task done");
-                js_async_task_process(ctx);
-                return 0;
             }
         }
     } else if (ret == WAIT_OBJECT_0 + count) {

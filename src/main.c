@@ -17,7 +17,6 @@
 #ifndef NO_WASM
 #include "quickjs-wamr.h"
 #endif
-#include "quickjs-async-task.h"
 
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
@@ -132,7 +131,6 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
 
 static void JS_FreeCustomRuntime(JSRuntime *rt)
 {
-    js_async_task_destroy(rt);
     js_sock_free_handles(rt);
     js_sock_remove_runtime(rt);
 #ifndef NO_WASM
@@ -248,17 +246,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     js_std_set_worker_new_context_func(JS_NewCustomContext);
     js_std_set_worker_free_rt_func(JS_FreeCustomRuntime);
     js_std_init_handlers(rt);
-    js_async_task_init(rt);
     JS_SetModuleLoaderFunc2(rt, js_module_normalize_name, js_module_loader, NULL, NULL);
     // JS_SetModuleLoaderFunc2(rt, NULL, js_module_loader, NULL, NULL);
     JSContext *ctx = JS_NewCustomContext(rt);
     g_ctx = ctx;
 
     js_init_module_gui(ctx);
-
-#if QW_ASYNC_TASK_DEMO
-    js_async_task_demo_install(ctx);
-#endif
 
     js_std_add_helpers(ctx, cmd_argc - i, cmd_argv + i);
 

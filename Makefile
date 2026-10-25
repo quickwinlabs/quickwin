@@ -55,12 +55,6 @@ CFLAGS += -I$(BUILD_DIR)
 CFLAGS += -DDUMP_GC -DDUMP_LEAKS
 CFLAGS += -Wall -Wextra
 
-# `make ASYNC_DEMO=1` exposes test-only builtins (globalThis.fibAsync)
-ASYNC_DEMO ?= 0
-ifeq ($(ASYNC_DEMO),1)
-    CFLAGS += -DQW_ASYNC_TASK_DEMO=1
-endif
-
 WAMR_DIR = deps/wamr
 WAMR_CORE = $(WAMR_DIR)/core/iwasm
 WAMR_TARGET ?= X86_64
@@ -157,8 +151,7 @@ SRCS = $(addprefix src/, \
        quickjs-sock.c \
        quickjs-wolfssl.c \
        quickjs-http.c \
-       quickjs-libc.c \
-       quickjs-async-task.c)
+       quickjs-libc.c)
 
 
 ifeq ($(NO_WASM), 0)
