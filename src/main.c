@@ -22,9 +22,10 @@
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
 
-static void showError(JSContext *ctx, const char *err_str)
+static void showError(JSContext *ctx, const char *err_str, const char *stack)
 {
     printf("JS Error: %s\n", err_str);
+    if (stack) printf("%s", stack);
     fflush(stdout);
     int len = MultiByteToWideChar(CP_UTF8, 0, err_str, -1, NULL, 0);
     wchar_t *werr = malloc(len * sizeof(wchar_t));
@@ -308,7 +309,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     {
         JSValue err = JS_GetException(ctx);
         const char *err_str = JS_ToCString(ctx, err);
-        showError(ctx, err_str);
+        JSValue st = JS_GetPropertyStr(ctx, err, "stack");
+        const char *st_str = JS_IsString(st) ? JS_ToCString(ctx, st) : NULL;
+        showError(ctx, err_str, st_str);
+        if (st_str) JS_FreeCString(ctx, st_str);
+        JS_FreeValue(ctx, st);
         JS_FreeCString(ctx, err_str);
         JS_FreeValue(ctx, err);
         JS_FreeValue(ctx, result);
