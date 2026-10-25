@@ -71,11 +71,8 @@ quickwin script.js --flag           # 槽位之后的参数全部传给脚本
 # 内嵌一个脚本
 node scripts/embed-js.mjs --exe _build/qwin.exe --js script.js
 
-# 或通过 make
-make embed-js JS_EMBED=script.js
-
 # 内嵌 Brotli 压缩的脚本（exe 更小，运行时解压）
-make embed-js-br JS_EMBED=script.js
+node scripts/embed-js.mjs --exe _build/qwin.exe --js script.js --compress
 
 # 打包 examples/execd/main.tsx 并 brotli 内嵌进 execd.exe
 make execd
@@ -198,7 +195,6 @@ podman exec quickwin-dev bash -lc 'cd /workspace && make js && make cc64 && make
 | `make test TEST=-net` | 跳过网络测试（快速） |
 | `make test TEST=wasm` | 仅运行 WASM 测试 |
 | `make execd` | 打包 `examples/execd/main.tsx` 并 Brotli 内嵌进 `_build/execd.exe` |
-| `make embed-js` / `embed-js-br` | 把 JS（Brotli 压缩）内嵌进 exe |
 | `make npm-pkg` | 打包到 `dist/quickwin/` |
 | `make gen-const` | 重新生成 `constants.ts`（在 VM 里跑 `_build/gen_const.exe`） |
 | `make clean` / `distclean` | 清理（会清掉整个 `_build/`，之后需 `make js wasm`） |

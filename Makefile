@@ -37,7 +37,6 @@ MSYS2_PREFIX ?= $(SYSROOT64)
 # flavor: fast（默认，开发快编）| small（发行，-Os+LTO 小体积）| debug（排错）
 BUILD ?= fast
 BUILD_DIR = _build
-JS_EMBED ?= embed.js
 
 ifeq ($(BUILD), debug)
     CFLAGS = -I./deps/quickjs -I$(MSYS2_PREFIX)/include -g -O0 -DDEBUG
@@ -174,7 +173,7 @@ OBJS = $(SRCS:%.c=$(OBJ_DIR)/%.o) $(ASM_SRCS:%.S=$(OBJ_DIR)/%.o) $(OBJ_DIR)/app.
 DEPS = $(SRCS:%.c=$(OBJ_DIR)/%.d)
 
 .PHONY: cc64 cc32 cc64-nowasm cc32-nowasm apply-submodule-patches \
-        gen-const wamr wasm js test npm-pkg execd execd-full embed-js embed-js-br info help clean distclean
+        gen-const wamr wasm js test npm-pkg execd info help clean distclean
 
 .DEFAULT_GOAL := cc64
 
@@ -419,7 +418,7 @@ info:
 	@echo "  BUILD     = $(BUILD)"
 	@echo "  NO_WASM   = $(NO_WASM)"
 
-js:
+js: wasm
 	@echo "Compiling TypeScript files to JavaScript using tsc..."
 	@npx tsc --project tsconfig.json
 	@mkdir -p $(BUILD_DIR)/lib/vendor/web-streams && cp lib/vendor/web-streams/ponyfill.mjs $(BUILD_DIR)/lib/vendor/web-streams/
@@ -471,25 +470,6 @@ execd: js
 	node scripts/embed-js.mjs --exe $(BUILD_DIR)/execd.exe \
 	  --js $(BUILD_DIR)/examples/execd/main.js --compress
 
-# 含 WAMR 的完整底座版本（保留：execd 若将来要跑 wasm 用这个）
-execd-full: js
-	@if [ ! -f $(BUILD_DIR)/$(TARGET_NAME_32) ] && [ ! -f $(BUILD_DIR)/$(TARGET_NAME) ]; then \
-		$(MAKE) cc32; \
-	fi
-	@if [ -f $(BUILD_DIR)/$(TARGET_NAME_32) ]; then \
-		cp $(BUILD_DIR)/$(TARGET_NAME_32) $(BUILD_DIR)/execd.exe; \
-	else \
-		cp $(BUILD_DIR)/$(TARGET_NAME) $(BUILD_DIR)/execd.exe; \
-	fi
-	node scripts/embed-js.mjs --exe $(BUILD_DIR)/execd.exe \
-	  --js $(BUILD_DIR)/examples/execd/main.js --compress
-
-embed-js: cc64
-	node scripts/embed-js.mjs --exe $(TARGET) --js $(JS_EMBED)
-
-embed-js-br: cc64
-	node scripts/embed-js.mjs --exe $(TARGET) --js $(JS_EMBED) --compress
-
 help:
 	@echo "Available targets:"
 	@echo "  BUILD=fast(默认)|small|debug 可用于所有构建 target："
@@ -509,9 +489,6 @@ help:
 	@echo "  gen-const - Cross-compile tools/gen_const.exe -> $(BUILD_DIR)/gen_const.exe"
 	@echo "  wamr      - Build WAMR static library (auto-built on demand)"
 	@echo "  execd      - examples/execd/main.tsx -> execd.exe（nowasm 底座，无 WAMR，省 297KB x86 / 262KB x64）"
-	@echo "  execd-full - 同上，但用含 WAMR 的完整底座"
-	@echo "  embed-js  - Embed JS_EMBED into exe: make embed-js JS_EMBED=script.js"
-	@echo "  embed-js-br - Embed brotli-compressed JS into exe"
 	@echo "  clean     - Remove $(BUILD_DIR)/ (all intermediates)"
 	@echo "  info      - Show build configuration"
 	@echo "  help      - Show this help message"

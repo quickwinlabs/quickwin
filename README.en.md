@@ -73,11 +73,8 @@ You can embed a JS script directly into the `qwin.exe` binary — no recompilati
 # Embed a script
 node scripts/embed-js.mjs --exe _build/qwin.exe --js script.js
 
-# Or via make
-make embed-js JS_EMBED=script.js
-
 # Embed a script brotli-compressed (smaller exe, decompressed at runtime)
-make embed-js-br JS_EMBED=script.js
+node scripts/embed-js.mjs --exe _build/qwin.exe --js script.js --compress
 
 # Bundle examples/execd/main.tsx and brotli-embed into execd.exe
 make execd
@@ -201,7 +198,6 @@ that build run `make test TEST=-wasm` to skip WASM tests.
 | `make test TEST=-net` | skip network tests (fast) |
 | `make test TEST=wasm` | run WASM tests only |
 | `make execd` | bundle `examples/execd/main.tsx` and brotli-embed into `_build/execd.exe` |
-| `make embed-js` / `embed-js-br` | embed JS (brotli-compressed) into exe |
 | `make npm-pkg` | package into `dist/quickwin/` |
 | `make gen-const` | regenerate `constants.ts` (run `_build/gen_const.exe` in the VM) |
 | `make clean` / `distclean` | clean (wipes all of `_build/`; afterwards run `make js wasm`) |
