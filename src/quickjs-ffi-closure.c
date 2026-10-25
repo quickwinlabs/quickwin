@@ -29,6 +29,7 @@
 #include <string.h>
 #include <windows.h>
 #include "quickjs.h"
+#include "quickjs-libc.h"
 #include "quickjs-ffi-closure.h"
 
 #define CLOSURE_BLOCK_SIZE 128
@@ -90,9 +91,8 @@ static void invoke_closure_js(uint8_t *blk, const uint8_t *data, size_t size, ui
     JSValue r = JS_Call(ctx, wrapper, JS_UNDEFINED, 2, argv);
     if (JS_IsException(r)) {
         /* wrapper 内部应已 try/catch 用户回调；走到这里多半是 wrapper 自身崩，
-           吞掉异常继续，结果槽保持 0 */
-        JSValue ex = JS_GetException(ctx);
-        JS_FreeValue(ctx, ex);
+           留痕后继续，结果槽保持 0 */
+        js_std_dump_error(ctx);
         memset(out, 0, 8);
     } else {
         JS_FreeValue(ctx, r);
