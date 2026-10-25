@@ -83,7 +83,10 @@ UNC exe path 为既有失败）→ **Defender 全开不干扰正常 exe 与测�
   而 `.LOG1` 只在装机 PE 期间存在），且运行期 execd 是 32 位——WOW64 把 `C:\Windows\System32\config` 重定向到
   `SysWOW64\config`（访问真 hive 要走 `Sysnative`）。要验它的效果只能看装机 PE 的 `deftweak-pe.log`。
 - **guest 里起后台任务别用 `start "" /min <script>`**：孙进程持有 execd 的管道写端 → `/exec` 不返回
-  （机制见 `.agents/CONSOLE_STDOUT_MECHANISM.md` §7.6）。用 `... > C:\qwtmp\x.log 2>&1` 或 `Start-Process -RedirectStandardOutput <file>`。
+  （机制见 `.agents/CONSOLE_STDOUT_MECHANISM.md` §7.6）。正解是 `POST /spawn`（脱离请求树，不建管道、
+  `bInheritHandles=0`，见 `.agents/EXEC_D.md`）；必须走 `/exec` 时才 `... > C:\qwtmp\x.log 2>&1`
+  或 `Start-Process -RedirectStandardOutput <file>` —— 注意重定向只是让 cmd 不必替子进程等管道，
+  **对常驻子进程照样挂**，它只在该命令的进程树会自己跑完的前提下有效。
 
 ## 6. 验证入口
 

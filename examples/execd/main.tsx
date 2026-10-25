@@ -14,10 +14,10 @@ import {
 import {
     BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, SelectObject,
 } from '../../lib/windows/gdi32.js'
-import { BITMAPFILEHEADER, BITMAPINFOHEADER, DEVMODEW, INPUT, POINT, RECT } from '../../lib/windows/structs.js'
-import { GetLastError, MoveFileEx } from '../../lib/windows/kernel32.js'
+import { BITMAPFILEHEADER, BITMAPINFOHEADER, DEVMODEW, INPUT, POINT, PROCESS_INFORMATION, RECT, STARTUPINFOW } from '../../lib/windows/structs.js'
+import { CloseHandle, CreateProcess, GetLastError, GetSystemDirectory, MoveFileEx } from '../../lib/windows/kernel32.js'
 import { listTrayIcons, probeTrayIcon } from './tray.js'
-import { ChangeDisplayFlag, ColorUse, DisplayModeField, DisplayChangeResult, EnumDisplaySetting, MoveFileFlag, ShowWindowCmd, SysMetrics, WindowStyle } from '../../constants'
+import { ChangeDisplayFlag, ColorUse, DisplayModeField, DisplayChangeResult, EnumDisplaySetting, MoveFileFlag, ProcessCreationFlag, ShowWindowCmd, SysMetrics, WindowStyle } from '../../constants'
 
 // WORKER_DATA_URL 由 esbuild --define 在 build.ts 中注入（base64 data: URL）
 declare const WORKER_DATA_URL: string
@@ -340,6 +340,38 @@ function runInWorker(cmd: string, signal: AbortSignal | null, timeoutMs: number 
     }
 
     return { stream, ready, trailers, kill }
+}
+
+// ── /spawn：脱离请求树的后台进程 ──
+// /exec 的响应体就是那根管道：worker 用可继承写端 + bInheritHandles=TRUE 起子进程，
+// 树里任何一个还活着的进程都握着写端 → EOF 永不触发 → 响应永不结束（拉常驻 GUI 程序的
+// 典型症状：curl 只能一直挂着）。/spawn 反着做——不建管道、bInheritHandles=FALSE、
+// CREATE_NO_WINDOW：子进程既不继承 execd 的任何句柄（管道 / 监听套接字都不漏），
+// 也不受本请求的 timeout / 断连牵连，请求毫秒级返回。
+// 主进程同步直做（与 /set_resolution、/input 同列）：单次 CreateProcess，无阻塞。
+// 两条代价写进 USAGE：① 拿不到 stdout（要输出让程序自己写文件，如 qwin -o <file>）；
+// ② 不随请求收尾 —— 返回的 pid 是 cmd.exe（树根），用 /exec taskkill /F /T /PID <pid> 收口。
+// 恒包 cmd.exe /u /c，与 /exec 同一套 shell 语义：任意 /exec 命令都能原样后台化。
+let sysDir = 'C:\\Windows\\System32'
+try {
+    // 裸 "cmd.exe" 时 CreateProcess 的 PATH 解析在本环境失败（err 267 / 123），须全路径
+    const out = WCHAR.alloc(256)
+    const n = GetSystemDirectory(out, 256)
+    const s = n > 0 ? WCHAR.decode(out) : ''
+    if (s) sysDir = s
+} catch { /* 回落 System32 默认值 */ }
+
+function spawnDetached(cmd: string, cwd: string | null): number {
+    const pi = PROCESS_INFORMATION.alloc()
+    const cmdline = sysDir + '\\cmd.exe /u /c ' + cmd
+    if (!CreateProcess(NULL, cmdline, NULL, NULL, 0, ProcessCreationFlag.NO_WINDOW, NULL,
+            cwd ?? NULL, { cb: STARTUPINFOW.size }, pi.ptr)) {
+        throw new Error('spawn: CreateProcess err=' + GetLastError() + ' cmd=' + cmdline)
+    }
+    const { hProcess, hThread, dwProcessId } = PROCESS_INFORMATION.decode(pi)
+    CloseHandle(hThread)
+    CloseHandle(hProcess)   // 关句柄不杀进程；此后 execd 不再持有它，断连也无从下手
+    return dwProcessId
 }
 
 interface WindowEntry {
@@ -752,6 +784,16 @@ const USAGE = `quickwin execd —— 本页即用法（API 之外任意路径均
 
 API（配置 token 后需 Authorization: Bearer <token>，未配置则放行）：
   POST /exec         JSON {"cmd":"命令","timeout":毫秒?} → 流式输出，Trailer X-Exit-Code
+  POST /spawn        JSON {"cmd":"命令","cwd":"Z:\\x"?} → 200 {"pid":<cmd.exe 的 pid>}(后台进程)
+                      脱离请求树：不建管道、bInheritHandles=0、CREATE_NO_WINDOW，/exec 那套
+                      「响应体=管道、树里任一活进程握着写端 → 永不 EOF」的死结不适用——
+                      请求毫秒级返回，也不受本请求 timeout / 断连牵连。
+                      pid 是 cmd.exe(树根)，停止用 /exec 跑 taskkill /F /T /PID <pid>。
+                      代价：无 stdout / 退出码——要输出就在命令里自己重定向
+                      (... > C:\\qwtmp\\a.log 2>&1，cmd 解析；/u 只影响 cmd 内建命令的编码，
+                      外部程序仍写各自原生编码，实测 Win7 上 ping 落盘 GBK)，或让程序自己
+                      写文件(qwin -o <file>)；也不随请求收尾(要手动收，或 ./run.sh --restart
+                      重建 overlay 一并清掉)
   GET  /screenshot   ?hwnd=<十进制>&area=window|client&mode=screen|print → image/bmp
                      （X-Dimensions；不带 hwnd = 整屏 BitBlt；带 hwnd 默认 mode=print
                      让窗口自绘——遮挡/最小化/超屏也拿完整像素，screen 只截可见部分）
@@ -833,7 +875,7 @@ function mkdirParents(dest: string): void {
 const server = createServer(async (req) => {
     const t0 = Date.now()
     const path = new URL(req.url).pathname
-    const isApi = (req.method === 'POST' && (path === '/exec' || path === '/set_resolution' || path === '/input' || path === '/upload')) ||
+    const isApi = (req.method === 'POST' && (path === '/exec' || path === '/spawn' || path === '/set_resolution' || path === '/input' || path === '/upload')) ||
         (req.method === 'GET' && (path === '/window_list' || path === '/screenshot' || path === '/tray_list' || path === '/download'))
     if (!isApi) return usageResponse()
     const denied = authCheck(req)
@@ -1017,6 +1059,38 @@ const server = createServer(async (req) => {
         logReq(t0, 'POST /input ' + raw.length + 'ev', 200,
             sent < expected ? 'sent ' + sent + '/' + expected : undefined)
         return new Response(JSON.stringify({ sent, expected }), { headers: { 'Content-Type': 'application/json' } })
+    }
+    // /spawn：后台进程（为何不用 /exec 起，见 spawnDetached 上方注释）。主进程同步直做——
+    // 单次 CreateProcess，毫秒级，与 /set_resolution、/input 同列；不进 worker（worker 只
+    // 隔离 /exec 的长 popen）。参数非法 → 400；CreateProcess 失败（路径错 / 无权限 / 位数
+    // 不符）→ 500 带 errno 与完整 cmdline，便于定位。
+    if (req.method === 'POST' && path === '/spawn') {
+        const bad = (msg: string): Response => {
+            logReq(t0, 'POST /spawn', 400, msg)
+            return jsonError(400, msg)
+        }
+        let body: { cmd?: unknown; cwd?: unknown }
+        try {
+            body = await req.json() as { cmd?: unknown; cwd?: unknown }
+        } catch {
+            return bad('bad json body')
+        }
+        if (typeof body.cmd !== 'string' || body.cmd.length === 0) {
+            return bad('cmd must be a non-empty string')
+        }
+        let cwd: string | null = null
+        if (body.cwd !== undefined && body.cwd !== null) {
+            if (typeof body.cwd !== 'string') return bad('cwd must be a string (or omit)')
+            cwd = body.cwd
+        }
+        try {
+            const pid = spawnDetached(body.cmd, cwd)
+            logReq(t0, 'POST /spawn pid=' + pid, 200)
+            return new Response(JSON.stringify({ pid }), { headers: { 'Content-Type': 'application/json' } })
+        } catch (ex) {
+            logReq(t0, 'POST /spawn', 500, String(ex))
+            return jsonError(500, String(ex))
+        }
     }
     if (req.method === 'POST' && path === '/exec') {
         let out: ExecHandle

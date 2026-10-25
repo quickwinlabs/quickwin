@@ -25,7 +25,7 @@ system32\cmd.exe /u /c <cmd>
 
 ### 设计要点
 
-**`/exec` 一请求 = 一个 worker = 一棵进程树。** 每请求起一个独立 worker，用 `CreateProcessW` + `CreatePipe` 拉起子进程。互不影响，上一条崩了不拖累下一条。`/screenshot`、`/window_list`、`/set_resolution`、`/tray_list`、`/input`、`/upload`、`/download` 是内置端点，主进程同步直跑，不起 worker。
+**`/exec` 一请求 = 一个 worker = 一棵进程树。** 每请求起一个独立 worker，用 `CreateProcessW` + `CreatePipe` 拉起子进程。互不影响，上一条崩了不拖累下一条。`/screenshot`、`/window_list`、`/set_resolution`、`/tray_list`、`/input`、`/upload`、`/download`、`/spawn` 是内置端点，主进程同步直跑，不起 worker。
 
 **用 cmd.exe 而不是 `CreateProcessW` 直接跑目标程序**，是为了保留 cmd 语义——内部命令（`dir`、`ver`）、管道重定向、`for` 循环都能原样用。恒加 `/u`：cmd 内置命令的输出直接走 UTF-16LE，绕开按系统代码页（ACP）编码造成的中文丢失（XP/Win7 中文系统 GBK、英文精简镜像 1252 都不再影响输出）。
 
@@ -58,6 +58,7 @@ system32\cmd.exe /u /c <cmd>
 |------|------|------|
 | （任意非 API 路径） | 免 | usage 文本（`HTTP 200`），VM 就绪探测用（`/health` 已非专用端点） |
 | `POST /exec` | 需 | 跑命令，流式输出 + trailer 退出码 |
+| `POST /spawn` | 需 | 后台进程（脱离请求树），返回 `{"pid"}` |
 | `POST /set_resolution` | 需 | 改分辨率 `?w=&h=&persist=0\|1`，恒带 `modes32` 可用列表 |
 | `GET /window_list` | 需 | 列出顶层窗口 `?title=<模糊>&class=<精确>` |
 | `GET /screenshot` | 需 | 截屏 / 抓指定窗口 |
@@ -93,6 +94,49 @@ curl -X POST http://127.0.0.1:8005/exec \
 ```
 
 端口说明：VM 内的 8080 由 QEMU 的 hostfwd 映射到宿主机。下面例子用 XP 的 8005，Windows 7 是 8007。
+
+### 起后台进程
+
+`/exec` 是「一请求 = 一棵进程树」，响应体就是那根管道的流：进程不死，响应就不结束。所以要拉常驻程序
+（GUI demo、被测应用），`/exec` 只能挂着客户端干等，而且断连会把进程 `taskkill` 掉。`/spawn` 就是为这个场景做的：
+不建管道、子进程不继承任何句柄，请求毫秒级返回，进程脱离请求树独立存活。
+
+```bash
+curl -s -X POST http://127.0.0.1:8007/spawn \
+  -H 'Content-Type: application/json' \
+  -d '{"cmd":"Z:\\quickwin\\app.exe"}'
+```
+
+```plain
+{"pid":1844}
+```
+
+- `pid` 是 `cmd.exe`（进程树根），不是被测程序本身。停止：用 `/exec` 跑
+  `taskkill /F /T /PID 1844`。不手动收，就靠 `./run.sh <vm> --restart` 重建 overlay 清掉。
+- 可选 `cwd` 指定工作目录，缺省继承 execd 的 cwd（`Z:\quickwin`）。
+- 命令本身失败不会体现在返回里 —— `200` 只代表 `cmd.exe` 起来了。
+- 配合 `/window_list` + `/screenshot` + `/input`，就是完整的「拉起 → 观察 → 点击 → 收尾」循环。
+
+#### 要留输出
+
+`/spawn` 不给 stdout 流，也不回退出码。要留输出就在命令里自己重定向（由 cmd 解析），事后再取：
+
+```bash
+curl -s -X POST http://127.0.0.1:8007/spawn \
+  -H 'Content-Type: application/json' \
+  -d '{"cmd":"ping -n 5 127.0.0.1 > C:\\qwtmp\\p.log 2>&1"}'
+
+# 取日志（也可以 /exec 跑 type C:\qwtmp\p.log）
+curl -s "http://127.0.0.1:8007/download?path=C:\\qwtmp\\p.log" -o p.log
+```
+
+- 编码跟程序本身有关：`/u` 只影响 cmd 内建命令（`dir`/`type`），外部程序仍写各自原生编码
+  —— Win7 上实测 `ping` 落盘 **GBK**，别默认按 UTF-8 解。
+- GUI 程序通常没有 stdout，重定向只会得到空文件；那种情况用程序自己的输出参数（qwin 有 `-o <file>`）。
+- cmd 会等到子进程退出，所以 pid 一直有效；判「跑完没」只能轮询文件或进程。
+
+**在 `/exec` 里加 `>` 解决不了「挂住」**：cmd 对常驻子进程无论是否重定向都会等，照样挂到超时；
+而且重定向后一个字节都到不了管道，超时反而变成 `504` 且不带退出码 trailer，比不重定向更糟。
 
 ### 看窗口
 

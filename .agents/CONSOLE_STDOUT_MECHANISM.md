@@ -168,8 +168,19 @@ EOF 语义变化是入坑点：**管道 EOF = 所有写端句柄都关闭**（�
   持写端的是 `start` 带出来的孙进程/窗口宿主，**不是那个 cmd**（它秒退）。
 - `/exec` **默认无超时**：`{"cmd":...,"timeout":毫秒}` 可选，不给则不设上限（"连接活着就一直跑，断连才 kill"）。
   客户端断连 → abort → `taskkill /F /T /PID <cmd pid>` 递归杀树收尾（`X-Exit-Code: -1`）。
-- 规避：把子进程输出重定向到文件（`cmd /c ... > C:\qwtmp\x.log 2>&1`，实测正常返回）或
-  `Start-Process -RedirectStandardOutput <file>`；**不要**用 `start "" /min <script>` 这类会留常驻窗口/孙进程的写法。
+- 规避取决于子进程是否常驻，**重定向本身不构成解法**（2026-10-25 实测）：
+  - 子进程短命（`ping` 这类控制台命令）：重定向只把字节搬去文件，cmd 照样等它退出。
+    `ping -n 4 > log 2>&1` ≈ 3s 返回、exit 0，响应体空、日志正常落盘。
+  - 子进程常驻（GUI 程序）：`cmd /c app.exe > log 2>&1` **照样挂满 timeout**（3 次一致，
+    timeout 30s 全程挂），且比不重定向更糟——一个字节都到不了管道，worker 的 `ready` 永不
+    settle，超时走 `504 {"error":"exec timeout"}` 且**不带 `X-Exit-Code` trailer**
+    （不重定向时至少能拿到流式输出 + `X-Exit-Code: -1`）。
+    cmd 对 GUI 子进程**无论重定向与否都会等**：timeout 时 `taskkill /F /T /PID <cmd pid>`
+    把 cmd 和子进程一起杀掉，子进程无残留；若 cmd 已提前退、pid 无效，taskkill 会报
+    「没有找到进程」而子进程会残留——实测未出现。所以「输出搬走」不等于「cmd 放手」。
+  - 真要脱离请求树用 `POST /spawn`（不建管道 + `bInheritHandles=FALSE`，见 `.agents/EXEC_D.md`），
+    需要留输出就在命令里自己写 `> log 2>&1`。
+  - **不要**用 `start "" /min <script>` 这类会留常驻窗口/孙进程的写法。
 
 ## 8. 验证入口
 

@@ -58,6 +58,7 @@
 |------|------|------|
 | （任意非 API 路径） | 免 | usage 文本（`HTTP 200`）——兼就绪探测（`run.sh` 轮询 `/`）；`/health` 已非专用端点 |
 | `POST /exec` | 需 | 跑命令，流式输出 + trailer 退出码 |
+| `POST /spawn` | 需 | 后台进程（脱离请求树）：`{"cmd","cwd"?}` → `{"pid":<cmd.exe>}` |
 | `POST /set_resolution` | 需 | 改分辨率 `?w=&h=&persist=0\|1`（默认持久），成功/失败恒带 `modes32` 可用列表 |
 | `GET /window_list` | 需 | 列出顶层窗口 `?title=<模糊>&class=<精确>`（由 `/windows` 改名而来，旧名已不存在） |
 | `GET /screenshot` | 需 | 截屏 / 抓指定窗口（BMP + `X-Dimensions`，`?hwnd=&area=window\|client&mode=screen\|print`） |
@@ -102,6 +103,53 @@ API 之外的任意路径（含 `/`、`/health`、拼错路径/方法）统一�
 | 其他路径 / 方法 | usage（`200`，免 token） |
 
 `Content-Type: application/octet-stream` + `Trailer: X-Exit-Code` 由 http-server 识别为 chunked 帧并补尾。
+
+### `POST /spawn`
+
+后台进程。`/exec` 的响应体就是那根管道：worker 用可继承写端 + `bInheritHandles=TRUE` 起子进程，
+树里任何一个还活着的进程都握着写端 → EOF 永不触发 → 响应永不结束。拉常驻 GUI 程序
+（demo、被测应用）时 `/exec` 只能挂着客户端干等，且断连会 `taskkill` 掉它。`/spawn` 反着做：
+不建管道、`bInheritHandles=FALSE`、`CREATE_NO_WINDOW` —— 请求毫秒级返回，子进程不继承 execd 的
+任何句柄（管道 / 监听套接字都不漏），也不受本请求 timeout / 断连牵连。
+
+```json
+{ "cmd": "Z:\\quickwin\\app.exe", "cwd": "Z:\\quickwin" }
+```
+
+- `cmd`（必填，非空字符串）：命令，恒包 `cmd.exe /u /c`，shell 语义与 `/exec` 一致
+- `cwd`（可选字符串）：工作目录；缺省继承 execd 的 cwd（run.bat 下即 `Z:\quickwin`）
+
+响应：
+
+| 情况 | 结果 |
+|------|------|
+| 成功 | `200`，`{"pid":<cmd.exe 的 pid>}` |
+| body 非 JSON / 参数非法 | `400`，`{"error":"..."}` |
+| `CreateProcess` 失败 | `500`，`{"error":"spawn: CreateProcess err=<errno> cmd=<完整 cmdline>"}` |
+
+语义要点：
+
+- **pid 是 `cmd.exe`（树根）**，不是被测程序。停止用 `/exec` 跑 `taskkill /F /T /PID <pid>`
+  整树收口；不手动收就靠 `./run.sh <vm> --restart` 重建 overlay 清掉。
+- **拿不到 stdout，也不回退出码**。两条路：让程序自己写文件（qwin 有 `-o <file>`，
+  lanfile 写 `%TEMP%\lanfile.log`），或在命令里自己重定向：
+
+  ```json
+  { "cmd": "ping -n 5 127.0.0.1 > C:\\qwtmp\\p.log 2>&1" }
+  ```
+
+  `>`、`>>`、`2>&1`、`|`、`%TEMP%` 展开都由 cmd 解析，语义与 `/exec` 里一致；重定向不改变
+  「不建管道、`bInheritHandles=FALSE`」这两条，句柄照样不漏。
+  **编码跟程序本身有关**：`/u` 只影响 cmd 内建命令（`dir`/`type`）的 UTF-16LE 输出，
+  外部程序仍写各自原生编码——实测 Win7 上 `ping -n 3 ... > log` 落盘 **GBK**。
+  GUI 程序通常没有 stdout，重定向只会得到空文件。判「跑完没」只能轮询文件或进程。
+- **在 `/exec` 里加重定向救不了 hang**：cmd 对常驻子进程无论是否重定向都会等（实测
+  `lanfile.exe > log 2>&1` 挂满 30s timeout），而且因为一个字节都到不了管道，超时反而走
+  `504 {"error":"exec timeout"}` 且**不带 trailer**，比不重定向更糟。细节见
+  `.agents/CONSOLE_STDOUT_MECHANISM.md` §7.6。
+- **命令本身失败不体现在 `/spawn` 的返回里** —— `200` 只代表 `cmd.exe` 起来了
+  （命令里写了不存在的程序时，cmd 往隐藏控制台打印一行报错后自行退出）。
+- 主进程同步直跑（与 `/set_resolution`、`/input` 同列），不进 worker —— 单次 `CreateProcess`，无阻塞。
 
 ### `GET /window_list`
 
