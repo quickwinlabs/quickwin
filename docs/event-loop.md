@@ -96,17 +96,17 @@ if (s->fd >= 0 && *count < max) {
 
 需要更多并发时，限制连接数或用 worker 分担（每个 worker 有自己的循环和 64 槽位）。
 
-## 已知缺陷：socket 回调异常被吞掉
+## 回调异常
 
-三条回调路径的异常处理并不一致：
+三条回调路径的异常处理已统一：都走 `js_std_dump_error`，向 stderr 打印 `name: message` 与调用栈。
 
 | 路径 | 异常处理 |
 |---|---|
-| 定时器、stdin、worker 消息 | 经 `call_handler` → `js_std_dump_error` 打印 |
-| 窗口过程 | `showError` 打印 |
-| **socket** | `JS_GetException` 后直接 `JS_FreeValue` **丢弃** |
+| 定时器、stdin、worker 消息 | 经 `call_handler` → `js_std_dump_error` |
+| socket 事件 | `quickjs-sock.c` 里 `JS_Call` 后判 `JS_IsException` → `js_std_dump_error` |
+| 顶层脚本 / 模块 | `main.c` 顶层异常 → `js_std_dump_error` |
 
-socket 路径（`src/quickjs-sock.c` 里的事件回调）绕过了 `call_handler`，异常静默消失，没有任何输出。写回调时抛出的错误会表现为“请求没响应但进程没报错”。
+窗口过程另有 `quickjs-gui.c` 自己的 `showError`（弹 MessageBox），与上面三条独立。
 
 ## 排查工具
 
@@ -117,3 +117,5 @@ qwin.exe -d
 ```
 
 输出带时间戳的每一步：进入循环时各事件源数量、等待前的句柄数与 timeout、返回值、以及派发的是哪个分支。排查“事件没被处理”时第一步就是打开它。
+
+启动时 stderr 被设为无缓冲（`setvbuf(_IONBF)`）。否则重定向到管道时 CRT 会缓冲错误输出，长驻进程里异常 dump 一直不出现，进程被异常终止时连缓冲区一起丢失。

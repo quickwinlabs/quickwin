@@ -180,10 +180,8 @@ int js_sock_handle_event(JSRuntime *rt, HANDLE triggered)
                     JSValue args[1] = { event_obj };
                     if (JS_IsFunction(ctx, callback)) {
                         JSValue ret = JS_Call(ctx, callback, JS_UNDEFINED, 1, args);
-                        if (JS_IsException(ret)) {
-                            JSValue exc = JS_GetException(ctx);
-                            JS_FreeValue(ctx, exc);
-                        }
+                        if (JS_IsException(ret))
+                            js_std_dump_error(ctx);
                         JS_FreeValue(ctx, ret);
                     }
                     JS_FreeValue(ctx, callback);

@@ -21,19 +21,6 @@
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
 
-static void showError(JSContext *ctx, const char *err_str, const char *stack)
-{
-    printf("JS Error: %s\n", err_str);
-    if (stack) printf("%s", stack);
-    fflush(stdout);
-    int len = MultiByteToWideChar(CP_UTF8, 0, err_str, -1, NULL, 0);
-    wchar_t *werr = malloc(len * sizeof(wchar_t));
-    MultiByteToWideChar(CP_UTF8, 0, err_str, -1, werr, len);
-    wchar_t wtitle[64] = L"JS Error";
-    // MessageBoxW(NULL, werr, wtitle, MB_OK);
-    free(werr);
-}
-
 // Try to load JS code embedded at the end of the exe (appended data).
 // Format: [JS bytes (N)] [N: uint32 LE] [magic]
 //   magic "QWJS" -> raw JS text
@@ -199,9 +186,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             freopen(output_target, "w", stdout);
             freopen(output_target, "w", stderr);
             setvbuf(stdout, NULL, _IONBF, 0);
-            setvbuf(stderr, NULL, _IONBF, 0);
         }
     }
+    /* 异常 dump 走 stderr；重定向到管道时 CRT 默认缓冲会让它滞留到正常退出，
+     * 长驻进程（server）就等于静默。错误输出必须即时可见。 */
+    setvbuf(stderr, NULL, _IONBF, 0);
 
     /* Slot grammar, fixed order: exe [-d] [-o target] [-e code | file].
      * Everything past the slots reaches the script via scriptArgs
@@ -300,15 +289,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     result = js_std_await(ctx, result);
     if (JS_IsException(result))
     {
-        JSValue err = JS_GetException(ctx);
-        const char *err_str = JS_ToCString(ctx, err);
-        JSValue st = JS_GetPropertyStr(ctx, err, "stack");
-        const char *st_str = JS_IsString(st) ? JS_ToCString(ctx, st) : NULL;
-        showError(ctx, err_str, st_str);
-        if (st_str) JS_FreeCString(ctx, st_str);
-        JS_FreeValue(ctx, st);
-        JS_FreeCString(ctx, err_str);
-        JS_FreeValue(ctx, err);
+        js_std_dump_error(ctx);
         JS_FreeValue(ctx, result);
         js_free(ctx, js_code);
         if (cmd_argv) {
