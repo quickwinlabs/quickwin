@@ -25,7 +25,8 @@
     "constants.ts",
     "tsconfig.json",
     "README.md",
-    "README.en.md"
+    "README.en.md",
+    "docs/"
   ],
   "license": "MIT",
   "repository": {
