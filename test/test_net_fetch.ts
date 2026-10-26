@@ -325,7 +325,7 @@ export const suite = {
             }
         }
 
-        // ── large HTTP body (sock.recv path same null contract) ──
+        // ── large HTTP body (raw-socket recv path, same loop as above) ──
         t.section('large HTTP body')
         {
             const LARGE = 200000

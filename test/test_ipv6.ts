@@ -47,8 +47,8 @@ export const suite = {
                     }
                 }
                 if (event.lNetworkEvents & FdEvent.FD_READ && connected && !gotData) {
-                    const data = sock.recv(s, 4096)
-                    if (data && data.byteLength > 0) { gotData = true; t.ok++ }
+                    const n = sock.recv(s, new ArrayBuffer(4096))
+                    if (n > 0) { gotData = true; t.ok++ }
                 }
                 if (event.lNetworkEvents & FdEvent.FD_CLOSE) {
                     sock.closesocket(s)

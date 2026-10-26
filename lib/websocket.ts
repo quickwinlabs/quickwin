@@ -377,9 +377,9 @@ class WebSocketImpl {
                                 return
                             }
                         } else if (this._sock !== null && this._sock >= 0) {
-                            data = sock.recv(this._sock, 8192)
+                            data = sockRecv(this._sock)
                         } else { break }
-                        if (!data || data.byteLength === 0) break
+                        if (!data) break
                         headerBuffer += _ab2str(data)
                         const headerEnd = headerBuffer.indexOf('\r\n\r\n')
                         if (headerEnd >= 0) {
@@ -486,9 +486,9 @@ class WebSocketImpl {
                     return
                 }
             } else if (this._sock !== null && this._sock >= 0) {
-                data = sock.recv(this._sock, 8192)
+                data = sockRecv(this._sock)
             } else { break }
-            if (!data || data.byteLength === 0) break
+            if (!data) break
 
             const newBuf = new Uint8Array(this._readBuffer.length + data.byteLength)
             newBuf.set(this._readBuffer)
@@ -583,6 +583,18 @@ class CloseEvent {
 }
 
 // ── Utility ──
+
+// Reusable target buffer: sock.recv writes into it, and the chunk is copied
+// out before the next call, so it never aliases data a caller is holding.
+const _recvBuf = new ArrayBuffer(8192)
+
+/** Read one chunk from `s` into a fresh ArrayBuffer. Returns null when
+ *  nothing is available: sock.recv folds would-block, graceful EOF and
+ *  socket errors all into a non-positive result. */
+function sockRecv(s: sock.SockHandle): ArrayBuffer | null {
+    const n = sock.recv(s, _recvBuf)
+    return n > 0 ? _recvBuf.slice(0, n) : null
+}
 
 function _ab2str(buf: ArrayBuffer): string {
     return new TextDecoder('utf-8').decode(buf)

@@ -19,6 +19,20 @@ import {
 } from './http-common.js'
 import { FdEvent, ReturnCode, SniType, VerifyMode, WolfsslErrorCode } from '../constants'
 
+// ── Socket read helpers ──
+
+// Reusable target buffer: sock.recv writes into it, and the chunk is copied
+// out before the next call, so it never aliases data a caller is holding.
+const _recvBuf = new ArrayBuffer(8192)
+
+/** Read one chunk from `s` into a fresh ArrayBuffer.
+ *  Returns null when nothing is available: sock.recv folds would-block,
+ *  graceful EOF and socket errors all into a non-positive result. */
+function sockRecv(s: sock.SockHandle): ArrayBuffer | null {
+    const n = sock.recv(s, _recvBuf)
+    return n > 0 ? _recvBuf.slice(0, n) : null
+}
+
 // ── HTTP Response Parser ──
 
 interface ParsedResponse {
@@ -247,9 +261,9 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                                 return
                             }
                         } else if (s !== null && s >= 0) {
-                            data = sock.recv(s, 8192)
+                            data = sockRecv(s)
                         } else { break }
-                        if (!data || data.byteLength === 0) break
+                        if (!data) break
                         const incoming = new Uint8Array(data)
                         headerRaw = _concat([headerRaw, incoming])
 
@@ -333,9 +347,9 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                                 return
                             }
                         } else if (s !== null && s >= 0) {
-                            data = sock.recv(s, 8192)
+                            data = sockRecv(s)
                         } else { break }
-                        if (!data || data.byteLength === 0) break
+                        if (!data) break
                         if (isChunked) {
                             chunkedParts.push(new Uint8Array(data))
                             const combined = _concat(chunkedParts)
@@ -378,9 +392,9 @@ async function fetchRequest(req: RequestImpl): Promise<ResponseImpl> {
                             if (n > 0) data = buf.slice(0, n)
                             else break
                         } else if (s !== null && s >= 0) {
-                            data = sock.recv(s, 8192)
+                            data = sockRecv(s)
                         } else { break }
-                        if (!data || data.byteLength === 0) break
+                        if (!data) break
                         remainingParts.push(new Uint8Array(data))
                     }
                     if (isChunked) {

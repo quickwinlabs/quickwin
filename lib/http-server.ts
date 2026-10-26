@@ -255,14 +255,17 @@ export function createServer(handler: ServerHandler): HttpServer {
 
 // ── Connection I/O ──
 
+// Reusable recv target: each chunk is copied out before the next call, so
+// nothing we hand to a handler ever aliases this buffer.
+const _recvBuf = new ArrayBuffer(8192)
+
 function onRead(c: Conn): void {
     if (c.closed) return
     while (true) {
-        const d = sock.recv(c.sock, 8192)
-        if (!d) break
-        const u8 = new Uint8Array(d)
-        c.parts.push(u8)
-        c.partsLen += u8.length
+        const n = sock.recv(c.sock, _recvBuf)
+        if (n <= 0) break
+        c.parts.push(new Uint8Array(_recvBuf.slice(0, n)))
+        c.partsLen += n
     }
     if (!c.closed) tryProcess(c)
 }

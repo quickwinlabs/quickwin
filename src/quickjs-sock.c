@@ -426,24 +426,33 @@ static JSValue js_recv(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
     if (!sock || sock->fd < 0)
         return JS_ThrowTypeError(ctx, "Invalid sock handle");
 
-    GET_INT32_OPT(ctx, argv[1], size, 4096);
-
-    uint8_t *buf = malloc(size);
+    size_t size;
+    uint8_t *buf = JS_GetArrayBuffer(ctx, &size, argv[1]);
     if (!buf)
-        return JS_ThrowTypeError(ctx, "Out of memory");
+        return JS_ThrowTypeError(ctx, "buf must be an ArrayBuffer");
 
     GET_INT32_OPT(ctx, argv[2], flags, 0);
 
-    int ret = recv(sock->fd, (char*)buf, size, flags);
-    if (ret <= 0) {
-        free(buf);
-        return JS_NULL;
+    int ret = recv(sock->fd, (char*)buf, (int)size, flags);
+    if (ret == SOCKET_ERROR) {
+        /* Non-blocking "nothing available yet" is not an error: report
+           0 bytes so callers suspend and retry on the next FD_READ.
+           Graceful EOF (recv returns 0) and genuine socket errors both
+           map to -1: either way the socket is done, so callers tear
+           down. Use last_error() to tell them apart if it matters. */
+        if (WSAGetLastError() == WSAEWOULDBLOCK)
+            return JS_NewInt32(ctx, 0);
+        return JS_NewInt32(ctx, -1);
     }
+    if (ret == 0)
+        return JS_NewInt32(ctx, -1);
+    return JS_NewInt32(ctx, ret);
+}
 
-    JSValue arr = JS_NewArrayBufferCopy(ctx, buf, ret);
-    free(buf);
-
-    return arr;
+static JSValue js_sock_last_error(JSContext *ctx, JSValueConst this_val,
+                                   int argc, JSValueConst *argv)
+{
+    return JS_NewInt32(ctx, WSAGetLastError());
 }
 
 static JSValue js_closesocket(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -780,6 +789,7 @@ static const JSCFunctionListEntry sock_funcs[] = {
     JS_CFUNC_DEF("getsockname", 1, js_getsockname),
     JS_CFUNC_DEF("send", 3, js_send),
     JS_CFUNC_DEF("recv", 3, js_recv),
+    JS_CFUNC_DEF("last_error", 0, js_sock_last_error),
     JS_CFUNC_DEF("shutdown", 2, js_shutdown),
     JS_CFUNC_DEF("closesocket", 1, js_closesocket),
     JS_CFUNC_DEF("set_on_event", 2, js_set_on_event),

@@ -366,7 +366,13 @@ declare module "sock" {
     function getsockname(sock: SockHandle): { addr: string; port: number } | null;
     /** send(sock, buf, flags?) — 返回实际送出字节数；非阻塞缓冲满返回 0（入队等 FD_WRITE 重发）；真错误返回 -1 */
     function send(sock: SockHandle, buf: ArrayBuffer, flags?: number): number;
-    function recv(sock: SockHandle, size?: number, flags?: number): ArrayBuffer | null;
+    /** recv(sock, buf, flags?) — 读入调用方提供的 buf，零拷贝。
+     *  返回 >0 实际字节数 / 0 暂时无数据（非阻塞，等下次 FD_READ 重试）/ -1 socket 已不可用
+     *  （优雅关闭或真错误，两者都意味着别再要了；用 last_error() 区分，见下）。 */
+    function recv(sock: SockHandle, buf: ArrayBuffer, flags?: number): number;
+    /** last_error() — WSAGetLastError() 原值。thread-local，必须紧跟失败的 recv/send/connect 调用后读，
+     *  中间不要夹别的 Winsock 调用。用于区分 WSAEWOULDBLOCK 与真错误，正常路径不需要。 */
+    function last_error(): number;
     function closesocket(sock: SockHandle): void;
     function shutdown(sock: SockHandle, how: Shutdown): number;
     function set_on_event(sock: SockHandle, callback: (events: { lNetworkEvents: number; iErrorCode: number[] }) => void): void;

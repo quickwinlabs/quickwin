@@ -33,11 +33,11 @@ function httpSend(host: string, port: number, raw: string, nResponses = 1): Prom
                 sock.send(s, bytes.buffer)
             }
             if (event.lNetworkEvents & FdEvent.FD_READ) {
+                const rbuf = new ArrayBuffer(8192)
                 while (true) {
-                    const d = sock.recv(s, 8192) as unknown as ArrayBuffer | number
-                    if (typeof d === 'number') break
-                    if (!d || d.byteLength === 0) break
-                    buf += new TextDecoder().decode(new Uint8Array(d))
+                    const n = sock.recv(s, rbuf)
+                    if (n <= 0) break
+                    buf += new TextDecoder().decode(new Uint8Array(rbuf, 0, n))
                 }
                 const count = (buf.match(/HTTP\/1\.1 /g) || []).length
                 if (count >= nResponses) {
