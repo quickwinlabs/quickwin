@@ -23,11 +23,6 @@ interface ParsedHeader {
     contentLength: number
 }
 
-interface PendingReq {
-    parsed: ParsedHeader
-    bodyStart: number
-}
-
 interface ActiveReq {
     req: RequestImpl
 }
@@ -35,11 +30,10 @@ interface ActiveReq {
 interface Conn {
     sock: SockHandle
     parts: Uint8Array[]
-    /** Cached total length of `parts` — lets the pending-body wait check
-     *  "have we received enough yet" in O(1) instead of re-concatenating
-     *  every received byte on each read event (O(n²) for large bodies). */
+    /** Cached total length of `parts` — lets header/body boundary checks run
+     *  in O(1) instead of re-concatenating every received byte on each read
+     *  event (O(n²) for large headers). */
     partsLen: number
-    pending: PendingReq | null
     current: ActiveReq | null
     outQueue: Uint8Array | null
     resumeRead: (() => void) | null
@@ -50,6 +44,13 @@ interface Conn {
     /** AbortController for the request currently served on this connection,
      *  aborted when the client disconnects mid-response. */
     ac: AbortController | null
+    /** Active request-body source, or null when the body is absent or done.
+     *  While non-null, `pull()` is the only thing that calls `sock.recv` on
+     *  this connection, so buffered input can never outrun a slow handler —
+     *  peak memory stays at a handful of chunks instead of the request size. */
+    body: BodySource | null
+    /** Wakes a `pull()` that is suspended waiting for more bytes. */
+    bodyWaiter: (() => void) | null
 }
 
 const STATUS_TEXT: Record<number, string> = {
@@ -57,7 +58,8 @@ const STATUS_TEXT: Record<number, string> = {
     200: 'OK', 201: 'Created', 202: 'Accepted', 204: 'No Content',
     301: 'Moved Permanently', 302: 'Found', 304: 'Not Modified',
     400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden', 404: 'Not Found',
-    405: 'Method Not Allowed', 408: 'Request Timeout', 413: 'Payload Too Large',
+    405: 'Method Not Allowed', 408: 'Request Timeout', 411: 'Length Required',
+    413: 'Payload Too Large',
     500: 'Internal Server Error', 501: 'Not Implemented', 502: 'Bad Gateway', 503: 'Service Unavailable',
 }
 
@@ -102,44 +104,195 @@ function headersInitToPairs(init: HeadersInit): [string, string][] {
     return out
 }
 
-/** Decode a chunked-transfer body starting at `start`. Returns the decoded
- *  data and the offset just past the terminating CRLF, or null if the buffer
- *  does not yet contain the complete chunked body. */
-function decodeChunked(buf: Uint8Array, start: number): { data: Uint8Array; end: number } | null {
-    let pos = start
+// ── Request body source ──
+
+/** Incremental request-body decoder. For `length` framing every byte is
+ *  deliverable immediately; for `chunked` framing a byte is deliverable as
+ *  soon as its chunk's declared size is reached, so output flows at roughly
+ *  the `sock.recv` granularity instead of per-chunk. */
+interface BodySource {
+    framing: 'length' | 'chunked'
+    /** 'length': body bytes not yet delivered. 'chunked': bytes left in the
+     *  chunk whose data is currently being collected. */
+    remain: number
+    /** Raw bytes recv'd but not yet decoded; `head` is the consumed offset
+     *  into `raw[0]`. */
+    raw: Uint8Array[]
+    head: number
+    rawBytes: number
+    /** Decoded bytes produced but not yet enqueued. */
+    out: Uint8Array[]
+    outLen: number
+    done: boolean
+    bad: boolean
+    /** Chunked framing phase. */
+    phase: 'size' | 'data' | 'crlf' | 'trailers'
+    line: string
+    /** True when a `\r` was read and its `\n` has not arrived yet. */
+    pendingCR: boolean
+    /** Live stream controller, so a mid-body disconnect can error the stream
+     *  even when the handler is not currently suspended in `read()`. */
+    ctrl: ReadableStreamDefaultController<Uint8Array> | null
+}
+
+function appendRaw(src: BodySource, buf: ArrayBuffer, n: number): void {
+    const p = new Uint8Array(n)
+    p.set(new Uint8Array(buf, 0, n))
+    src.raw.push(p)
+    src.rawBytes += n
+}
+
+/** Consume one byte from the front of the raw window; -1 when it is empty. */
+function readByte(src: BodySource): number {
+    for (;;) {
+        const p = src.raw[0]
+        if (!p) return -1
+        if (src.head < p.length) {
+            const b = p[src.head++]!
+            src.rawBytes--
+            if (src.head >= p.length) { src.raw.shift(); src.head = 0 }
+            return b
+        }
+        src.raw.shift()
+        src.head = 0
+    }
+}
+
+/** Consume up to `want` bytes from the front of the raw window. */
+function takeRaw(src: BodySource, want: number): Uint8Array {
+    const n = Math.min(want, src.rawBytes)
+    if (n <= 0) return new Uint8Array(0)
     const parts: Uint8Array[] = []
-    const decoder = new TextDecoder('utf-8')
-    while (pos < buf.length) {
-        let eol = pos
-        while (eol < buf.length && buf[eol] !== 13) eol++
-        if (eol >= buf.length || eol + 1 >= buf.length || buf[eol + 1] !== 10) return null
-        const sizeLine = decoder.decode(buf.subarray(pos, eol)).trim()
-        const semi = sizeLine.indexOf(';')
-        const hex = (semi >= 0 ? sizeLine.slice(0, semi) : sizeLine).trim()
-        const size = parseInt(hex, 16)
-        if (isNaN(size) || size < 0) return null
-        pos = eol + 2
-        if (size === 0) {
-            while (true) {
-                if (pos >= buf.length) return null
-                if (buf[pos] === 13) {
-                    if (pos + 1 >= buf.length || buf[pos + 1] !== 10) return null
-                    pos += 2
-                    return { data: concatU8(parts), end: pos }
+    let got = 0
+    while (got < n) {
+        const p = src.raw[0]!
+        const take = Math.min(p.length - src.head, n - got)
+        parts.push(p.subarray(src.head, src.head + take))
+        got += take
+        src.head += take
+        src.rawBytes -= take
+        if (src.head >= p.length) { src.raw.shift(); src.head = 0 }
+    }
+    return concatU8(parts)
+}
+
+function pushOut(src: BodySource, chunk: Uint8Array): void {
+    if (chunk.length === 0) return
+    src.out.push(chunk)
+    src.outLen += chunk.length
+}
+
+function takeOut(src: BodySource): Uint8Array {
+    if (src.out.length === 0) return new Uint8Array(0)
+    const r = concatU8(src.out)
+    src.out = []
+    src.outLen = 0
+    return r
+}
+
+/** Consume the `\n` of a `\r\n` whose `\r` was already taken. Returns 1 on a
+ *  complete pair, 0 when the `\n` has not arrived yet (pendingCR stays set),
+ *  -1 when the line ending is bad. */
+function eatLf(src: BodySource): number {
+    if (src.rawBytes === 0) return 0
+    const b = readByte(src)
+    src.pendingCR = false
+    return b === 0x0a ? 1 : -1
+}
+
+/** Consume a full `\r\n`, possibly split across reads. Returns 1 / 0 / -1. */
+function readEol(src: BodySource): number {
+    if (src.pendingCR) return eatLf(src)
+    if (src.rawBytes === 0) return 0
+    if (readByte(src) !== 0x0d) return -1
+    src.pendingCR = true
+    return eatLf(src)
+}
+
+/** Parse the size line just terminated and arm the next phase. */
+function finishSizeLine(src: BodySource): void {
+    const semi = src.line.indexOf(';')
+    const hex = (semi >= 0 ? src.line.slice(0, semi) : src.line).trim()
+    const size = parseInt(hex, 16)
+    src.line = ''
+    if (!Number.isFinite(size) || size < 0) { src.bad = true; return }
+    src.remain = size
+    src.phase = size > 0 ? 'data' : 'trailers'
+}
+
+/** A size line without a line ending would grow `src.line` without limit, so
+ *  cap it. 4 KiB covers a 16 EiB chunk with room to spare. */
+function lineTooLong(src: BodySource): boolean {
+    if (src.line.length > 4096) src.bad = true
+    return src.bad
+}
+
+/** Consume buffered raw bytes, producing output in `src.out`.
+ *
+ *  Invariant the `pull` loop relies on: if this returns with `outLen === 0`,
+ *  `!done` and `!bad`, then `rawBytes === 0` — the decoder is genuinely
+ *  blocked and `pull` may go back to `sock.recv`. A phase must therefore
+ *  `continue` on partial progress and only `return` when blocked or when it
+ *  has produced output. */
+function decodeBody(src: BodySource): void {
+    if (src.bad || src.done) return
+    if (src.framing === 'length') {
+        if (src.rawBytes === 0) return
+        const n = Math.min(src.remain, src.rawBytes)
+        pushOut(src, takeRaw(src, n))
+        src.remain -= n
+        if (src.remain <= 0) src.done = true
+        return
+    }
+    for (;;) {
+        switch (src.phase) {
+            case 'size': {
+                if (src.pendingCR) {
+                    const e = eatLf(src)
+                    if (e === 0) return
+                    if (e < 0) { src.bad = true; return }
+                    finishSizeLine(src)
+                    continue
                 }
-                let t = pos
-                while (t < buf.length && buf[t] !== 13) t++
-                if (t >= buf.length || t + 1 >= buf.length || buf[t + 1] !== 10) return null
-                pos = t + 2
+                if (src.rawBytes === 0) return
+                const b = readByte(src)
+                if (b !== 0x0d) {
+                    src.line += String.fromCharCode(b)
+                    if (lineTooLong(src)) return
+                    continue
+                }
+                src.pendingCR = true
+                continue
+            }
+            case 'data': {
+                if (src.rawBytes === 0) return
+                const n = Math.min(src.remain, src.rawBytes)
+                pushOut(src, takeRaw(src, n))
+                src.remain -= n
+                if (src.remain === 0) { src.phase = 'crlf'; continue }
+                return
+            }
+            case 'crlf': {
+                const e = readEol(src)
+                if (e === 0) return
+                if (e < 0) { src.bad = true; return }
+                src.phase = 'size'
+                continue
+            }
+            case 'trailers': {
+                // Trailers are discarded; an empty line ends the body.
+                if (src.pendingCR) {
+                    const e = eatLf(src)
+                    if (e === 1) { src.done = true; return }
+                    if (e < 0) { src.bad = true; return }
+                    return
+                }
+                if (src.rawBytes === 0) return
+                if (readByte(src) === 0x0d) src.pendingCR = true
+                continue
             }
         }
-        if (pos + size > buf.length) return null
-        parts.push(buf.subarray(pos, pos + size))
-        pos += size
-        if (pos + 1 >= buf.length || buf[pos] !== 13 || buf[pos + 1] !== 10) return null
-        pos += 2
     }
-    return null
 }
 
 // ── Parsing ──
@@ -222,7 +375,6 @@ export class HttpServer {
                 sock: ac.handle,
                 parts: [],
                 partsLen: 0,
-                pending: null,
                 current: null,
                 outQueue: null,
                 resumeRead: null,
@@ -231,6 +383,8 @@ export class HttpServer {
                 keepAlive: true,
                 owner: this,
                 ac: null,
+                body: null,
+                bodyWaiter: null,
             }
             this.conns.set(c.sock, c)
             sock.set_on_event(c.sock, (event: NetEvent) => this.onConnEvent(c, event))
@@ -261,6 +415,15 @@ const _recvBuf = new ArrayBuffer(8192)
 
 function onRead(c: Conn): void {
     if (c.closed) return
+    if (c.body) {
+        // Body phase: `pull()` owns the socket. Only wake a suspended pull —
+        // draining here would let input outrun a slow handler and grow the
+        // buffer with the request size, which is what this exists to avoid.
+        const w = c.bodyWaiter
+        c.bodyWaiter = null
+        if (w) w()
+        return
+    }
     while (true) {
         const n = sock.recv(c.sock, _recvBuf)
         if (n <= 0) break
@@ -331,6 +494,23 @@ function abortConn(c: Conn): void {
     const ac = c.ac
     c.ac = null
     if (ac) ac.abort()
+
+    const src = c.body
+    if (!src) return
+    // Error the body stream even when the handler is not suspended in a
+    // `read()` right now — otherwise a client disconnect would leave it
+    // pending forever. Then drop the source so no later `pull` touches a
+    // socket that is being torn down or reused.
+    if (src.ctrl) {
+        try { src.ctrl.error(new Error('client disconnected')) } catch { /* already closed */ }
+    }
+    src.raw = []
+    src.rawBytes = 0
+    src.head = 0
+    c.body = null
+    const w = c.bodyWaiter
+    c.bodyWaiter = null
+    if (w) w()
 }
 
 /** Resolve the pending back-pressure awaiter, if any. Called whenever the
@@ -416,44 +596,134 @@ function whole(c: Conn): Uint8Array {
     return concatU8(c.parts)
 }
 
-function trimParts(c: Conn, buf: Uint8Array, consumed: number): void {
-    if (consumed >= buf.length) {
-        c.parts = []
-        c.partsLen = 0
-    } else {
-        c.parts = [buf.subarray(consumed)]
-        c.partsLen = buf.length - consumed
+/** Result of one `drainAndDeliver` pass: a chunk was enqueued, the stream is
+ *  settled (closed or errored), or the socket is empty and more input needed. */
+type BodyStep = 'chunk' | 'settled' | 'blocked'
+
+/** One pass of the body-state machine: drain what the socket offers, decode,
+ *  and at most enqueue one chunk. Returns 'blocked' when the socket is empty
+ *  and more input is needed — the caller must park until the next FD_READ. */
+function drainAndDeliver(c: Conn, src: BodySource, controller: ReadableStreamDefaultController<Uint8Array>): BodyStep {
+    const fail = () => {
+        try { controller.error(new Error('client disconnected')) } catch { /* already closed */ }
     }
+    if (src.bad) {
+        try { controller.error(new Error('malformed request body')) } catch { /* already closed */ }
+        return 'settled'
+    }
+    if (src.done) { finishBody(c, src); controller.close(); return 'settled' }
+    if (c.closed || c.body !== src) { fail(); return 'settled' }
+
+    for (;;) {
+        decodeBody(src)
+        if (src.bad) {
+            try { controller.error(new Error('malformed request body')) } catch { /* already closed */ }
+            return 'settled'
+        }
+        // One enqueue per pass: `enqueue` re-enters `pull` via requestPull, so
+        // a second one here would run pull reentrantly inside its own pull.
+        if (src.outLen > 0) { controller.enqueue(takeOut(src)); return 'chunk' }
+        if (src.done) { finishBody(c, src); controller.close(); return 'settled' }
+        if (c.closed || c.body !== src) { fail(); return 'settled' }
+
+        const n = sock.recv(c.sock, _recvBuf)
+        if (n < 0) {
+            c.closed = true
+            // FIN on a fully-received body is a clean shutdown, not a
+            // disconnect — keep-alive pipelining relies on it.
+            if (src.done) { finishBody(c, src); controller.close(); return 'settled' }
+            fail(); return 'settled'
+        }
+        if (n === 0) return 'blocked'
+        appendRaw(src, _recvBuf, n)
+    }
+}
+
+/** Build the lazy request body. Bytes already buffered while the header was
+ *  being parsed are seeded in so nothing recv'd during the header phase is
+ *  lost. `pull` is the only caller of `sock.recv` for the rest of the body,
+ *  so it runs the recv loop itself rather than draining from `onRead`. */
+function makeBodyStream(c: Conn, parsed: ParsedHeader, buffered: Uint8Array): ReadableStream<Uint8Array> {
+    const src: BodySource = {
+        framing: parsed.chunked ? 'chunked' : 'length',
+        remain: parsed.chunked ? 0 : parsed.contentLength,
+        raw: [], head: 0, rawBytes: 0,
+        out: [], outLen: 0,
+        done: false, bad: false,
+        phase: 'size', line: '', pendingCR: false,
+        ctrl: null,
+    }
+    if (buffered.length > 0) {
+        src.raw.push(buffered)
+        src.rawBytes = buffered.length
+    }
+    c.body = src
+
+    return new ReadableStream<Uint8Array>({
+        pull: (controller) => {
+            // `abortConn` already errored this stream and dropped the source.
+            if (c.body !== src) return
+            src.ctrl = controller
+            if (drainAndDeliver(c, src, controller) !== 'blocked') return
+
+            // Parked: no output, not done, socket drained. Resolving a promise
+            // here would only END this pull — the ponyfill re-runs pull solely
+            // when requestPull fires while one is in flight — so instead we
+            // return and let the wake callback enqueue into the controller;
+            // `enqueue` calls requestPull and `pull` re-enters from there.
+            const wake = () => {
+                c.bodyWaiter = null
+                if (drainAndDeliver(c, src, controller) === 'blocked') c.bodyWaiter = wake
+            }
+            c.bodyWaiter = wake
+        },
+    })
+}
+
+/** The declared body is complete. Anything still buffered belongs to the next
+ *  request on this connection, so hand it back to the header phase — this is
+ *  what makes keep-alive pipelining work. `pull` owns the `close()` call. */
+function finishBody(c: Conn, src: BodySource): void {
+    const tail = takeRaw(src, src.rawBytes)
+    if (tail.length > 0) { c.parts.push(tail); c.partsLen += tail.length }
+    src.raw = []
+    src.rawBytes = 0
+    src.head = 0
+    src.ctrl = null
+    c.body = null
+    c.bodyWaiter = null
+}
+
+/** Methods for which a body is expected when framing is declared. DELETE is
+ *  deliberately excluded: clients routinely send it with no framing at all,
+ *  and requiring a length there would break those. */
+function methodHasBody(method: string): boolean {
+    return method === 'POST' || method === 'PUT' || method === 'PATCH'
+}
+
+/** Send a bare error response and close. Used for framing problems that can
+ *  be detected before the body is read. */
+function sendErrorAndClose(c: Conn, status: number, message: string): void {
+    const enc = new TextEncoder()
+    const body = enc.encode(message + '\r\n')
+    const headers = new HeadersImpl([
+        ['Content-Type', 'text/plain; charset=utf-8'],
+        ['Content-Length', String(body.length)],
+        ['Connection', 'close'],
+    ])
+    c.keepAlive = false
+    c.closeAfterFlush = true
+    queueSend(c, buildHead(status, STATUS_TEXT[status] || 'Error', headers))
+    queueSend(c, body)
+    if (c.outQueue && c.outQueue.length > 0) flushQueue(c)
+    else finishResponse(c)
 }
 
 function tryProcess(c: Conn): void {
     if (c.closed || c.current) return
 
-    if (c.pending) {
-        const bodyStart = c.pending.bodyStart
-        const parsed = c.pending.parsed
-        if (!parsed.chunked) {
-            // O(1) length check while the body is still arriving — only
-            // concatenate once, when the last byte is in.
-            const end = bodyStart + parsed.contentLength
-            if (end > c.partsLen) return
-            const buf = whole(c)
-            c.pending = null
-            dispatchRequest(c, parsed, buf.subarray(bodyStart, end), end, buf)
-            return
-        }
-        // chunked: no total length up front, so a decode attempt still needs
-        // the concatenated view (re-tried per read event as before).
-        const buf = whole(c)
-        const dec = decodeChunked(buf, bodyStart)
-        if (!dec) return
-        c.pending = null
-        dispatchRequest(c, parsed, dec.data, dec.end, buf)
-        return
-    }
-
-    // Header phase: bodies are checked against `partsLen` above, so a full
-    // concatenation is only needed here — once per request, not per read.
+    // Headers are checked against `partsLen` per read event, so a full
+    // concatenation only happens once here, when the header block is complete.
     const buf = whole(c)
     const headerEnd = findCrLfCrLf(buf)
     if (headerEnd < 0) return
@@ -462,26 +732,27 @@ function tryProcess(c: Conn): void {
     const parsed = parseHeader(headerStr)
     if (!parsed) { closeConn(c); return }
 
-    const bodyStart = absEnd
-    if (parsed.chunked) {
-        const dec = decodeChunked(buf, bodyStart)
-        if (!dec) {
-            c.pending = { parsed, bodyStart }
-            return
-        }
-        dispatchRequest(c, parsed, dec.data, dec.end, buf)
-    } else if (parsed.contentLength > 0) {
-        if (bodyStart + parsed.contentLength > buf.length) {
-            c.pending = { parsed, bodyStart }
-            return
-        }
-        dispatchRequest(c, parsed, buf.subarray(bodyStart, bodyStart + parsed.contentLength), bodyStart + parsed.contentLength, buf)
-    } else {
-        dispatchRequest(c, parsed, new Uint8Array(0), bodyStart, buf)
+    // A method that may carry a body but declares no framing never says where
+    // the body ends, so refuse rather than guess (RFC 7230 §6.6.3). Without
+    // this the only delimiter left would be the FIN.
+    if (parsed.contentLength === 0 && !parsed.chunked && methodHasBody(parsed.method)) {
+        sendErrorAndClose(c, 411, 'Length Required')
+        return
     }
+
+    const bodyStart = absEnd
+    const tail = buf.length > bodyStart ? buf.subarray(bodyStart) : new Uint8Array(0)
+    const hasBody = parsed.chunked || parsed.contentLength > 0
+    // With a body, the buffered bytes belong to the body source, not to the
+    // next request, so the header buffer is dropped here and only repopulated
+    // when `finishBody` hands back the surplus.
+    c.parts = hasBody ? [] : [tail]
+    c.partsLen = hasBody ? 0 : tail.length
+
+    dispatchRequest(c, parsed, hasBody ? makeBodyStream(c, parsed, tail) : undefined)
 }
 
-function dispatchRequest(c: Conn, parsed: ParsedHeader, body: Uint8Array, end: number, wholeBuf?: Uint8Array): void {
+function dispatchRequest(c: Conn, parsed: ParsedHeader, body: ReadableStream<Uint8Array> | undefined): void {
     const connHeader = (parsed.headers['connection'] || '').toLowerCase()
     if (parsed.version === 'HTTP/1.1') c.keepAlive = connHeader.indexOf('close') < 0
     else c.keepAlive = connHeader.indexOf('keep-alive') >= 0
@@ -500,15 +771,12 @@ function dispatchRequest(c: Conn, parsed: ParsedHeader, body: Uint8Array, end: n
     const req = new RequestImpl(url, {
         method: parsed.method,
         headers: new HeadersImpl(parsed.headers),
-        body: body.length > 0 ? body : undefined,
+        body: body,
         signal: ac.signal,
     })
 
     c.ac = ac
     c.current = { req }
-    // `wholeBuf` is the concatenation the caller already produced — reuse it
-    // instead of concatenating the very same parts a second time.
-    trimParts(c, wholeBuf ?? whole(c), end)
     void handleRequest(c)
 }
 
@@ -531,6 +799,11 @@ async function handleRequest(c: Conn): Promise<void> {
     }
 
     if (c.closed) return
+    // A request body the handler never drained still has bytes sitting in the
+    // socket, which would desynchronize the next request on this connection.
+    // Closing is always safe; it only forfeits keep-alive for such handlers
+    // (e.g. a proxy that answers `new Response(req.body)`).
+    if (c.body) c.keepAlive = false
     try {
         await sendResponse(c, req.method, res)
     } catch (e) {
