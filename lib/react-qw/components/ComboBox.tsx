@@ -28,8 +28,10 @@ export const ComboBox = forwardRef<gui.HWND, ComboBoxProps>(
       const h = cbRef.current
       if (!h) return
       gui.SendMessage(h, ComboBoxMsg.RESETCONTENT, 0, 0)
-      for (const item of items)
-        gui.SendMessage(h, ComboBoxMsg.ADDSTRING, 0, WCHAR.encode(item).ptr)
+      for (const item of items) {
+        const w = WCHAR.encode(item)
+        gui.SendMessage(h, ComboBoxMsg.ADDSTRING, 0, w.ptr)
+      }
       if (sel >= 0 && sel < items.length)
         gui.SendMessage(h, ComboBoxMsg.SETCURSEL, sel, 0)
     }, [items])

@@ -32,8 +32,10 @@ export const ListBox = forwardRef<gui.HWND, ListBoxProps>(
       const h = lbRef.current
       if (!h) return
       gui.SendMessage(h, LbMsg.RESETCONTENT, 0, 0)
-      for (const item of items)
-        gui.SendMessage(h, LbMsg.ADDSTRING, 0, WCHAR.encode(item).ptr)
+      for (const item of items) {
+        const w = WCHAR.encode(item)
+        gui.SendMessage(h, LbMsg.ADDSTRING, 0, w.ptr)
+      }
       if (sel >= 0 && sel < items.length)
         gui.SendMessage(h, LbMsg.SETCURSEL, sel, 0)
       if (scrollToBottom && items.length > 0)
