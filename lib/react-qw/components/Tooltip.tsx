@@ -11,10 +11,10 @@ export interface TooltipProps {
   balloon?: boolean
 }
 
-function buildToolInfo(hTarget: gui.HWND, text: string): PtrArrayBuffer<string> {
+function buildToolInfo(hTarget: gui.HWND, text: string): PtrArrayBuffer<'TTTOOLINFOW'> {
   const size = TTTOOLINFOW.size
   const textLen = (text.length + 1) * 2
-  const buf = new PtrArrayBuffer(size + textLen)
+  const buf = new PtrArrayBuffer<'TTTOOLINFOW'>(size + textLen)
   TTTOOLINFOW.encode({
     cbSize: size,
     uFlags: TtToolFlag.SUBCLASS | TtToolFlag.IDISHWND,

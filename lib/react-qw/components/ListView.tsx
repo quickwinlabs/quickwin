@@ -185,7 +185,7 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
     const il = iconListRef.current
     iconListRef.current = NULL
     if (il) {
-      gui.SendMessage(h, LvMsg.SETIMAGELIST, LvImageList.SMALL, 0)
+      gui.SendMessage(h, LvMsg.SETIMAGELIST, LvImageList.SMALL, NULL)
       ImageListDestroy(il)
     }
     if (!icons || icons.length === 0) return
@@ -277,11 +277,11 @@ const ListView = forwardRef(function ListViewInner<D extends object>(
             return handleCustomDraw(e.lParam, columns, data, lvRef.current)
           }
           if (code === LvNotifyCode.ITEMCHANGING) {
-            const { uNewState, uOldState } = NMLISTVIEW.decode(e.lParam as Ptr<'NMLISTVIEW'>)
+            const { uNewState, uOldState } = NMLISTVIEW.decode(e.lParam as unknown as Ptr<'NMLISTVIEW'>)
             if ((uNewState & LvItemState.SELECTED) !== (uOldState & LvItemState.SELECTED)) return 1
           }
           if (code === LvNotifyCode.CLICK) {
-            const { iItem, iSubItem } = NMLISTVIEW.decode(e.lParam as Ptr<'NMLISTVIEW'>)
+            const { iItem, iSubItem } = NMLISTVIEW.decode(e.lParam as unknown as Ptr<'NMLISTVIEW'>)
             const col = columns[iSubItem]
             const record = data[iItem]
             if (col?.onCellClick && record !== undefined) col.onCellClick(record, iItem)

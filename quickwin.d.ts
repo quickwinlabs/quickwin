@@ -442,7 +442,9 @@ declare module "gui" {
     function DestroyWindow(hwnd: HWND): boolean;
     function SetWindowProc(hwnd: HWND, wndProc: (hwnd: HWND, msg: number, wParam: number, lParam: number) => number): void;
     function DefWindowProc(hwnd: HWND, msg: number, wParam: number, lParam: number): number;
-    function SendMessage(hwnd: HWND, msg: number, wParam: number, lParam: number | string): number;
+    /** 重载签名由 lib/msg-registry.ts 的 QuickWinMsgRegistry 同源导出：每个已知/注册
+     *  消息一条签名（msg 值域收窄），未注册消息 TS2769。运行时实现不变（js_SendMessage）。 */
+    const SendMessage: import('./lib/msg-registry').SendMessageCall;
     function UnsetWindowProc(hwnd: HWND): boolean;
     /**
      * Loads the first icon group (RT_GROUP_ICON) from this exe, i.e. the custom icon

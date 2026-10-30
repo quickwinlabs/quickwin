@@ -9,6 +9,7 @@ import * as gui from 'gui'
 import { SendMessage } from '../lib/windows/user32.js'
 import { WCHAR } from '../lib/ffi/bind.js'
 import { PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { WmMsg } from '../constants'
 
 const N = 500_000
 // S2 含 WCHAR.encode 每次分配：500k 时 GC 抖动把单轮拖到 190s+（实测 ~380μs/迭代），
@@ -43,10 +44,11 @@ const buf = new PtrArrayBuffer<'WCHAR'>(64)
 // —— S1（WM_NULL 纯数字，最纯入口链开销）：实现已随首轮跑数移除，数据见 .agents/SENDMESSAGE_BENCH.md ——
 
 // —— S2：WM_SETTEXT 字符串 lParam（任务 3 多态点的真实成本形态）：
-//    gui 侧 C 内编码；FFI 侧调用点 WCHAR.encode 在循环内（迁移后的真实写法）——
+//    类型层禁 string lParam 后，gui 侧与 FFI 侧一样调用点 WCHAR.encode（encode 成本共模，
+//    测 gui.SendMessage 入口 vs fSM 入口之差）——
 function s2g(): number {
     const t0 = Date.now()
-    for (let i = 0; i < N_S2; i++) gSM(win, WM_SETTEXT, 0, TEXT)
+    for (let i = 0; i < N_S2; i++) gSM(win, WmMsg.SETTEXT, 0, WCHAR.encode(TEXT).ptr)
     return Date.now() - t0
 }
 function s2f(): number {
@@ -61,7 +63,7 @@ function s2f(): number {
 // —— S3：WM_GETTEXT 缓冲出参往返，两侧 JS 实参完全相同（纯入口差 + C 侧拷贝共模）——
 function s3g(): number {
     const t0 = Date.now()
-    for (let i = 0; i < N; i++) gSM(win, WM_GETTEXT, 64, buf.ptr)
+    for (let i = 0; i < N; i++) gSM(win, WmMsg.GETTEXT, 64, buf.ptr)
     return Date.now() - t0
 }
 function s3f(): number {

@@ -1,8 +1,10 @@
 import * as gui from 'gui'
 import React from 'react'
+import type { Win32Class } from './jsx.js'
 import { DefWindowProc, GetSystemMetrics, ShowWindow, UpdateWindow } from '../windows/user32.js'
 import reconciler, { scaleFactor, instancesByHwnd, forceFlexLayout, type Instance } from './reconciler.js'
 import { CreatePos, ShowWindowCmd, SysMetrics, WindowStyle, WmMsg } from '../../constants'
+import type { WEvent } from '../msg-registry.js'
 
 const noop = () => { }
 
@@ -14,7 +16,7 @@ export interface RootWindowConfig {
   width?: number
   height?: number
   noShowWindow?: boolean
-  onEvent?: (e: { hwnd: gui.HWND; msg: number; wParam: number; lParam: number }) => number | void
+  onEvent?: (e: WEvent) => number | void
 }
 
 let defaultClassRegistered = false
@@ -31,7 +33,7 @@ function ensureDefaultClass() {
         instancesByHwnd.delete(hwnd)
       })
     }
-    const result = entry?.onEvent?.({ hwnd, msg, wParam, lParam })
+    const result = entry?.onEvent?.({ hwnd, msg, wParam, lParam } as WEvent)
     if (typeof result === 'number') return result
     if (msg === WmMsg.SIZE) forceFlexLayout(hwnd)
     return DefWindowProc(hwnd, msg, wParam, lParam)
@@ -70,7 +72,9 @@ export function createRoot(container: gui.HWND | RootWindowConfig) {
     (error, info) => console.log('[React recoverable]', error, error.stack, info.componentStack),
     noop,
   )
-  const rootInst: Instance = { hwnd, type: '_root', props: { type: '_root', style: { flexDirection: 'column', alignItems: 'stretch' } }, children: [] }
+  // '_root' 是根容器的内部哨兵类名（非真实控件类，只作 Instance.type 标签、从不被读取），
+  // 不在 Win32Class/注册表内，故此处断言；对外 type 仍是 Win32Class | 注册类名。
+  const rootInst: Instance = { hwnd, type: '_root', props: { type: '_root' as Win32Class | keyof QuickWinClassRegistry, style: { flexDirection: 'column', alignItems: 'stretch' } }, children: [] }
   instancesByHwnd.set(hwnd, rootInst)
   if (typeof container === 'object')
     rootMap.set(hwnd, { root, onEvent: container.onEvent })

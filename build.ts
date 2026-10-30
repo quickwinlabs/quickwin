@@ -2,6 +2,11 @@ import { build } from 'esbuild'
 
 const nativeModules = ['gui', 'os', 'std', 'sock', 'brotli', 'ffi', 'wamr', 'tls', 'wolfssl', '../lib/polyfill.js']
 
+// tsconfig 的 jsxImportSource 指向 quickwin/lib/react-qw，tsc emit 会把
+// `import ... from "quickwin/lib/react-qw/jsx-runtime"` 写进产物；quickwin 不在自身
+// node_modules，esbuild 打包时解析不到，用 alias 指回本地运行时模块
+const jsxRuntimeAlias = { 'quickwin/lib/react-qw/jsx-runtime': './lib/react-qw/jsx-runtime.js' }
+
 async function buildExecWorkerDataUrl(): Promise<string> {
   const result = await build({
     entryPoints: ['_build/examples/execd/worker.js'],
@@ -11,6 +16,7 @@ async function buildExecWorkerDataUrl(): Promise<string> {
     minify: true,
     write: false,
     logLevel: 'warning',
+    alias: jsxRuntimeAlias,
   })
   const js = result.outputFiles[0].text
   const b64 = Buffer.from(js, 'utf8').toString('base64')
@@ -46,6 +52,7 @@ async function main() {
     // platform: 'browser',
     jsx: 'automatic',
     jsxImportSource: 'react',
+    alias: jsxRuntimeAlias,
     outdir: '.',
     outbase: '.',
     logLevel: 'warning',

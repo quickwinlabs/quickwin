@@ -57,7 +57,7 @@ const DateTimePicker = forwardRef(function DateTimePicker(
       const buf = dateToSysTimeBuf(d)
       gui.SendMessage(h, DtMsg.SETSYSTEMTIME, DtFlag.GDT_VALID, buf.ptr)
     } else {
-      gui.SendMessage(h, DtMsg.SETSYSTEMTIME, DtFlag.GDT_NONE, 0)
+      gui.SendMessage(h, DtMsg.SETSYSTEMTIME, DtFlag.GDT_NONE, NULL)
     }
   }, [effectiveDate])
 
@@ -83,7 +83,7 @@ const DateTimePicker = forwardRef(function DateTimePicker(
           const code = nmCode(e.lParam)
           if (code === DtNotifyCode.DATETIMECHANGE) {
             // NMDATETIMECHANGE: NMHDR + DWORD dwFlags + SYSTEMTIME st
-            const { dwFlags, st } = NMDATETIMECHANGE.decode(e.lParam as Ptr<'NMDATETIMECHANGE'>)
+            const { dwFlags, st } = NMDATETIMECHANGE.decode(e.lParam as unknown as Ptr<'NMDATETIMECHANGE'>)
             if (dwFlags === DtFlag.GDT_NONE) {
               if (!isControlled) setInternalDate(null)
               onChangeRef.current?.(null)

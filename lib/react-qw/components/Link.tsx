@@ -40,7 +40,7 @@ const Link = forwardRef(function Link(
         if (e.msg === WmMsg.NOTIFY) {
           const code = nmCode(e.lParam)
           if (code === SysLinkNotifyCode.CLICK || code === SysLinkNotifyCode.RETURN) {
-            onClickRef.current?.(NMLINK.decode(e.lParam as Ptr<'NMLINK'>).item.szUrl)
+            onClickRef.current?.(NMLINK.decode(e.lParam as unknown as Ptr<'NMLINK'>).item.szUrl)
           }
         }
       }}

@@ -12,6 +12,7 @@ import { calculateFlexLayout, type FlexStyle } from './layout.js'
 import { getButtonIdealSize, measureTextForHwnd } from '../text-measure.js'
 import type { WIntrinsicProps } from './jsx.js'
 import { Gwlp, SetWindowPosFlag, SetWindowPosHwnd, ShowWindowCmd, WindowStyle, WmMsg } from '../../constants'
+import type { WEvent } from '../msg-registry.js'
 
 // DEBUG 由 esbuild --define 在 bundle 时替换（见 build.ts），生产环境为 false
 declare const DEBUG: boolean
@@ -44,10 +45,10 @@ function setupWindowProc(instance: Instance, hwnd: gui.HWND) {
     const ev = instance.props.onEvent
     if (!ev) return CallWindowProc(oldProc, hwnd, msg, wParam, lParam)
     if (typeof ev === 'object') {
-      return ev.fn({ hwnd, msg, wParam, lParam, callOldWndProc: () => CallWindowProc(oldProc, hwnd, msg, wParam, lParam) })
+      return ev.fn({ hwnd, msg, wParam, lParam, callOldWndProc: () => CallWindowProc(oldProc, hwnd, msg, wParam, lParam) } as WEvent & { callOldWndProc: () => number })
     }
     const result = CallWindowProc(oldProc, hwnd, msg, wParam, lParam)
-    const override = ev({ hwnd, msg, wParam, lParam })
+    const override = ev({ hwnd, msg, wParam, lParam } as WEvent)
     return typeof override === 'number' && Number.isInteger(override) ? override : result
   })
 }
@@ -260,9 +261,10 @@ const hostConfig: QuickWinHostConfig = {
 
   commitMount(_instance: Instance, _type: string, _props: Props, _internal: unknown) { },
 
-  finalizeInitialChildren(instance: Instance, type: string, props: Props) {
+  finalizeInitialChildren(instance: Instance, _type: string, props: Props) {
     if (DEBUG) console.log('[reconciler] finalizeInitialChildren instance:', instance.hwnd, 'props:', JSON.stringify(props))
-    applyProps(instance, props, { type })
+    // type 参数是宿主元素类型（'w'），非类名；oldProps 在 applyProps 内未读，用 props.type 满足类型
+    applyProps(instance, props, { type: props.type })
     return false
   },
 

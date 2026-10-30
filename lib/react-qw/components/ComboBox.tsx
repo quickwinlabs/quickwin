@@ -1,5 +1,6 @@
 import { forwardRef, useRef, useEffect, useState } from 'react'
 import * as gui from 'gui'
+import { WCHAR } from '../../ffi/bind.js'
 import type { WStyle } from '../jsx.d.ts'
 import { CbnCode, ComboBoxMsg, ComboBoxStyle, WindowStyle, WmMsg } from '../../../constants'
 
@@ -28,7 +29,7 @@ export const ComboBox = forwardRef<gui.HWND, ComboBoxProps>(
       if (!h) return
       gui.SendMessage(h, ComboBoxMsg.RESETCONTENT, 0, 0)
       for (const item of items)
-        gui.SendMessage(h, ComboBoxMsg.ADDSTRING, 0, item)
+        gui.SendMessage(h, ComboBoxMsg.ADDSTRING, 0, WCHAR.encode(item).ptr)
       if (sel >= 0 && sel < items.length)
         gui.SendMessage(h, ComboBoxMsg.SETCURSEL, sel, 0)
     }, [items])

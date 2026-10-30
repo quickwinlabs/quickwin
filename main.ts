@@ -39,7 +39,7 @@ function wndProc(hwnd: HWND, msg: number, wParam: number, lParam: number) {
                 GetWindowText(edit, buf, cap);
                 const text = WCHAR.decode(buf);
                 if (text.trim())
-                    SendMessage(list, LbMsg.ADDSTRING, 0, text);
+                    SendMessage(list, LbMsg.ADDSTRING, 0, WCHAR.encode(text).ptr);
                 return 0;
             }
             return CallWindowProc(oldProc, hwnd, msg, wParam, lParam);

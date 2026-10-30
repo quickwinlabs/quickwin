@@ -437,6 +437,8 @@ npm-pkg: js wasm
 	# （examples 那 8 个 ~1MB 的 demo bundle 各自内联了一份 React），消费者用不到，
 	# 留着只会让每次 npm install 多下 ~2.7MB。docs/ 其余是仓库内部件（QEMU 自动化测试、
 	# 开发选项），只 docs/usage/ 面向消费者，随包发
+	# quickwin 的 jsx-runtime（运行时 re-export react 的工厂）是手写 .js，tsc 不产；单独拷进 lib/
+	cp lib/react-qw/jsx-runtime.js $(BUILD_DIR)/lib/react-qw/
 	cp -r $(BUILD_DIR)/lib $(NPM_PKG_DIR)/
 	# 类型面只发声明：lib 的实现源码（.ts/.tsx）不再进包——留着的话消费者的 tsc 会
 	# 顺着 .js 找到同名 .ts 去检查我们的源码，他们的 strict/lib/依赖和我们不一致时报错

@@ -1,5 +1,6 @@
 import { forwardRef, useRef, useEffect, useState, useImperativeHandle } from 'react'
 import * as gui from 'gui'
+import { WCHAR } from '../../ffi/bind.js'
 import type { WStyle } from '../jsx.d.ts'
 import { LbMsg, LbnCode, ListBoxStyle, WindowStyle, WmMsg } from '../../../constants'
 
@@ -32,7 +33,7 @@ export const ListBox = forwardRef<gui.HWND, ListBoxProps>(
       if (!h) return
       gui.SendMessage(h, LbMsg.RESETCONTENT, 0, 0)
       for (const item of items)
-        gui.SendMessage(h, LbMsg.ADDSTRING, 0, item)
+        gui.SendMessage(h, LbMsg.ADDSTRING, 0, WCHAR.encode(item).ptr)
       if (sel >= 0 && sel < items.length)
         gui.SendMessage(h, LbMsg.SETCURSEL, sel, 0)
       if (scrollToBottom && items.length > 0)

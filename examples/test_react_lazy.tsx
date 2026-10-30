@@ -36,7 +36,7 @@ function App() {
         text={show ? 'Hide Lazy' : 'Show Lazy'}
         ws={WindowStyle.CHILD | WindowStyle.VISIBLE}
         style={{width:150, height:30}}
-        onEvent={(e: { msg: number; wParam: number; lParam: number }) => {
+        onEvent={(e) => {
           if (e.msg === 0x0202) setShow(!show)
         }}
       />

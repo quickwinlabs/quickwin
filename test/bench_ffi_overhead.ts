@@ -19,6 +19,7 @@ import * as std from 'std'
 import * as gui from 'gui'
 import { bind } from '../lib/ffi/bind.js'
 import { PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { WmMsg } from '../constants'
 
 const WM_NULL = 0x0000
 const WM_SETTEXT = 0x000c
@@ -59,7 +60,7 @@ const fSm = bind('user32.dll', 'SendMessageW', '<HWND>ptr u32 <>ptr <>ptr -> <>p
 // 顺便证明这条「真实消息」路径确实在做事——长度应为 64）
 const textBuf = new PtrArrayBuffer<'WCHAR'>(64)
 const textPtr = textBuf.ptr
-const seedLen = gui.SendMessage(win, WM_GETTEXT, 64, textPtr)
+const seedLen = gui.SendMessage(win, WmMsg.GETTEXT, 64, textPtr)
 step('stage: WM_GETTEXT seed len=' + String(seedLen) + ' (expect 64)')
 
 // 每臂循环体：函数先取到局部 const（与 node 侧同形态——模块槽访问 vs 局部槽访问的
@@ -92,7 +93,7 @@ const runSm = (n: number): number => {
 const runGuiSm = (n: number): number => {
     const f = gui.SendMessage
     const t0 = Date.now()
-    for (let i = 0; i < n; i++) f(win, WM_NULL, 0, 0x1234)
+    for (let i = 0; i < n; i++) f(win, WmMsg.NULL, 0, 0x1234)
     return Date.now() - t0
 }
 const runSmGet = (n: number): number => {
@@ -104,7 +105,7 @@ const runSmGet = (n: number): number => {
 const runGuiSmGet = (n: number): number => {
     const f = gui.SendMessage
     const t0 = Date.now()
-    for (let i = 0; i < n; i++) f(win, WM_GETTEXT, 64, textPtr)
+    for (let i = 0; i < n; i++) f(win, WmMsg.GETTEXT, 64, textPtr)
     return Date.now() - t0
 }
 const runSmSet = (n: number): number => {
@@ -116,7 +117,7 @@ const runSmSet = (n: number): number => {
 const runGuiSmSet = (n: number): number => {
     const f = gui.SendMessage
     const t0 = Date.now()
-    for (let i = 0; i < n; i++) f(win, WM_SETTEXT, 0, textPtr)
+    for (let i = 0; i < n; i++) f(win, WmMsg.SETTEXT, 0, textPtr)
     return Date.now() - t0
 }
 

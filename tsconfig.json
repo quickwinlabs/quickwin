@@ -20,8 +20,13 @@
     "rootDir": ".",
     "outDir": "_build",
     "jsx": "react-jsx",
-    "jsxImportSource": "react",
+    "jsxImportSource": "quickwin/lib/react-qw",
+    // quickwin 自身不在 node_modules，jsxImportSource 的裸子路径靠 paths 指向本地文件；
+    // 发布包里 lib/react-qw/jsx-runtime 天然可解析，消费方无需 paths
+    "paths": {
+      "quickwin/lib/react-qw/jsx-runtime": ["./lib/react-qw/jsx-runtime.d.ts"],
+    },
   },
-  "include": ["test/**/*.ts", "test/**/*.tsx", "examples/**/*.ts", "examples/**/*.tsx", "main.ts", "quickwin.d.ts", "lib/**/*.ts", "lib/**/*.tsx  "],
+  "include": ["test/**/*.ts", "test/**/*.tsx", "examples/**/*.ts", "examples/**/*.tsx", "main.ts", "quickwin.d.ts", "lib/**/*.ts", "lib/**/*.tsx"],
   "exclude": []
 }

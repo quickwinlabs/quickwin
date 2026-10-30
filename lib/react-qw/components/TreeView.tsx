@@ -1,6 +1,7 @@
 import { forwardRef, useRef, useEffect, useState } from 'react'
 import * as gui from 'gui'
 import { WCHAR } from '../../ffi/bind.js'
+import { NULL, type Ptr } from '../../ffi/ctype.js'
 import { TVITEM, TVINSERTSTRUCT } from '../../windows/structs.js'
 import { nmCode } from '../nmhdr.js'
 import type { WStyle } from '../jsx.d.ts'
@@ -33,7 +34,7 @@ function buildTvItem(textPtr: number, cChildren: number): ArrayBuffer {
 
 function insertItems(
   hTree: gui.HWND, nodes: TreeNode[], parentHandle: number,
-  hItemMap: Map<number, TreeNode>, keyMap: Map<string, number>
+  hItemMap: Map<number, TreeNode>, keyMap: Map<string, Ptr<'HTREEITEM'>>
 ): void {
   for (const node of nodes) {
     const cChildren = node.children && node.children.length > 0 ? 1 : 0
@@ -66,7 +67,7 @@ const TreeView = forwardRef(function TreeViewInner<D>(
   const selKey = isControlled ? controlledKey : internalKey
   const tvRef = useRef<gui.HWND>(null)
   const hItemMapRef = useRef<Map<number, TreeNode<D>>>(new Map())
-  const keyMapRef = useRef<Map<string, number>>(new Map())
+  const keyMapRef = useRef<Map<string, Ptr<'HTREEITEM'>>>(new Map())
   const onChangeRef = useRef(onSelect)
   onChangeRef.current = onSelect
 
@@ -113,7 +114,7 @@ const TreeView = forwardRef(function TreeViewInner<D>(
           if (code === TvNotifyCode.SELCHANGEDW) {
             const h = tvRef.current
             if (!h) return
-            const hCaret =             gui.SendMessage(h, TvMsg.GETNEXTITEM, TvGnRelative.CARET, 0)
+            const hCaret =             gui.SendMessage(h, TvMsg.GETNEXTITEM, TvGnRelative.CARET, NULL)
             const node = hItemMapRef.current.get(hCaret) ?? null
             const key = node?.key ?? null
             if (!isControlled) setInternalKey(key)

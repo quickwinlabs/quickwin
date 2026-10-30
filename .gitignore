@@ -5,6 +5,9 @@ dist/
 *.d
 *.a
 *.js
+# react-qw/jsx-runtime.js 是手写源码（运行时 re-export react 的 JSX 工厂），
+# 不是构建产物，需提交；其余 .js 一律忽略（都是 tsc/esbuild 产物）
+!lib/react-qw/jsx-runtime.js
 *.wasm
 *.png
 *.tsbuildinfo
