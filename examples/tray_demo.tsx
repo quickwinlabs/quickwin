@@ -5,6 +5,7 @@ import { GetCursorPos, CreatePopupMenu, AppendMenu, TrackPopupMenu, DestroyMenu,
 import { NOTIFYICONDATAW, POINT } from '../lib/windows/structs.js'
 import { ShellNotifyIcon } from '../lib/windows/shell32.js'
 import { createSystemDpiFont } from '../lib/dpi.js'
+import { loadAppIcon } from '../lib/app-icon.js'
 import { EditStyle, IDI, ImageType, LoadImageFlag, MenuFlag, NotifyIconCmd, NotifyIconFlag, ShowWindowCmd, SysMetrics, TrackPopupMenuFlag, WindowStyle, WmMsg } from '../constants'
 
 const WM_TRAY = 0x8001
@@ -70,8 +71,8 @@ if (text) {
 }
 
 // LoadImageW 返回的句柄随 uType 变（HICON/HCURSOR/HBITMAP），绑定只能给裸地址档；
-// LoadAppIcon 的 HICON 是同一档的品牌子型，故变量按裸地址声明
-let hIcon: MaybePtr<''> | null = gui.LoadAppIcon()
+// loadAppIcon 返回 HICON 品牌子型，可直接赋给裸地址变量
+let hIcon: MaybePtr<''> | null = loadAppIcon(0, 0)
 if (!hIcon) hIcon = LoadImageOrdinal(NULL, IDI.APPLICATION, ImageType.ICON, 0, 0, LoadImageFlag.SHARED)
 if (hIcon) {
     const ok = ShellNotifyIcon(NotifyIconCmd.ADD, {

@@ -43,7 +43,7 @@ export const Shell_NotifyIconGetRect = (() => {
  *    hWnd+uID）
  *  @param args_1 lpData NOTIFYICONDATAW 对象直传（encoder 已注册，缺省字段跳过）；cbSize 填
  *    NOTIFYICONDATAW.size、uFlags 取 NotifyIconFlag.*（ICON/MESSAGE/TIP…，决定下面哪些字段
- *    生效）、uCallbackMessage 常填自定义消息号、hIcon 接 LoadImage/LoadAppIcon 的结果、
+ *    生效）、uCallbackMessage 常填自定义消息号、hIcon 接 LoadImage/loadAppIcon 的结果、
  *    szTip 直接给 string（宽字符串糖，最长 127 字符） */
 export const ShellNotifyIcon = /*@__PURE__*/ b('Shell_NotifyIconW',
     'u32 <NOTIFYICONDATAW>ptr -> i32', { NOTIFYICONDATAW })

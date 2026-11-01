@@ -41,7 +41,7 @@ QuickWin 是一个 Windows 平台的 QuickJS 运行时。它的设计可以概�
 
 | 对比 | 含义 |
 |---|---|
-| **GUI 的 C 侧只有 8 个函数** | `RegisterClass` / `CreateWindow` / `SetWindowProc` / `DefWindowProc` / `SendMessage` / `LoadAppIcon` 等，只做平台原语 |
+| **GUI 的 C 侧只有 7 个函数** | `RegisterClass` / `CreateWindow` / `DestroyWindow` / `SetWindowProc` / `DefWindowProc` / `SendMessage` 等，只做平台原语 |
 | **控件、布局、React 渲染器全在 JS 层** | `lib/` 里的 JS 靠 FFI 调 Win32，不经过任何 C 包装 |
 | **252 / 8256** | 已绑定的 Win32 函数占全部导出的比例（≈3%）。其余留给用户 `bind()` |
 

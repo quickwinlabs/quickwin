@@ -432,7 +432,6 @@ declare module "gui" {
      *  gui 模块与 FFI 绑定两体系间互认直传（原 unique symbol 键只有 HWND 打通） */
     type HWND = number & { readonly ptrBrand: "HWND" };
     type HMENU = number & { readonly ptrBrand: "HMENU" };
-    type HICON = number & { readonly ptrBrand: "HICON" };
     // 枚举唯一定义在 constants.ts（真实 .ts，tsc/esbuild 均内联）；本模块不再转出枚举
     // 别名与 RECT 等结构类型——Win32 直通请走 lib/windows（含常量与结构定义）
 
@@ -446,14 +445,6 @@ declare module "gui" {
      *  消息一条签名（msg 值域收窄），未注册消息 TS2769。运行时实现不变（js_SendMessage）。 */
     const SendMessage: import('./lib/msg-registry').SendMessageCall;
     function UnsetWindowProc(hwnd: HWND): boolean;
-    /**
-     * Loads the first icon group (RT_GROUP_ICON) from this exe, i.e. the custom icon
-     * embedded by rcedit. Works with any resource ID including 0. Returns null if the
-     * exe has no icon resource.
-     * cx/cy: target size in pixels (0 for the natural size).
-     * Example: gui.LoadAppIcon() → HICON of the exe's icon.
-     */
-    function LoadAppIcon(cx?: number, cy?: number): HICON | null;
 
 
 

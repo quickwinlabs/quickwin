@@ -178,35 +178,9 @@ LRESULT CALLBACK ClassProxyWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
     return DefWindowProcW(hWnd, msg, wParam, lParam);
 }
 
-typedef struct {
-    LPCWSTR name;
-    int found;
-} EnumIconCtx;
-
-static BOOL CALLBACK enum_first_group_icon(HMODULE hModule, LPCWSTR lpszType, LPWSTR lpszName, LONG_PTR lParam)
-{
-    (void)hModule;
-    (void)lpszType;
-    EnumIconCtx *ctx = (EnumIconCtx *)lParam;
-    ctx->name = lpszName;
-    ctx->found = 1;
-    return FALSE;
-}
-
-/* Load app icon from exe resources (custom icon embedded by rcedit).
-   Enumerates RT_GROUP_ICON and takes the first entry, works with any resource ID
-   (including ID 0 written by rcedit when the exe had no original icon: the loader
-   treats the NULL name from enumeration as ordinal 0 and still loads it).
-   Returns NULL if the exe has no icon resource. */
-static HICON load_app_icon(int cx, int cy)
-{
-    HMODULE hmod = GetModuleHandleW(NULL);
-    EnumIconCtx ctx = {NULL, 0};
-    EnumResourceNamesW(hmod, (LPCWSTR)RT_GROUP_ICON, enum_first_group_icon, (LONG_PTR)&ctx);
-    if (ctx.found)
-        return (HICON)LoadImageW(hmod, ctx.name, IMAGE_ICON, cx, cy, LR_DEFAULTCOLOR);
-    return NULL;
-}
+/* 应用图标组 ID：quickwin 构建链（resedit）固定写 101；rcedit 为 0/1，故不通用。
+   用户换别的 ID 时自行 SendMessage(WM_SETICON) 覆盖。 */
+#define QW_APP_ICON_ID 101
 
 static JSValue js_registerClass(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -241,8 +215,10 @@ done:
     wc.hInstance = GetModuleHandleW(NULL);
     wc.hCursor = LoadCursorW(NULL, (LPCWSTR)IDC_ARROW);
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-    wc.hIcon = load_app_icon(0, 0);
-    wc.hIconSm = load_app_icon(GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
+    wc.hIcon = NULL;   // 大图标交给系统默认应用图标（exe 图标 32px，由 WM_GETICON 无显式图标时取资源）
+    wc.hIconSm = (HICON)LoadImageW(wc.hInstance, MAKEINTRESOURCEW(QW_APP_ICON_ID),
+                                   IMAGE_ICON, GetSystemMetrics(SM_CXSMICON),
+                                   GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR);
     wc.lpszClassName = wclassName;
     ATOM atom = RegisterClassExW(&wc);
 
@@ -395,21 +371,6 @@ static JSValue js_SendMessage(JSContext *ctx, JSValueConst this_val, int argc, J
     return JS_NewInt64(ctx, result);
 }
 
-/* ─── Icons ─────────────────────────────────────────────────── */
-
-/* Load the first RT_GROUP_ICON from this exe (custom icon embedded by rcedit).
-   Signature: LoadAppIcon(cx?, cy?). Returns HICON handle (int64) or null. */
-static JSValue js_loadAppIcon(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-    (void)this_val;
-    (void)argc;
-    GET_INT32_OPT(ctx, argv[0], cx, 0);
-    GET_INT32_OPT(ctx, argv[1], cy, 0);
-    HICON h = load_app_icon(cx, cy);
-    if (h) return JS_NewInt64(ctx, (int64_t)h);
-    return JS_NULL;
-}
-
 static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("RegisterClass", 2, js_registerClass),
     JS_CFUNC_DEF("CreateWindow", 9, js_createWindow),
@@ -418,7 +379,6 @@ static const JSCFunctionListEntry gui_funcs[] = {
     JS_CFUNC_DEF("DefWindowProc", 4, js_DefWindowProc),
     JS_CFUNC_DEF("SendMessage", 4, js_SendMessage),
     JS_CFUNC_DEF("UnsetWindowProc", 1, js_unsetWindowProc),
-    JS_CFUNC_DEF("LoadAppIcon", 2, js_loadAppIcon),
 };
 
 
