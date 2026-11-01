@@ -215,7 +215,10 @@ done:
     wc.hInstance = GetModuleHandleW(NULL);
     wc.hCursor = LoadCursorW(NULL, (LPCWSTR)IDC_ARROW);
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-    wc.hIcon = NULL;   // 大图标交给系统默认应用图标（exe 图标 32px，由 WM_GETICON 无显式图标时取资源）
+    /* 大图标必须显式给：留 NULL 时 Win7 任务栏回退到 hIconSm（16px）放大到 32px，发虚。 */
+    wc.hIcon = (HICON)LoadImageW(wc.hInstance, MAKEINTRESOURCEW(QW_APP_ICON_ID),
+                                 IMAGE_ICON, GetSystemMetrics(SM_CXICON),
+                                 GetSystemMetrics(SM_CYICON), LR_DEFAULTCOLOR);
     wc.hIconSm = (HICON)LoadImageW(wc.hInstance, MAKEINTRESOURCEW(QW_APP_ICON_ID),
                                    IMAGE_ICON, GetSystemMetrics(SM_CXSMICON),
                                    GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR);
