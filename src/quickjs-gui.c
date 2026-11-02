@@ -182,6 +182,29 @@ LRESULT CALLBACK ClassProxyWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
    用户换别的 ID 时自行 SendMessage(WM_SETICON) 覆盖。 */
 #define QW_APP_ICON_ID 101
 
+typedef HRESULT (WINAPI *LoadIconWithScaleDownFn)(HINSTANCE, LPCWSTR, int, int, HICON*);
+static LoadIconWithScaleDownFn g_loadIconWithScaleDown = NULL;
+
+static HICON loadAppIconScaled(int resId, int baseCx, int baseCy)
+{
+    HINSTANCE hInst = GetModuleHandleW(NULL);
+    int dpi = 96;
+    HDC hdc = GetDC(NULL);
+    if (hdc) { dpi = GetDeviceCaps(hdc, LOGPIXELSX); ReleaseDC(NULL, hdc); }
+    if (!g_loadIconWithScaleDown) {
+        HMODULE hCtl = LoadLibraryW(L"comctl32.dll");
+        if (hCtl)
+            g_loadIconWithScaleDown = (LoadIconWithScaleDownFn)GetProcAddress(hCtl, "LoadIconWithScaleDown");
+    }
+    int cx = baseCx * dpi / 96, cy = baseCy * dpi / 96;
+    HICON h = NULL;
+    if (g_loadIconWithScaleDown)
+        g_loadIconWithScaleDown(hInst, MAKEINTRESOURCEW(resId), cx, cy, &h);
+    if (!h)
+        h = (HICON)LoadImageW(hInst, MAKEINTRESOURCEW(resId), IMAGE_ICON, cx, cy, LR_DEFAULTCOLOR);
+    return h;
+}
+
 static JSValue js_registerClass(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
     const char *className = JS_ToCString(ctx, argv[0]);
@@ -216,12 +239,8 @@ done:
     wc.hCursor = LoadCursorW(NULL, (LPCWSTR)IDC_ARROW);
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     /* 大图标必须显式给：留 NULL 时 Win7 任务栏回退到 hIconSm（16px）放大到 32px，发虚。 */
-    wc.hIcon = (HICON)LoadImageW(wc.hInstance, MAKEINTRESOURCEW(QW_APP_ICON_ID),
-                                 IMAGE_ICON, GetSystemMetrics(SM_CXICON),
-                                 GetSystemMetrics(SM_CYICON), LR_DEFAULTCOLOR);
-    wc.hIconSm = (HICON)LoadImageW(wc.hInstance, MAKEINTRESOURCEW(QW_APP_ICON_ID),
-                                   IMAGE_ICON, GetSystemMetrics(SM_CXSMICON),
-                                   GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR);
+    wc.hIcon = loadAppIconScaled(QW_APP_ICON_ID, 32, 32);
+    wc.hIconSm = loadAppIconScaled(QW_APP_ICON_ID, 16, 16);
     wc.lpszClassName = wclassName;
     ATOM atom = RegisterClassExW(&wc);
 
