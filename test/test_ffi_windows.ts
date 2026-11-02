@@ -3,7 +3,7 @@ import { NULL, PTR_SIZE, PtrArrayBuffer } from '../lib/ffi/ctype.js'
 import { WCHAR } from '../lib/ffi/bind.js'
 import {
     GetDesktopWindow, CreatePopupMenu, DestroyMenu, GetDC, ReleaseDC,
-    LoadImage, LoadImageOrdinal, SetScrollInfo, GetScrollInfo,
+    LoadImage, SetScrollInfo, GetScrollInfo,
 } from '../lib/windows/user32.js'
 import {
     GetDeviceCaps, CreateSolidBrush, DeleteObject, CreateFontIndirect, GetObject, SelectObject, CreateCompatibleDC, CreateCompatibleBitmap, DeleteDC, GetDIBits, SetBrushOrgEx,
@@ -96,12 +96,10 @@ export const suite = {
             t.checkTrue('ImageListDestroy(himl) 成功', ImageListDestroy(himl) !== 0)
         }
 
-        t.section('user32: LoadImage 双变体（string 自动编码 / ordinal MAKEINTRESOURCE）')
+        t.section('user32: LoadImage 按资源 ID 序数（MAKEINTRESOURCE）')
         // Win32 IMAGE_* 真值：BITMAP=0 CURSOR=1 ICON=2；LR_SHARED=0x8000（注意 ImageType d.ts 当前值与此不一致）
-        t.checkTrue('LoadImageOrdinal(NULL, IDI_APPLICATION, IMAGE_ICON, LR_SHARED) 非 0',
-            LoadImageOrdinal(NULL, 32512, 2, 0, 0, 0x8000) !== 0)
-        t.check('LoadImage(LOADFROMFILE, 不存在文件) → 0', 0,
-            LoadImage(NULL, 'qw_no_such_icon_xyz.ico', 2, 0, 0, 0x10))
+        t.checkTrue('LoadImage(NULL, IDI_APPLICATION, IMAGE_ICON, LR_SHARED) 非 0',
+            LoadImage(NULL, 32512, 2, 0, 0, 0x8000) !== 0)
 
         t.section('user32: 滚动条（入参对象直传 / 出参 encode → call → decode）')
         const desk = GetDesktopWindow()
@@ -149,8 +147,8 @@ export const suite = {
         t.check('宽字符串糖 szTip 编解码往返', 'quickwin', nidBack.szTip)
         t.check('宽字符串糖 szInfoTitle 编解码往返', 'qw', nidBack.szInfoTitle)
 
-        const trayIcon = LoadImageOrdinal(NULL, IDI.APPLICATION, ImageType.ICON, 0, 0, LoadImageFlag.SHARED)
-        t.checkTrue('LoadImageOrdinal(IDI.APPLICATION, SHARED) 非 0', trayIcon !== 0)
+        const trayIcon = LoadImage(NULL, IDI.APPLICATION, ImageType.ICON, 0, 0, LoadImageFlag.SHARED)
+        t.checkTrue('LoadImage(IDI.APPLICATION, SHARED) 非 0', trayIcon !== 0)
         const trayHwnd = GetDesktopWindow()
         t.checkTrue('ShellNotifyIcon(ADD) 成功（Vista+ 尺寸在 XP/Win7 均被接受）', ShellNotifyIcon(NotifyIconCmd.ADD, {
             cbSize: NOTIFYICONDATAW.size, hWnd: trayHwnd, uID: 77,

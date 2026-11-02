@@ -1,7 +1,7 @@
 import * as gui from 'gui'
 import * as std from 'std'
 import { NULL, type MaybePtr } from '../lib/ffi/ctype.js'
-import { GetCursorPos, CreatePopupMenu, AppendMenu, TrackPopupMenu, DestroyMenu, GetSystemMetrics, LoadImageOrdinal, PostQuitMessage, SetForegroundWindow, ShowWindow } from '../lib/windows/user32.js'
+import { GetCursorPos, CreatePopupMenu, AppendMenu, TrackPopupMenu, DestroyMenu, GetSystemMetrics, LoadImage, PostQuitMessage, SetForegroundWindow, ShowWindow } from '../lib/windows/user32.js'
 import { NOTIFYICONDATAW, POINT } from '../lib/windows/structs.js'
 import { ShellNotifyIcon } from '../lib/windows/shell32.js'
 import { createSystemDpiFont } from '../lib/dpi.js'
@@ -73,7 +73,7 @@ if (text) {
 // LoadImageW 返回的句柄随 uType 变（HICON/HCURSOR/HBITMAP），绑定只能给裸地址档；
 // loadAppIcon 返回 HICON 品牌子型，可直接赋给裸地址变量
 let hIcon: MaybePtr<''> | null = loadAppIcon(0, 0)
-if (!hIcon) hIcon = LoadImageOrdinal(NULL, IDI.APPLICATION, ImageType.ICON, 0, 0, LoadImageFlag.SHARED)
+if (!hIcon) hIcon = LoadImage(NULL, IDI.APPLICATION, ImageType.ICON, 0, 0, LoadImageFlag.SHARED)
 if (hIcon) {
     const ok = ShellNotifyIcon(NotifyIconCmd.ADD, {
         cbSize: NOTIFYICONDATAW.size,
