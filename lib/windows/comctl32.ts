@@ -18,3 +18,19 @@ export const ImageListAdd = /*@__PURE__*/ b('ImageList_Add', '<HIMAGELIST>ptr <H
 /** 销毁图像列表
  *  @returns 成功 → 非 0 */
 export const ImageListDestroy = /*@__PURE__*/ b('ImageList_Destroy', '<HIMAGELIST>ptr -> i32')
+
+/** 按目标尺寸缩放加载图标（LoadIconWithScaleDown；**Vista+**，需 comctl32 v6 激活——
+ *  XP 的 comctl32 无此导出，故为**可选绑定**（bind() 模块顶层立即解析，缺符号 throw
+ *  会拖垮整个脚本启动），老系统上本常量为 null，调用方必须回退 LoadImage）
+ *  @returns HRESULT：0 = 成功，phico 写入图标句柄；非 0 = 失败（phico 未写）
+ *  @param args_0 hinst 资源所在模块（GetModuleHandle(NULL) 取 exe）
+ *  @param args_1 pszName 资源名 / MAKEINTRESOURCE 序数（<>ptr 收整数序数）
+ *  @param args_2 cx 目标宽（物理像素）  @param args_3 cy 目标高
+ *  @param args_4 [out] phico：句柄写回，PtrArrayBuffer(PTR_SIZE) 读回 */
+export const LoadIconWithScaleDown = (() => {
+    try {
+        return b('LoadIconWithScaleDown', '<HMODULE>ptr <>ptr i32 i32 <BYTE>ptr -> i32')
+    } catch {
+        return null    // XP 等老系统无此导出
+    }
+})()
