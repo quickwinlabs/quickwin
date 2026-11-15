@@ -48,6 +48,7 @@
   },
   "devDependencies": {
     "@quickwinlabs/mupdf-wasm": "^1.28.0",
+    "@quickwinlabs/tray-list": "^0.1.1",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/ws": "^8.18.1",

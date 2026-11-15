@@ -16,7 +16,7 @@ import {
 } from '../../lib/windows/gdi32.js'
 import { BITMAPFILEHEADER, BITMAPINFOHEADER, DEVMODEW, INPUT, POINT, PROCESS_INFORMATION, RECT, STARTUPINFOW } from '../../lib/windows/structs.js'
 import { CloseHandle, CreateProcess, GetLastError, GetSystemDirectory, MoveFileEx } from '../../lib/windows/kernel32.js'
-import { listTrayIcons, probeTrayIcon } from './tray.js'
+import { listTrayIcons, probeTrayIcon, listTrayIconsUia, isWin11 } from '@quickwinlabs/tray-list'
 import { ChangeDisplayFlag, ColorUse, DisplayModeField, DisplayChangeResult, EnumDisplaySetting, MoveFileFlag, ProcessCreationFlag, ShowWindowCmd, SysMetrics, WindowStyle } from '../../constants'
 
 // WORKER_DATA_URL 由 esbuild --define 在 build.ts 中注入（base64 data: URL）
@@ -912,12 +912,20 @@ const server = createServer(async (req) => {
             probe = { hWnd: hh as Ptr<'HWND'>, uID: uid }
         }
         try {
-            // 双容器枚举 + 远程读全在 tray.ts（execd 配对模块）
+            // 双容器枚举 + 远程读全在 @quickwinlabs/tray-list（经典路 tray.ts / UIA 路 uia-tray.ts）
             const icons = listTrayIcons()
             const body: Record<string, unknown> = { icons }
+            // Win11 任务栏经典跨进程读失效（TB_GETBUTTON 恒空）→ 显式 isWin11 判定走 UIA
+            //（@quickwinlabs/tray-list uia-tray：GetRootElement→FindAll(Subtree)→过滤 SystemTray.*）
+            let nUia = 0
+            if (isWin11()) {
+                const uia = listTrayIconsUia()
+                if (uia.length > 0) { body.uia = uia; nUia = uia.length }
+            }
             if (probe) body.probe = probeTrayIcon(probe.hWnd, probe.uID)
             const nOv = icons.reduce((n, e) => n + (e.area === 'overflow' ? 1 : 0), 0)
-            logReq(t0, 'GET /tray_list', 200, icons.length + ' icons · overflow ' + nOv)
+            const note = nUia ? ' · uia ' + nUia : ''
+            logReq(t0, 'GET /tray_list', 200, icons.length + ' icons · overflow ' + nOv + note)
             return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } })
         } catch (ex) {
             logReq(t0, 'GET /tray_list', 500, String(ex))
