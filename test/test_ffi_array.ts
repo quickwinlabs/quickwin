@@ -21,14 +21,13 @@ const POINTArr = structArray(POINT)
 export const suite = {
     name: 'ffi-array',
     run: (t: Tester) => {
-        t.section("normToken: '*' is an ordinary out-of-lexicon char (same as '+')")
-        t.checkTrue("'<X*>ptr' rejected", throws(() => normToken('<POINT*>ptr')).includes('Unknown token'))
-        t.checkTrue("'*'+'!' rejected", throws(() => normToken('<POINT*>ptr!')).includes('Unknown token'))
-        t.checkTrue("'*'+'@' rejected", throws(() => normToken('<POINT*>ptr@Foo')).includes('Unknown token'))
-        t.checkTrue('bare <*>ptr rejected', throws(() => normToken('<*>ptr')).includes('Unknown token'))
-        t.checkTrue("'+' not in lexicon: generic Unknown token", throws(() => normToken('<POINT+>ptr')).includes('Unknown token'))
-        t.checkTrue('name charset tightened (non-identifier rejected)',
-            throws(() => normToken('<1abc>ptr')).includes('Unknown token'))
+        t.section("normToken: brand is any string (aligns with type layer '<${infer N}>ptr'); '!'/'@' handled per modifier")
+        t.check("'<POINT*>ptr' brand preserved", '<POINT*>ptr', normToken('<POINT*>ptr'))
+        t.check("'<POINT*>ptr!' brand preserved with !", '<POINT*>ptr!', normToken('<POINT*>ptr!'))
+        t.check("'<POINT*>ptr@Foo' strips @ (enum annotation is type-layer only)", '<POINT*>ptr', normToken('<POINT*>ptr@Foo'))
+        t.check("bare '<*>ptr' brand '*'", '<*>ptr', normToken('<*>ptr'))
+        t.check("'<POINT+>ptr' brand 'POINT+'", '<POINT+>ptr', normToken('<POINT+>ptr'))
+        t.check("'<1abc>ptr' brand '1abc' (non-identifier accepted)", '<1abc>ptr', normToken('<1abc>ptr'))
         t.check('plain <X>ptr unchanged', '<X>ptr', normToken('<X>ptr'))
         t.check('!-form unchanged', '<X>ptr!', normToken('<X>ptr!'))
         t.check('@-suffix stripped (enum annotation is type-layer only)', '<X>ptr', normToken('<X>ptr@Foo'))
@@ -132,10 +131,10 @@ export const suite = {
         t.checkTrue("'!' 0 slot throws on decode",
             throws(() => OutH.decode(OutH.alloc())).includes("'!'"))
 
-        t.section('bind-time lexicon checks (fail at module load)')
-        t.checkTrue('<POINT+>ptr rejected at bind (not in lexicon)',
-            throws(() => bind('kernel32.dll', 'IsBadReadPtr', '<POINT+>ptr u64 -> i32', { POINT: POINTArr })).includes('Unknown token'))
-        t.checkTrue('<POINT*>ptr rejected at bind (out-of-lexicon)',
-            throws(() => bind('kernel32.dll', 'IsBadReadPtr', '<POINT*>ptr u64 -> i32', { POINT: POINTArr })).includes('Unknown token'))
+        t.section('bind-time lexicon: brand is any string (aligns with type layer)')
+        const BPlus = bind('kernel32.dll', 'IsBadReadPtr', '<POINT+>ptr u64 -> i32', { POINT: POINTArr })
+        t.check('bind accepts <POINT+>ptr brand', 'function', typeof BPlus)
+        const BStar = bind('kernel32.dll', 'IsBadReadPtr', '<POINT*>ptr u64 -> i32', { POINT: POINTArr })
+        t.check('bind accepts <POINT*>ptr brand', 'function', typeof BStar)
     }
 }

@@ -39,12 +39,12 @@ export type C_BasicType_Token_No_Void = Exclude<C_BasicType_Token, 'void'>
 // '@Name' = 枚举值域标注（类型层启用前先由 Norm 归一剥掉）。两者语义正交但作用面不相交
 // （! 主品牌位、@ 主裸档整数位，@ 枚举不含 0 时已蕴含 !），故每 token 至多一个修饰。
 // 组 1 恒为名字（归一名），组 2 为修饰；槽宽/ABI 只看归一形式。
-// 名字形收紧为标识符（[A-Za-z_]\w*）∪ 空串（<>ptr 裸地址档），尾部可挂数组字形：
-// '*' = 零或多（<N*>ptr 入参连续数组位，元素形 = 单对象位 codec）。其余非标识符
-// 字符（'+'/'-'/'1' 开头等）不进词法 —— 与 <1abc>ptr/<X-y>ptr 同策略：正则不匹配、
-// 绑定时落通用 Unknown token，类型层不设专属禁分支（运行时兜底，无静默通过）。旧版
-// ([^<>\s]*) 通配曾使 <FOO+>ptr 被静默当品牌 'FOO+' 接受——语义字形必须结构可见。
-const PTR_TOKEN_RE = /^<([A-Za-z_]\w*|)>ptr(!|@[A-Za-z_]\w*)?$/
+// 名字形 = 品牌（<...> 内任意字符串，含嵌套 <E>ptr；'' 空串 = <>ptr 裸地址档）——
+// 与类型层 ArgJsTypeOfToken 的模板两端 infer（`<${infer N}>ptr` 的 N 任意字符串）一致。
+// 修饰 = !（非空担保）/ @Enum（枚举值域），每 token 至多一个，槽宽/ABI 只看归一形式。
+// 品牌放宽到任意字符串（含 '+'/'1' 开头等）：<X+>ptr 不再落 Unknown token，而是接受为
+// 品牌（运行时=类型层一致；拼错品牌由类型层品牌不匹配编译拦截）。
+const PTR_TOKEN_RE = /^<(.*)>ptr(!|@[A-Za-z_]\w*)?$/
 
 export function isCPtrToken(t: string): t is `<${string}>ptr` | `${string}ptr!` | `${string}ptr@${string}` { return PTR_TOKEN_RE.test(t) }
 
@@ -231,9 +231,10 @@ declare global {
 // 泛型体内）由 `string & keyof map` = 全键联合兜底成非 never —— 否则 BindFn 塌
 // (never)=>never 使内层强转失去可比性。
 export type ArgJsTypeOfToken<K extends string, L> =
-    // 非标识符名字形（'<X+>ptr'/'<X*>ptr'/'<1abc>ptr'）不设专属分支：落 '<N>ptr'
-    // 通配、运行时 Unknown token 兜底（'*' 已非 token 字形 —— 数组物化走
-    // structArray(def) encoder 的值域推导，token/引擎/类型层零数组概念）。
+    // 品牌为任意字符串（含 '<X+>ptr'/'<X*>ptr'/'<1abc>ptr' 等非标识符）：模板两端
+    // infer 天然支持，与运行时 PTR_TOKEN_RE 的 (.*) 一致（运行时=类型层）。
+    // 数组物化走 structArray(def) encoder 的值域推导（'*' 已非 token 字形），
+    // token/引擎/类型层零数组概念。
     K extends `<${infer N}>ptr!` ? Ptr<N> | L[N & keyof L] :
     K extends `<${string}>ptr@${infer E extends keyof EnumMap}` ? EnumMap[E] :
     K extends `<${infer N}>ptr` ? MaybePtr<N> | L[N & keyof L] :
@@ -275,8 +276,8 @@ export function normToken(t: string): C_BasicType_Token {
         const m = PTR_TOKEN_RE.exec(t)
         const name = m?.[1] || ''
         const mod = m?.[2]
-        // 剥 '@'（纯类型层语义）；'!' 形随 token 走。（'*' 等词法外字符不设专属分支：
-        // 不匹配正则，落末尾 Unknown token —— 与 '<X+>ptr' 同待遇。）
+        // 剥 '@'（纯类型层语义）；'!' 形随 token 走。品牌为任意字符串（(.*) 捕获组），
+        // 含 '*'/'+'/'1 开头等非标识符字符也整体保留为品牌（运行时=类型层一致）。
         return (mod?.startsWith('@') ? `<${name}>ptr` : t) as C_BasicType_Token
     }
     // 按值形 '<N>' 无修饰可剥（见 VAL_TOKEN_RE 注释），原样归一。

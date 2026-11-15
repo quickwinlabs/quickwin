@@ -333,7 +333,8 @@ export const suite = {
 
         t.section('by-value struct <N>: lexicon / type layer / bind-time fail-loud')
         // '<N>' 裸品牌 = 按值传参位（<N>ptr 传地址）。无修饰可剥：带 ! / 尾缀 / 空名 /
-        // 数字开头的形正则不匹配，落绑定期通用 Unknown token（与 '<X+>ptr' 同策略）。
+        // 数字开头的形正则不匹配，落绑定期通用 Unknown token（按值品牌仍限标识符，
+        // 与指针品牌任意字符串不同——按值需 codec 注册，嵌套/非标识符无意义）。
         t.checkTrue("normToken('<POINT>') 原样归一", normToken('<POINT>') === '<POINT>')
         for (const bad of ['<POINT>!', '<POINT>x', '<>', '<1abc>']) {
             try { normToken(bad); t.checkTrue(`normToken 拒 '${bad}'`, false) }

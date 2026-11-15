@@ -482,8 +482,10 @@ declare module "ffi" {
     function readByte(ptr: number): number;
     function readBytes(ptr: number, len: number): ArrayBuffer;
     /** 按地址读一个指针宽的字（有符号，负值保真）——vtable 派发的读取侧。addr 为 0 抛
-     *  RangeError。与 readBytes 的区别是不分配：后者每次新建 ArrayBuffer。 */
-    function readPtr(ptr: number): number;
+     *  RangeError。与 readBytes 的区别是不分配：后者每次新建 ArrayBuffer。
+     *  泛型：品牌为嵌套指针形（`<${N}>ptr`，指向 N* 的槽）时返回降一层品牌 `Ptr<N>`
+     *  （`readPtr(Ptr<'<HWND>ptr'>)` → `Ptr<'HWND'>`）；其余返回裸 number（向后兼容）。 */
+    function readPtr<P extends string = ''>(ptr: number | Ptr<P>): P extends `<${infer N}>ptr` ? Ptr<N> : number;
     function writeByte(ptr: number, value: number): void;
     function closureNew(argBytes: number, retKind: number, wrapper: (frame: ArrayBuffer, retBuf: ArrayBuffer) => void): number;
     function closureFree(ptr: number): void;
