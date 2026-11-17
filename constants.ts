@@ -1164,6 +1164,37 @@ export const enum FileAttribute {
     DIRECTORY = 16, // 0x10
 }
 
+export const enum MemState {
+    COMMIT = 4096, // 0x1000
+    RESERVE = 8192, // 0x2000
+    FREE = 65536, // 0x10000
+}
+
+export const enum MemType {
+    PRIVATE = 131072, // 0x20000
+    MAPPED = 262144, // 0x40000
+    IMAGE = 16777216, // 0x1000000
+}
+
+export const enum PageProtect {
+    NOACCESS = 1, // 0x1
+    READONLY = 2, // 0x2
+    READWRITE = 4, // 0x4
+    WRITECOPY = 8, // 0x8
+    EXECUTE = 16, // 0x10
+    EXECUTE_READ = 32, // 0x20
+    EXECUTE_READWRITE = 64, // 0x40
+    EXECUTE_WRITECOPY = 128, // 0x80
+    GUARD = 256, // 0x100
+    NOCACHE = 512, // 0x200
+    WRITECOMBINE = 1024, // 0x400
+}
+
+export const enum BcryptAlgFlag {
+    NONE = 0, // 0x0
+    HMAC = 8, // 0x8
+}
+
 export const enum IfType {
     SOFTWARE_LOOPBACK = 24, // 0x18
 }
@@ -1383,6 +1414,10 @@ declare global {
         FileAccess: FileAccess
         FileShare: FileShare
         FileAttribute: FileAttribute
+        MemState: MemState
+        MemType: MemType
+        PageProtect: PageProtect
+        BcryptAlgFlag: BcryptAlgFlag
         IfType: IfType
         NetFwProfile: NetFwProfile
         NetFwRuleDir: NetFwRuleDir

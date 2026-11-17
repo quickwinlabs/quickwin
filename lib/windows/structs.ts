@@ -683,6 +683,29 @@ export const OSVERSIONINFO_148 = /* @__PURE__ */ struct('OSVERSIONINFO_148', OSV
 
 // ── 进程快照 / 内存统计（toolhelp + psapi，布局来源官方 tlhelp32.h / psapi.h）────────
 
+/** MEMORY_BASIC_INFORMATION（VirtualQueryEx 就地迭代位；x86 28B / x64 48B——两个 ptr
+ *  BaseAddress/AllocationBase 随位宽，AllocationProtect 后 u64 RegionSize 自带对齐）。
+ *  State/Type 判读用 constants.ts 的 MemState/MemType 枚举；Protect 是位域（保持裸 u32，
+ *  用 PageProtect.GUARD 等做位掩码）。 */
+export const MEMORY_BASIC_INFORMATION_DECL = {
+    '#': 'struct',
+    BaseAddress: '<>ptr',
+    AllocationBase: '<>ptr',
+    AllocationProtect: 'u32',
+    RegionSize: 'u64',
+    // State/Type 是纯值域（MemState/MemType，gen_const 生成）；Protect 是位域
+    // （PAGE_READWRITE|PAGE_GUARD 可组合），值域模型不适配，保持裸 u32。
+    State: 'u32@MemState',
+    Protect: 'u32',
+    Type: 'u32@MemType',
+} satisfies C_Struct
+
+export const MEMORY_BASIC_INFORMATION = /* @__PURE__ */ struct('MEMORY_BASIC_INFORMATION',
+    MEMORY_BASIC_INFORMATION_DECL)
+
+// State/Type/Protect 的取值常量（MEM_COMMIT/MEM_PRIVATE/PAGE_GUARD 等）由 tools/gen_const.c
+// 生成到 constants.ts（MemState / MemType / PageProtect 枚举），不再手写于此。
+
 /** PROCESSENTRY32W（Process32First/Next 就地迭代位；x86 556B / x64 564B——ULONG_PTR
  *  th32DefaultHeapID 随位宽，struct 按 os.arch 推）：调用前须把 offset 0 的 dwSize 预写
  *  成 size（MSDN：不初始化 dwSize 则 Process32First 失败）——alloc() 后

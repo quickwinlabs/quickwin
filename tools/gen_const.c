@@ -5,6 +5,7 @@
 #include <shellapi.h>
 #include <commdlg.h>
 #include <winspool.h>
+#include <bcrypt.h>
 #include <shobjidl.h>
 #include <iphlpapi.h>
 #include <netfw.h>
@@ -1279,6 +1280,44 @@ static void print_enums(void) {
     ENUM(FileAttribute);
     DEC(NORMAL, FILE_ATTRIBUTE_NORMAL);
     DEC(DIRECTORY, FILE_ATTRIBUTE_DIRECTORY);
+    printf("}\n\n");
+
+    /* 内存（VirtualAllocEx / VirtualQueryEx 的 MEMORY_BASIC_INFORMATION 判读）。
+       按 Win32 域分开：State / Type 是纯值域（可标 u32@MemState / u32@MemType），
+       Protect 是位域（PAGE_READWRITE|PAGE_GUARD 可组合，值域模型不适配，不标 @Enum，
+       db.ts 用 & PAGE_GUARD 位运算判读）。MEM_COMMIT 同时是 VirtualAllocEx 的
+       flAllocationType 位（MEM_COMMIT|MEM_RESERVE）。 */
+    ENUM(MemState);
+    DEC(COMMIT, MEM_COMMIT);
+    DEC(RESERVE, MEM_RESERVE);
+    DEC(FREE, MEM_FREE);
+    printf("}\n\n");
+
+    ENUM(MemType);
+    DEC(PRIVATE, MEM_PRIVATE);
+    DEC(MAPPED, MEM_MAPPED);
+    DEC(IMAGE, MEM_IMAGE);
+    printf("}\n\n");
+
+    ENUM(PageProtect);
+    DEC(NOACCESS, PAGE_NOACCESS);
+    DEC(READONLY, PAGE_READONLY);
+    DEC(READWRITE, PAGE_READWRITE);
+    DEC(WRITECOPY, PAGE_WRITECOPY);
+    DEC(EXECUTE, PAGE_EXECUTE);
+    DEC(EXECUTE_READ, PAGE_EXECUTE_READ);
+    DEC(EXECUTE_READWRITE, PAGE_EXECUTE_READWRITE);
+    DEC(EXECUTE_WRITECOPY, PAGE_EXECUTE_WRITECOPY);
+    DEC(GUARD, PAGE_GUARD);
+    DEC(NOCACHE, PAGE_NOCACHE);
+    DEC(WRITECOMBINE, PAGE_WRITECOMBINE);
+    printf("}\n\n");
+
+    /* bcrypt（CNG）——BCryptOpenAlgorithmProvider 的 dwFlags 值域。
+       0 = 无标志（MSDN 合法，AES 等非 HMAC 用），HMAC = BCRYPT_ALG_HANDLE_HMAC_FLAG。 */
+    ENUM(BcryptAlgFlag);
+    DEC(NONE, 0);
+    DEC(HMAC, BCRYPT_ALG_HANDLE_HMAC_FLAG);
     printf("}\n\n");
 
     ENUM(IfType);

@@ -120,6 +120,23 @@ export const Module32Next = /*@__PURE__*/ b('Module32NextW',
  *  @param args_1 bInheritHandle 句柄继承，传 0
  *  @param args_2 dwProcessId 目标 PID（不存在 → NULL） */
 export const OpenProcess = /*@__PURE__*/ b('OpenProcess', 'u32 i32 u32 -> <HPROCESS>ptr')
+/** 查询进程内存区（x64 位宽；MEMORY_BASIC_INFORMATION 含 ptr，随位宽）
+ *  @returns 写入字节数（= MEMORY_BASIC_INFORMATION.size，0 失败）
+ *  @param args_0 hProcess OpenProcess 句柄（须 PROCESS_QUERY_INFORMATION 权限）
+ *  @param args_1 lpAddress 要查询的地址
+ *  @param args_2 [out] lpBuffer：接收 MEMORY_BASIC_INFORMATION，须
+ *    `const mbi = MEMORY_BASIC_INFORMATION.alloc()` 保存引用后传 `mbi.ptr`
+ *    （勿内联 `.alloc().ptr`——临时 buffer 无引用会被提前 GC，native 写入即悬垂）
+ *  @param args_3 dwLength 缓冲字节数（= MEMORY_BASIC_INFORMATION.size） */
+export const VirtualQueryEx = /*@__PURE__*/ b('VirtualQueryEx',
+    '<HPROCESS>ptr <>ptr <MEMORY_BASIC_INFORMATION>ptr u64 -> u64')
+/** 取进程时间（创建/退出/内核/用户，FILETIME）
+ *  @returns 成功 → 非 0
+ *  @param args_0 hProcess OpenProcess 句柄（须 PROCESS_QUERY_INFORMATION）
+ *  @param args_1..4 [out] lpCreationTime/lpExitTime/lpKernelTime/lpUserTime：各时间槽，
+ *    须 `const t = PtrArrayBuffer(8)` 保存引用后传 `t.ptr`（勿内联 .alloc().ptr） */
+export const GetProcessTimes = /*@__PURE__*/ b('GetProcessTimes',
+    '<HPROCESS>ptr <>ptr <>ptr <>ptr <>ptr -> i32')
 /** 结束进程
  *  @returns 成功 → 非 0（自身/无 PROCESS_TERMINATE 权限失败）
  *  @param args_0 hProcess 进程句柄（须 PROCESS_TERMINATE 权限）
