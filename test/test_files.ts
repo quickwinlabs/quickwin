@@ -32,7 +32,7 @@ export const suite = {
     run: (t: Tester) => {
         t.section('GetTempPath + CreateDirectory')
         const tmpW = WCHAR.alloc(260)
-        const tmpLen = GetTempPath(260, tmpW)
+        const tmpLen = GetTempPath(260, tmpW.ptr)
         t.checkTrue(`temp path non-empty (${tmpLen})`, tmpLen > 0)
         const dir = `${WCHAR.decode(tmpW)}QuickWinTest`    // GetTempPath 尾带反斜杠
         // 目录可能残留自上次中断的 run：已存在（且是目录）则静默复用

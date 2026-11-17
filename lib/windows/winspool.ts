@@ -32,7 +32,7 @@ export const EnumPrinters = /*@__PURE__*/ b('EnumPrintersW',
  *  @returns 成功 → 非 0，0 = 失败（缓冲不足时 pcchBuffer 带回所需长度）
  *  @param args_0 [out] pszBuffer：WCHAR 缓冲
  *  @param args_1 [inout] pcchBuffer：入 = 缓冲 WCHAR 容量、出 = 实际长度，PtrArrayBuffer(4) */
-export const GetDefaultPrinter = /*@__PURE__*/ b('GetDefaultPrinterW', '<BYTE>ptr <BYTE>ptr -> i32')
+export const GetDefaultPrinter = /*@__PURE__*/ b('GetDefaultPrinterW', '<WCHAR>ptr <BYTE>ptr -> i32')
 
 /** 查设备能力；nCapability 单选 DeviceCap.*
  *  @returns 返回值随能力（数值能力 = 数值，

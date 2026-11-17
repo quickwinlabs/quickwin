@@ -220,13 +220,13 @@ let hwndBtnNext: gui.HWND | null = null
             } else if (hCtrl === hwndBtnPrev) {
                 const cap = GetWindowTextLength(hwndEdit) + 1
                 const buf = WCHAR.alloc(cap)
-                GetWindowText(hwndEdit, buf, cap)
+                GetWindowText(hwndEdit, buf.ptr, cap)
                 const path = WCHAR.decode(buf)
                 if (path && currentPage > 0) showPdf(mupdf, path, currentPage - 1)
             } else if (hCtrl === hwndBtnNext) {
                 const cap = GetWindowTextLength(hwndEdit) + 1
                 const buf = WCHAR.alloc(cap)
-                GetWindowText(hwndEdit, buf, cap)
+                GetWindowText(hwndEdit, buf.ptr, cap)
                 const path = WCHAR.decode(buf)
                 if (path && currentPage < totalPages - 1) showPdf(mupdf, path, currentPage + 1)
             }

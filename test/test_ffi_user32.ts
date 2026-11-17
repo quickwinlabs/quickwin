@@ -1,6 +1,6 @@
 import { Tester } from './test_helper.js'
 import { closure, WCHAR } from '../lib/ffi/bind.js'
-import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { NULL } from '../lib/ffi/ctype.js'
 import {
     GetDesktopWindow, IsWindow, IsWindowVisible, GetSystemMetrics, GetClientRect,
     GetWindowTextLength, GetClassName, FindWindow, SetTimer, KillTimer,
@@ -30,8 +30,9 @@ export const suite = {
 
         t.section('user32: 字符串出参（宽字符 buffer 读回）')
         t.checkTrue('GetWindowTextLength ≥ 0', GetWindowTextLength(desk) >= 0)
-        const cls = new PtrArrayBuffer(64)
-        const n = GetClassName(desk, cls, 32)
+        // 无品牌 buffer：32 TCHAR = 64B，与 nMaxCount=32 对齐。改 <WCHAR>ptr 后须 .ptr。
+        const cls = WCHAR.alloc(32)
+        const n = GetClassName(desk, cls.ptr, 32)
         t.checkTrue('GetClassName 写入长度 > 0', n > 0)
         const cdv = new DataView(cls)
         let clsName = ''
@@ -39,7 +40,7 @@ export const suite = {
         t.checkTrue('类名非空', clsName.length > 0)
         // JSDoc 文档化流（L4）：WCHAR.alloc(n) 当 out buffer、WCHAR.decode(buf) 读回
         const clsH = WCHAR.alloc(32)
-        t.checkTrue('WCHAR.alloc out 写入长度 > 0', GetClassName(desk, clsH, 32) > 0)
+        t.checkTrue('WCHAR.alloc out 写入长度 > 0', GetClassName(desk, clsH.ptr, 32) > 0)
         t.check('WCHAR.decode(buf) 读回类名', clsName, WCHAR.decode(clsH))
 
         t.section('user32: FindWindow（<WCHAR>ptr 的 NULL 与 string 双形态）')

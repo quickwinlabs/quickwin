@@ -36,7 +36,7 @@ function wndProc(hwnd: HWND, msg: number, wParam: number, lParam: number) {
                 if (!list) return 0
                 const cap = GetWindowTextLength(edit) + 1;
                 const buf = WCHAR.alloc(cap);
-                GetWindowText(edit, buf, cap);
+                GetWindowText(edit, buf.ptr, cap);
                 const text = WCHAR.decode(buf);
                 if (text.trim())
                     SendMessage(list, LbMsg.ADDSTRING, 0, WCHAR.encode(text).ptr);

@@ -247,7 +247,7 @@ export const FindClose = /*@__PURE__*/ b('FindClose', '<HFIND>ptr! -> i32')
  *  @returns 写入字符数（不含 NUL，0 失败）
  *  @param args_0 nBufferLength 缓冲容量（WCHAR 个数，含 NUL 余量）
  *  @param args_1 lpBuffer 接收缓冲，传 WCHAR.alloc(n)、WCHAR.decode 读回 */
-export const GetTempPath = /*@__PURE__*/ b('GetTempPathW', 'u32 <BYTE>ptr -> u32')
+export const GetTempPath = /*@__PURE__*/ b('GetTempPathW', 'u32 <WCHAR>ptr -> u32')
 
 // ============ 系统 / 错误 ============
 
@@ -258,7 +258,7 @@ export const GetLastError = /*@__PURE__*/ b('GetLastError', ' -> u32')
  *  @returns 写入的字符数（不含 NUL，0 失败）
  *  @param args_0 lpBuffer 接收缓冲，传 WCHAR.alloc(n)
  *  @param args_1 uSize 缓冲容量（WCHAR 个数，含 NUL 余量） */
-export const GetSystemDirectory = /*@__PURE__*/ b('GetSystemDirectoryW', '<BYTE>ptr u32 -> u32')
+export const GetSystemDirectory = /*@__PURE__*/ b('GetSystemDirectoryW', '<WCHAR>ptr u32 -> u32')
 /** 错误码 → 可读文字（GetLastError 的搭档）
  *  @returns 写入字符数（0 失败）
  *  @param args_0 dwFlags 组合标志：FROM_SYSTEM(0x1000) 系统错误表 | IGNORE_INSERTS(0x200)
@@ -296,18 +296,18 @@ export const GetLocalTime = /*@__PURE__*/ b('GetLocalTime', '<SYSTEMTIME>ptr -> 
  *  @param args_1 lpBuffer 接收缓冲，传 WCHAR.alloc(n)
  *  @param args_2 nSize 缓冲容量（WCHAR 个数，含 NUL 余量） */
 export const GetEnvironmentVariable = /*@__PURE__*/ b('GetEnvironmentVariableW',
-    '<WCHAR>ptr! <BYTE>ptr u32 -> u32')
+    '<WCHAR>ptr! <WCHAR>ptr u32 -> u32')
 /** 计算机名（*lpnSize 入 = 缓冲 WCHAR 容量，出 = 实际长度不含 NUL）
  *  @returns 成功 → 非 0
  *  @param args_0 lpBuffer 接收缓冲，传 WCHAR.alloc(n)
  *  @param args_1 lpnSize 长度槽（PtrArrayBuffer(4)，Uint32Array 写入容量） */
-export const GetComputerName = /*@__PURE__*/ b('GetComputerNameW', '<BYTE>ptr <BYTE>ptr -> i32')
+export const GetComputerName = /*@__PURE__*/ b('GetComputerNameW', '<WCHAR>ptr <BYTE>ptr -> i32')
 /** 模块文件路径（全路径含扩展名）
  *  @returns 写入字符数（不含 NUL，0 失败/缓冲不足）
  *  @param args_0 hModule 模块句柄（<HMODULE>ptr 与 win 模块同型），NULL = 当前进程 exe
  *  @param args_1 lpFilename 接收缓冲，传 WCHAR.alloc(n)
  *  @param args_2 nSize 缓冲容量（WCHAR 个数） */
-export const GetModuleFileName = /*@__PURE__*/ b('GetModuleFileNameW', '<HMODULE>ptr <BYTE>ptr u32 -> u32')
+export const GetModuleFileName = /*@__PURE__*/ b('GetModuleFileNameW', '<HMODULE>ptr <WCHAR>ptr u32 -> u32')
 /** 取**已加载**模块的句柄（不加载、不加引用计数；LoadLibrary 的反向查询）
  *  @returns 模块句柄（HMODULE/HINSTANCE，与 win 模块同型）；失败 → NULL
  *  @param args_0 lpModuleName 模块名（大小写不敏感，`.dll` 可省；只认模块名不认路径），

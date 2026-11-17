@@ -75,7 +75,7 @@ export const suite = {
         const defW = WCHAR.alloc(260)
         const lenB = new PtrArrayBuffer(4)
         new Uint32Array(lenB)[0] = 260
-        t.checkTrue('GetDefaultPrinter ok', GetDefaultPrinter(defW, lenB) !== 0)
+        t.checkTrue('GetDefaultPrinter ok', GetDefaultPrinter(defW.ptr, lenB) !== 0)
         const defName = WCHAR.decode(defW)
         t.checkTrue(`default in enum list (${defName})`, names.includes(defName))
 
@@ -89,7 +89,7 @@ export const suite = {
         t.section('raw job chain on default printer (FILE: port -> .prn file, no UI)')
         // 输出文件放系统 temp（GetTempPath 尾带反斜杠）——FILE: 端口把作业写到 pOutputFile
         const tmpW = WCHAR.alloc(260)
-        GetTempPath(260, tmpW)
+        GetTempPath(260, tmpW.ptr)
         const outPrn = `${WCHAR.decode(tmpW)}qw_job.prn`
         const slot = new PtrArrayBuffer(8)
         t.checkTrue('OpenPrinter ok', OpenPrinter(defName, slot, NULL) !== 0)

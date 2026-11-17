@@ -38,7 +38,7 @@ const parent = os.Worker.parent
 let sysDir = 'C:\\Windows\\System32'
 try {
     const out = WCHAR.alloc(256)
-    const n = GetSystemDirectory(out, 256)
+    const n = GetSystemDirectory(out.ptr, 256)
     const s = n > 0 ? WCHAR.decode(out) : ''
     if (s) sysDir = s
 } catch (ex) {

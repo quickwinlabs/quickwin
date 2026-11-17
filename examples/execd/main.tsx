@@ -356,7 +356,7 @@ let sysDir = 'C:\\Windows\\System32'
 try {
     // 裸 "cmd.exe" 时 CreateProcess 的 PATH 解析在本环境失败（err 267 / 123），须全路径
     const out = WCHAR.alloc(256)
-    const n = GetSystemDirectory(out, 256)
+    const n = GetSystemDirectory(out.ptr, 256)
     const s = n > 0 ? WCHAR.decode(out) : ''
     if (s) sysDir = s
 } catch { /* 回落 System32 默认值 */ }
@@ -657,8 +657,8 @@ function listWindows(titleQuery?: string, classQuery?: string): WindowEntry[] {
     for (const hwnd of handles) {
         if (GetWindowRect(hwnd, wRect.ptr)) {
             const rc = RECT.decode(wRect)
-            const tl = GetWindowText(hwnd, tb, WIDE_BUF_CHARS)
-            const cl = GetClassName(hwnd, cb, WIDE_BUF_CHARS)
+            const tl = GetWindowText(hwnd, tb.ptr, WIDE_BUF_CHARS)
+            const cl = GetClassName(hwnd, cb.ptr, WIDE_BUF_CHARS)
             out.push({
                 hwnd,
                 // 缓冲跨窗口复用：长度 0 时 API 不保证写回终止符，不能 decode 残留内容

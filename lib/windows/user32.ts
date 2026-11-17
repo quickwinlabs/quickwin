@@ -142,7 +142,7 @@ export const FindWindowEx = /*@__PURE__*/ b('FindWindowExW',
  *  @param args_0 hWnd
  *  @param args_1 [out] lpString：WCHAR 缓冲
  *  @param args_2 nMaxCount 缓冲容量（字符数，含 NUL 余量） */
-export const GetWindowText = /*@__PURE__*/ b('GetWindowTextW', '<HWND>ptr <BYTE>ptr i32 -> i32')
+export const GetWindowText = /*@__PURE__*/ b('GetWindowTextW', '<HWND>ptr <WCHAR>ptr i32 -> i32')
 /** 设窗口标题（传 string 或 NULL 清空）
  *  @returns 成功 → 非 0
  *  @param args_0 hWnd
@@ -157,7 +157,7 @@ export const GetWindowTextLength = /*@__PURE__*/ b('GetWindowTextLengthW', '<HWN
  *  @param args_0 hWnd
  *  @param args_1 [out] lpClassName：WCHAR 缓冲
  *  @param args_2 nMaxCount 缓冲容量（字符数） */
-export const GetClassName = /*@__PURE__*/ b('GetClassNameW', '<HWND>ptr <BYTE>ptr i32 -> i32')
+export const GetClassName = /*@__PURE__*/ b('GetClassNameW', '<HWND>ptr <WCHAR>ptr i32 -> i32')
 /** 取窗口附加数据（ia32 走 GetWindowLongW）
  *  @returns 附加数据值；0 保真（值有符号读）
  *  @param args_0 hWnd

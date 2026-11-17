@@ -66,16 +66,16 @@ export const suite = {
 
         t.section('env / computer name / module path')
         const pathW = WCHAR.alloc(4096)
-        const pathLen = GetEnvironmentVariable('PATH', pathW, 4096)
+        const pathLen = GetEnvironmentVariable('PATH', pathW.ptr, 4096)
         t.checkTrue(`PATH non-empty (${pathLen} chars)`, pathLen > 0)
         const nameW = WCHAR.alloc(260)
         const nameLenB = new PtrArrayBuffer(4)
         new Uint32Array(nameLenB)[0] = 260
-        t.checkTrue('GetComputerName ok', GetComputerName(nameW, nameLenB) !== 0)
+        t.checkTrue('GetComputerName ok', GetComputerName(nameW.ptr, nameLenB) !== 0)
         const compName = WCHAR.decode(nameW)
         t.checkTrue(`computer name non-empty (${compName})`, compName.length > 0)
         const modW = WCHAR.alloc(520)
-        const modLen = GetModuleFileName(NULL, modW, 520)
+        const modLen = GetModuleFileName(NULL, modW.ptr, 520)
         const modPath = WCHAR.decode(modW)
         t.checkTrue(`exe path has qwin (${modLen > 0})`, /qwin/i.test(modPath))
         // 生产绑定的返回位 `<WCHAR>ptr!`：内建 WCHAR 自动解码 + `!` 非空担保（直接 string）
@@ -116,7 +116,7 @@ export const suite = {
 
         t.section('version resource of kernel32.dll')
         const sysW = WCHAR.alloc(300)
-        GetSystemDirectory(sysW, 300)                       // 尾不带反斜杠
+        GetSystemDirectory(sysW.ptr, 300)                       // 尾不带反斜杠
         const k32Path = `${WCHAR.decode(sysW)}\\kernel32.dll`
         const hB = new PtrArrayBuffer(4)
         const vSize = GetFileVersionInfoSize(k32Path, hB)

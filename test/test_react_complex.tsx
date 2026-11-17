@@ -15,7 +15,7 @@ function printWindowTree(hwnd: gui.HWND, indent: number = 0) {
   try {
     const cap = GetWindowTextLength(hwnd) + 1
     const buf = WCHAR.alloc(cap)
-    GetWindowText(hwnd, buf, cap)
+    GetWindowText(hwnd, buf.ptr, cap)
     text = WCHAR.decode(buf) || '(no text)'
   } catch (e) {
     text = '(error)'
@@ -138,7 +138,7 @@ function InputField() {
             if (e.msg === WM_LBUTTONUP && editRef.current) {
               const cap = GetWindowTextLength(editRef.current) + 1
               const buf = WCHAR.alloc(cap)
-              GetWindowText(editRef.current, buf, cap)
+              GetWindowText(editRef.current, buf.ptr, cap)
               setText(WCHAR.decode(buf))
             }
           }}
@@ -181,7 +181,7 @@ function CounterWithInput() {
           if (e.msg === WM_LBUTTONUP && inputRef.current) {
             const cap = GetWindowTextLength(inputRef.current) + 1
             const buf = WCHAR.alloc(cap)
-            GetWindowText(inputRef.current, buf, cap)
+            GetWindowText(inputRef.current, buf.ptr, cap)
             const val = parseInt(WCHAR.decode(buf) || '0', 10)
             setDisplayValue(val)
             setCount(0)
@@ -239,7 +239,7 @@ function ControlledInput() {
           if (e.msg === WmMsg.CHAR) {
             const cap = GetWindowTextLength(e.hwnd) + 1
             const buf = WCHAR.alloc(cap)
-            GetWindowText(e.hwnd, buf, cap)
+            GetWindowText(e.hwnd, buf.ptr, cap)
             setValue(WCHAR.decode(buf))
           }
         }}

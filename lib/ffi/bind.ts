@@ -431,6 +431,13 @@ type BindFn<S extends string, E, D> =
 function wcharEncode(v: string): PtrArrayBuffer<'WCHAR'>
 function wcharEncode(v: string, buf: PtrArrayBuffer<''>): void
 function wcharEncode(v: string, buf?: PtrArrayBuffer<''>) {
+    // WCHAR.encode 只收 string：对象/裸 number 是调用方类型错误（应传 .ptr 或 string）。
+    // 旧实现 `v + '\0'` 会把对象静默字符串化成 `[object ArrayBuffer]`（42B 小缓冲），
+    // native 若按调用方显式传的 size 参数写长值就会越界写穿 arena block —— 这正是
+    // 「<WCHAR>ptr 传对象 → 后续 UIA 崩溃」的根因。这里 fail-loud，不让错误静默放大。
+    if (typeof v !== 'string')
+        throw new TypeError(`ffi-bind: WCHAR.encode expects a string, got ${v === null ? 'null' : typeof v} ` +
+            `(pass a JS string to encode, or .ptr (number) for a pre-allocated buffer)`)
     // TextEncoder 没有 encodeInto：先编码再拷入 buffer（单次 memcpy）。
     const u8 = new TextEncoder('utf-16le').encode(v + '\0')
     if (buf) {

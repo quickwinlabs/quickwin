@@ -16,7 +16,7 @@ export const SHBrowseForFolder = /*@__PURE__*/ b('SHBrowseForFolderW', '<BROWSEI
  *  @returns PIDL 在文件系统中 → 非 0，否则 0（缓冲内容未定义）
  *  @param args_0 pidl SHBrowseForFolder 等返回的 PIDL
  *  @param args_2 [out] pszPath：WCHAR 缓冲，MAX_PATH=260 */
-export const SHGetPathFromIDList = /*@__PURE__*/ b('SHGetPathFromIDListW', '<>ptr <BYTE>ptr -> u32')
+export const SHGetPathFromIDList = /*@__PURE__*/ b('SHGetPathFromIDListW', '<>ptr <WCHAR>ptr -> u32')
 
 /** 取托盘通知图标的屏幕矩形（Shell_NotifyIconGetRect；**Win7+**——XP 无此导出，
  *  故为**可选绑定**：老系统上本常量为 null（bind() 是模块顶层立即解析，缺符号 throw

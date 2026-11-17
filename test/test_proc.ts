@@ -69,7 +69,7 @@ export const suite = {
         t.checkTrue(`cntThreads sane (${selfThreads})`, selfThreads >= 1)
         // exe 名与 GetModuleFileName(NULL) 的 basename 互证（批 8 同源锚点）
         const exeW = WCHAR.alloc(520)
-        GetModuleFileName(NULL, exeW, 520)
+        GetModuleFileName(NULL, exeW.ptr, 520)
         const exePath = WCHAR.decode(exeW)
         const exeBase = exePath.slice(exePath.lastIndexOf('\\') + 1).toLowerCase()
         t.check('szExeFile === basename(GetModuleFileName)', exeBase, selfName.toLowerCase())
@@ -130,7 +130,7 @@ export const suite = {
 
         t.section('CreateProcess -> pid visible -> TerminateProcess')
         const sysW = WCHAR.alloc(300)
-        GetSystemDirectory(sysW, 300)                          // 尾不带反斜杠
+        GetSystemDirectory(sysW.ptr, 300)                          // 尾不带反斜杠
         // 首 token 全路径（worker 探针：裸名 PATH 解析在本环境失败 err 267/123）
         const cmdline = `${WCHAR.decode(sysW)}\\ping.exe -n 60 127.0.0.1`
         const pi = PROCESS_INFORMATION.alloc()

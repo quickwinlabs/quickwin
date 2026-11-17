@@ -60,7 +60,7 @@ function openFolderDialog(owner: gui.HWND, title: string | undefined): string | 
   if (!pidl) return null
 
   const pathBuf = WCHAR.alloc(260)
-  const ok = SHGetPathFromIDList(pidl, pathBuf)
+  const ok = SHGetPathFromIDList(pidl, pathBuf.ptr)
   CoTaskMemFree(pidl)
 
   return ok ? WCHAR.decode(pathBuf) : null

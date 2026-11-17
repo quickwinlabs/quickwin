@@ -17,7 +17,7 @@ export function startDumpRects(rootHwnd: gui.HWND, intervalMs: number = 3000): v
       GetClientRect(ch, cr.ptr)
       const cap = GetWindowTextLength(ch) + 1
       const textBuf = WCHAR.alloc(cap)
-      GetWindowText(ch, textBuf, cap)
+      GetWindowText(ch, textBuf.ptr, cap)
       var txt = WCHAR.decode(textBuf).slice(0, 16)
       console.log(indent + '[' + n + '] hwnd=' + String(ch) + ' txt="' + txt + '" wr=' + JSON.stringify(RECT.decode(wr)) + ' cr=' + JSON.stringify(RECT.decode(cr)))
       dumpChild(ch, indent + '  ')

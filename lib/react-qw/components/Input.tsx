@@ -57,7 +57,7 @@ export const Input = forwardRef<gui.HWND, InputProps>(
             if (!h) return
             const cap = GetWindowTextLength(h) + 1
             const buf = WCHAR.alloc(cap)
-            GetWindowText(h, buf, cap)
+            GetWindowText(h, buf.ptr, cap)
             const newText = WCHAR.decode(buf)
             if (!isControlled) setInternalValue(newText)
             onChange?.(newText)
