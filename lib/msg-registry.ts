@@ -96,9 +96,10 @@ declare global {
         [TtMsg.DELTOOLW]: { wParam: number; lParam: MaybePtr<'TTTOOLINFOW'> }
         [ComboBoxMsg.ADDSTRING]: { wParam: number; lParam: MaybePtr<'WCHAR'> }
         [LbMsg.ADDSTRING]: { wParam: number; lParam: MaybePtr<'WCHAR'> }
-        // LB_GETSELITEMS 的 lParam 是 int 数组（元素为选中项索引）；裸数组无布局/编码语义，
-        // 用无类型地址（'' = 收任意品牌缓冲，与 BYTE 的「收所有品牌」一致）
-        [LbMsg.GETSELITEMS]: { wParam: number; lParam: MaybePtr<''> }
+        // LB_GETSELITEMS 的 lParam 是 int 数组（元素为选中项索引）；品牌 'i32' = 元素类型，
+        // 调用方用 I32.alloc(n) 分配 n 个元素、Int32Array 视图读回（标量 decode 只读第一个，
+        // 不适用于数组读回）
+        [LbMsg.GETSELITEMS]: { wParam: number; lParam: MaybePtr<'i32'> }
     }
 }
 

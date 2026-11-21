@@ -1,7 +1,7 @@
 import { forwardRef, useRef, useEffect, useState, useImperativeHandle } from 'react'
 import * as gui from 'gui'
 import { WCHAR } from '../../ffi/bind.js'
-import { PtrArrayBuffer } from '../../ffi/ctype.js'
+import { I32 } from '../../ffi/scalar.js'
 import type { WStyle } from '../jsx.d.ts'
 import { LbMsg, LbnCode, ListBoxStyle, WindowStyle, WmMsg } from '../../../constants'
 
@@ -59,7 +59,7 @@ function readSelection(h: gui.HWND, multiple: boolean): number[] {
   }
   const n = gui.SendMessage(h, LbMsg.GETSELCOUNT, 0, 0)
   if (n <= 0) return []
-  const buf = new PtrArrayBuffer<''>(n * 4)
+  const buf = I32.alloc(n)
   const got = gui.SendMessage(h, LbMsg.GETSELITEMS, n, buf.ptr)
   const view = new Int32Array(buf)
   const out: number[] = []
