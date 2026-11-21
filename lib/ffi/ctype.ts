@@ -295,7 +295,7 @@ export function normToken(t: string): C_BasicType_Token {
     throw new Error("Unknown token: " + t)
 }
 
-export function readScalar(dv: DataView, off: number, k: C_BasicType_No_Void): number | bigint | null {
+export function readScalar(dv: DataView, off: number, k: C_BasicType_No_Void): number | bigint {
     switch (k) {
         case 'u8': return dv.getUint8(off)
         case 'i8': return dv.getInt8(off)

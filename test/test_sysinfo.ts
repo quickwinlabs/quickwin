@@ -129,7 +129,7 @@ export const suite = {
             t.checkTrue('VerQueryValue root block', VerQueryValue(vBuf, '\\', pBuf, pLen.ptr) !== 0)
             const rootAddr = readPtr(new DataView(pBuf), 0)
             const rootLen = U32.decode(pLen)
-            t.checkTrue(`VS_FIXEDFILEINFO len >= 52 (${rootLen})`, rootLen! >= 52)
+            t.checkTrue(`VS_FIXEDFILEINFO len >= 52 (${rootLen})`, rootLen >= 52)
             t.check('VS_FIXEDFILEINFO signature', 0xfeef04bd, readU32At(rootAddr))
             const fms = readU32At(rootAddr + 8)
             const fls = readU32At(rootAddr + 12)
