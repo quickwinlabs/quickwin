@@ -8,7 +8,9 @@
 //   - 结构位按方向分流（结构定义见 ./structs.ts，布局随进程位宽，struct 按 os.arch 推）：
 //       STARTUPINFOW 纯入参位注册 encoder → DeepPartial 对象直传；
 //       PROCESS_INFORMATION 出参位不注册 → 只收 def 分配的 .ptr，读回走 decode
-//   - 缓冲区 / DWORD 出参位用 <BYTE>ptr 直接收 PtrArrayBuffer（DataView / TypedArray 原地读回）
+//   - 缓冲区位用 <BYTE>ptr 直接收 PtrArrayBuffer（DataView / TypedArray 原地读回）；
+//     标量指针出参/入参槽（DWORD/LONG/LARGE_INTEGER/FILETIME）用品牌化标量 token
+//     （<u32>ptr / <i32>ptr / <i64>ptr / <u64>ptr）配 lib/ffi/scalar 的 IX.alloc()/decode()
 //   - 空指针位（lpApplicationName / lpProcessAttributes 等）传 NULL（来自 ../ffi/ctype.js）；
 //     传 JS null/undefined 会在参数槽 fail-loud
 //   - 返回值 0 保真（C→JS 不做 0→null）；BOOL 型返回 i32，成功 → 非 0，失败 → 0（原因见 GetLastError）
@@ -54,11 +56,11 @@ export const CreateProcess = /*@__PURE__*/ b('CreateProcessW',
  *  @param args_0 hHandle 内核对象句柄
  *  @param args_1 dwMilliseconds 超时毫秒，0xffffffff = 无限等 */
 export const WaitForSingleObject = /*@__PURE__*/ b('WaitForSingleObject', '<>ptr u32 -> u32')
-/** 取进程退出码（带符号读）
+/** 取进程退出码
  *  @returns 成功 → 非 0
  *  @param args_0 hProcess 进程句柄
- *  @param args_1 [out] lpExitCode：Int32Array(1).buffer 读回退出码 */
-export const GetExitCodeProcess = /*@__PURE__*/ b('GetExitCodeProcess', '<HPROCESS>ptr! <BYTE>ptr -> i32')
+ *  @param args_1 [out] lpExitCode：退出码槽，`const r = U32.alloc()` 后传 `r.ptr`，`U32.decode(r)` 读回 */
+export const GetExitCodeProcess = /*@__PURE__*/ b('GetExitCodeProcess', '<HPROCESS>ptr! <u32>ptr -> i32')
 /** 关闭内核对象句柄
  *  @returns 成功 → 非 0
  *  @param args_0 hObject 任意内核对象 */
@@ -190,9 +192,9 @@ export const ReadProcessMemory = /*@__PURE__*/ b('ReadProcessMemory',
  *  @param args_0 hFile 文件/管道句柄
  *  @param args_1 [inout] lpBuffer
  *  @param args_2 nNumberOfBytesToRead 请求读取的字节数
- *  @param args_3 [out] lpNumberOfBytesRead
+ *  @param args_3 [out] lpNumberOfBytesRead：字节数槽，`const r = U32.alloc()` 后传 `r.ptr`，`U32.decode(r)` 读回
  *  @param args_4 lpOverlapped 重叠结构，传 NULL（同步读） */
-export const ReadFile = /*@__PURE__*/ b('ReadFile', '<HFILE>ptr! <BYTE>ptr u32 <BYTE>ptr <>ptr -> i32')
+export const ReadFile = /*@__PURE__*/ b('ReadFile', '<HFILE>ptr! <BYTE>ptr u32 <u32>ptr <>ptr -> i32')
 
 /** 创建/打开文件
  *  @returns 成功 → 句柄，失败 → INVALID_HANDLE_VALUE（-1——truthy，须 === -1 判失败，
@@ -212,9 +214,9 @@ export const CreateFile = /*@__PURE__*/ b('CreateFileW',
  *  @param args_0 hFile 文件/管道句柄
  *  @param args_1 [in] lpBuffer
  *  @param args_2 nNumberOfBytesToWrite 写入字节数
- *  @param args_3 [out] lpNumberOfBytesWritten：PtrArrayBuffer(4) 读实际写入字节数
+ *  @param args_3 [out] lpNumberOfBytesWritten：字节数槽，`const r = U32.alloc()` 后传 `r.ptr`，`U32.decode(r)` 读回
  *  @param args_4 lpOverlapped 重叠结构，传 NULL（同步写） */
-export const WriteFile = /*@__PURE__*/ b('WriteFile', '<HFILE>ptr! <BYTE>ptr u32 <BYTE>ptr <>ptr -> i32')
+export const WriteFile = /*@__PURE__*/ b('WriteFile', '<HFILE>ptr! <BYTE>ptr u32 <u32>ptr <>ptr -> i32')
 /** 删除文件
  *  @returns 成功 → 非 0 */
 export const DeleteFile = /*@__PURE__*/ b('DeleteFileW', '<WCHAR>ptr! -> i32')
@@ -241,13 +243,15 @@ export const MoveFileEx = /*@__PURE__*/ b('MoveFileExW', '<WCHAR>ptr! <WCHAR>ptr
  *  @returns 新偏移（32 位），0xFFFFFFFF = 失败（须 GetLastError 区分
  *  与合法的 0xFFFFFFFF 偏移）
  *  @param args_1 lDistanceToMove 偏移（LONG，可负）
- *  @param args_2 [inout] lpDistanceToMoveHigh：64 位偏移高半，32 位够用传 NULL
+ *  @param args_2 [inout] lpDistanceToMoveHigh：64 位偏移高半（LONG），32 位够用传 NULL；
+ *    要读回时 `const r = I32.alloc()` 后传 `r.ptr`，`I32.decode(r)` 读回
  *  @param args_3 dwMoveMethod 起点 FileSeekFrom.BEGIN / CURRENT / END */
-export const SetFilePointer = /*@__PURE__*/ b('SetFilePointer', '<HFILE>ptr! i32 <BYTE>ptr u32@FileSeekFrom -> u32')
+export const SetFilePointer = /*@__PURE__*/ b('SetFilePointer', '<HFILE>ptr! i32 <i32>ptr u32@FileSeekFrom -> u32')
 /** 读文件大小
  *  @returns 文件大小（低 32 位）；0xFFFFFFFF = 失败（INVALID_FILE_SIZE，须 GetLastError 区分）
- *  @param args_1 [out] lpFileSizeHigh：高 32 位（>4GB 文件），不需要传 NULL */
-export const GetFileSize = /*@__PURE__*/ b('GetFileSize', '<HFILE>ptr! <BYTE>ptr -> u32')
+ *  @param args_1 [out] lpFileSizeHigh：高 32 位（>4GB 文件），不需要传 NULL；要读回时
+ *    `const r = U32.alloc()` 后传 `r.ptr`，`U32.decode(r)` 读回 */
+export const GetFileSize = /*@__PURE__*/ b('GetFileSize', '<HFILE>ptr! <u32>ptr -> u32')
 /** 按通配模式枚举首个匹配（'dir\\*.txt'）；配对 FindClose
  *  @returns 成功 → 查找句柄，失败 → INVALID_HANDLE_VALUE（-1）
  *  @param args_0 lpFileName 路径/通配模式 string（禁空）
@@ -293,17 +297,17 @@ export const FormatMessage = /*@__PURE__*/ b('FormatMessageW',
 
 /** 高精度计数器读数（LARGE_INTEGER，8 字节）
  *  @returns 成功 → 非 0
- *  @param args_0 [out] lpPerformanceCount：8 字节，DataView getBigInt64 读回 */
-export const QueryPerformanceCounter = /*@__PURE__*/ b('QueryPerformanceCounter', '<BYTE>ptr -> i32')
+ *  @param args_0 [out] lpPerformanceCount：`const r = I64.alloc()` 后传 `r.ptr`，`I64.decode(r)` 读回（bigint） */
+export const QueryPerformanceCounter = /*@__PURE__*/ b('QueryPerformanceCounter', '<i64>ptr -> i32')
 /** 高精度计数器频率（每秒计数，LARGE_INTEGER 8 字节）
  *  @returns 成功 → 非 0
- *  @param args_0 [out] lpFrequency：8 字节，DataView getBigInt64 读回 */
-export const QueryPerformanceFrequency = /*@__PURE__*/ b('QueryPerformanceFrequency', '<BYTE>ptr -> i32')
+ *  @param args_0 [out] lpFrequency：`const r = I64.alloc()` 后传 `r.ptr`，`I64.decode(r)` 读回（bigint） */
+export const QueryPerformanceFrequency = /*@__PURE__*/ b('QueryPerformanceFrequency', '<i64>ptr -> i32')
 /** 挂起当前线程毫秒数（0 = 让出剩余时间片）；无返回值 */
 export const Sleep = /*@__PURE__*/ b('Sleep', 'u32 -> void')
 /** 当前系统时间（UTC FILETIME，8 字节 = 1601 起的 100ns 单元）；无返回值
- *  @param args_0 [out] lpSystemTimeAsFileTime：8 字节，DataView getBigUint64 读回 */
-export const GetSystemTimeAsFileTime = /*@__PURE__*/ b('GetSystemTimeAsFileTime', '<BYTE>ptr -> void')
+ *  @param args_0 [out] lpSystemTimeAsFileTime：`const r = U64.alloc()` 后传 `r.ptr`，`U64.decode(r)` 读回（bigint） */
+export const GetSystemTimeAsFileTime = /*@__PURE__*/ b('GetSystemTimeAsFileTime', '<u64>ptr -> void')
 /** 本地时间；无返回值
  *  @param args_0 [out] lpSystemTime */
 export const GetLocalTime = /*@__PURE__*/ b('GetLocalTime', '<SYSTEMTIME>ptr -> void')
@@ -317,8 +321,8 @@ export const GetEnvironmentVariable = /*@__PURE__*/ b('GetEnvironmentVariableW',
 /** 计算机名（*lpnSize 入 = 缓冲 WCHAR 容量，出 = 实际长度不含 NUL）
  *  @returns 成功 → 非 0
  *  @param args_0 lpBuffer 接收缓冲，传 WCHAR.alloc(n)
- *  @param args_1 lpnSize 长度槽（PtrArrayBuffer(4)，Uint32Array 写入容量） */
-export const GetComputerName = /*@__PURE__*/ b('GetComputerNameW', '<WCHAR>ptr <BYTE>ptr -> i32')
+ *  @param args_1 [inout] lpnSize 长度槽：`const r = U32.of(容量)` 后传 `r.ptr`，`U32.decode(r)` 读回 */
+export const GetComputerName = /*@__PURE__*/ b('GetComputerNameW', '<WCHAR>ptr <u32>ptr -> i32')
 /** 模块文件路径（全路径含扩展名）
  *  @returns 写入字符数（不含 NUL，0 失败/缓冲不足）
  *  @param args_0 hModule 模块句柄（<HMODULE>ptr 与 win 模块同型），NULL = 当前进程 exe
@@ -343,8 +347,8 @@ export const GetCommandLineW = /*@__PURE__*/ b('GetCommandLineW', ' -> <WCHAR>pt
  *  如 x86 qwin 读 explorer 的 TBBUTTON）。32 位 OS 上恒写 0
  *  @returns 成功 → 非 0
  *  @param args_0 hProcess GetCurrentProcess() 伪句柄或真句柄
- *  @param args_1 [out] lpWow64Process：4 字节 BOOL */
-export const IsWow64Process = /*@__PURE__*/ b('IsWow64Process', '<HPROCESS>ptr <BYTE>ptr -> i32')
+ *  @param args_1 [out] lpWow64Process：BOOL 槽，`const r = I32.alloc()` 后传 `r.ptr`，`I32.decode(r)` 读回 */
+export const IsWow64Process = /*@__PURE__*/ b('IsWow64Process', '<HPROCESS>ptr <i32>ptr -> i32')
 
 // ============ 全局内存（剪贴板数据载体）============
 

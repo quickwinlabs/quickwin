@@ -62,6 +62,7 @@ type BindFn<S extends string, E, D> =
 | `<>ptr`（裸地址） | `number` | `number` |
 | `<WCHAR>ptr` | `string \| MaybePtr<'WCHAR'>` | `string \| NULL` |
 | `<BYTE>ptr` | `PtrArrayBuffer \| MaybePtr<'BYTE'>` | `MaybePtr<'BYTE'>` |
+| `<i32>ptr` 等标量指针 | `MaybePtr<'i32'>` | `MaybePtr<'i32'>` |
 | `<RECT>ptr` | `MaybePtr<'RECT'> \| 布局入参形` | `布局 decode 形 \| NULL` |
 | `<RECT>ptr!` | **去掉 `NULL` 分支** | **去掉 `NULL` 分支** |
 | `<RECT>`（无 `ptr`） | 按值传参，布局入参形 | — |
@@ -69,6 +70,19 @@ type BindFn<S extends string, E, D> =
 | 拼错的 token | **`never`**（调用点全红） | **`unknown`**（逼显式收窄） |
 
 `<WCHAR>` / `<BYTE>` 是内建 codec，它们的值域直接注入布局表，所以在类型层看起来和用户定义的结构体没有任何区别。
+
+标量指针（`<i32>ptr` / `<u32>ptr` / `<i64>ptr` / `<u64>ptr` 等）刻意**不做内置 codec**：调用方用 `lib/ffi/scalar` 的 `IX.alloc()` / `IX.encode()` / `IX.decode()` 三件套，品牌 `.ptr` 直接喂 `<N>ptr` 形参（`I32.alloc().ptr` 是 `Ptr<'i32'>`，喂 `<i32>ptr` 编译过、喂 `<RECT>ptr` 编译失败）：
+
+```ts
+const code = U32.alloc()
+GetExitCodeProcess(h, code.ptr)          // <u32>ptr
+const v = U32.decode(code)
+
+const n = U32.encode(260)                 // [inout] 入 = 260
+GetComputerName(nameW.ptr, n.ptr)
+```
+
+`.ptr` 是 number，走 `mkPtrWriter` 的 number 快路径（buffer 只靠调用方 `const` 保活，禁止内联 `.alloc().ptr`）。`IX.alloc(n?)` 按 `sizeof(T)` 步长分配 n 个元素（默认 1），与 `StructDef.alloc` 同构；`IX.encode(初值)` 与 `StructDef.encode` 同构（`[in]`/`[inout]` 初值位）。
 
 ## 担保与值域：`!` 和 `@`
 

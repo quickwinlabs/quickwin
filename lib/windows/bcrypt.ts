@@ -47,10 +47,10 @@ export const BCryptGenerateSymmetricKey = /*@__PURE__*/ b('BCryptGenerateSymmetr
  *  @param args_5 cbIV IV 字节数
  *  @param args_6 pbOutput 明文输出
  *  @param args_7 cbOutput 输出缓冲字节数
- *  @param args_8 [out] pcbResult：实际写出字节数槽（PtrArrayBuffer(4)，须保存引用后传 .ptr）
+ *  @param args_8 [out] pcbResult：实际写出字节数槽，`const r = U32.alloc()` 后传 `r.ptr`，`U32.decode(r)` 读回
  *  @param args_9 dwFlags 保留，传 0 */
 export const BCryptDecrypt = /*@__PURE__*/ b('BCryptDecrypt',
-    '<>ptr <BYTE>ptr u32 <>ptr <BYTE>ptr u32 <BYTE>ptr u32 <>ptr u32 -> i32')
+    '<>ptr <BYTE>ptr u32 <>ptr <BYTE>ptr u32 <BYTE>ptr u32 <u32>ptr u32 -> i32')
 /** 销毁密钥句柄
  *  @returns 0 = 成功，非 0 = 失败
  *  @param args_0 hKey 密钥句柄 */

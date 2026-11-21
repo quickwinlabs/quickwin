@@ -172,8 +172,8 @@ export const SetWindowLongPtr = /*@__PURE__*/ b('SetWindowLong' + LONG_PTR_SYM, 
 /** 取窗口所属线程（第二参可传 NULL 不取进程 ID）
  *  @returns 线程 ID
  *  @param args_0 hWnd
- *  @param args_1 [out] lpdwProcessId：4 字节缓冲或 NULL */
-export const GetWindowThreadProcessId = /*@__PURE__*/ b('GetWindowThreadProcessId', '<HWND>ptr <BYTE>ptr -> u32')
+ *  @param args_1 [out] lpdwProcessId：`const r = U32.alloc()` 后传 `r.ptr`，`U32.decode(r)` 读回；或 NULL */
+export const GetWindowThreadProcessId = /*@__PURE__*/ b('GetWindowThreadProcessId', '<HWND>ptr <u32>ptr -> u32')
 /** 启用/禁用窗口输入
  *  @returns 先前状态
  *  @param args_0 hWnd

@@ -1,5 +1,6 @@
 import * as os from 'os'
 import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { U32 } from '../lib/ffi/scalar.js'
 import {
     RegCloseKey, RegCreateKeyEx, RegDeleteKey, RegDeleteKeyValue, RegOpenKeyEx,
     RegQueryValueEx, RegSetValueEx,
@@ -56,21 +57,20 @@ export const suite = {
         const data = wbuf(MSG)
         t.check('set REG_SZ = ERROR_SUCCESS', 0,
             RegSetValueEx(hkey, 'greeting', 0, RegType.SZ, data, (MSG.length + 1) * 2))
-        const pType = new PtrArrayBuffer(4)
-        const pCb = new PtrArrayBuffer(4)
+        const pType = U32.alloc()
         const pData = new PtrArrayBuffer(64)
-        new DataView(pCb).setUint32(0, 64, true)            // 双向 lpcbData：入 = 缓冲大小须预写
+        const pCb = U32.encode(64)                               // 双向 lpcbData：入 = 缓冲大小须预写
         t.check('query = ERROR_SUCCESS', 0,
-            RegQueryValueEx(hkey, 'greeting', NULL, pType, pData, pCb))
-        t.check('type = REG_SZ', 1, new DataView(pType).getUint32(0, true))
-        t.check('size = (len+1)*2', (MSG.length + 1) * 2, new DataView(pCb).getUint32(0, true))
+            RegQueryValueEx(hkey, 'greeting', NULL, pType.ptr, pData, pCb.ptr))
+        t.check('type = REG_SZ', 1, U32.decode(pType))
+        t.check('size = (len+1)*2', (MSG.length + 1) * 2, U32.decode(pCb))
         t.check('data roundtrip', MSG, wstr(new DataView(pData), (MSG.length + 1) * 2))
 
         t.section('RegQueryValueEx: size probe (lpData = NULL)')
-        new DataView(pCb).setUint32(0, 0, true)             // 预写 0：只查类型/尺寸
+        const pCb2 = U32.encode(0)                               // 预写 0：只查类型/尺寸
         t.check('probe = ERROR_SUCCESS', 0,
-            RegQueryValueEx(hkey, 'greeting', NULL, NULL, NULL, pCb))
-        t.check('probe size', (MSG.length + 1) * 2, new DataView(pCb).getUint32(0, true))
+            RegQueryValueEx(hkey, 'greeting', NULL, NULL, NULL, pCb2.ptr))
+        t.check('probe size', (MSG.length + 1) * 2, U32.decode(pCb2))
 
         t.section('RegOpenKeyEx: reopen + missings')
         const phk2 = new PtrArrayBuffer(8)

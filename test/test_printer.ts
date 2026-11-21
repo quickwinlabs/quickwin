@@ -3,6 +3,7 @@ import * as os from 'os'
 import { WCHAR } from '../lib/ffi/bind.js'
 import { structArray } from '../lib/ffi/struct.js'
 import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { U32 } from '../lib/ffi/scalar.js'
 import { CloseHandle, CreateFile, DeleteFile, GetLastError, GetTempPath, GetFileSize, ReadFile, Sleep } from '../lib/windows/kernel32.js'
 import {
     ClosePrinter, DeviceCapabilities, DocumentProperties, EnumPrinters, EndDocPrinter, EndPagePrinter,
@@ -39,21 +40,20 @@ export const suite = {
     name: 'printer',
     run: (t: Tester) => {
         t.section('EnumPrinters: two-pass LOCAL|CONNECTIONS')
-        const neededB = new PtrArrayBuffer(4)
-        const returnedB = new PtrArrayBuffer(4)
-        const neededU = new Uint32Array(neededB)
-        const returnedU = new Uint32Array(returnedB)
-        EnumPrinters(LOCAL_OR_CONNECTIONS, NULL, 2, NULL, 0, neededB, returnedB)
-        if (neededU[0]! === 0) {
+        const needed = U32.alloc()
+        const returned = U32.alloc()
+        EnumPrinters(LOCAL_OR_CONNECTIONS, NULL, 2, NULL, 0, needed.ptr, returned.ptr)
+        const neededBytes = U32.decode(needed)
+        if (neededBytes === 0) {
             // 无打印机环境（XP VM）：整段优雅跳过——属环境差异非缺陷（test_ffi 先例）
             t.skipCase('printer suite (no printers on this VM)')
             return
         }
-        t.checkTrue(`pcbNeeded > 0 (${neededU[0]!})`, neededU[0]! > 0)
-        const buf = new PtrArrayBuffer(neededU[0]!)
+        t.checkTrue(`pcbNeeded > 0 (${neededBytes})`, neededBytes > 0)
+        const buf = new PtrArrayBuffer(neededBytes)
         t.checkTrue('EnumPrinters full buffer',
-            EnumPrinters(LOCAL_OR_CONNECTIONS, NULL, 2, buf, neededU[0]!, neededB, returnedB) !== 0)
-        const count = returnedU[0]!
+            EnumPrinters(LOCAL_OR_CONNECTIONS, NULL, 2, buf, neededBytes, needed.ptr, returned.ptr) !== 0)
+        const count = U32.decode(returned)
         t.checkTrue(`found printers (${count})`, count > 0)
 
         // 出参数组读回：结构数组区 = 前 count*size 字节，尾部是字符串数据
@@ -73,9 +73,8 @@ export const suite = {
 
         t.section('GetDefaultPrinter')
         const defW = WCHAR.alloc(260)
-        const lenB = new PtrArrayBuffer(4)
-        new Uint32Array(lenB)[0] = 260
-        t.checkTrue('GetDefaultPrinter ok', GetDefaultPrinter(defW.ptr, lenB) !== 0)
+        const len = U32.encode(260)
+        t.checkTrue('GetDefaultPrinter ok', GetDefaultPrinter(defW.ptr, len.ptr) !== 0)
         const defName = WCHAR.decode(defW)
         t.checkTrue(`default in enum list (${defName})`, names.includes(defName))
 
@@ -121,10 +120,10 @@ export const suite = {
         const jBuf = new PtrArrayBuffer(job.length)
         const jDv = new DataView(jBuf)
         for (let i = 0; i < job.length; i++) jDv.setUint8(i, job.charCodeAt(i))
-        const pWr = new PtrArrayBuffer(4)
-        const wr = WritePrinter(hPrinter, jBuf, job.length, pWr)
+        const written = U32.alloc()
+        const wr = WritePrinter(hPrinter, jBuf, job.length, written.ptr)
         t.checkTrue(`WritePrinter ok (lastError=${GetLastError()})`, wr !== 0)
-        t.check('bytes written', job.length, new Uint32Array(pWr)[0])
+        t.check('bytes written', job.length, U32.decode(written))
         const ep = EndPagePrinter(hPrinter)
         t.checkTrue(`EndPagePrinter (lastError=${GetLastError()})`, ep !== 0)
         const ed = EndDocPrinter(hPrinter)
@@ -139,8 +138,8 @@ export const suite = {
             const fSize = GetFileSize(hOut, NULL)
             t.checkTrue(`job file size > 0 (${fSize})`, fSize > 0)
             const fBuf = new PtrArrayBuffer(Math.max(fSize, 1))
-            const pRd = new PtrArrayBuffer(4)
-            ReadFile(hOut, fBuf, fSize, pRd, NULL)
+            const pRd = U32.alloc()
+            ReadFile(hOut, fBuf, fSize, pRd.ptr, NULL)
             // RAW 通道（winprint + RAW）应原样落盘——若 XPS 驱动重渲染则 FAIL 揭示实际内容头
             let back = ''
             const fDv = new DataView(fBuf)

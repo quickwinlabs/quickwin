@@ -116,6 +116,7 @@ const MYSTRUCT = struct('MYSTRUCT', DECL)   // satisfies 保推断、不收窄�
 | `[in]` + 该位注册 encoder | 直接传对象，缺省字段为 0 |
 | `[in]` + `<>ptr` 或该位无 encoder | `const b = X.encode({...})` 后传 `b.ptr` |
 | `[out]` / `[inout]` + `<N>ptr`（无 encoder） | `const r = X.alloc()`（`[inout]` 用 `X.encode(初值)`）后传 `r.ptr`，`X.decode(r)` 读回 |
+| `[out]` / `[inout]` + 标量指针 `<i32>ptr` 等 | `const r = I32.alloc()`（`[inout]` 用 `I32.encode(初值)`）后传 `r.ptr`，`I32.decode(r)` 读回 |
 | `[out]` + `<BYTE>ptr` | **直接传 PAB**，不取 `.ptr`（`WCHAR.alloc(n)` / `new PtrArrayBuffer(n)`） |
 
 `<BYTE>ptr` 位有内建 `BYTE` codec（identity 原地直通），槽写器把缓冲 return 出去、进

@@ -15,9 +15,9 @@ const b = <const S extends string>(name: string, sig: S) => bind('advapi32.dll',
  *  @param args_5 samDesired 访问掩码 RegAccess.READ / SET_VALUE（标准组合常量按成员收录）
  *  @param args_6 lpSecurityAttributes 安全描述符（一般 NULL）
  *  @param args_7 [out] phkResult：键句柄（8 字节缓冲，readPtr 按架构读回）
- *  @param args_8 [out] lpdwDisposition：新建/已存在标记（4 字节，可 NULL） */
+ *  @param args_8 [out] lpdwDisposition：新建/已存在标记，`const r = U32.alloc()` 后传 `r.ptr`，`U32.decode(r)` 读回；或 NULL */
 export const RegCreateKeyEx = /*@__PURE__*/ b('RegCreateKeyExW',
-    '<>ptr <WCHAR>ptr u32 <WCHAR>ptr u32 u32@RegAccess <>ptr <BYTE>ptr <BYTE>ptr -> i32')
+    '<>ptr <WCHAR>ptr u32 <WCHAR>ptr u32 u32@RegAccess <>ptr <BYTE>ptr <u32>ptr -> i32')
 
 /** 打开已有子键（不创建）
  *  @returns 0 = ERROR_SUCCESS；2 = ERROR_FILE_NOT_FOUND（子键不存在）
@@ -50,11 +50,12 @@ export const RegSetValueEx = /*@__PURE__*/ b('RegSetValueExW',
  *  @param args_0 hKey 键句柄（须 KEY_QUERY_VALUE 权限，含于 RegAccess.READ）
  *  @param args_1 lpValueName 值名（NULL = 键的默认值）
  *  @param args_2 lpReserved 保留，恒 NULL
- *  @param args_3 [out] lpType：值类型（可 NULL）
+ *  @param args_3 [out] lpType：值类型，`const r = U32.alloc()` 后传 `r.ptr`，`U32.decode(r)` 读回；或 NULL
  *  @param args_4 [inout] lpData：数据缓冲（NULL = 只查尺寸）
- *  @param args_5 [inout] lpcbData：入 = lpData 缓冲字节数（须预写）、出 = 实际字节数 */
+ *  @param args_5 [inout] lpcbData：入 = lpData 缓冲字节数、出 = 实际字节数，
+ *    `const r = U32.of(缓冲字节数)` 后传 `r.ptr`，`U32.decode(r)` 读回 */
 export const RegQueryValueEx = /*@__PURE__*/ b('RegQueryValueExW',
-    '<>ptr <WCHAR>ptr <>ptr <BYTE>ptr <BYTE>ptr <BYTE>ptr -> i32')
+    '<>ptr <WCHAR>ptr <>ptr <u32>ptr <BYTE>ptr <u32>ptr -> i32')
 
 /** 删除子键（连值一起删）；须父键 KEY_CREATE_SUB_KEY 权限——自己的 HKCU 直接传
  *  HKey.CURRENT_USER 即可

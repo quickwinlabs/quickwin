@@ -2,6 +2,8 @@
 // lib/windows/user32.ts 头注释）：
 //   - 打印机句柄（OpenPrinter 的 HPRINTER* 出参槽写回）位宽无关：出参槽 = <BYTE>ptr
 //     收 PtrArrayBuffer(8) + readPtr 读回 number，作业链句柄位 <>ptr 收宽（批 5 HKey 同型）
+//   - 标量指针出参槽（DWORD*：pcbNeeded / pcReturned / pcchBuffer / lpNumberOfBytesWritten）
+//     用 <u32>ptr 配 lib/ffi/scalar 的 U32.alloc()/of()/decode()
 //   - 结构位按方向分流（结构定义见 ./structs.ts）：DOC_INFO_1W 纯入参位注册 encoder →
 //     对象直传；PRINTER_INFO_2W 出参数组不注册 → structArray(PRINTER_INFO_2W).decode
 //     (buf, count) 读回（缓冲尾部含字符串，须显式 count），指针字段跟进读字符串
@@ -23,16 +25,17 @@ const b = <const S extends string, const LE extends CodecMap = {}>(name: string,
  *  @param args_2 dwLevel 信息级别，取 2（PRINTER_INFO_2W）
  *  @param args_3 [out] pPrinterInfo：PtrArrayBuffer(pcbNeeded)
  *  @param args_4 cbBuf 缓冲字节数
- *  @param args_5 [out] pcbNeeded：需求字节数，PtrArrayBuffer(4)
- *  @param args_6 [out] pcReturned：返回条数，PtrArrayBuffer(4) */
+ *  @param args_5 [out] pcbNeeded：需求字节数，`const r = U32.alloc()` 后传 `r.ptr`，`U32.decode(r)` 读回
+ *  @param args_6 [out] pcReturned：返回条数，同上 */
 export const EnumPrinters = /*@__PURE__*/ b('EnumPrintersW',
-    'u32 <WCHAR>ptr u32 <BYTE>ptr u32 <BYTE>ptr <BYTE>ptr -> i32')
+    'u32 <WCHAR>ptr u32 <BYTE>ptr u32 <u32>ptr <u32>ptr -> i32')
 
 /** 取默认打印机名
  *  @returns 成功 → 非 0，0 = 失败（缓冲不足时 pcchBuffer 带回所需长度）
  *  @param args_0 [out] pszBuffer：WCHAR 缓冲
- *  @param args_1 [inout] pcchBuffer：入 = 缓冲 WCHAR 容量、出 = 实际长度，PtrArrayBuffer(4) */
-export const GetDefaultPrinter = /*@__PURE__*/ b('GetDefaultPrinterW', '<WCHAR>ptr <BYTE>ptr -> i32')
+ *  @param args_1 [inout] pcchBuffer：入 = 缓冲 WCHAR 容量、出 = 实际长度，
+ *    `const r = U32.of(容量)` 后传 `r.ptr`，`U32.decode(r)` 读回 */
+export const GetDefaultPrinter = /*@__PURE__*/ b('GetDefaultPrinterW', '<WCHAR>ptr <u32>ptr -> i32')
 
 /** 查设备能力；nCapability 单选 DeviceCap.*
  *  @returns 返回值随能力（数值能力 = 数值，
@@ -94,5 +97,5 @@ export const EndPagePrinter = /*@__PURE__*/ b('EndPagePrinter', '<>ptr -> i32')
  *  @param args_0 hPrinter 打印机句柄
  *  @param args_1 [in] lpBuffer
  *  @param args_2 nNumberOfBytesToWrite 写入字节数
- *  @param args_3 [out] lpNumberOfBytesWritten：PtrArrayBuffer(4) 读实际写入字节数 */
-export const WritePrinter = /*@__PURE__*/ b('WritePrinter', '<>ptr <BYTE>ptr u32 <BYTE>ptr -> i32')
+ *  @param args_3 [out] lpNumberOfBytesWritten：`const r = U32.alloc()` 后传 `r.ptr`，`U32.decode(r)` 读回 */
+export const WritePrinter = /*@__PURE__*/ b('WritePrinter', '<>ptr <BYTE>ptr u32 <u32>ptr -> i32')

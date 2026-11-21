@@ -1,5 +1,6 @@
 import { WCHAR } from '../lib/ffi/bind.js'
 import { NULL, PtrArrayBuffer } from '../lib/ffi/ctype.js'
+import { U32 } from '../lib/ffi/scalar.js'
 import {
     CloseHandle, CopyFile, CreateDirectory, CreateFile, DeleteFile,
     FindClose, FindFirstFile, FindNextFile, GetFileAttributes, GetFileSize,
@@ -52,9 +53,9 @@ export const suite = {
         t.checkTrue(`write handle valid (${hW})`, hW !== -1) // 失败 = INVALID_HANDLE_VALUE(-1)
         const payload = 'hello files'
         const wData = toWide(payload)
-        const pWr = new PtrArrayBuffer(4)
-        t.checkTrue('WriteFile ok', WriteFile(hW, wData, payload.length * 2, pWr, NULL) !== 0)
-        t.check('bytes written', payload.length * 2, new DataView(pWr).getUint32(0, true))
+        const written = U32.alloc()
+        t.checkTrue('WriteFile ok', WriteFile(hW, wData, payload.length * 2, written.ptr, NULL) !== 0)
+        t.check('bytes written', payload.length * 2, U32.decode(written))
         t.checkTrue('CloseHandle (writer)', CloseHandle(hW) !== 0)
 
         t.section('CreateFile(READ) + GetFileSize + SetFilePointer + ReadFile')
@@ -64,14 +65,14 @@ export const suite = {
         t.check('GetFileSize', payload.length * 2, GetFileSize(hR, NULL))
         t.check('SetFilePointer BEGIN → 0', 0, SetFilePointer(hR, 0, NULL, FileSeekFrom.BEGIN))
         const rData = new PtrArrayBuffer(payload.length * 2)
-        const pRd = new PtrArrayBuffer(4)
-        t.checkTrue('ReadFile ok', ReadFile(hR, rData, payload.length * 2, pRd, NULL) !== 0)
+        const nRead = U32.alloc()
+        t.checkTrue('ReadFile ok', ReadFile(hR, rData, payload.length * 2, nRead.ptr, NULL) !== 0)
         t.check('read roundtrip', payload, fromWide(rData, payload.length))
         // seek 到 END-4 验证负偏移 + 读尾 4 字节
         t.check('SetFilePointer END-4', payload.length * 2 - 4,
             SetFilePointer(hR, -4, NULL, FileSeekFrom.END))
         const rTail = new PtrArrayBuffer(8)
-        ReadFile(hR, rTail, 4, pRd, NULL)
+        ReadFile(hR, rTail, 4, nRead.ptr, NULL)
         t.check('seeked tail', payload.slice(-2), fromWide(rTail, 2))
         CloseHandle(hR)
 
@@ -79,7 +80,7 @@ export const suite = {
         const hB = CreateFile(pathB, GENERIC_WRITE, 0, NULL,
             FileCreation.CREATE_ALWAYS, 0x80, NULL)
         const bData = toWide('bb')
-        WriteFile(hB, bData, 4, pWr, NULL)
+        WriteFile(hB, bData, 4, written.ptr, NULL)
         CloseHandle(hB)
         t.checkTrue('CopyFile ok', CopyFile(pathB, pathC, 0) !== 0)
         const hC = CreateFile(pathC, GENERIC_READ, 0, NULL,

@@ -2,6 +2,7 @@ import * as ffi from 'ffi'
 import * as os from 'os'
 import { WCHAR } from '../lib/ffi/bind.js'
 import { NULL, PtrArrayBuffer, type Ptr } from '../lib/ffi/ctype.js'
+import { I64, U32, U64 } from '../lib/ffi/scalar.js'
 import {
     FormatMessage, GetCommandLineW, GetComputerName, GetEnvironmentVariable,
     GetLocalTime, GetModuleFileName, GetSystemDirectory, GetSystemTimeAsFileTime,
@@ -33,24 +34,23 @@ export const suite = {
     name: 'sysinfo',
     run: (t: Tester) => {
         t.section('QueryPerformanceCounter: frequency + monotonic')
-        const freqB = new PtrArrayBuffer(8)
-        t.checkTrue('QueryPerformanceFrequency ok', QueryPerformanceFrequency(freqB) !== 0)
-        const freq = new DataView(freqB).getBigInt64(0, true)
-        t.checkTrue(`frequency sane (${freq})`, freq > 0n)
-        const c1 = new PtrArrayBuffer(8)
-        const c2 = new PtrArrayBuffer(8)
-        QueryPerformanceCounter(c1)
-        QueryPerformanceCounter(c2)
-        const v1 = new DataView(c1).getBigInt64(0, true)
-        const v2 = new DataView(c2).getBigInt64(0, true)
+        const freq = I64.alloc()
+        t.checkTrue('QueryPerformanceFrequency ok', QueryPerformanceFrequency(freq.ptr) !== 0)
+        const f = I64.decode(freq)
+        t.checkTrue(`frequency sane (${f})`, f > 0n)
+        const c1 = I64.alloc()
+        const c2 = I64.alloc()
+        QueryPerformanceCounter(c1.ptr)
+        QueryPerformanceCounter(c2.ptr)
+        const v1 = I64.decode(c1)
+        const v2 = I64.decode(c2)
         t.checkTrue(`counter monotonic (${v1} <= ${v2})`, v1 <= v2)
 
         t.section('Sleep: QPC-measured elapsed lands in interval')
-        QueryPerformanceCounter(c1)
+        QueryPerformanceCounter(c1.ptr)
         Sleep(50)
-        QueryPerformanceCounter(c2)
-        const elapsedMs = Number((new DataView(c2).getBigInt64(0, true) -
-            new DataView(c1).getBigInt64(0, true)) * 1000n / freq)
+        QueryPerformanceCounter(c2.ptr)
+        const elapsedMs = Number((I64.decode(c2) - I64.decode(c1)) * 1000n / f)
         t.checkTrue(`Sleep(50) -> ${elapsedMs}ms in [30, 3000)`, elapsedMs >= 30 && elapsedMs < 3000)
 
         t.section('GetLocalTime / GetSystemTimeAsFileTime')
@@ -59,19 +59,18 @@ export const suite = {
         const got = SYSTEMTIME.decode(st)
         t.checkTrue(`year sane (${got.wYear})`, got.wYear >= 2024 && got.wYear <= 2100)
         t.checkTrue(`month sane (${got.wMonth})`, got.wMonth >= 1 && got.wMonth <= 12)
-        const ftB = new PtrArrayBuffer(8)
-        GetSystemTimeAsFileTime(ftB)
-        const ft = new DataView(ftB).getBigUint64(0, true)
-        t.checkTrue(`FILETIME > 0 (${ft})`, ft > 0n)
+        const ft = U64.alloc()
+        GetSystemTimeAsFileTime(ft.ptr)
+        const ftv = U64.decode(ft)
+        t.checkTrue(`FILETIME > 0 (${ftv})`, ftv > 0n)
 
         t.section('env / computer name / module path')
         const pathW = WCHAR.alloc(4096)
         const pathLen = GetEnvironmentVariable('PATH', pathW.ptr, 4096)
         t.checkTrue(`PATH non-empty (${pathLen} chars)`, pathLen > 0)
         const nameW = WCHAR.alloc(260)
-        const nameLenB = new PtrArrayBuffer(4)
-        new Uint32Array(nameLenB)[0] = 260
-        t.checkTrue('GetComputerName ok', GetComputerName(nameW.ptr, nameLenB) !== 0)
+        const nameLen = U32.encode(260)
+        t.checkTrue('GetComputerName ok', GetComputerName(nameW.ptr, nameLen.ptr) !== 0)
         const compName = WCHAR.decode(nameW)
         t.checkTrue(`computer name non-empty (${compName})`, compName.length > 0)
         const modW = WCHAR.alloc(520)
@@ -118,18 +117,18 @@ export const suite = {
         const sysW = WCHAR.alloc(300)
         GetSystemDirectory(sysW.ptr, 300)                       // 尾不带反斜杠
         const k32Path = `${WCHAR.decode(sysW)}\\kernel32.dll`
-        const hB = new PtrArrayBuffer(4)
-        const vSize = GetFileVersionInfoSize(k32Path, hB)
+        const hB = U32.alloc()
+        const vSize = GetFileVersionInfoSize(k32Path, hB.ptr)
         t.checkTrue(`version size > 0 (${vSize})`, vSize > 0)
         if (vSize > 0) {
-            const vHandle = new Uint32Array(hB)[0]!
+            const vHandle = U32.decode(hB)
             const vBuf = new PtrArrayBuffer(vSize)
             t.checkTrue('GetFileVersionInfo', GetFileVersionInfo(k32Path, vHandle, vSize, vBuf) !== 0)
             const pBuf = new PtrArrayBuffer(8)
-            const pLen = new PtrArrayBuffer(4)
-            t.checkTrue('VerQueryValue root block', VerQueryValue(vBuf, '\\', pBuf, pLen) !== 0)
+            const pLen = U32.alloc()
+            t.checkTrue('VerQueryValue root block', VerQueryValue(vBuf, '\\', pBuf, pLen.ptr) !== 0)
             const rootAddr = readPtr(new DataView(pBuf), 0)
-            const rootLen = new Uint32Array(pLen)[0]
+            const rootLen = U32.decode(pLen)
             t.checkTrue(`VS_FIXEDFILEINFO len >= 52 (${rootLen})`, rootLen! >= 52)
             t.check('VS_FIXEDFILEINFO signature', 0xfeef04bd, readU32At(rootAddr))
             const fms = readU32At(rootAddr + 8)

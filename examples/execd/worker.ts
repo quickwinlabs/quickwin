@@ -2,6 +2,7 @@ import * as os from 'os'
 import * as std from 'std'
 import { WCHAR } from '../../lib/ffi/bind.js'
 import { NULL, PtrArrayBuffer } from '../../lib/ffi/ctype.js'
+import { U32 } from '../../lib/ffi/scalar.js'
 import { struct } from '../../lib/ffi/struct.js'
 import {
     CloseHandle, CreatePipe, CreateProcess, GetExitCodeProcess, GetLastError, GetSystemDirectory,
@@ -87,21 +88,19 @@ function runCmd(id: number, cmd: string): number {
     // —— 同步阻塞读循环（子进程树全退出、写端全关 -> EOF -> 收尾）——
     const bufB = new PtrArrayBuffer(4096)
     const buf = new Uint8Array(bufB)
-    const nReadB = new PtrArrayBuffer(4)
-    const nRead = new Uint32Array(nReadB)
+    const nReadB = U32.alloc()
     for (;;) {
-        nRead[0] = 0
-        if (!ReadFile(hRead, bufB, 4096, nReadB, NULL)) break
-        const n = nRead[0]!
+        U32.encode(0, nReadB)
+        if (!ReadFile(hRead, bufB, 4096, nReadB.ptr, NULL)) break
+        const n = U32.decode(nReadB)
         if (n === 0) break
         parent.postMessage({ type: 'data', id, chunk: buf.slice(0, n) })
     }
 
     WaitForSingleObject(hProcess, WAIT_INFINITE)
-    const ecB = new PtrArrayBuffer(4)
-    const ec = new Int32Array(ecB)
-    GetExitCodeProcess(hProcess, ecB)
-    const code = ec[0]!
+    const ecB = U32.alloc()
+    GetExitCodeProcess(hProcess, ecB.ptr)
+    const code = U32.decode(ecB)
     CloseHandle(hRead)
     CloseHandle(hProcess)
     return code

@@ -1,5 +1,6 @@
 import { WCHAR } from '../lib/ffi/bind.js'
 import { NULL, PtrArrayBuffer, type Ptr } from '../lib/ffi/ctype.js'
+import { U32 } from '../lib/ffi/scalar.js'
 import {
     CloseHandle, CreateProcess, CreateToolhelp32Snapshot, GetCurrentProcessId,
     GetExitCodeProcess, GetLastError, GetModuleFileName, GetSystemDirectory,
@@ -24,19 +25,19 @@ export const suite = {
 
         // PID 数组扫描（每次刷新：EnumProcesses 出参 needed 字节 /4 = PID 数）
         const pidBuf = new PtrArrayBuffer(4096)              // 1024 个 PID 槽
-        const needed = new PtrArrayBuffer(4)
+        const needed = U32.alloc()
         const listPids = (): Set<number> => {
             const out = new Set<number>()
-            if (!EnumProcesses(pidBuf, 4096, needed)) return out
-            const n = new Uint32Array(needed)[0]! >>> 2      // 字节 /4 = 条数
+            if (!EnumProcesses(pidBuf, 4096, needed.ptr)) return out
+            const n = U32.decode(needed) >>> 2               // 字节 /4 = 条数
             const arr = new Uint32Array(pidBuf)
             for (let i = 0; i < n; i++) out.add(arr[i]!)
             return out
         }
 
         t.section('EnumProcesses: pid array contains self')
-        t.checkTrue('EnumProcesses', EnumProcesses(pidBuf, 4096, needed) !== 0)
-        const nPid = new Uint32Array(needed)[0]! >>> 2
+        t.checkTrue('EnumProcesses', EnumProcesses(pidBuf, 4096, needed.ptr) !== 0)
+        const nPid = U32.decode(needed) >>> 2
         t.checkTrue(`pid count sane (${nPid})`, nPid > 0)
         t.checkTrue('self pid present', listPids().has(selfPid))
 
@@ -90,9 +91,9 @@ export const suite = {
             mem.PeakWorkingSetSize >= mem.WorkingSetSize)
         t.checkTrue(`PagefileUsage > 0 (${mem.PagefileUsage})`, mem.PagefileUsage > 0)
         t.checkTrue(`PageFaultCount >= 0 (${mem.PageFaultCount})`, mem.PageFaultCount >= 0)
-        const codeB = new PtrArrayBuffer(4)
-        t.checkTrue('GetExitCodeProcess(self)', GetExitCodeProcess(hQ, codeB) !== 0)
-        t.check('self is STILL_ACTIVE', STILL_ACTIVE, new Int32Array(codeB)[0])
+        const codeB = U32.alloc()
+        t.checkTrue('GetExitCodeProcess(self)', GetExitCodeProcess(hQ, codeB.ptr) !== 0)
+        t.check('self is STILL_ACTIVE', STILL_ACTIVE, U32.decode(codeB))
         CloseHandle(hSelf)
         t.checkTrue('OpenProcess(nonexistent pid) -> NULL',
             OpenProcess(0x400, 0, 0xfffffffe) === NULL)
@@ -144,17 +145,17 @@ export const suite = {
                 dwProcessId > 0 && dwProcessId !== selfPid)
             t.checkTrue(`child tid sane (${dwThreadId})`, dwThreadId > 0)
             t.checkTrue('child pid in EnumProcesses', listPids().has(dwProcessId))
-            const codeB2 = new PtrArrayBuffer(4)
-            GetExitCodeProcess(hProcess, codeB2)
-            t.check('child alive (STILL_ACTIVE)', STILL_ACTIVE, new Int32Array(codeB2)[0])
+            const codeB2 = U32.alloc()
+            GetExitCodeProcess(hProcess, codeB2.ptr)
+            t.check('child alive (STILL_ACTIVE)', STILL_ACTIVE, U32.decode(codeB2))
             // XP 怪癖：进程初始化未完成时 TerminateProcess，exit code 不保留读回 0
             // （win7 立即杀读 42 正常；探针实测 XP 立即杀=0、等 3s 后杀=42）——先等初始化
             Sleep(1000)
             t.checkTrue('TerminateProcess', TerminateProcess(hProcess, 42) !== 0)
             const waited = WaitForSingleObject(hProcess, 5000)
             t.checkTrue(`child exited (wait=${waited})`, waited === 0 /* WAIT_OBJECT_0 */)
-            GetExitCodeProcess(hProcess, codeB2)
-            t.check('child exit code 42', 42, new Int32Array(codeB2)[0])
+            GetExitCodeProcess(hProcess, codeB2.ptr)
+            t.check('child exit code 42', 42, U32.decode(codeB2))
             t.checkTrue('child pid gone', !listPids().has(dwProcessId))
             CloseHandle(hProcess)
             CloseHandle(hThread)

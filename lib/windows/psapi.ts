@@ -1,7 +1,8 @@
 // psapi.dll 绑定（进程内存统计 / 模块路径；品牌约定见 lib/windows/user32.ts 头注释）：
 //   - 句柄位与 kernel32 同型互认：进程 <HPROCESS>ptr（OpenProcess 产物，CloseHandle 收宽
 //     直通）、模块 <HMODULE>ptr（NULL = 主执行模块）
-//   - PID 数组 / DWORD 出参槽用 <BYTE>ptr 直收 PtrArrayBuffer（TypedArray 原地读回）；
+//   - PID 数组用 <BYTE>ptr 直收 PtrArrayBuffer（TypedArray 原地读回）；DWORD 出参槽
+//     （EnumProcesses 的 lpcbNeeded）用 <u32>ptr 配 lib/ffi/scalar 的 U32.alloc()/decode()；
 //     结构位的取值形见 lib/windows/user32.ts 头注释的 [in] / [out] / [inout] 表
 //   - XP 起系统自带 psapi.dll（官方 min XP 桌面应用），XP/Win7 双机直连
 import { bind } from '../ffi/bind.js'
@@ -13,9 +14,9 @@ const b = <const S extends string>(name: string, sig: S) => bind('psapi.dll', na
  *  @returns 成功 → 非 0
  *  @param args_0 [out] lpidProcess：PtrArrayBuffer，Uint32Array 读回
  *  @param args_1 cb 缓冲字节数（= count * 4）
- *  @param args_2 [out] lpcbNeeded */
+ *  @param args_2 [out] lpcbNeeded：`const r = U32.alloc()` 后传 `r.ptr`，`U32.decode(r)` 读回 */
 export const EnumProcesses = /*@__PURE__*/ b('EnumProcesses',
-    '<BYTE>ptr u32 <BYTE>ptr -> i32')
+    '<BYTE>ptr u32 <u32>ptr -> i32')
 /** 取进程内存统计
  *  @returns 成功 → 非 0
  *  @param args_0 hProcess 进程句柄（须 PROCESS_QUERY_INFORMATION | PROCESS_VM_READ）
