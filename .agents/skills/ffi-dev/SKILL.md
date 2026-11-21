@@ -60,9 +60,9 @@ podman exec quickwin-dev bash -lc 'cd /workspace/docker && ./http_test.sh win7 f
 # XP: ./http_test.sh xp ffi（自动改用 qwin-x86.exe）
 ```
 
-`ffi` 是 suite 名子串匹配，命中 8 个：ffi / ffi-bind / ffi-struct / ffi-struct-layout / ffi-array / ffi-abi / ffi-user32 / ffi-windows。**两架构都要跑**——指针宽与栈帧的差异只在对侧暴露。`http_test.sh` 按 Summary 断言：失败 ≤1 即 PASS。
+`ffi` 是 suite 名子串匹配，命中 9 个：ffi / ffi-bind / ffi-struct / ffi-struct-layout / ffi-array / ffi-abi / ffi-scalar / ffi-user32 / ffi-windows。**两架构都要跑**——指针宽与栈帧的差异只在对侧暴露。`http_test.sh` 按 Summary 断言：失败 ≤1 即 PASS。
 
-期望值（`_build/ffi_only.js` 快速子集，脚本见 workflow skill）：win11 `ok=610 fail=2 skip=2`（那 2 个是已知窗口枚举失败）；XP `ok=608 fail=0 skip=3`。
+期望值（`_build/ffi_only.js` 快速子集，脚本见 workflow skill）：win11 `ok=636 fail=2 skip=2`（那 2 个是已知窗口枚举失败）；XP `ok=634 fail=0 skip=3`。
 
 回归锚点：`test/test_ffi_abi.ts`（参数个数 0–12、整数与浮点混排、窄整型与负数返回、`i64` 传参、指针 NULL 位）、`test_ffi_struct_layout.ts`（偏移与头文件一致）、`test_ffi_bind.ts`（signedness read-back、`closure()` 覆盖 stdcall 与 cdecl 两种约定）。
 
