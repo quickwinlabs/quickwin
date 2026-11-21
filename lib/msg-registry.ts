@@ -61,6 +61,7 @@ type PlainMsg =
     | ButtonMsg.SETCHECK | ButtonMsg.GETCHECK
     | TvMsg.GETCOUNT | TvMsg.DELETEITEM | TvMsg.SETEXTENDEDSTYLE
     | LbMsg.RESETCONTENT | LbMsg.SETCURSEL | LbMsg.SETTOPINDEX | LbMsg.GETCURSEL
+    | LbMsg.SETSEL | LbMsg.GETSEL | LbMsg.GETSELCOUNT | LbMsg.SELITEMRANGE
     | TcMsg.DELETEALLITEMS | TcMsg.SETCURSEL | TcMsg.GETCURSEL
     // 1048 = TtMsg.SETMAXTIPWIDTH = TB_BUTTONCOUNT（裸数字宏：枚举键吸收）
     | TtMsg.SETMAXTIPWIDTH
@@ -95,6 +96,9 @@ declare global {
         [TtMsg.DELTOOLW]: { wParam: number; lParam: MaybePtr<'TTTOOLINFOW'> }
         [ComboBoxMsg.ADDSTRING]: { wParam: number; lParam: MaybePtr<'WCHAR'> }
         [LbMsg.ADDSTRING]: { wParam: number; lParam: MaybePtr<'WCHAR'> }
+        // LB_GETSELITEMS 的 lParam 是 int 数组（元素为选中项索引）；裸数组无布局/编码语义，
+        // 用无类型地址（'' = 收任意品牌缓冲，与 BYTE 的「收所有品牌」一致）
+        [LbMsg.GETSELITEMS]: { wParam: number; lParam: MaybePtr<''> }
     }
 }
 

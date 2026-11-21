@@ -284,8 +284,13 @@ export const enum LbMsg {
     DELETESTRING = 386, // 0x182
     RESETCONTENT = 388, // 0x184
     SETTOPINDEX = 407, // 0x197
+    SETSEL = 389, // 0x185
     SETCURSEL = 390, // 0x186
+    GETSEL = 391, // 0x187
     GETCURSEL = 392, // 0x188
+    GETSELCOUNT = 400, // 0x190
+    GETSELITEMS = 401, // 0x191
+    SELITEMRANGE = 411, // 0x19B
     GETTEXT = 393, // 0x189
     GETTEXTLEN = 394, // 0x18A
     GETCOUNT = 395, // 0x18B
